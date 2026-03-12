@@ -30,6 +30,20 @@ const { useState, useEffect, useMemo, useRef, useCallback, createContext, useCon
 
 const SUPA_URL = "https://ulrzzddovkioxeaarnjk.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVscnp6ZGRvdmtpb3hlYWFybmprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjc3MDEsImV4cCI6MjA4ODYwMzcwMX0.mX3cei5kKAID3WhmMAojhk2QOMs8gDF1LFbYHKXrfUM";
+const APPS_SCRIPT_URL = "";
+async function enviarASheet(venta) {
+  if (!APPS_SCRIPT_URL) return;
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      // Apps Script requiere text/plain para evitar preflight
+      body: JSON.stringify({ tipo: "venta", datos: venta })
+    });
+  } catch (e) {
+    console.warn("[Sheet sync] Error enviando al sheet:", e.message);
+  }
+}
 async function supaFetch(table, method = "GET", body = null, params = "") {
   const url = `${SUPA_URL}/rest/v1/${table}${params}`;
   const headers = {
@@ -97,11 +111,24 @@ function useSupabase(table, seed = []) {
             if (!f) return f;
             return f > HOY ? f.replace(/^2026/, "2025") : f;
           };
-          const normalized = rows.filter((r) => !deletedIds.current.has(String(r.id))).map((r) => {
+          let normalized = rows.filter((r) => !deletedIds.current.has(String(r.id))).map((r) => {
             const n = normalizeRow(table, r);
             if (n.fecha) n.fecha = fixFecha(n.fecha);
             return n;
           });
+          if (table === "pc_ventas") {
+            const seen = /* @__PURE__ */ new Map();
+            for (const v of normalized) {
+              const key = `${(v.cliente || "").toLowerCase().trim()}|${v.fecha}|${v.total}`;
+              const prev = seen.get(key);
+              if (!prev || v.id > prev.id) seen.set(key, v);
+            }
+            const antes = normalized.length;
+            normalized = [...seen.values()];
+            if (normalized.length < antes) {
+              console.log(`[Dedup] pc_ventas: ${antes - normalized.length} duplicado(s) eliminado(s)`);
+            }
+          }
           setData(normalized);
         } else {
           await uploadSeed(table, seed);
@@ -4394,9 +4421,28 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     }
   };
   const quitarItem = (id) => setItems(items.filter((i) => i.id !== id));
+  const [notifDuplicado, setNotifDuplicado] = useState(null);
+  const [notifExito, setNotifExito] = useState(null);
   const handleAdd = () => {
     if (!fecha) return alert("Selecciona una fecha");
     if (items.length === 0) return alert("Agrega al menos un servicio o producto");
+    const clienteNorm = cliente.trim().toLowerCase();
+    const duplicado = ventas.find((v) => {
+      if (!v.fecha || v.fecha !== fecha) return false;
+      if ((v.cliente || "").trim().toLowerCase() !== clienteNorm) return false;
+      const diff = Math.abs((v.total || 0) - totalNeto);
+      return diff <= totalNeto * 0.05;
+    });
+    if (duplicado) {
+      setNotifDuplicado({
+        cliente: cliente || "Sin nombre",
+        fecha,
+        total: totalNeto,
+        idExistente: duplicado.id
+      });
+      setTimeout(() => setNotifDuplicado(null), 7e3);
+      return;
+    }
     const invActualizado = inventario.map((p) => {
       const itemInv = items.find((i) => i.prodId === p.id && i.desdeInv);
       return itemInv ? { ...p, stock: p.stock - itemInv.qty } : p;
@@ -4423,6 +4469,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     setItems([]);
     setCliente("");
     setDescPct(0);
+    enviarASheet(nueva);
+    setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area });
+    setTimeout(() => setNotifExito(null), 4e3);
   };
   const handleDelete = (id) => {
     if (!confirm("\xBFEliminar esta venta? Esta acci\xF3n no se puede deshacer.")) return;
@@ -4436,7 +4485,39 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const totalFiltrado = ventasFiltradas.reduce((s, v) => s + v.total, 0);
   const colorArea = (a) => a === "grooming" ? C.verde : a === "veterinaria" ? C.azul : a === "farmacia" ? C.gold : C.naranja;
   const iconArea = (a) => a === "grooming" ? "\u{1F415}" : a === "veterinaria" ? "\u{1FA7A}" : a === "farmacia" ? "\u{1F48A}" : "\u{1F500}";
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Registro de Ventas"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Grooming \xB7 Veterinaria \xB7 Medicamentos \xB7 Productos de tienda"), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 16 } }, "\u2795 Nueva venta"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: fecha, onChange: setFecha }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 220 } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Registro de Ventas"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Grooming \xB7 Veterinaria \xB7 Medicamentos \xB7 Productos de tienda"), notifDuplicado && /* @__PURE__ */ React.createElement("div", { style: {
+    background: "#fef3c7",
+    border: "2px solid #d97706",
+    borderRadius: 12,
+    padding: "14px 18px",
+    marginBottom: 16,
+    display: "flex",
+    gap: 12,
+    alignItems: "flex-start"
+  } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\u26A0\uFE0F"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#92400e", fontSize: 14, marginBottom: 4 } }, "Venta duplicada bloqueada"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "#78350f" } }, "Ya existe una venta de ", /* @__PURE__ */ React.createElement("strong", null, notifDuplicado.cliente), " el ", /* @__PURE__ */ React.createElement("strong", null, notifDuplicado.fecha), " por ", /* @__PURE__ */ React.createElement("strong", null, "RD$ ", notifDuplicado.total.toLocaleString("es-DO")), ". No se registr\xF3 para evitar duplicados.")), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setNotifDuplicado(null),
+      style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#92400e" }
+    },
+    "\u2715"
+  )), notifExito && /* @__PURE__ */ React.createElement("div", { style: {
+    background: "#d1fae5",
+    border: "2px solid #059669",
+    borderRadius: 12,
+    padding: "14px 18px",
+    marginBottom: 16,
+    display: "flex",
+    gap: 12,
+    alignItems: "center"
+  } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\u2705"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13, color: "#065f46" } }, /* @__PURE__ */ React.createElement("strong", null, "Venta registrada"), " \u2014 ", notifExito.cliente, " \xB7 ", notifExito.area, " \xB7 RD$ ", notifExito.total.toLocaleString("es-DO")), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setNotifExito(null),
+      style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#065f46" }
+    },
+    "\u2715"
+  )), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 16 } }, "\u2795 Nueva venta"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: fecha, onChange: setFecha }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 220 } }, /* @__PURE__ */ React.createElement(
     Input,
     {
       label: "Cliente / Mascota",
