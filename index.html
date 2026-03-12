@@ -3126,6 +3126,7 @@ function PetColinasApp({ session, onLogout }) {
   const [dbReady, setDbReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState("conectando");
   const [crmClienteInicial, setCrmClienteInicial] = useState(null);
+  const clearCrmClienteInicial = useCallback(() => setCrmClienteInicial(null), []);
   useMemo(() => {
     try {
       const f = localStorage.getItem("pc_facturas");
@@ -3319,7 +3320,7 @@ function PetColinasApp({ session, onLogout }) {
     gap: 6,
     whiteSpace: "nowrap",
     transition: "color .15s"
-  } }, /* @__PURE__ */ React.createElement("span", null, t.icon), t.label))), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comGrmSistema, comVetSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: () => setCrmClienteInicial(null) }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados })), historial.length > 0 && !undoMsg && /* @__PURE__ */ React.createElement("div", { style: {
+  } }, /* @__PURE__ */ React.createElement("span", null, t.icon), t.label))), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comGrmSistema, comVetSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados })), historial.length > 0 && !undoMsg && /* @__PURE__ */ React.createElement("div", { style: {
     position: "fixed",
     bottom: 24,
     right: 24,
@@ -5382,6 +5383,16 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     return /* @__PURE__ */ React.createElement("div", { key: area, style: { background: "#fff", borderRadius: 12, padding: 16, border: `1.5px solid ${color}30`, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 12, color, marginBottom: 12, textTransform: "uppercase", letterSpacing: 1 } }, label), items.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, textAlign: "center", padding: "16px 0" } }, "Sin ventas registradas") : items.map((p, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: i < items.length - 1 ? "1px solid #f0f0f0" : "none" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 22, height: 22, borderRadius: "50%", background: color + "20", color, fontWeight: 800, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, i + 1), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.servicio), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, RD(p.total))), /* @__PURE__ */ React.createElement("div", { style: { background: color + "15", color, fontWeight: 800, fontSize: 12, padding: "3px 9px", borderRadius: 20, flexShrink: 0 } }, p.cantidad, "\xD7"))));
   }))));
 }
+const CrmSection = ({ title, children }) => /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 28 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 } }, title), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12 } }, children));
+const CrmCheck = ({ label, checked, onChange }) => /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, userSelect: "none" } }, /* @__PURE__ */ React.createElement(
+  "input",
+  {
+    type: "checkbox",
+    checked,
+    onChange: (e) => onChange(e.target.checked),
+    style: { width: 16, height: 16, accentColor: C.verde, cursor: "pointer" }
+  }
+), label);
 const CRM_EMPTY_FORM = {
   nombreMascota: "",
   especie: "Perro",
@@ -5424,8 +5435,9 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
   const clienteInicialRef = useRef(null);
   useEffect(() => {
     if (!clienteInicial) return;
-    if (clienteInicialRef.current === clienteInicial) return;
-    clienteInicialRef.current = clienteInicial;
+    const key = clienteInicial.modo + "|" + (clienteInicial.cliente?.id || clienteInicial.nombreInicial || "nuevo");
+    if (clienteInicialRef.current === key) return;
+    clienteInicialRef.current = key;
     if (clienteInicial.modo === "detalle" && clienteInicial.cliente) {
       setClienteSel(clienteInicial.cliente);
       setForm({ ...CRM_EMPTY_FORM, ...clienteInicial.cliente });
@@ -5438,7 +5450,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       setVista("nuevo");
     }
     if (onClearClienteInicial) onClearClienteInicial();
-  }, [clienteInicial]);
+  });
   const guardar = () => {
     if (!form.nombreMascota || !form.nombrePropietario || !form.telefono)
       return alert("Nombre de mascota, propietario y tel\xE9fono son obligatorios.");
@@ -5527,16 +5539,6 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       c.alergias && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.rojoL, borderRadius: 6, padding: "5px 10px", fontSize: 11, color: C.rojo, fontWeight: 600 } }, "\u26A0\uFE0F Alergias: ", c.alergias)
     );
   })));
-  const CrmSection = ({ title, children }) => /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 28 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 } }, title), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12 } }, children));
-  const CrmCheck = ({ label, checked, onChange }) => /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, userSelect: "none" } }, /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "checkbox",
-      checked,
-      onChange: (e) => onChange(e.target.checked),
-      style: { width: 16, height: 16, accentColor: C.verde, cursor: "pointer" }
-    }
-  ), label);
   if (vista === "nuevo") {
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, marginBottom: 24 } }, /* @__PURE__ */ React.createElement(
       "button",
