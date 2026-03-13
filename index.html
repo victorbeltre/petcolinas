@@ -6099,7 +6099,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
   const [modalEntrada, setModalEntrada] = useState(false);
   const [editFicha, setEditFicha] = useState(false);
   const [fichaTemp, setFichaTemp] = useState({});
-  const C = { verde: "#1a6b3a", azul: "#1a4fa0", gris: "#f4f5f6", grisd: "#5a6472", fondo: "#f0f4f8", gold: "#b8860b" };
+  const C = { verde: "#1a6b3a", verdeL: "#e8f5ed", azul: "#1a4fa0", azulL: "#e8eef8", gris: "#f4f5f6", grisd: "#5a6472", fondo: "#f0f4f8", gold: "#b8860b", goldL: "#fdf6e3", rojo: "#c0392b", rojoL: "#fdecea", naranja: "#e67e22", naranjaL: "#fef4e8", negro: "#1a1a2e" };
   const ventasVet = ventas.filter((v) => v.area === "veterinaria");
   const pacienteMap = {};
   ventasVet.forEach((v) => {
