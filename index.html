@@ -6100,6 +6100,12 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
   const [editFicha, setEditFicha] = useState(false);
   const [fichaTemp, setFichaTemp] = useState({});
   const C = { verde: "#1a6b3a", verdeL: "#e8f5ed", azul: "#1a4fa0", azulL: "#e8eef8", gris: "#f4f5f6", grisd: "#5a6472", fondo: "#f0f4f8", gold: "#b8860b", goldL: "#fdf6e3", rojo: "#c0392b", rojoL: "#fdecea", naranja: "#e67e22", naranjaL: "#fef4e8", negro: "#1a1a2e" };
+  // Normalizar clientes — compatibilidad entre seed viejo (nombreMascota) y nuevo (nombre)
+  const clientesNorm = clientes.map((c) => ({
+    ...c,
+    nombre: c.nombre || c.nombreMascota || "",
+    dueno:  c.dueno  || c.nombrePropietario || ""
+  }));
   const ventasVet = ventas.filter((v) => v.area === "veterinaria");
   const pacienteMap = {};
   ventasVet.forEach((v) => {
@@ -6108,11 +6114,11 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
     pacienteMap[v.cliente].visitas.push(v);
     if (v.fecha > pacienteMap[v.cliente].ultimaVisita) pacienteMap[v.cliente].ultimaVisita = v.fecha;
   });
-  clientes.filter((c) => c.ficha || c.notas).forEach((c) => {
+  clientesNorm.filter((c) => c.ficha || c.notas).forEach((c) => {
     if (!pacienteMap[c.nombre]) pacienteMap[c.nombre] = { nombre: c.nombre, visitas: [], ultimaVisita: "" };
   });
   const listaPacientes = Object.values(pacienteMap).filter((p) => p.nombre.toLowerCase().includes(busqueda.toLowerCase())).sort((a, b) => b.ultimaVisita.localeCompare(a.ultimaVisita));
-  const clienteObj = pacienteVer ? clientes.find((c) => c.nombre === pacienteVer) || { nombre: pacienteVer } : null;
+  const clienteObj = pacienteVer ? clientesNorm.find((c) => c.nombre === pacienteVer) || { nombre: pacienteVer } : null;
   const [serviciosSelec, setServiciosSelec] = useState([]);
   const [entradaForm, setEntradaForm] = useState({ fecha: hoy(), observaciones: "", peso: "", temperatura: "" });
   function agregarServicio(t) {
@@ -6166,7 +6172,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
   }
   function guardarFicha() {
     setClientes((prev) => {
-      const idx = prev.findIndex((c) => c.nombre === pacienteVer);
+      const idx = prev.findIndex((c) => (c.nombre || c.nombreMascota || "") === pacienteVer);
       const nuevo = { id: Date.now(), nombre: pacienteVer, ...fichaTemp };
       if (idx >= 0) {
         const copy = [...prev];
@@ -6180,7 +6186,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
   const [nuevoForm, setNuevoForm] = useState({ nombre: "", especie: "", raza: "" });
   function crearPaciente() {
     if (!nuevoForm.nombre.trim()) return;
-    if (!clientes.find((c) => c.nombre === nuevoForm.nombre.trim())) {
+    if (!clientesNorm.find((c) => c.nombre === nuevoForm.nombre.trim())) {
       setClientes((prev) => [...prev, { id: Date.now(), nombre: nuevoForm.nombre.trim(), especie: nuevoForm.especie, raza: nuevoForm.raza }]);
     }
     setPacienteVer(nuevoForm.nombre.trim());
@@ -6324,7 +6330,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
       style: { width: "100%", padding: "12px 16px", borderRadius: 12, border: "1.5px solid #e2e8f0", fontSize: 14, marginBottom: 20, boxSizing: "border-box", outline: "none" }
     }
   ), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 14 } }, listaPacientes.map((p) => {
-    const c = clientes.find((cl) => cl.nombre === p.nombre) || {};
+    const c = clientesNorm.find((cl) => cl.nombre === p.nombre) || {};
     const tieneAlertas = c.alergias || c.condiciones;
     return /* @__PURE__ */ React.createElement(
       "div",
