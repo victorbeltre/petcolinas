@@ -204,10 +204,10 @@ const VENTAS_SEED = [
   { id: 10006, fecha: "2026-01-03", cliente: "Copito", area: "grooming", descripcion: "Ba\xF1o peque\xF1o medicado + corte completo", total: 1798, comision: 190 },
   { id: 10007, fecha: "2026-01-04", cliente: "Nicky", area: "grooming", descripcion: "Ba\xF1o peque\xF1o colinas", total: 999, comision: 100 },
   { id: 10008, fecha: "2026-01-04", cliente: "Nicky", area: "farmacia", descripcion: "Comida Belcando", total: 2153, comision: 0 },
-  { id: 10009, fecha: "2026-01-06", cliente: "Karim", area: "veterinaria", descripcion: "Consulta", total: 1500, comision: 450 },
+  { id: 10009, fecha: "2026-01-06", cliente: "Karim", area: "veterinaria", descripcion: "Consulta", total: 1500, veterinaria_id: "aylein", comision: 450 },
   { id: 10010, fecha: "2026-01-06", cliente: "Karim", area: "farmacia", descripcion: "Gencloben", total: 300, comision: 0 },
   { id: 10011, fecha: "2026-01-07", cliente: "Shadow", area: "grooming", descripcion: "Ba\xF1o cachorro colinas (10% OFF)", total: 809, comision: 80 },
-  { id: 10012, fecha: "2026-01-08", cliente: "Toby Ramirez", area: "veterinaria", descripcion: "Consulta + Vacuna Giardia", total: 2950, comision: 885 },
+  { id: 10012, fecha: "2026-01-08", cliente: "Toby Ramirez", area: "veterinaria", descripcion: "Consulta + Vacuna Giardia", total: 2950, veterinaria_id: "aylein", comision: 885 },
   { id: 10013, fecha: "2026-01-09", cliente: "Karim", area: "grooming", descripcion: "Ba\xF1o medicado + corte completo", total: 1699, comision: 190 },
   { id: 10014, fecha: "2026-01-09", cliente: "Maya", area: "grooming", descripcion: "Ba\xF1o cachorro", total: 699, comision: 80 },
   { id: 10015, fecha: "2026-01-09", cliente: "Ruti", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
@@ -217,14 +217,14 @@ const VENTAS_SEED = [
   { id: 10019, fecha: "2026-01-10", cliente: "Honey", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 10020, fecha: "2026-01-10", cliente: "Tobby", area: "grooming", descripcion: "Ba\xF1o grande", total: 1642, comision: 120 },
   { id: 10021, fecha: "2026-01-10", cliente: "Abril Rosario", area: "grooming", descripcion: "Ba\xF1o cachorro", total: 699, comision: 80 },
-  { id: 10022, fecha: "2026-01-10", cliente: "Abril Rosario", area: "veterinaria", descripcion: "Consulta + Vacuna qu\xEDntuple", total: 2700, comision: 810 },
+  { id: 10022, fecha: "2026-01-10", cliente: "Abril Rosario", area: "veterinaria", descripcion: "Consulta + Vacuna qu\xEDntuple", total: 2700, veterinaria_id: "aylein", comision: 810 },
   { id: 10023, fecha: "2026-01-10", cliente: "Chocolate Montero", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1550, comision: 190 },
   { id: 10024, fecha: "2026-01-11", cliente: "Luna De Leon", area: "grooming", descripcion: "Ba\xF1o cachorro", total: 699, comision: 80 },
   { id: 10025, fecha: "2026-01-11", cliente: "Luna De Leon", area: "farmacia", descripcion: "Collar para gato", total: 120, comision: 0 },
   { id: 10026, fecha: "2026-01-11", cliente: "Marcos", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 10027, fecha: "2026-01-11", cliente: "Benji Sanchez", area: "farmacia", descripcion: "Plato comida + Bonavit", total: 895, comision: 0 },
-  { id: 10028, fecha: "2026-01-11", cliente: "Benji Sanchez", area: "veterinaria", descripcion: "Consulta + Vacuna qu\xEDntuple + Bordetella", total: 4100, comision: 1230 },
-  { id: 10029, fecha: "2026-01-11", cliente: "Benji Sanchez", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, comision: 90 },
+  { id: 10028, fecha: "2026-01-11", cliente: "Benji Sanchez", area: "veterinaria", descripcion: "Consulta + Vacuna qu\xEDntuple + Bordetella", total: 4100, veterinaria_id: "aylein", comision: 1230 },
+  { id: 10029, fecha: "2026-01-11", cliente: "Benji Sanchez", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, veterinaria_id: "aylein", comision: 90 },
   { id: 10030, fecha: "2026-01-14", cliente: "Lucky Sanchez", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo (10% OFF)", total: 1393, comision: 190 },
   { id: 10031, fecha: "2026-01-14", cliente: "Lucky Sanchez", area: "farmacia", descripcion: "Bravecto", total: 2595, comision: 0 },
   { id: 10032, fecha: "2026-01-14", cliente: "Estrellita Custodio", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
@@ -239,7 +239,7 @@ const VENTAS_SEED = [
   { id: 10041, fecha: "2026-01-15", cliente: "Mini", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
   { id: 10042, fecha: "2026-01-16", cliente: "Gucci", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
   { id: 10043, fecha: "2026-01-17", cliente: "Brownie", area: "grooming", descripcion: "Ba\xF1o peque\xF1o con l\xEDnea + corte higi\xE9nico", total: 1489, comision: 170 },
-  { id: 10044, fecha: "2026-01-17", cliente: "Jimmy", area: "veterinaria", descripcion: "Vacuna triple + Vacuna Rabia", total: 2800, comision: 840 },
+  { id: 10044, fecha: "2026-01-17", cliente: "Jimmy", area: "veterinaria", descripcion: "Vacuna triple + Vacuna Rabia", total: 2800, veterinaria_id: "aylein", comision: 840 },
   { id: 10045, fecha: "2026-01-18", cliente: "Ruthy", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 10046, fecha: "2026-01-18", cliente: "Ares", area: "grooming", descripcion: "Ba\xF1o cachorro", total: 699, comision: 80 },
   { id: 10047, fecha: "2026-01-18", cliente: "Ares", area: "farmacia", descripcion: "Juguete", total: 120, comision: 0 },
@@ -249,13 +249,13 @@ const VENTAS_SEED = [
   { id: 10051, fecha: "2026-01-22", cliente: "Ferxxi Rocha", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 10052, fecha: "2026-01-23", cliente: "Thor Aristy", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
   { id: 10053, fecha: "2026-01-23", cliente: "Lola Aristy", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
-  { id: 10054, fecha: "2026-01-23", cliente: "Canela Infante", area: "veterinaria", descripcion: "Consulta + Vacuna Rabia + Vacuna qu\xEDntuple", total: 4200, comision: 1260 },
-  { id: 10055, fecha: "2026-01-23", cliente: "Silver Henriquez", area: "veterinaria", descripcion: "Consulta + Vacuna triple", total: 2800, comision: 840 },
-  { id: 10056, fecha: "2026-01-23", cliente: "Silver Henriquez", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, comision: 90 },
+  { id: 10054, fecha: "2026-01-23", cliente: "Canela Infante", area: "veterinaria", descripcion: "Consulta + Vacuna Rabia + Vacuna qu\xEDntuple", total: 4200, veterinaria_id: "aylein", comision: 1260 },
+  { id: 10055, fecha: "2026-01-23", cliente: "Silver Henriquez", area: "veterinaria", descripcion: "Consulta + Vacuna triple", total: 2800, veterinaria_id: "aylein", comision: 840 },
+  { id: 10056, fecha: "2026-01-23", cliente: "Silver Henriquez", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, veterinaria_id: "aylein", comision: 90 },
   { id: 10057, fecha: "2026-01-31", cliente: "Nicky De los Santos", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 10058, fecha: "2026-01-31", cliente: "Nicky De los Santos", area: "farmacia", descripcion: "Nexgard", total: 1345, comision: 0 },
-  { id: 10059, fecha: "2026-01-31", cliente: "Nicky De los Santos", area: "veterinaria", descripcion: "Consulta", total: 1500, comision: 450 },
-  { id: 10060, fecha: "2026-01-31", cliente: "Nicky De los Santos", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, comision: 90 },
+  { id: 10059, fecha: "2026-01-31", cliente: "Nicky De los Santos", area: "veterinaria", descripcion: "Consulta", total: 1500, veterinaria_id: "aylein", comision: 450 },
+  { id: 10060, fecha: "2026-01-31", cliente: "Nicky De los Santos", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, veterinaria_id: "aylein", comision: 90 },
   { id: 10061, fecha: "2026-01-31", cliente: "Luna Polo", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico (15% OFF cumplea\xF1os)", total: 1095, comision: 170 },
   { id: 10062, fecha: "2026-01-31", cliente: "Luna Juliao", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1548, comision: 170 },
   { id: 10063, fecha: "2026-01-31", cliente: "Shadow", area: "grooming", descripcion: "Ba\xF1o grande (10% OFF)", total: 1034, comision: 120 },
@@ -265,17 +265,17 @@ const VENTAS_SEED = [
   { id: 20001, fecha: "2026-02-01", cliente: "Melody", area: "farmacia", descripcion: "Nexgard", total: 1145, comision: 0 },
   { id: 20002, fecha: "2026-02-01", cliente: "Bella Martinez", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
   { id: 20003, fecha: "2026-02-01", cliente: "Esmeralda", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
-  { id: 20004, fecha: "2026-02-04", cliente: "Shyguy", area: "veterinaria", descripcion: "Consulta + Vacuna Rabia", total: 3e3, comision: 900 },
+  { id: 20004, fecha: "2026-02-04", cliente: "Shyguy", area: "veterinaria", descripcion: "Consulta + Vacuna Rabia", total: 3e3, veterinaria_id: "aylein", comision: 900 },
   { id: 20005, fecha: "2026-02-06", cliente: "Rocco", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
   { id: 20006, fecha: "2026-02-07", cliente: "Karim Plasencia", area: "grooming", descripcion: "Ba\xF1o medicado", total: 950, comision: 100 },
   { id: 20007, fecha: "2026-02-07", cliente: "Candy", area: "grooming", descripcion: "Corte higi\xE9nico", total: 490, comision: 70 },
   { id: 20008, fecha: "2026-02-07", cliente: "Mila Bison\xF3", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
-  { id: 20009, fecha: "2026-02-07", cliente: "Mila Bison\xF3", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, comision: 90 },
+  { id: 20009, fecha: "2026-02-07", cliente: "Mila Bison\xF3", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, veterinaria_id: "aylein", comision: 90 },
   { id: 20010, fecha: "2026-02-07", cliente: "Marcos Suazo", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico (15% OFF cumplea\xF1os)", total: 1095, comision: 170 },
   { id: 20011, fecha: "2026-02-07", cliente: "Rocky", area: "farmacia", descripcion: "Metronidazol", total: 528, comision: 0 },
-  { id: 20012, fecha: "2026-02-07", cliente: "Rocky", area: "veterinaria", descripcion: "Consulta + Toma de muestra", total: 2700, comision: 810 },
-  { id: 20013, fecha: "2026-02-07", cliente: "Luna Gabriel", area: "veterinaria", descripcion: "Consulta", total: 1350, comision: 405 },
-  { id: 20014, fecha: "2026-02-07", cliente: "Coco Gabriel", area: "veterinaria", descripcion: "Consulta + Vacuna qu\xEDntuple", total: 2430, comision: 729 },
+  { id: 20012, fecha: "2026-02-07", cliente: "Rocky", area: "veterinaria", descripcion: "Consulta + Toma de muestra", total: 2700, veterinaria_id: "aylein", comision: 810 },
+  { id: 20013, fecha: "2026-02-07", cliente: "Luna Gabriel", area: "veterinaria", descripcion: "Consulta", total: 1350, veterinaria_id: "aylein", comision: 405 },
+  { id: 20014, fecha: "2026-02-07", cliente: "Coco Gabriel", area: "veterinaria", descripcion: "Consulta + Vacuna qu\xEDntuple", total: 2430, veterinaria_id: "aylein", comision: 729 },
   { id: 20015, fecha: "2026-02-08", cliente: "Coco Marrero", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 20016, fecha: "2026-02-08", cliente: "Zeus Perez", area: "grooming", descripcion: "Ba\xF1o grande deslanado", total: 1839, comision: 120 },
   { id: 20017, fecha: "2026-02-08", cliente: "Abril Rosario", area: "grooming", descripcion: "Ba\xF1o cachorro", total: 699, comision: 80 },
@@ -284,7 +284,7 @@ const VENTAS_SEED = [
   { id: 20020, fecha: "2026-02-11", cliente: "Doky Melendez", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
   { id: 20021, fecha: "2026-02-11", cliente: "Coffe Martes", area: "farmacia", descripcion: "Nexgard", total: 1345, comision: 0 },
   { id: 20022, fecha: "2026-02-12", cliente: "Benji Sanchez", area: "farmacia", descripcion: "Pasta dental + hueso", total: 340, comision: 0 },
-  { id: 20023, fecha: "2026-02-12", cliente: "Benji Sanchez", area: "veterinaria", descripcion: "Vacuna Giardia + S\xE9xtuple + Bordetella", total: 4320, comision: 1296 },
+  { id: 20023, fecha: "2026-02-12", cliente: "Benji Sanchez", area: "veterinaria", descripcion: "Vacuna Giardia + S\xE9xtuple + Bordetella", total: 4320, veterinaria_id: "aylein", comision: 1296 },
   { id: 20024, fecha: "2026-02-12", cliente: "Thor", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
   { id: 20025, fecha: "2026-02-12", cliente: "Lola", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
   { id: 20026, fecha: "2026-02-12", cliente: "\u2014", area: "farmacia", descripcion: "Venta desparasitante interno 4cc", total: 1200, comision: 0 },
@@ -296,16 +296,16 @@ const VENTAS_SEED = [
   { id: 20032, fecha: "2026-02-14", cliente: "Shayna Sanchez", area: "grooming", descripcion: "Ba\xF1o medicado", total: 1e3, comision: 100 },
   { id: 20033, fecha: "2026-02-14", cliente: "Bella Mejia", area: "grooming", descripcion: "Ba\xF1o peque\xF1o con l\xEDnea (San Valent\xEDn)", total: 799, comision: 100 },
   { id: 20034, fecha: "2026-02-14", cliente: "Bella Mejia", area: "farmacia", descripcion: "Training pads 1x50", total: 1100, comision: 0 },
-  { id: 20035, fecha: "2026-02-14", cliente: "Kira", area: "veterinaria", descripcion: "Bordetella", total: 1400, comision: 420 },
-  { id: 20036, fecha: "2026-02-14", cliente: "Kira", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, comision: 90 },
-  { id: 20037, fecha: "2026-02-14", cliente: "Niko", area: "veterinaria", descripcion: "Bordetella", total: 1400, comision: 420 },
-  { id: 20038, fecha: "2026-02-14", cliente: "Niko", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, comision: 90 },
+  { id: 20035, fecha: "2026-02-14", cliente: "Kira", area: "veterinaria", descripcion: "Bordetella", total: 1400, veterinaria_id: "aylein", comision: 420 },
+  { id: 20036, fecha: "2026-02-14", cliente: "Kira", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, veterinaria_id: "aylein", comision: 90 },
+  { id: 20037, fecha: "2026-02-14", cliente: "Niko", area: "veterinaria", descripcion: "Bordetella", total: 1400, veterinaria_id: "aylein", comision: 420 },
+  { id: 20038, fecha: "2026-02-14", cliente: "Niko", area: "veterinaria", descripcion: "Aplicaci\xF3n Albendazol", total: 300, veterinaria_id: "aylein", comision: 90 },
   { id: 20039, fecha: "2026-02-15", cliente: "Copito Perez", area: "grooming", descripcion: "Ba\xF1o medicado + corte completo", total: 1749, comision: 190 },
   { id: 20040, fecha: "2026-02-15", cliente: "Copito Perez", area: "farmacia", descripcion: "Soluci\xF3n \xF3tica", total: 600, comision: 0 },
-  { id: 20041, fecha: "2026-02-15", cliente: "Copito Perez", area: "veterinaria", descripcion: "Consulta + Toma de muestra", total: 2700, comision: 810 },
-  { id: 20042, fecha: "2026-02-15", cliente: "Copito Perez", area: "veterinaria", descripcion: "Aplicaci\xF3n gotas \xF3ticas", total: 450, comision: 135 },
+  { id: 20041, fecha: "2026-02-15", cliente: "Copito Perez", area: "veterinaria", descripcion: "Consulta + Toma de muestra", total: 2700, veterinaria_id: "aylein", comision: 810 },
+  { id: 20042, fecha: "2026-02-15", cliente: "Copito Perez", area: "veterinaria", descripcion: "Aplicaci\xF3n gotas \xF3ticas", total: 450, veterinaria_id: "aylein", comision: 135 },
   { id: 20043, fecha: "2026-02-15", cliente: "Niko Nu\xF1ez", area: "grooming", descripcion: "Corte de u\xF1as", total: 300, comision: 0 },
-  { id: 20044, fecha: "2026-02-15", cliente: "Niko Nu\xF1ez", area: "veterinaria", descripcion: "Consulta + Vacuna Rabia + Vacuna qu\xEDntuple", total: 4200, comision: 1260 },
+  { id: 20044, fecha: "2026-02-15", cliente: "Niko Nu\xF1ez", area: "veterinaria", descripcion: "Consulta + Vacuna Rabia + Vacuna qu\xEDntuple", total: 4200, veterinaria_id: "aylein", comision: 1260 },
   { id: 20045, fecha: "2026-02-16", cliente: "Zoe", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 20046, fecha: "2026-02-16", cliente: "Dixie Sodek", area: "grooming", descripcion: "Ba\xF1o medicado", total: 1e3, comision: 100 },
   { id: 20047, fecha: "2026-02-16", cliente: "Dixie Sodek", area: "farmacia", descripcion: "Shampoo medicado VF + Pads x30", total: 2100, comision: 0 },
@@ -316,9 +316,9 @@ const VENTAS_SEED = [
   { id: 20052, fecha: "2026-02-17", cliente: "Odie Ure\xF1a", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
   { id: 20053, fecha: "2026-02-17", cliente: "Bongo Brocho", area: "grooming", descripcion: "Ba\xF1o grande + corte completo", total: 1749, comision: 210 },
   { id: 20054, fecha: "2026-02-17", cliente: "Dixer Sodek", area: "farmacia", descripcion: "Nexgard 3kg", total: 1475, comision: 0 },
-  { id: 20055, fecha: "2026-02-17", cliente: "Dixer Sodek", area: "veterinaria", descripcion: "Consulta + Bordetella + Qu\xEDntuple + Giardia (desc.)", total: 4775, comision: 1433 },
+  { id: 20055, fecha: "2026-02-17", cliente: "Dixer Sodek", area: "veterinaria", descripcion: "Consulta + Bordetella + Qu\xEDntuple + Giardia (desc.)", total: 4775, veterinaria_id: "aylein", comision: 1433 },
   { id: 20056, fecha: "2026-02-17", cliente: "Beano Sodek", area: "farmacia", descripcion: "Nexgard 3kg", total: 1475, comision: 0 },
-  { id: 20057, fecha: "2026-02-17", cliente: "Beano Sodek", area: "veterinaria", descripcion: "Consulta + Bordetella + Qu\xEDntuple + Giardia (desc.)", total: 4775, comision: 1433 },
+  { id: 20057, fecha: "2026-02-17", cliente: "Beano Sodek", area: "veterinaria", descripcion: "Consulta + Bordetella + Qu\xEDntuple + Giardia (desc.)", total: 4775, veterinaria_id: "aylein", comision: 1433 },
   { id: 20058, fecha: "2026-02-18", cliente: "Maia Molta", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
   { id: 20059, fecha: "2026-02-18", cliente: "Maia Molta", area: "farmacia", descripcion: "Galletas Premier", total: 532, comision: 0 },
   { id: 20060, fecha: "2026-02-18", cliente: "\u2014", area: "farmacia", descripcion: "Probi\xF3ticos Proplan", total: 2100, comision: 0 },
@@ -330,13 +330,13 @@ const VENTAS_SEED = [
   { id: 20066, fecha: "2026-02-21", cliente: "Manguito", area: "grooming", descripcion: "Ba\xF1o peque\xF1o", total: 799, comision: 100 },
   { id: 20067, fecha: "2026-02-21", cliente: "Manguito", area: "farmacia", descripcion: "Hueso para perro", total: 140, comision: 0 },
   { id: 20068, fecha: "2026-02-21", cliente: "Luna Juliao", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
-  { id: 20069, fecha: "2026-02-22", cliente: "Rubio Polanco", area: "veterinaria", descripcion: "Consulta", total: 1500, comision: 450 },
+  { id: 20069, fecha: "2026-02-22", cliente: "Rubio Polanco", area: "veterinaria", descripcion: "Consulta", total: 1500, veterinaria_id: "aylein", comision: 450 },
   { id: 20070, fecha: "2026-02-22", cliente: "Honey Mendez", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo (10% OFF)", total: 1393, comision: 190 },
   { id: 20071, fecha: "2026-02-22", cliente: "Honey Mendez", area: "farmacia", descripcion: "Pampers Comfort size 2 (10% OFF)", total: 625, comision: 0 },
   { id: 20072, fecha: "2026-02-22", cliente: "Loki Perez", area: "grooming", descripcion: "Corte completo", total: 749, comision: 90 },
   { id: 20073, fecha: "2026-02-22", cliente: "Loki Perez", area: "farmacia", descripcion: "Venta c\xE9sped artificial", total: 3e3, comision: 0 },
-  { id: 20074, fecha: "2026-02-22", cliente: "Michi Rodriguez", area: "veterinaria", descripcion: "Consulta + Toma de muestra (10% OFF)", total: 2250, comision: 675 },
-  { id: 20075, fecha: "2026-02-22", cliente: "Michi Rodriguez", area: "veterinaria", descripcion: "Aplicaci\xF3n Meloxipet", total: 300, comision: 90 },
+  { id: 20074, fecha: "2026-02-22", cliente: "Michi Rodriguez", area: "veterinaria", descripcion: "Consulta + Toma de muestra (10% OFF)", total: 2250, veterinaria_id: "aylein", comision: 675 },
+  { id: 20075, fecha: "2026-02-22", cliente: "Michi Rodriguez", area: "veterinaria", descripcion: "Aplicaci\xF3n Meloxipet", total: 300, veterinaria_id: "aylein", comision: 90 },
   { id: 20076, fecha: "2026-02-23", cliente: "Nieves Ramirez", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte completo", total: 1548, comision: 190 },
   { id: 20077, fecha: "2026-02-25", cliente: "Nicky De Los Santos", area: "grooming", descripcion: "Ba\xF1o peque\xF1o con l\xEDnea", total: 1e3, comision: 100 },
   { id: 20078, fecha: "2026-02-25", cliente: "Nicky De Los Santos", area: "farmacia", descripcion: "Nexgard Spectra + comida Dalgog adulto", total: 2675, comision: 0 },
@@ -358,7 +358,7 @@ const VENTAS_SEED = [
   { id: 20094, fecha: "2026-02-28", cliente: "Riky Alis", area: "farmacia", descripcion: "Nexgard Spectra", total: 2e3, comision: 0 },
   // ── MARZO Sem1 ──
   { id: 30001, fecha: "2026-03-01", cliente: "Riky Alis", area: "grooming", descripcion: "Ba\xF1o mediano + corte completo", total: 1698, comision: 210 },
-  { id: 30002, fecha: "2026-03-01", cliente: "Riky Alis", area: "veterinaria", descripcion: "Diagn\xF3stico", total: 1200, comision: 360 },
+  { id: 30002, fecha: "2026-03-01", cliente: "Riky Alis", area: "veterinaria", descripcion: "Diagn\xF3stico", total: 1200, veterinaria_id: "aylein", comision: 360 },
   { id: 30003, fecha: "2026-03-01", cliente: "Riky Alis", area: "farmacia", descripcion: "Spray garrapaticida", total: 200, comision: 0 },
   { id: 30004, fecha: "2026-03-01", cliente: "Popy Rodriguez", area: "grooming", descripcion: "Ba\xF1o peque\xF1o + corte higi\xE9nico", total: 1289, comision: 170 },
   { id: 30005, fecha: "2026-03-01", cliente: "Popy Rodriguez", area: "farmacia", descripcion: "Juguete (pelota)", total: 180, comision: 0 },
@@ -388,7 +388,13 @@ const TARIFAS_VET_MODAL = [
   { id: "v8", nombre: "Aplicaci\xF3n albendazol", precio: 300 },
   { id: "v9", nombre: "Aplicaci\xF3n medicamento", precio: 300 },
   { id: "v10", nombre: "Gotas \xF3ticas", precio: 450 },
-  { id: "v11", nombre: "Otro (precio libre)", precio: 0 }
+  { id: "v11", nombre: "Desparasitaci\xF3n oral", precio: 500 },
+  { id: "v12", nombre: "Limpieza dental", precio: 2500 },
+  { id: "v13", nombre: "Esterilizaci\xF3n/Castraci\xF3n", precio: 6e3 },
+  { id: "v14", nombre: "Rx / Radiograf\xEDa", precio: 1800 },
+  { id: "v15", nombre: "Ecograf\xEDa", precio: 2e3 },
+  { id: "v16", nombre: "Sutura/Herida", precio: 1500 },
+  { id: "v17", nombre: "Otro (precio libre)", precio: 0 }
 ];
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -425,7 +431,8 @@ function LoginScreen({ onLogin }) {
     }
   ), /* @__PURE__ */ React.createElement("button", { onClick: () => setShow(!show), style: { position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.grisd } }, show ? "\u{1F648}" : "\u{1F441}\uFE0F"))), error && /* @__PURE__ */ React.createElement("div", { style: { background: "#fdeaea", color: C.rojo, padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600 } }, "\u26A0\uFE0F ", error), /* @__PURE__ */ React.createElement("button", { onClick: handleLogin, style: { background: `linear-gradient(135deg,${C.verde},${C.verde2})`, color: "#fff", border: "none", padding: "13px", borderRadius: 12, fontWeight: 800, fontSize: 16, cursor: "pointer", marginTop: 6 } }, "Iniciar sesi\xF3n \u2192"))));
 }
-function DashboardVet({ usuario, ventas }) {
+function DashboardVet({ usuario, ventas, onVerHistorias, onVerServicios }) {
+  const [vistaActiva, setVistaActiva] = useState(null);
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const misVentas = ventas.filter((v) => v.area === "veterinaria" && v.veterinaria_id === usuario.id);
   const misMes = misVentas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
@@ -437,146 +444,276 @@ function DashboardVet({ usuario, ventas }) {
   const hoyD = /* @__PURE__ */ new Date();
   const semanas = Array.from({ length: 6 }, (_, i) => {
     const d1 = new Date(hoyD);
-    d1.setDate(d1.getDate() - hoyD.getDay() - i * 7);
+    d1.setDate(d1.getDate() - hoyD.getDay() - i * 7 + 1);
     const d2 = new Date(d1);
-    d2.setDate(d2.getDate() + 6);
+    d2.setDate(d2.getDate() + 5);
     const s1 = d1.toISOString().slice(0, 10), s2 = d2.toISOString().slice(0, 10);
     const sem = misVentas.filter((v) => v.fecha >= s1 && v.fecha <= s2);
-    const label = i === 0 ? "Esta semana" : i === 1 ? "Sem anterior" : `${d1.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit" })}`;
-    return { label, total: sem.reduce((s, v) => s + v.total, 0), servicios: sem.length };
+    const label = i === 0 ? "Esta semana" : i === 1 ? "Sem. anterior" : `${d1.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit" })}`;
+    return { label, total: sem.reduce((s, v) => s + v.total, 0), servicios: sem.length, ventas: sem, id: `sem_${i}` };
   }).reverse();
-  const tiposCount = {};
+  const tiposMap = {};
   misMes.forEach((v) => {
     if (!v.descripcion) return;
     v.descripcion.split("+").forEach((part) => {
-      const t = part.trim().replace(/\s*\(.*?\)/, "");
-      tiposCount[t] = (tiposCount[t] || 0) + 1;
+      const t = part.trim().replace(/\s*\(.*?\)/g, "").trim();
+      if (!t) return;
+      if (!tiposMap[t]) tiposMap[t] = { count: 0, total: 0, ventas: [] };
+      tiposMap[t].count++;
+      tiposMap[t].total += v.total;
+      tiposMap[t].ventas.push(v);
     });
   });
-  const topTipos = Object.entries(tiposCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const haceUnAno = /* @__PURE__ */ new Date();
-  haceUnAno.setMonth(haceUnAno.getMonth() - 11);
-  const proximasVacunas = misVentas.filter((v) => v.descripcion?.toLowerCase().includes("vacuna") && new Date(v.fecha) >= haceUnAno && new Date(v.fecha) < /* @__PURE__ */ new Date()).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5);
-  const maxSem = Math.max(...semanas.map((s) => s.total), 1);
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, color: C.negro, margin: 0 } }, "\u{1F44B} Hola, ", usuario.nombre.split(" ")[0]), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14, marginTop: 4 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long", year: "numeric" }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 16, marginBottom: 24 } }, [
-    { icon: "\u{1F4B0}", label: "Ingresos este mes", val: RD(totalMes), color: C.verde, bg: C.verdeL },
-    { icon: "\u{1F3C6}", label: "Mi comisi\xF3n", val: RD(comisionMes), color: C.azul, bg: C.azulL },
-    { icon: "\u{1F43E}", label: "Pacientes atendidos", val: pacientesUnicos, color: C.naranja, bg: C.naranjaL },
-    { icon: "\u{1F489}", label: "Vacunas este mes", val: vacunasMes, color: C.gold, bg: C.goldL },
-    { icon: "\u{1FA7A}", label: "Consultas este mes", val: consultasMes, color: C.rojo, bg: C.rojoL }
-  ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: k.bg, borderRadius: 14, padding: "18px 16px", borderLeft: `4px solid ${k.color}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22 } }, k.icon), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: k.color, fontWeight: 700, marginTop: 6, textTransform: "uppercase", letterSpacing: 0.8 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 900, color: k.color, marginTop: 4 } }, k.val)))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 16, color: C.negro } }, "\u{1F4CA} Actividad semanal"), semanas.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.label, style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, fontWeight: 600 } }, s.label), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(s.total), " \xB7 ", s.servicios, " svc")), /* @__PURE__ */ React.createElement("div", { style: { background: "#f0f2f0", borderRadius: 99, height: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: `${Math.round(s.total / maxSem * 100)}%`, background: `linear-gradient(90deg,${C.azul},${C.verde2})`, borderRadius: 99, transition: "width .4s" } }))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 16, color: C.negro } }, "\u{1F522} Top servicios del mes"), topTipos.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, textAlign: "center", padding: 20 } }, "Sin registros este mes") : topTipos.map(([tipo, cnt], i) => /* @__PURE__ */ React.createElement("div", { key: tipo, style: { display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 28, height: 28, borderRadius: 99, background: C.azulL, color: C.azul, fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" } }, i + 1), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13, fontWeight: 600, color: C.negro } }, tipo), /* @__PURE__ */ React.createElement(Badge, { color: C.azul }, cnt, "x"))))), proximasVacunas.length > 0 && /* @__PURE__ */ React.createElement(Card, { style: { borderLeft: `4px solid ${C.gold}`, background: C.goldL } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 12, color: C.gold } }, "\u23F0 Pacientes que necesitan revacunaci\xF3n pronto"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 8 } }, proximasVacunas.map((v) => {
-    const fechaVac = new Date(v.fecha);
-    const proxima = new Date(fechaVac);
+  const topTipos = Object.entries(tiposMap).sort((a, b) => b[1].count - a[1].count).slice(0, 6);
+  const proximasVacunas = [];
+  const pacientes30 = [...new Set(misVentas.filter((v) => v.descripcion?.toLowerCase().includes("vacuna")).map((v) => v.cliente))];
+  pacientes30.forEach((pac) => {
+    const ultVac = misVentas.filter((v) => v.cliente === pac && v.descripcion?.toLowerCase().includes("vacuna")).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+    if (!ultVac) return;
+    const proxima = new Date(ultVac.fecha);
     proxima.setFullYear(proxima.getFullYear() + 1);
-    const diasRest = Math.round((proxima - /* @__PURE__ */ new Date()) / (1e3 * 60 * 60 * 24));
-    return /* @__PURE__ */ React.createElement("div", { key: v.id, style: { background: "#fff", borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.negro } }, v.cliente), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, v.descripcion?.split("+")[1]?.trim() || "Vacuna"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: diasRest < 30 ? C.rojo : C.gold, fontWeight: 700, marginTop: 4 } }, diasRest < 0 ? "\u26A0\uFE0F Vencida" : diasRest === 0 ? "\u{1F6A8} Hoy" : `\u{1F4C5} En ${diasRest} d\xEDas`));
-  }))));
+    const dias = Math.round((proxima - /* @__PURE__ */ new Date()) / (1e3 * 60 * 60 * 24));
+    if (dias <= 60) proximasVacunas.push({ pac, dias, vac: ultVac.descripcion, fecha: ultVac.fecha });
+  });
+  proximasVacunas.sort((a, b) => a.dias - b.dias);
+  const recomendaciones = [];
+  if (pacientesUnicos < 5) recomendaciones.push({ icon: "\u{1F4DE}", titulo: "Llama a pacientes inactivos", desc: "Hay pacientes que no han venido en 30+ d\xEDas. Un recordatorio puede traer 2\u20133 visitas esta semana.", accion: "Ver pacientes" });
+  if (vacunasMes === 0) recomendaciones.push({ icon: "\u{1F489}", titulo: "Oportunidad en vacunas", desc: "No has registrado vacunas este mes. Recuerda que la vacuna rabia (RD$1,500) y qu\xEDntuple (RD$1,200) se pueden ofrecer en cada consulta.", accion: null });
+  if (proximasVacunas.filter((p) => p.dias <= 30).length > 0) recomendaciones.push({ icon: "\u23F0", titulo: `${proximasVacunas.filter((p) => p.dias <= 30).length} paciente(s) necesitan revacunaci\xF3n`, desc: "Contacta a estos due\xF1os por WhatsApp para agendar. Cada visita de vacunas puede generar RD$2,500+ en servicios combinados.", accion: null });
+  if (consultasMes === 0) recomendaciones.push({ icon: "\u{1FA7A}", titulo: "Activa las consultas", desc: "Las consultas (RD$1,500) son la puerta de entrada a diagn\xF3sticos, vacunas y medicamentos. Cada consulta genera en promedio RD$2,800 en servicios adicionales.", accion: null });
+  if (totalMes > 0) recomendaciones.push({ icon: "\u{1F3C6}", titulo: "\xA1Vas bien este mes!", desc: `Llevas ${RD(totalMes)} generados. Mant\xE9n el ritmo \u2014 necesitas ${RD(Math.max(0, 3e4 - totalMes))} m\xE1s para superar tu meta de RD$30,000.`, accion: null });
+  const maxSem = Math.max(...semanas.map((s) => s.total), 1);
+  const semActiva = vistaActiva ? semanas.find((s) => s.id === vistaActiva) : null;
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, color: C.negro, margin: 0 } }, "\u{1F44B} Hola, ", usuario.nombre.split(" ")[0]), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14, marginTop: 4 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long", year: "numeric" }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 14, marginBottom: 24 } }, [
+    { icon: "\u{1F4B0}", label: "Ingresos este mes", val: RD(totalMes), color: C.verde, bg: C.verdeL, onClick: onVerServicios },
+    { icon: "\u{1F3C6}", label: "Mi comisi\xF3n", val: RD(comisionMes), color: C.azul, bg: C.azulL, onClick: null },
+    { icon: "\u{1F43E}", label: "Pacientes este mes", val: pacientesUnicos, color: C.naranja, bg: C.naranjaL, onClick: onVerHistorias },
+    { icon: "\u{1F489}", label: "Vacunas este mes", val: vacunasMes, color: C.gold, bg: C.goldL, onClick: null },
+    { icon: "\u{1FA7A}", label: "Consultas este mes", val: consultasMes, color: C.rojo, bg: C.rojoL, onClick: null }
+  ].map((k) => /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      key: k.label,
+      onClick: k.onClick || void 0,
+      style: { background: k.bg, borderRadius: 14, padding: "16px", borderLeft: `4px solid ${k.color}`, cursor: k.onClick ? "pointer" : "default", transition: "transform .15s" },
+      onMouseEnter: (e) => k.onClick && (e.currentTarget.style.transform = "scale(1.02)"),
+      onMouseLeave: (e) => k.onClick && (e.currentTarget.style.transform = "scale(1)")
+    },
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20 } }, k.icon),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: k.color, fontWeight: 700, marginTop: 6, textTransform: "uppercase", letterSpacing: 0.8 } }, k.label, k.onClick ? " \u2192" : ""),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24, fontWeight: 900, color: k.color, marginTop: 4 } }, k.val)
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4, color: C.negro } }, "\u{1F4CA} Actividad semanal"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic en una semana para ver el detalle"), semanas.map((s) => /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      key: s.id,
+      onClick: () => setVistaActiva(vistaActiva === s.id ? null : s.id),
+      style: { marginBottom: 10, cursor: "pointer", padding: "6px 8px", borderRadius: 8, background: vistaActiva === s.id ? C.azulL : "transparent", transition: "background .15s" }
+    },
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: vistaActiva === s.id ? C.azul : C.grisd, fontWeight: 600 } }, s.label), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(s.total), " \xB7 ", s.servicios, " svc")),
+    /* @__PURE__ */ React.createElement("div", { style: { background: "#f0f2f0", borderRadius: 99, height: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: `${Math.round(s.total / maxSem * 100)}%`, background: `linear-gradient(90deg,${C.azul},${C.verde2})`, borderRadius: 99 } }))
+  )), semActiva && semActiva.ventas.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: C.azul, marginBottom: 8 } }, "\u{1F4CB} ", semActiva.label), semActiva.ventas.map((v) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.negro } }, /* @__PURE__ */ React.createElement("strong", null, v.cliente), " \u2014 ", v.descripcion?.slice(0, 35), v.descripcion?.length > 35 ? "\u2026" : ""), /* @__PURE__ */ React.createElement("span", { style: { color: C.verde, fontWeight: 700 } }, RD(v.total))))), semActiva && semActiva.ventas.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 12, color: C.grisd, fontSize: 12, textAlign: "center" } }, "Sin servicios esa semana")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4, color: C.negro } }, "\u{1F522} Top servicios del mes"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic para ver qu\xE9 pacientes"), topTipos.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, textAlign: "center", padding: 20 } }, "Sin registros este mes a\xFAn") : topTipos.map(([tipo, data], i) => /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      key: tipo,
+      onClick: () => setVistaActiva(vistaActiva === `tipo_${i}` ? null : `tipo_${i}`),
+      style: { display: "flex", alignItems: "center", gap: 10, padding: "8px", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: vistaActiva === `tipo_${i}` ? C.verdeL : "transparent", transition: "background .15s" }
+    },
+    /* @__PURE__ */ React.createElement("div", { style: { width: 26, height: 26, borderRadius: 99, background: C.azulL, color: C.azul, fontWeight: 800, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, i + 1),
+    /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: C.negro } }, tipo), vistaActiva === `tipo_${i}` && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, data.ventas.map((v) => v.cliente).join(", "))),
+    /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement(Badge, { color: C.azul }, data.count, "x"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, RD(data.total)))
+  )))), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 20, background: "linear-gradient(135deg,#f0f7ff,#e8f4f8)", border: "1px solid #c3d9f0" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 14, color: C.azul } }, "\u{1F4A1} Recomendaciones para aumentar tus ingresos"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 } }, recomendaciones.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { background: "#fff", borderRadius: 12, padding: "14px 16px", borderLeft: `3px solid ${C.azul}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, marginBottom: 6 } }, r.icon), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.negro, marginBottom: 4 } }, r.titulo), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, lineHeight: 1.5 } }, r.desc), r.accion && /* @__PURE__ */ React.createElement("button", { onClick: onVerHistorias, style: { marginTop: 8, background: C.azulL, color: C.azul, border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, r.accion, " \u2192"))))), proximasVacunas.length > 0 && /* @__PURE__ */ React.createElement(Card, { style: { borderLeft: `4px solid ${C.gold}`, background: C.goldL } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10, color: C.gold } }, "\u23F0 Pacientes que necesitan revacunaci\xF3n pronto"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 8 } }, proximasVacunas.slice(0, 8).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.pac, style: { background: "#fff", borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13 } }, p.pac), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, p.fecha), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, marginTop: 4, color: p.dias < 0 ? C.rojo : p.dias < 30 ? C.naranja : C.gold } }, p.dias < 0 ? "\u26A0\uFE0F Vencida" : p.dias === 0 ? "\u{1F6A8} Hoy" : `\u{1F4C5} En ${p.dias} d\xEDas`))))));
 }
 function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }) {
   const [busqueda, setBusqueda] = useState("");
   const [pacienteVer, setPacienteVer] = useState(null);
   const [modalNuevo, setModalNuevo] = useState(false);
   const [modalEntrada, setModalEntrada] = useState(false);
-  const [editNota, setEditNota] = useState(false);
-  const [notaTemp, setNotaTemp] = useState("");
+  const [editFicha, setEditFicha] = useState(false);
+  const [fichaTemp, setFichaTemp] = useState({});
   const ventasVet = ventas.filter((v) => v.area === "veterinaria");
   const pacienteMap = {};
   ventasVet.forEach((v) => {
     if (!v.cliente || v.cliente === "\u2014") return;
-    if (!pacienteMap[v.cliente]) {
-      pacienteMap[v.cliente] = { nombre: v.cliente, visitas: [], ultimaVisita: "" };
-    }
+    if (!pacienteMap[v.cliente]) pacienteMap[v.cliente] = { nombre: v.cliente, visitas: [], ultimaVisita: "" };
     pacienteMap[v.cliente].visitas.push(v);
     if (v.fecha > pacienteMap[v.cliente].ultimaVisita) pacienteMap[v.cliente].ultimaVisita = v.fecha;
   });
-  clientes.filter((c) => c.notas).forEach((c) => {
+  clientes.filter((c) => c.ficha || c.notas).forEach((c) => {
     if (!pacienteMap[c.nombre]) pacienteMap[c.nombre] = { nombre: c.nombre, visitas: [], ultimaVisita: "" };
   });
   const listaPacientes = Object.values(pacienteMap).filter((p) => p.nombre.toLowerCase().includes(busqueda.toLowerCase())).sort((a, b) => b.ultimaVisita.localeCompare(a.ultimaVisita));
-  const clienteDetalles = pacienteVer ? clientes.find((c) => c.nombre === pacienteVer) : null;
-  const [entradaForm, setEntradaForm] = useState({ fecha: hoy(), servicios: [], notas: "", total: 0 });
+  const clienteObj = pacienteVer ? clientes.find((c) => c.nombre === pacienteVer) || { nombre: pacienteVer } : null;
   const [serviciosSelec, setServiciosSelec] = useState([]);
-  function agregarServicio(tarifa) {
-    setServiciosSelec((prev) => [...prev, { ...tarifa, key: Date.now() + Math.random() }]);
+  const [entradaForm, setEntradaForm] = useState({ fecha: hoy(), observaciones: "", peso: "", temperatura: "" });
+  function agregarServicio(t) {
+    setServiciosSelec((p) => [...p, { ...t, key: Date.now() + Math.random() }]);
   }
-  function quitarServicio(key) {
-    setServiciosSelec((prev) => prev.filter((s) => s.key !== key));
+  function quitarServicio(k) {
+    setServiciosSelec((p) => p.filter((s) => s.key !== k));
   }
-  function cambiarPrecio(key, precio) {
-    setServiciosSelec((prev) => prev.map((s) => s.key === key ? { ...s, precio: Number(precio) } : s));
+  function cambiarPrecio(k, v) {
+    setServiciosSelec((p) => p.map((s) => s.key === k ? { ...s, precio: Number(v) } : s));
   }
   function guardarEntrada() {
-    if (!pacienteVer) return;
+    if (!pacienteVer || serviciosSelec.length === 0) return;
     const com_pct = usuario.comision_pct || 0.3;
     const totalT = serviciosSelec.reduce((s, sv) => s + sv.precio, 0);
     const comT = Math.round(totalT * com_pct);
     const desc = serviciosSelec.map((s) => s.nombre).join(" + ");
-    const nueva = {
+    const notaExtra = [entradaForm.peso && `Peso:${entradaForm.peso}kg`, entradaForm.temperatura && `Temp:${entradaForm.temperatura}\xB0C`, entradaForm.observaciones].filter(Boolean).join(" \xB7 ");
+    setVentas((prev) => [...prev, {
       id: Date.now(),
       fecha: entradaForm.fecha,
       cliente: pacienteVer,
       area: "veterinaria",
-      descripcion: desc + (entradaForm.notas ? ` (${entradaForm.notas})` : ""),
+      descripcion: desc + (notaExtra ? ` (${notaExtra})` : ""),
       total: totalT,
       comision: comT,
       veterinaria_id: usuario.id
-    };
-    setVentas((prev) => [...prev, nueva]);
+    }]);
     setModalEntrada(false);
     setServiciosSelec([]);
-    setEntradaForm({ fecha: hoy(), servicios: [], notas: "", total: 0 });
+    setEntradaForm({ fecha: hoy(), observaciones: "", peso: "", temperatura: "" });
   }
-  function guardarNota() {
-    setClientes((prev) => prev.map((c) => c.nombre === pacienteVer ? { ...c, notas: notaTemp } : c));
-    setEditNota(false);
+  function abrirEditFicha() {
+    setFichaTemp({
+      especie: clienteObj?.especie || "",
+      raza: clienteObj?.raza || "",
+      color: clienteObj?.color || "",
+      sexo: clienteObj?.sexo || "",
+      edad: clienteObj?.edad || "",
+      peso: clienteObj?.peso || "",
+      microchip: clienteObj?.microchip || "",
+      esterilizado: clienteObj?.esterilizado || "",
+      dueno: clienteObj?.dueno || "",
+      telefono: clienteObj?.telefono || "",
+      alergias: clienteObj?.alergias || "",
+      condiciones: clienteObj?.condiciones || "",
+      medicacion: clienteObj?.medicacion || "",
+      notas: clienteObj?.notas || ""
+    });
+    setEditFicha(true);
   }
-  const [nuevoNombre, setNuevoNombre] = useState("");
+  function guardarFicha() {
+    setClientes((prev) => {
+      const idx = prev.findIndex((c) => c.nombre === pacienteVer);
+      const nuevo = { id: Date.now(), nombre: pacienteVer, ...fichaTemp };
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], ...fichaTemp };
+        return copy;
+      }
+      return [...prev, nuevo];
+    });
+    setEditFicha(false);
+  }
+  const [nuevoForm, setNuevoForm] = useState({ nombre: "", especie: "", raza: "" });
   function crearPaciente() {
-    if (!nuevoNombre.trim()) return;
-    if (!clientes.find((c) => c.nombre === nuevoNombre.trim())) {
-      setClientes((prev) => [...prev, { id: Date.now(), nombre: nuevoNombre.trim(), especie: "", raza: "", notas: "" }]);
+    if (!nuevoForm.nombre.trim()) return;
+    if (!clientes.find((c) => c.nombre === nuevoForm.nombre.trim())) {
+      setClientes((prev) => [...prev, { id: Date.now(), nombre: nuevoForm.nombre.trim(), especie: nuevoForm.especie, raza: nuevoForm.raza }]);
     }
-    setPacienteVer(nuevoNombre.trim());
+    setPacienteVer(nuevoForm.nombre.trim());
     setModalNuevo(false);
-    setNuevoNombre("");
+    setNuevoForm({ nombre: "", especie: "", raza: "" });
   }
   if (pacienteVer) {
     const visitas = (pacienteMap[pacienteVer]?.visitas || []).sort((a, b) => b.fecha.localeCompare(a.fecha));
     const totalGast = visitas.reduce((s, v) => s + v.total, 0);
     const vacunas = visitas.filter((v) => v.descripcion?.toLowerCase().includes("vacuna"));
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 24 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPacienteVer(null), style: { background: C.gris, border: "none", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 700, color: C.grisd, fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800 } }, "\u{1F43E} ", pacienteVer), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalEntrada(true), color: C.azul }, "+ Nueva entrada cl\xEDnica"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 2fr", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, textAlign: "center", marginBottom: 8 } }, "\u{1F415}"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontWeight: 800, fontSize: 18 } }, pacienteVer), clienteDetalles?.especie && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: C.grisd, fontSize: 13 } }, clienteDetalles.especie, clienteDetalles.raza ? ` \xB7 ${clienteDetalles.raza}` : ""), /* @__PURE__ */ React.createElement("div", { style: { margin: "16px 0", display: "flex", flexDirection: "column", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "Visitas totales"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, visitas.length)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "Total invertido"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.verde } }, RD(totalGast))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "\xDAltima visita"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, visitas[0]?.fecha || "\u2014")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "Vacunas"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, vacunas.length)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, "\u{1F4CB} Notas cl\xEDnicas"), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => {
-          setEditNota(true);
-          setNotaTemp(clienteDetalles?.notas || "");
-        },
-        style: { background: "none", border: "none", cursor: "pointer", color: C.azul, fontSize: 12, fontWeight: 700 }
-      },
-      "\u270F\uFE0F Editar"
-    )), editNota ? /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(
-      "textarea",
-      {
-        value: notaTemp,
-        onChange: (e) => setNotaTemp(e.target.value),
-        placeholder: "Alergias, condiciones cr\xF3nicas, medicaci\xF3n permanente...",
-        style: { width: "100%", minHeight: 100, borderRadius: 8, border: "1.5px solid #e2e8f0", padding: "10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }
-      }
-    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: guardarNota, color: C.verde, small: true }, "Guardar"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setEditNota(false), color: C.grisd, small: true, outline: true }, "Cancelar"))) : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: clienteDetalles?.notas ? C.negro : C.grisd, lineHeight: 1.6 } }, clienteDetalles?.notas || "Sin notas. Clic en Editar para agregar.")), vacunas.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 10 } }, "\u{1F489} Historial de vacunas"), vacunas.map((v) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { padding: "8px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, v.descripcion), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 11, marginTop: 2 } }, v.fecha))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 16 } }, "\u{1F550} Historia cl\xEDnica completa"), visitas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: C.grisd, padding: 40 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 40, marginBottom: 8 } }, "\u{1F4C4}"), "Sin registros. Agrega la primera entrada cl\xEDnica.") : visitas.map((v, i) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: {
-      borderLeft: `3px solid ${C.azul}`,
-      paddingLeft: 16,
-      marginBottom: 20,
-      paddingBottom: 16,
-      borderBottom: i < visitas.length - 1 ? "1px solid #f4f5f6" : "none"
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.negro, fontSize: 14 } }, v.descripcion), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 3 } }, "\u{1F4C5} ", v.fecha, v.veterinaria_id && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 8 } }, "\xB7 ", USUARIOS.find((u) => u.id === v.veterinaria_id)?.nombre || v.veterinaria_id))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.verde, fontSize: 15 } }, RD(v.total)))))))), modalEntrada && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1e3, padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 28, maxWidth: 580, width: "100%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, marginBottom: 20 } }, "\u2795 Nueva entrada cl\xEDnica \u2014 ", pacienteVer), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Fecha"), /* @__PURE__ */ React.createElement(
+    const c = clienteObj || {};
+    const infoFicha = [
+      { label: "Especie", val: c.especie },
+      { label: "Raza", val: c.raza },
+      { label: "Color/pelaje", val: c.color },
+      { label: "Sexo", val: c.sexo },
+      { label: "Edad", val: c.edad },
+      { label: "Peso actual", val: c.peso ? c.peso + "kg" : "" },
+      { label: "Microchip", val: c.microchip },
+      { label: "Esterilizado", val: c.esterilizado },
+      { label: "Due\xF1o", val: c.dueno },
+      { label: "Tel\xE9fono", val: c.telefono }
+    ].filter((i) => i.val);
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 24, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPacienteVer(null), style: { background: C.gris, border: "none", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 700, color: C.grisd, fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("h2", { style: { margin: 0, fontSize: 20, fontWeight: 800 } }, "\u{1F43E} ", pacienteVer), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: abrirEditFicha, color: C.grisd, small: true, outline: true }, "\u270F\uFE0F Editar ficha"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalEntrada(true), color: C.azul, small: true }, "+ Nueva entrada"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "300px 1fr", gap: 20, alignItems: "start" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14 } }, "\u{1F4CB} Ficha m\xE9dica"), /* @__PURE__ */ React.createElement("button", { onClick: abrirEditFicha, style: { background: "none", border: "none", cursor: "pointer", color: C.azul, fontSize: 11, fontWeight: 700 } }, "\u270F\uFE0F Editar")), editFicha ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, [
+      { key: "especie", label: "Especie", placeholder: "Perro / Gato / Conejo..." },
+      { key: "raza", label: "Raza", placeholder: "Labrador, Siam\xE9s..." },
+      { key: "color", label: "Color/pelaje", placeholder: "Negro, caf\xE9 con blanco..." },
+      { key: "edad", label: "Edad", placeholder: "2 a\xF1os, 6 meses..." },
+      { key: "peso", label: "Peso (kg)", placeholder: "5.2" },
+      { key: "microchip", label: "N\xB0 Microchip", placeholder: "123456789" }
+    ].map((f) => /* @__PURE__ */ React.createElement("div", { key: f.key }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, f.label), /* @__PURE__ */ React.createElement(
       "input",
       {
-        type: "date",
-        value: entradaForm.fecha,
-        onChange: (e) => setEntradaForm((p) => ({ ...p, fecha: e.target.value })),
-        style: { width: "100%", marginTop: 4, padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 14, boxSizing: "border-box" }
+        value: fichaTemp[f.key] || "",
+        onChange: (e) => setFichaTemp((p) => ({ ...p, [f.key]: e.target.value })),
+        placeholder: f.placeholder,
+        style: { width: "100%", marginTop: 2, padding: "7px 10px", borderRadius: 7, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" }
       }
-    )), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Servicios"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 } }, TARIFAS_VET_MODAL.map((t) => /* @__PURE__ */ React.createElement(
+    ))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Sexo"), /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        value: fichaTemp.sexo || "",
+        onChange: (e) => setFichaTemp((p) => ({ ...p, sexo: e.target.value })),
+        style: { width: "100%", marginTop: 2, padding: "7px 10px", borderRadius: 7, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 Seleccionar \u2014"),
+      /* @__PURE__ */ React.createElement("option", { value: "Macho" }, "Macho"),
+      /* @__PURE__ */ React.createElement("option", { value: "Hembra" }, "Hembra")
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Esterilizado/a"), /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        value: fichaTemp.esterilizado || "",
+        onChange: (e) => setFichaTemp((p) => ({ ...p, esterilizado: e.target.value })),
+        style: { width: "100%", marginTop: 2, padding: "7px 10px", borderRadius: 7, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 Seleccionar \u2014"),
+      /* @__PURE__ */ React.createElement("option", { value: "S\xED" }, "S\xED"),
+      /* @__PURE__ */ React.createElement("option", { value: "No" }, "No")
+    )), /* @__PURE__ */ React.createElement("hr", { style: { border: "none", borderTop: "1px solid #f0f0f0", margin: "4px 0" } }), [
+      { key: "dueno", label: "Nombre del due\xF1o", placeholder: "Juan P\xE9rez" },
+      { key: "telefono", label: "Tel\xE9fono del due\xF1o", placeholder: "809-555-1234" }
+    ].map((f) => /* @__PURE__ */ React.createElement("div", { key: f.key }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, f.label), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        value: fichaTemp[f.key] || "",
+        onChange: (e) => setFichaTemp((p) => ({ ...p, [f.key]: e.target.value })),
+        placeholder: f.placeholder,
+        style: { width: "100%", marginTop: 2, padding: "7px 10px", borderRadius: 7, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" }
+      }
+    ))), /* @__PURE__ */ React.createElement("hr", { style: { border: "none", borderTop: "1px solid #f0f0f0", margin: "4px 0" } }), [
+      { key: "alergias", label: "Alergias conocidas", placeholder: "Ninguna / Penicilina..." },
+      { key: "condiciones", label: "Condiciones cr\xF3nicas", placeholder: "Diabetes, Epilepsia..." },
+      { key: "medicacion", label: "Medicaci\xF3n permanente", placeholder: "Fenobarbital 30mg/d\xEDa..." },
+      { key: "notas", label: "Notas adicionales", placeholder: "Cualquier info relevante..." }
+    ].map((f) => /* @__PURE__ */ React.createElement("div", { key: f.key }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, f.label), /* @__PURE__ */ React.createElement(
+      "textarea",
+      {
+        value: fichaTemp[f.key] || "",
+        onChange: (e) => setFichaTemp((p) => ({ ...p, [f.key]: e.target.value })),
+        placeholder: f.placeholder,
+        rows: 2,
+        style: { width: "100%", marginTop: 2, padding: "7px 10px", borderRadius: 7, border: "1.5px solid #e2e8f0", fontSize: 13, resize: "vertical", boxSizing: "border-box" }
+      }
+    ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 4 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: guardarFicha, color: C.verde, small: true }, "\u{1F4BE} Guardar"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setEditFicha(false), color: C.grisd, small: true, outline: true }, "Cancelar"))) : /* @__PURE__ */ React.createElement("div", null, infoFicha.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, textAlign: "center", padding: "16px 0" } }, 'Sin datos. Clic en "Editar" para completar la ficha.') : infoFicha.map((i) => /* @__PURE__ */ React.createElement("div", { key: i.label, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, i.label), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600 } }, i.val))), (c.alergias || c.condiciones || c.medicacion) && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, background: "#fff4f4", borderRadius: 8, padding: 10, border: "1px solid #ffc5c5" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 11, color: C.rojo, marginBottom: 6 } }, "\u26A0\uFE0F ALERTAS M\xC9DICAS"), c.alergias && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.rojo, marginBottom: 2 } }, "\u{1F6AB} Alergia: ", c.alergias), c.condiciones && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.naranja, marginBottom: 2 } }, "\u{1F3E5} Condici\xF3n: ", c.condiciones), c.medicacion && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.azul } }, "\u{1F48A} Medicaci\xF3n: ", c.medicacion)), c.notas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.gris, borderRadius: 8, padding: 10, fontSize: 12, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 10, marginBottom: 4, textTransform: "uppercase" } }, "Notas"), c.notas))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "\u{1F4CA} Estad\xEDsticas"), [
+      { label: "Visitas totales", val: visitas.length },
+      { label: "Total invertido", val: RD(totalGast), color: C.verde },
+      { label: "\xDAltima visita", val: visitas[0]?.fecha || "\u2014" },
+      { label: "Vacunas recibidas", val: vacunas.length },
+      { label: "Ticket promedio", val: visitas.length > 0 ? RD(Math.round(totalGast / visitas.length)) : "\u2014" }
+    ].map((i) => /* @__PURE__ */ React.createElement("div", { key: i.label, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, i.label), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: i.color || C.negro } }, i.val)))), vacunas.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "\u{1F489} Vacunas"), vacunas.map((v) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, color: C.negro } }, v.descripcion?.split("(")[0]?.trim()), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 11 } }, v.fecha))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 16 } }, "\u{1F550} Historia cl\xEDnica completa"), visitas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: C.grisd, padding: 40 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 40, marginBottom: 8 } }, "\u{1F4C4}"), "Sin registros. Agrega la primera entrada cl\xEDnica.") : visitas.map((v, i) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { borderLeft: `3px solid ${C.azul}`, paddingLeft: 16, marginBottom: 20, paddingBottom: 16, borderBottom: i < visitas.length - 1 ? "1px solid #f4f5f6" : "none" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.negro, fontSize: 14 } }, v.descripcion?.split("(")[0]?.trim()), v.descripcion?.includes("(") && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.azul, marginTop: 3, fontStyle: "italic" } }, v.descripcion.match(/\(([^)]+)\)/)?.[1]), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 4 } }, "\u{1F4C5} ", v.fecha, v.veterinaria_id && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 8, color: C.azul } }, "\xB7 ", USUARIOS.find((u) => u.id === v.veterinaria_id)?.nombre || v.veterinaria_id))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.verde, fontSize: 15 } }, RD(v.total)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, "comisi\xF3n ", RD(v.comision || 0)))))))), modalEntrada && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1e3, padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 28, maxWidth: 620, width: "100%", maxHeight: "92vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, marginBottom: 4 } }, "\u2795 Nueva entrada cl\xEDnica"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Paciente: ", /* @__PURE__ */ React.createElement("strong", null, pacienteVer)), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 } }, [
+      { key: "fecha", label: "Fecha", type: "date" },
+      { key: "peso", label: "Peso actual (kg)", placeholder: "4.5" },
+      { key: "temperatura", label: "Temperatura (\xB0C)", placeholder: "38.5" }
+    ].map((f) => /* @__PURE__ */ React.createElement("div", { key: f.key }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, f.label), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: f.type || "text",
+        value: entradaForm[f.key] || "",
+        onChange: (e) => setEntradaForm((p) => ({ ...p, [f.key]: e.target.value })),
+        placeholder: f.placeholder,
+        style: { width: "100%", marginTop: 2, padding: "9px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" }
+      }
+    )))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Servicios / procedimientos"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 } }, TARIFAS_VET_MODAL.map((t) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: t.id,
@@ -595,87 +732,113 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
         onChange: (e) => cambiarPrecio(s.key, e.target.value),
         style: { width: 90, padding: "5px 8px", borderRadius: 6, border: "1.5px solid #c3d4f5", fontSize: 13 }
       }
-    ), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => quitarServicio(s.key),
-        style: { background: "none", border: "none", cursor: "pointer", color: C.rojo, fontSize: 18, lineHeight: 1 }
-      },
-      "\xD7"
-    ))), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.azul, fontSize: 15, textAlign: "right", marginTop: 8 } }, "Total: ", RD(serviciosSelec.reduce((s, sv) => s + sv.precio, 0)), /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, fontSize: 12, marginLeft: 8 } }, "\xB7 Comisi\xF3n: ", RD(Math.round(serviciosSelec.reduce((s, sv) => s + sv.precio, 0) * (usuario.comision_pct || 0.3)))))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Observaciones / notas de la visita"), /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("button", { onClick: () => quitarServicio(s.key), style: { background: "none", border: "none", cursor: "pointer", color: C.rojo, fontSize: 20, lineHeight: 1 } }, "\xD7"))), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.azul, fontSize: 15, textAlign: "right", marginTop: 8 } }, "Total: ", RD(serviciosSelec.reduce((s, sv) => s + sv.precio, 0)), /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, fontSize: 12, marginLeft: 8 } }, "\xB7 Comisi\xF3n: ", RD(Math.round(serviciosSelec.reduce((s, sv) => s + sv.precio, 0) * (usuario.comision_pct || 0.3)))))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Observaciones cl\xEDnicas / diagn\xF3stico / indicaciones"), /* @__PURE__ */ React.createElement(
       "textarea",
       {
-        value: entradaForm.notas,
-        onChange: (e) => setEntradaForm((p) => ({ ...p, notas: e.target.value })),
-        placeholder: "S\xEDntomas, diagn\xF3stico, indicaciones...",
-        style: { width: "100%", marginTop: 4, padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, resize: "vertical", minHeight: 70, boxSizing: "border-box" }
+        value: entradaForm.observaciones,
+        onChange: (e) => setEntradaForm((p) => ({ ...p, observaciones: e.target.value })),
+        placeholder: "S\xEDntomas presentados, diagn\xF3stico, tratamiento indicado, pr\xF3xima cita...",
+        style: { width: "100%", marginTop: 4, padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, resize: "vertical", minHeight: 80, boxSizing: "border-box" }
       }
     )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: guardarEntrada, color: C.azul }, "\u{1F4BE} Guardar entrada"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
       setModalEntrada(false);
       setServiciosSelec([]);
     }, color: C.grisd, outline: true }, "Cancelar")))));
   }
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { margin: 0, fontSize: 20, fontWeight: 800 } }, "\u{1F4CB} Historias Cl\xEDnicas"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginTop: 4 } }, "Pacientes con historial veterinario registrado")), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalNuevo(true), color: C.azul }, "+ Nueva consulta")), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { margin: 0, fontSize: 20, fontWeight: 800 } }, "\u{1F4CB} Historias Cl\xEDnicas"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginTop: 4 } }, listaPacientes.length, " paciente(s) con historial veterinario")), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalNuevo(true), color: C.azul }, "+ Nuevo paciente")), /* @__PURE__ */ React.createElement(
     "input",
     {
       value: busqueda,
       onChange: (e) => setBusqueda(e.target.value),
-      placeholder: "\u{1F50D} Buscar paciente...",
+      placeholder: "\u{1F50D} Buscar paciente por nombre...",
       style: { width: "100%", padding: "12px 16px", borderRadius: 12, border: "1.5px solid #e2e8f0", fontSize: 14, marginBottom: 20, boxSizing: "border-box", outline: "none" }
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 14 } }, listaPacientes.map((p) => /* @__PURE__ */ React.createElement(
-    "div",
-    {
-      key: p.nombre,
-      onClick: () => setPacienteVer(p.nombre),
-      style: { background: "#fff", borderRadius: 14, padding: 18, cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1.5px solid transparent", transition: "all .15s" },
-      onMouseEnter: (e) => {
-        e.currentTarget.style.borderColor = C.azul;
-        e.currentTarget.style.boxShadow = "0 4px 20px rgba(26,79,160,0.15)";
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 14 } }, listaPacientes.map((p) => {
+    const c = clientes.find((cl) => cl.nombre === p.nombre) || {};
+    const tieneAlertas = c.alergias || c.condiciones;
+    return /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        key: p.nombre,
+        onClick: () => setPacienteVer(p.nombre),
+        style: { background: "#fff", borderRadius: 14, padding: 18, cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: `1.5px solid ${tieneAlertas ? "#ffc5c5" : "transparent"}`, transition: "all .15s" },
+        onMouseEnter: (e) => {
+          e.currentTarget.style.borderColor = C.azul;
+          e.currentTarget.style.boxShadow = "0 4px 20px rgba(26,79,160,0.15)";
+        },
+        onMouseLeave: (e) => {
+          e.currentTarget.style.borderColor = tieneAlertas ? "#ffc5c5" : "transparent";
+          e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.06)";
+        }
       },
-      onMouseLeave: (e) => {
-        e.currentTarget.style.borderColor = "transparent";
-        e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.06)";
-      }
-    },
-    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 8 } }, "\u{1F43E}"),
-    /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, color: C.negro } }, p.nombre),
-    /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 4 } }, p.visitas.length, " visita", p.visitas.length !== 1 ? "s" : "", " \xB7 \xDAltima: ", p.ultimaVisita || "\u2014"),
-    /* @__PURE__ */ React.createElement("div", { style: { color: C.azul, fontSize: 12, fontWeight: 700, marginTop: 8 } }, "Ver historia cl\xEDnica \u2192")
-  )), listaPacientes.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1", textAlign: "center", color: C.grisd, padding: 40 } }, "No se encontraron pacientes.")), modalNuevo && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1e3 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, width: 360 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 17, marginBottom: 16 } }, "\u{1F43E} Nuevo paciente"), /* @__PURE__ */ React.createElement(
+      /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, marginBottom: 6 } }, "\u{1F43E}"),
+      /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, color: C.negro } }, p.nombre),
+      (c.especie || c.raza) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, [c.especie, c.raza].filter(Boolean).join(" \xB7 ")),
+      /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 4 } }, p.visitas.length, " visita", p.visitas.length !== 1 ? "s" : "", " \xB7 ", p.ultimaVisita || "\u2014"),
+      tieneAlertas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, fontSize: 10, color: C.rojo, fontWeight: 700 } }, "\u26A0\uFE0F Tiene alertas m\xE9dicas"),
+      /* @__PURE__ */ React.createElement("div", { style: { color: C.azul, fontSize: 12, fontWeight: 700, marginTop: 8 } }, "Ver historia \u2192")
+    );
+  }), listaPacientes.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1", textAlign: "center", color: C.grisd, padding: 40 } }, "No se encontraron pacientes.")), modalNuevo && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1e3 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, width: 380 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 17, marginBottom: 16 } }, "\u{1F43E} Nuevo paciente"), [
+    { key: "nombre", label: "Nombre del paciente *", placeholder: "Ej: Luna, Rocky..." },
+    { key: "especie", label: "Especie", placeholder: "Perro / Gato / Conejo..." },
+    { key: "raza", label: "Raza", placeholder: "Labrador, Maine Coon..." }
+  ].map((f) => /* @__PURE__ */ React.createElement("div", { key: f.key, style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, f.label), /* @__PURE__ */ React.createElement(
     "input",
     {
-      value: nuevoNombre,
-      onChange: (e) => setNuevoNombre(e.target.value),
-      placeholder: "Nombre del paciente...",
-      onKeyDown: (e) => e.key === "Enter" && crearPaciente(),
-      style: { width: "100%", padding: "11px 14px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 14, boxSizing: "border-box" }
+      value: nuevoForm[f.key],
+      onChange: (e) => setNuevoForm((p) => ({ ...p, [f.key]: e.target.value })),
+      placeholder: f.placeholder,
+      onKeyDown: (e) => f.key === "raza" && e.key === "Enter" && crearPaciente(),
+      style: { width: "100%", marginTop: 3, padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 14, boxSizing: "border-box" }
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 16 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: crearPaciente, color: C.azul }, "Crear"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalNuevo(false), color: C.grisd, outline: true }, "Cancelar")))));
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 16 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: crearPaciente, color: C.azul }, "Crear paciente"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalNuevo(false), color: C.grisd, outline: true }, "Cancelar")))));
 }
 function VacunasVet({ usuario, ventas }) {
   const vacunas = ventas.filter((v) => v.area === "veterinaria" && v.veterinaria_id === usuario.id && v.descripcion?.toLowerCase().includes("vacuna")).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const tipos = {};
   vacunas.forEach((v) => {
     v.descripcion.split("+").filter((p) => p.toLowerCase().includes("vacuna")).forEach((p) => {
-      const t = p.trim();
+      const t = p.trim().replace(/\s*\(.*?\)/g, "").trim();
       tipos[t] = (tipos[t] || 0) + 1;
     });
   });
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, marginBottom: 8 } }, "\u{1F489} Registro de Vacunas"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Vacunas aplicadas en mis consultas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12, marginBottom: 24 } }, Object.entries(tipos).map(([tipo, cnt]) => /* @__PURE__ */ React.createElement("div", { key: tipo, style: { background: C.azulL, borderRadius: 12, padding: "14px 16px", borderLeft: `3px solid ${C.azul}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.azul, fontWeight: 700, textTransform: "uppercase" } }, tipo.replace("Vacuna", "").trim()), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, fontWeight: 900, color: C.azul, marginTop: 4 } }, cnt)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Detalle", "Total"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, vacunas.map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.verde } }, RD(v.total)))), vacunas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin registros de vacunas."))))));
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, marginBottom: 8 } }, "\u{1F489} Registro de Vacunas"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Total: ", vacunas.length, " registros"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12, marginBottom: 24 } }, Object.entries(tipos).map(([tipo, cnt]) => /* @__PURE__ */ React.createElement("div", { key: tipo, style: { background: C.azulL, borderRadius: 12, padding: "14px 16px", borderLeft: `3px solid ${C.azul}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: C.azul, fontWeight: 700, textTransform: "uppercase" } }, tipo.replace(/vacuna/i, "").trim() || "Vacuna"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, fontWeight: 900, color: C.azul, marginTop: 4 } }, cnt)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Detalle", "Total"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, vacunas.map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.descripcion?.split("(")[0]?.trim()), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.verde } }, RD(v.total)))), vacunas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin registros de vacunas."))))));
 }
 function MisServiciosVet({ usuario, ventas }) {
+  const [filtroMes, setFiltroMes] = useState("todos");
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const misVentas = ventas.filter((v) => v.area === "veterinaria" && v.veterinaria_id === usuario.id);
   const misMes = misVentas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
-  const totalMes = misMes.reduce((s, v) => s + v.total, 0);
-  const comMes = misMes.reduce((s, v) => s + (v.comision || 0), 0);
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, marginBottom: 8 } }, "\u{1F4CB} Mis Servicios"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Todos mis registros de servicios veterinarios"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 24 } }, [
-    { label: "Ingresos del mes", val: RD(totalMes), color: C.verde, bg: C.verdeL },
-    { label: "Mi comisi\xF3n", val: RD(comMes), color: C.azul, bg: C.azulL },
-    { label: "Servicios del mes", val: misMes.length, color: C.naranja, bg: C.naranjaL },
-    { label: "Total hist\xF3rico", val: RD(misVentas.reduce((s, v) => s + v.total, 0)), color: C.gold, bg: C.goldL }
-  ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: k.bg, borderRadius: 12, padding: "16px", borderLeft: `3px solid ${k.color}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: k.color, fontWeight: 700, textTransform: "uppercase", marginBottom: 4 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: k.color } }, k.val)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Descripci\xF3n", "Total", "Comisi\xF3n"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, [...misVentas].sort((a, b) => b.fecha.localeCompare(a.fecha)).map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.verde } }, RD(v.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.azul, fontWeight: 700 } }, RD(v.comision || 0)))), misVentas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 5, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin servicios registrados."))))));
+  const mesesDisp = ["todos", ...new Set(misVentas.map((v) => v.fecha?.slice(0, 7)).filter(Boolean).sort().reverse())];
+  const ventasFiltradas = filtroMes === "todos" ? [...misVentas].sort((a, b) => b.fecha.localeCompare(a.fecha)) : misVentas.filter((v) => v.fecha?.slice(0, 7) === filtroMes).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const totalFiltro = ventasFiltradas.reduce((s, v) => s + v.total, 0);
+  const comFiltro = ventasFiltradas.reduce((s, v) => s + (v.comision || 0), 0);
+  const totalHist = misVentas.reduce((s, v) => s + v.total, 0);
+  const comHist = misVentas.reduce((s, v) => s + (v.comision || 0), 0);
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, marginBottom: 8 } }, "\u{1F4CB} Mis Servicios"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Historial completo de todos mis servicios en PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 20 } }, [
+    { label: "Este mes \u2014 Ingresos", val: RD(misMes.reduce((s, v) => s + v.total, 0)), color: C.verde, bg: C.verdeL },
+    { label: "Este mes \u2014 Comisi\xF3n", val: RD(misMes.reduce((s, v) => s + (v.comision || 0), 0)), color: C.azul, bg: C.azulL },
+    { label: "Este mes \u2014 Servicios", val: misMes.length, color: C.naranja, bg: C.naranjaL },
+    { label: "Historia \u2014 Total", val: RD(totalHist), color: C.gold, bg: C.goldL },
+    { label: "Historia \u2014 Comisi\xF3n", val: RD(comHist), color: C.rojo, bg: C.rojoL }
+  ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: k.bg, borderRadius: 12, padding: "14px", borderLeft: `3px solid ${k.color}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: k.color, fontWeight: 700, textTransform: "uppercase", marginBottom: 4 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 900, color: k.color } }, k.val)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: C.grisd, fontWeight: 600 } }, "Filtrar:"), mesesDisp.map((m) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: m,
+      onClick: () => setFiltroMes(m),
+      style: {
+        padding: "6px 14px",
+        borderRadius: 8,
+        border: "none",
+        cursor: "pointer",
+        fontSize: 12,
+        fontWeight: 700,
+        background: filtroMes === m ? C.azul : C.gris,
+        color: filtroMes === m ? "#fff" : C.grisd
+      }
+    },
+    m === "todos" ? "Todos" : (/* @__PURE__ */ new Date(m + "-01")).toLocaleDateString("es-DO", { month: "long", year: "numeric" })
+  ))), /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 10, padding: "10px 16px", marginBottom: 16, display: "flex", gap: 24, fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.azul, fontWeight: 700 } }, ventasFiltradas.length, " servicio(s)"), /* @__PURE__ */ React.createElement("span", { style: { color: C.verde, fontWeight: 700 } }, "Ingresos: ", RD(totalFiltro)), /* @__PURE__ */ React.createElement("span", { style: { color: C.azul, fontWeight: 700 } }, "Comisi\xF3n: ", RD(comFiltro))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Descripci\xF3n", "Total", "Comisi\xF3n"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, ventasFiltradas.map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.descripcion?.slice(0, 50), v.descripcion?.length > 50 ? "\u2026" : ""), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.verde } }, RD(v.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.azul, fontWeight: 700 } }, RD(v.comision || 0)))), ventasFiltradas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 5, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin servicios en este per\xEDodo."))))));
 }
 const TABS_VET = [
   { id: "dashboard_vet", icon: "\u{1F4CA}", label: "Dashboard" },
@@ -699,7 +862,7 @@ function PetColinas() {
     setTabVet("dashboard_vet");
   } });
   if (usuario.rol === "veterinaria") {
-    return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: { background: `linear-gradient(135deg,${C.azul} 0%,#1a3d80 100%)`, padding: "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "#fff" } }, "\u{1F43E} PetColinas ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 500, opacity: 0.7 } }, "\xB7 Portal Cl\xEDnico")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 2 } }, "Plaza Las Colinas \xB7 SDO")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.9)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 } }, "\u{1F469}\u200D\u2695\uFE0F ", usuario.nombre, " \u2014 Veterinaria")), /* @__PURE__ */ React.createElement("button", { onClick: () => setUsuario(null), style: { background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "Cerrar sesi\xF3n"))), /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderBottom: "2px solid #eef0f2", display: "flex", gap: 0, overflowX: "auto", padding: "0 24px" } }, TABS_VET.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTabVet(t.id), style: { background: "none", border: "none", cursor: "pointer", padding: "14px 20px", fontSize: 13, fontWeight: 700, color: tabVet === t.id ? C.azul : C.grisd, borderBottom: tabVet === t.id ? `3px solid ${C.azul}` : "3px solid transparent", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", transition: "color .15s" } }, /* @__PURE__ */ React.createElement("span", null, t.icon), t.label))), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tabVet === "dashboard_vet" && /* @__PURE__ */ React.createElement(DashboardVet, { usuario, ventas }), tabVet === "historias" && /* @__PURE__ */ React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes }), tabVet === "vacunas" && /* @__PURE__ */ React.createElement(VacunasVet, { usuario, ventas }), tabVet === "mis_servicios" && /* @__PURE__ */ React.createElement(MisServiciosVet, { usuario, ventas })));
+    return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: { background: `linear-gradient(135deg,${C.azul} 0%,#1a3d80 100%)`, padding: "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "#fff" } }, "\u{1F43E} PetColinas ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 500, opacity: 0.7 } }, "\xB7 Portal Cl\xEDnico")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 2 } }, "Plaza Las Colinas \xB7 SDO")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.9)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 } }, "\u{1F469}\u200D\u2695\uFE0F ", usuario.nombre, " \u2014 Veterinaria")), /* @__PURE__ */ React.createElement("button", { onClick: () => setUsuario(null), style: { background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "Cerrar sesi\xF3n"))), /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderBottom: "2px solid #eef0f2", display: "flex", gap: 0, overflowX: "auto", padding: "0 24px" } }, TABS_VET.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTabVet(t.id), style: { background: "none", border: "none", cursor: "pointer", padding: "14px 20px", fontSize: 13, fontWeight: 700, color: tabVet === t.id ? C.azul : C.grisd, borderBottom: tabVet === t.id ? `3px solid ${C.azul}` : "3px solid transparent", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", transition: "color .15s" } }, /* @__PURE__ */ React.createElement("span", null, t.icon), t.label))), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tabVet === "dashboard_vet" && /* @__PURE__ */ React.createElement(DashboardVet, { usuario, ventas, onVerHistorias: () => setTabVet("historias"), onVerServicios: () => setTabVet("mis_servicios") }), tabVet === "historias" && /* @__PURE__ */ React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes }), tabVet === "vacunas" && /* @__PURE__ */ React.createElement(VacunasVet, { usuario, ventas }), tabVet === "mis_servicios" && /* @__PURE__ */ React.createElement(MisServiciosVet, { usuario, ventas })));
   }
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const ventasMes = ventas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
