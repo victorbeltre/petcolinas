@@ -568,7 +568,8 @@ const TARIFAS_GROOMING = [
   { id: "g5", nombre: "Corte higi\xE9nico", precio: 490, comision: 70 },
   { id: "g6", nombre: "Corte completo", precio: 749, comision: 90 },
   { id: "g7", nombre: "Ba\xF1o medicado", precio: 950, comision: 100 },
-  { id: "g8", nombre: "Ba\xF1o peque\xF1o c/l\xEDnea", precio: 999, comision: 100 }
+  { id: "g8", nombre: "Ba\xF1o peque\xF1o c/l\xEDnea", precio: 999, comision: 100 },
+  { id: "g9", nombre: "Ba\xF1o peque\xF1o premium plus", precio: 1040, comision: 100 }
 ];
 const TARIFAS_VET = [
   { id: "v1", nombre: "Consulta", precio: 1500, comision: 0.3 },
@@ -6090,7 +6091,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
   }
 
   // Modal Facturacion
-  const TARIFARIO_FAC = [{"nombre": "Bano cachorro", "precio": 699}, {"nombre": "Bano pequeno", "precio": 799}, {"nombre": "Bano mediano", "precio": 949}, {"nombre": "Bano grande", "precio": 1149}, {"nombre": "Corte higienico", "precio": 490}, {"nombre": "Corte completo", "precio": 749}, {"nombre": "Bano medicado", "precio": 950}, {"nombre": "Bano pequeno con linea", "precio": 999}, {"nombre": "Consulta veterinaria", "precio": 1500}, {"nombre": "Vacuna", "precio": 1200}, {"nombre": "Desparasitacion", "precio": 500}, {"nombre": "Otro (precio libre)", "precio": 0}];
+  const TARIFARIO_FAC = [{"nombre": "Bano cachorro", "precio": 699}, {"nombre": "Bano pequeno", "precio": 799}, {"nombre": "Bano mediano", "precio": 949}, {"nombre": "Bano grande", "precio": 1149}, {"nombre": "Corte higienico", "precio": 490}, {"nombre": "Corte completo", "precio": 749}, {"nombre": "Bano medicado", "precio": 950}, {"nombre": "Bano pequeno con linea", "precio": 999}, {"nombre": "Bano pequeno premium plus", "precio": 1040}, {"nombre": "Consulta veterinaria", "precio": 1500}, {"nombre": "Vacuna", "precio": 1200}, {"nombre": "Desparasitacion", "precio": 500}, {"nombre": "Otro (precio libre)", "precio": 0}];
 
   if (modalFactura && clienteSel) {
     const cl = clienteSel;
