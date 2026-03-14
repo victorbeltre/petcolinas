@@ -3129,6 +3129,7 @@ function PetColinas() {
   const [authChecked, setAuthChecked] = useState(false);
   // Hooks siempre al tope — antes de cualquier return condicional (reglas de React)
   const [ventasVet, setVentasVet]   = useVentasConSeed(VENTAS_SEED);
+  const setVentas = setVentasVet;
   const [clientesVet, setClientesVet] = useClientesConSeed(CLIENTES_SEED);
 
   useEffect(() => {
