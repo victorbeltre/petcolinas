@@ -4351,7 +4351,10 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     clienteVentaRef.current = key;
     const cl = clienteVentaInicial.cliente;
     if (cl) {
-      const nom = cl.nombreMascota || cl.nombremascota || cl.nombrePropietario || cl.nombrepropietario || "";
+      const mascota  = cl.nombreMascota || cl.nombremascota || "";
+      const dueno    = cl.nombrePropietario || cl.nombrepropietario || "";
+      const apellido = dueno.trim().split(" ").pop() || "";
+      const nom = mascota ? (mascota + (apellido ? " " + apellido : "")) : dueno;
       setCliente(nom);
     }
     if (clearClienteVentaInicial) clearClienteVentaInicial();
