@@ -2231,6 +2231,7 @@ function Facturas({ ventas, clientes }) {
   const [facturas, setFacturas] = useLS("pc_facturas", FACTURAS_SEED);
   const [vista, setVista] = useState("lista");
   const [facturaActual, setFacturaActual] = useState(null);
+  const [editandoId, setEditandoId] = useState(null);
   const [form, setForm] = useState({
     clienteId: "",
     mascota: "",
@@ -2241,6 +2242,22 @@ function Facturas({ ventas, clientes }) {
     itbis: true,
     notas: ""
   });
+  function abrirEditar(factura) {
+    setEditandoId(factura.id);
+    setForm({
+      clienteId:   factura.clienteId   || "",
+      mascota:     factura.mascota     || "",
+      propietario: factura.propietario || "",
+      telefono:    factura.telefono    || "",
+      fecha:       factura.fecha       || hoy(),
+      items:       factura.items && factura.items.length > 0
+                     ? factura.items.map(i => ({ descripcion: i.descripcion || "", cantidad: i.cantidad || 1, precio: i.precio || 0 }))
+                     : [{ descripcion: "", cantidad: 1, precio: 0 }],
+      itbis:  factura.itbis !== undefined ? factura.itbis : true,
+      notas:  factura.notas || ""
+    });
+    setVista("nueva");
+  }
   function groomingsCliente(nombreMascota) {
     const grm2026 = ventas.filter(
       (v) => v.area === "grooming" && v.cliente && nombreMascota && v.cliente.toLowerCase().trim() === nombreMascota.toLowerCase().trim()
@@ -2312,8 +2329,14 @@ function Facturas({ ventas, clientes }) {
       estado: "emitida",
       groomingCount: gCount
     };
-    setFacturas((fs) => [nueva, ...fs]);
-    setFacturaActual(nueva);
+    if (editandoId) {
+      setFacturas((fs) => fs.map((f) => f.id === editandoId ? { ...nueva, id: editandoId, numero: f.numero } : f));
+      setFacturaActual({ ...nueva, id: editandoId });
+    } else {
+      setFacturas((fs) => [nueva, ...fs]);
+      setFacturaActual(nueva);
+    }
+    setEditandoId(null);
     setVista("ver");
     setForm({ clienteId: "", mascota: "", propietario: "", telefono: "", fecha: hoy(), items: [{ descripcion: "", cantidad: 1, precio: 0 }], itbis: true, notas: "" });
   }
@@ -2686,7 +2709,7 @@ Mascota: ${f.mascota}
   if (vista === "ver" && facturaActual) {
     const f = facturaActual;
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), /* @__PURE__ */ React.createElement("button", { onClick: () => compartirWhatsApp(f), style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4F1} WhatsApp")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: C.verde }, "\u2713 EMITIDA"), f.groomingCount !== void 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), React.createElement("button", { onClick: () => compartirWhatsApp(f), style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4F1} WhatsApp"), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); setVista("lista"); } }, style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: C.verde }, "\u2713 EMITIDA"), f.groomingCount !== void 0 && /* @__PURE__ */ React.createElement("div", { style: {
       marginTop: 6,
       background: f.groomingCount >= 10 ? "#d4edda" : "#fff3cd",
       color: f.groomingCount >= 10 ? "#155724" : "#856404",
