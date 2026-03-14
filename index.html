@@ -621,8 +621,12 @@ function useVentasConSeed(seed) {
   });
   useEffect(() => {
     try {
-      localStorage.setItem("pc_ventas", JSON.stringify(val));
-    } catch {
+      // Guardar solo las ventas manuales (no el seed) para no superar el límite de localStorage
+      const seedIds = new Set(seed.map((v) => v.id));
+      const soloManuales = val.filter((v) => !seedIds.has(v.id));
+      localStorage.setItem("pc_ventas", JSON.stringify(soloManuales));
+    } catch(e) {
+      console.warn("localStorage ventas lleno:", e);
     }
   }, [val]);
   return [val, setVal];
