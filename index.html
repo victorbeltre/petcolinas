@@ -608,28 +608,26 @@ function useLS(key, def) {
   return [val, setVal];
 }
 function useVentasConSeed(seed) {
+  const seedIds = useMemo(() => new Set(seed.map((v) => v.id)), []);
   const [val, setVal] = useState(() => {
     try {
       const s = localStorage.getItem("pc_ventas");
       const stored = s ? JSON.parse(s) : [];
-      const seedIds = new Set(seed.map((v) => v.id));
       const manuales = stored.filter((v) => !seedIds.has(v.id));
       return [...seed, ...manuales];
-    } catch {
-      return seed;
-    }
+    } catch { return seed; }
   });
-  useEffect(() => {
-    try {
-      // Guardar solo las ventas manuales (no el seed) para no superar el límite de localStorage
-      const seedIds = new Set(seed.map((v) => v.id));
-      const soloManuales = val.filter((v) => !seedIds.has(v.id));
-      localStorage.setItem("pc_ventas", JSON.stringify(soloManuales));
-    } catch(e) {
-      console.warn("localStorage ventas lleno:", e);
-    }
-  }, [val]);
-  return [val, setVal];
+  const setValYGuardar = useCallback((updater) => {
+    setVal((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      try {
+        const soloManuales = next.filter((v) => !seedIds.has(v.id));
+        localStorage.setItem("pc_ventas", JSON.stringify(soloManuales));
+      } catch(e) { console.warn("localStorage ventas:", e); }
+      return next;
+    });
+  }, [seedIds]);
+  return [val, setValYGuardar];
 }
 const Badge = ({ color, children }) => /* @__PURE__ */ React.createElement("span", { style: {
   background: color + "22",
