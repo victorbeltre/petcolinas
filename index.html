@@ -6001,6 +6001,25 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       justifyContent: "center",
       fontSize: 28
     } }, espIcon), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 2 } }, c.nombreMascota), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, c.especie, " \xB7 ", c.raza || "Sin raza", " \xB7 ", c.tamano)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => abrirEditar(c), color: C.azul, small: true }, "\u270F\uFE0F Editar"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => eliminar(c.id), color: C.rojo, small: true, outline: true }, "\u{1F5D1} Eliminar"),
+/* Botón agregar mascota del mismo propietario */
+/* @__PURE__ */ React.createElement(Btn, {
+  small: true,
+  color: "#b45309",
+  onClick: () => {
+    setForm({
+      ...CRM_EMPTY_FORM,
+      nombrePropietario: c.nombrePropietario || c.nombrepropietario || "",
+      telefono: c.telefono || "",
+      telefono2: c.telefono2 || "",
+      email: c.email || "",
+      direccion: c.direccion || "",
+      instagram: c.instagram || "",
+    });
+    setEditando(false);
+    setClienteSel(null);
+    setVista("nuevo");
+  }
+}, "\u{1F43E} + Mascota"),
 /* Botón WhatsApp Bienvenida */
 /* @__PURE__ */ React.createElement(Btn, {
   small: true,
