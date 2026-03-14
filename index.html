@@ -4595,8 +4595,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     }
   };
   const ventasFiltradas = ventas.filter((v) => v.fecha?.slice(0, 7) === filtromes).sort((a, b) => {
-    if (b.fecha !== a.fecha) return b.fecha > a.fecha ? 1 : -1;
-    return b.id > a.id ? 1 : -1;
+    if (b.fecha !== a.fecha) return b.fecha > a.fecha ? -1 : 1;
+    return b.id > a.id ? -1 : 1;
   });
   const totalFiltrado = ventasFiltradas.reduce((s, v) => s + v.total, 0);
   const colorArea = (a) => a === "grooming" ? C.verde : a === "veterinaria" ? C.azul : a === "farmacia" ? C.gold : C.naranja;
