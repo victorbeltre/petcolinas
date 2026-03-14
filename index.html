@@ -129,7 +129,16 @@ function useSupabase(table, seed = []) {
               console.log(`[Dedup] pc_ventas: ${antes - normalized.length} duplicado(s) eliminado(s)`);
             }
           }
-          setData(normalized);
+          // Merge: seed rows + Supabase rows nuevas (que no están en seed)
+          if (table === "pc_ventas") {
+            const supaIds = new Set(normalized.map((r) => String(r.id)));
+            const seedRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
+            const merged = [...seedRows, ...normalized];
+            console.log("[Merge] pc_ventas: " + seedRows.length + " seed + " + normalized.length + " Supa = " + merged.length);
+            setData(merged);
+          } else {
+            setData(normalized);
+          }
         } else {
           await uploadSeed(table, seed);
           setData(seed.filter((r) => !deletedIds.current.has(String(r.id))));
@@ -146,7 +155,11 @@ function useSupabase(table, seed = []) {
     setData(newData);
     setSyncing(true);
     try {
-      for (const row of newData) {
+      // Solo guardar filas NUEVAS (no del seed) para no reescribir todo
+      const currentSeedIds = seedIds.current;
+      const soloNuevas = newData.filter((r) => !currentSeedIds.has(String(r.id)));
+      console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " filas nuevas");
+      for (const row of soloNuevas) {
         const dbRow = denormalizeRow(table, row);
         await supaFetch(table, "POST", dbRow, `?on_conflict=id`);
       }
