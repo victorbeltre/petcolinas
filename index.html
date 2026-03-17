@@ -3288,118 +3288,424 @@ function PetColinas() {
   return /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout });
 }
 const INVENTARIO_SEED = [
-  { id: "inv_1", nombre: "NG Spectra S 3.6 - 7.5 kg", categoria: "farmaco", stock: 8, stockInicial: 8, stockMin: 1, costo: 962, pventa: 1299, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
-  { id: "inv_2", nombre: "NEXGARD S 2-4 kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 747, pventa: 1008, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
-  { id: "inv_3", nombre: "NEXGARD M 4.1-10 kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 861, pventa: 1162, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
-  { id: "inv_4", nombre: "Premier Cookie Rza Peq Frut Rojo 250g", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 252.54, pventa: 341, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_5", nombre: "Premier Cookie Rza Peq Coco Avena 250g", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 252.54, pventa: 341, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_6", nombre: "Premier Cookie Fit Pollo Batata 250g", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 252.54, pventa: 341, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_7", nombre: "Dalcat Mix 1kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 233.05, pventa: 315, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_8", nombre: "Daldog Adulto Rza Peq 10.1kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1565.25, pventa: 2113, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_9", nombre: "Daldog Cachorro Rza Peq 3kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 577.12, pventa: 779, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_10", nombre: "Shed-X Suplemento Dog 8oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 535, pventa: 722, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_11", nombre: "Shed-X Suplemento Dog 16oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 890, pventa: 1202, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_12", nombre: "VF Clinical Care Hypoallergenic 473ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 656.78, pventa: 887, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_13", nombre: "PB Dog Toilet Grama HH295", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1624.58, pventa: 2193, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_14", nombre: "Training Pads 22x23 Large 1x50", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 450, pventa: 608, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_15", nombre: "Training Pads 22x23 Large 1x30", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 308.16, pventa: 416, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_16", nombre: "Daldog Adulto Rza Peq 3kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 530.51, pventa: 716, margen: 26, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
-  { id: "inv_17", nombre: "Frontline Plus 0-10 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 491, pventa: 663, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
-  { id: "inv_18", nombre: "NG Spectra L 15.1 - 30 kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 1275, pventa: 1721, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
-  { id: "inv_19", nombre: "Frontline Plus 10-20 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 560, pventa: 756, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
-  { id: "inv_20", nombre: "NG Spectra M 7.6 - 15 kg", categoria: "farmaco", stock: 6, stockInicial: 6, stockMin: 1, costo: 1099, pventa: 1484, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
-  { id: "inv_21", nombre: "Frontline Plus Gato", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 571, pventa: 771, margen: 26, proveedor: "ESPAVET", fechaEntrada: "2026-02-16" },
-  { id: "inv_22", nombre: "Shampoo Sensible Animal 16 Fl. Oz", categoria: "farmaco", stock: 12, stockInicial: 12, stockMin: 1, costo: 3389.83, pventa: 4576, margen: 26, proveedor: "Casa Rodriguez", fechaEntrada: "2026-02-26" },
-  { id: "inv_23", nombre: "Wipe Limpiador Animal 100Pcs", categoria: "farmaco", stock: 12, stockInicial: 12, stockMin: 1, costo: 2542.37, pventa: 3432, margen: 26, proveedor: "Casa Rodriguez", fechaEntrada: "2026-02-26" },
-  { id: "inv_24", nombre: "RESMA DE BOND 20 NAVIGATOR 500/1", categoria: "papeleria", stock: 2, stockInicial: 2, stockMin: 1, costo: 325, pventa: 439, margen: 26, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
-  { id: "inv_25", nombre: "FOLDER MANILA 8 1/2 X 11 HAMSELL", categoria: "papeleria", stock: 2, stockInicial: 2, stockMin: 1, costo: 450, pventa: 608, margen: 26, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
-  { id: "inv_26", nombre: "RESMA DE PAPEL BOND 20 8 1/2 X 14 CHAMBRILL", categoria: "papeleria", stock: 1, stockInicial: 1, stockMin: 1, costo: 550, pventa: 743, margen: 26, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
-  { id: "inv_27", nombre: "TC TR Spray Desenredante 16oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 635.59, pventa: 858, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_28", nombre: "Epi-Soothe 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 830.51, pventa: 1121, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_29", nombre: "Sebolytic 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 898.31, pventa: 1213, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_30", nombre: "Rilexine 600mg (Caja 14 Tab)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1340, pventa: 1809, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_31", nombre: "Allermyl 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 898.31, pventa: 1213, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_32", nombre: "Easotic (Unidad)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1350, pventa: 1823, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_33", nombre: "Rilexine 300mg (Caja 14 Tab)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1055, pventa: 1424, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_34", nombre: "Rilexine 75mg (Caja 14 Tab)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 845, pventa: 1141, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_35", nombre: "Epiotic SIS 100 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 555, pventa: 749, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_36", nombre: "VASOS 4 ONZ PAPER PLUS TEMPORADA 50/1", categoria: "papeleria", stock: 2, stockInicial: 2, stockMin: 1, costo: 200, pventa: 270, margen: 26, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
-  { id: "inv_37", nombre: "Hexadene Spherulites 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 898.31, pventa: 1213, margen: 26, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
-  { id: "inv_38", nombre: "PAPEL BOND 20 8 1/2 CARTA PRETINTADO 100/1", categoria: "papeleria", stock: 0, stockInicial: 0, stockMin: 1, costo: 300, pventa: 405, margen: 26, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
-  { id: "inv_39", nombre: "BELCANDO DINNER 4KG (PERRO)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1210, pventa: 1634, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_40", nombre: "BELCANDO GF POULTRY 4KG (PERRO)", categoria: "farmaco", stock: 4, stockInicial: 4, stockMin: 1, costo: 1.73, pventa: 2, margen: 14, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_41", nombre: "BELCANDO LAMB & RICE (PERRO)", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 1469, pventa: 1983, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_42", nombre: "BELCANDO GF BEEF 4 KG (PERRO)", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 1723, pventa: 2326, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_43", nombre: "ACANA FREE-RUN POULTRY 4,5LB (PERRO)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1883, pventa: 2542, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_44", nombre: "ACANA PUPPY RECIPE 4 LB (PERRO)", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 2045, pventa: 2761, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_45", nombre: "LEONARDO KITTEN GF 300G (GATO)", categoria: "farmaco", stock: 4, stockInicial: 4, stockMin: 1, costo: 201.29, pventa: 272, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_46", nombre: "LEONARDO FRESH SALMON 250G (GATO)", categoria: "farmaco", stock: 4, stockInicial: 4, stockMin: 1, costo: 432.2, pventa: 583, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_47", nombre: "LEONARDO GF MAXI 300G (GATO)", categoria: "farmaco", stock: 3, stockInicial: 3, stockMin: 1, costo: 207.46, pventa: 280, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_48", nombre: "ALICAN FUNDA 4LBS (PERRO)", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 507.12, pventa: 685, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_49", nombre: "CANOVI FUNDA 4.44 LBS (PERRO)", categoria: "farmaco", stock: 6, stockInicial: 6, stockMin: 1, costo: 372.88, pventa: 503, margen: 26, proveedor: "ALIMENTO", fechaEntrada: "2026-01-01" },
-  { id: "inv_50", nombre: "Juguete para perro SPP6", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 76, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_51", nombre: "Juguete para perro SPP8", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 76, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_52", nombre: "Hueso para perro SPP14", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 76, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_53", nombre: "Hueso para perro SPP17", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 70, pventa: 95, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_54", nombre: "Cuerda de mascota SPP35", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 76, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_55", nombre: "Collar de mascota SPP47", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 53, pventa: 72, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_56", nombre: "Arnés para perro SPP53", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 131, pventa: 177, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_57", nombre: "Arnés para perro SPP54", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 131, pventa: 177, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_58", nombre: "Correa mascota SPP66", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 156, pventa: 211, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_59", nombre: "Plato para mascota SPP70", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 88, pventa: 119, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_60", nombre: "Plato para mascota SPP71", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 103, pventa: 139, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_61", nombre: "Bozal SPP101", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 150, pventa: 203, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_62", nombre: "Recogedor SPP113", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 40, pventa: 54, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_63", nombre: "Jaula SPP133", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 5484, pventa: 7403, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_64", nombre: "Jaula SPP134", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 8100, pventa: 10935, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_65", nombre: "Shampoo pelo largo", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 221, pventa: 298, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_66", nombre: "Colonia para mascota", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 175, pventa: 236, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_67", nombre: "Healthy Pet Shampoo 38208", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 120, pventa: 162, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_68", nombre: "Healthy Pet Shampoo 38215", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 115, pventa: 155, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_69", nombre: "Healthy Pet Shampoo 38239", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 100, pventa: 135, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_70", nombre: "Nexgard Spectra 3.6-7.5 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1375, pventa: 1856, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_71", nombre: "Nexgard Spectra M 7.6-15 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1495, pventa: 2018, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_72", nombre: "Nexgard 2-4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 956, pventa: 1291, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_73", nombre: "Simparica Trio 12mg Caramel", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 925, pventa: 1249, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_74", nombre: "Simparica Trio 6mg Purple", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 845, pventa: 1141, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_75", nombre: "Bravecto 112.5 mg 2-4.5 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2095, pventa: 2828, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_76", nombre: "Bravecto 1000 mg 20-40 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2495, pventa: 3368, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_77", nombre: "Bravecto 250 mg 4.5-10 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2195, pventa: 2963, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_78", nombre: "Bravecto 500 mg 10-20 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2295, pventa: 3098, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_79", nombre: "Healthy Pet Spray Garrapaticida", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 165, pventa: 223, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_80", nombre: "Healthy Pet Shampoo Cachorro Anti", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 161, pventa: 217, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_81", nombre: "Healthy Pet Shampoo Cachorro 16 oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 161, pventa: 217, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_82", nombre: "Healthy Pet Cachorro Shampoo 8 oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 131, pventa: 177, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_83", nombre: "Shampoo Campeon 520 ml 16 oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 296, pventa: 400, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_84", nombre: "Alerdrag Shampoo 100 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 655, pventa: 884, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_85", nombre: "Shampoo Canish Espuma 160 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 762, pventa: 1029, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_86", nombre: "Healthy Pet Spray Garrapaticida Pu", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 139, pventa: 188, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_87", nombre: "Minervit Jarabe 120 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 245, pventa: 331, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_88", nombre: "Bonavit Suspension 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 545, pventa: 736, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_89", nombre: "Antiparasitario Protek Pet Spot On", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 525, pventa: 709, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_90", nombre: "Fiprostar Spot On Aplicador 2.68 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 324, pventa: 437, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_91", nombre: "Apetitet Jarabe 100 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 415, pventa: 560, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_92", nombre: "Fiprostar Spray 60 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 380, pventa: 513, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_93", nombre: "Oxantel Gel 10 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 295, pventa: 398, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_94", nombre: "Pramectica Caja 4 Tbs", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 175, pventa: 236, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_95", nombre: "Pañales Comfort Nappy 1-12 pc", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 461, pventa: 622, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_96", nombre: "Dog Chow Cachorro Extra Life Minis", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 504, pventa: 680, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_97", nombre: "Pad absorcion mascotas (M)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 508, pventa: 686, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_98", nombre: "Belcando Adult Dinner 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1050, pventa: 1418, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_99", nombre: "Belcando Puppy GF Poultry 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1500, pventa: 2025, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_100", nombre: "Belcando Junior Lamb & Rice 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1275, pventa: 1721, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_101", nombre: "Belcando Adult GF Beef 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1495, pventa: 2018, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_102", nombre: "Acana Free-Run Poultry 4.5 lb", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1750, pventa: 2363, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_103", nombre: "Acana Puppy Recipe Junior Dog", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1775, pventa: 2396, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_104", nombre: "Leonardo Kitten GF 300 g", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 175, pventa: 236, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_105", nombre: "Leonardo Fresh Salmon 250 g", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 375, pventa: 506, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_106", nombre: "Leonardo Adult GF Maxi 300 g", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 180, pventa: 243, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_107", nombre: "Atican Cachorro Pollo 4 lbs", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 440, pventa: 594, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_108", nombre: "Canovi Cachorro para Pequeño 4.4 lb", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1580, pventa: 2133, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_109", nombre: "Papel LBT-2", categoria: "papeleria", stock: 1, stockInicial: 1, stockMin: 1, costo: 150, pventa: 203, margen: 26, proveedor: "Antiparasitario/Farmacia", fechaEntrada: "2026-01-01" },
-  { id: "inv_110", nombre: "LEONARDO DRINK DUCK 40G (GATO)", categoria: "farmaco", stock: 23, stockInicial: 23, stockMin: 1, costo: 1242, pventa: 1677, margen: 26, proveedor: "BEBIDA", fechaEntrada: "2026-01-01" },
-  { id: "inv_111", nombre: "LEONARDO DRINK SALMON 40G (GATO)", categoria: "farmaco", stock: 22, stockInicial: 22, stockMin: 1, costo: 1388.92, pventa: 1875, margen: 26, proveedor: "BEBIDA", fechaEntrada: "2026-01-01" }
-];];
+  { id: "inv_1", nombre: "NG Spectra S 3.6 - 7.5 kg", categoria: "farmaco", stock: 8, stockInicial: 8, stockMin: 1, costo: 962, pventa: 1924, margen: 50, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
+  { id: "inv_2", nombre: "NEXGARD S 2-4 kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 747, pventa: 1494, margen: 50, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
+  { id: "inv_3", nombre: "NEXGARD M 4.1-10 kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 861, pventa: 1722, margen: 50, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
+  { id: "inv_4", nombre: "Premier Cookie Rza Peq Frut Rojo 250g", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 253, pventa: 596, margen: 58, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_5", nombre: "Premier Cookie Rza Peq Coco Avena 250g", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 253, pventa: 596, margen: 58, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_6", nombre: "Premier Cookie Fit Pollo Batata 250g", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 253, pventa: 596, margen: 58, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_7", nombre: "Dalcat Mix 1kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 233, pventa: 275, margen: 15, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_8", nombre: "Daldog Adulto Rza Peq 10.1kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1565, pventa: 1847, margen: 15, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_9", nombre: "Daldog Cachorro Rza Peq 3kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 577, pventa: 1362, margen: 58, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_10", nombre: "Shed-X Suplemento Dog 8oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 535, pventa: 535, margen: 25, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_11", nombre: "Shed-X Suplemento Dog 16oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 890, pventa: 890, margen: 25, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_12", nombre: "VF Clinical Care Hypoallergenic 473ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 657, pventa: 775, margen: 15, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_13", nombre: "PB Dog Toilet Grama HH295", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1625, pventa: 1917, margen: 15, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_14", nombre: "Training Pads 22x23 Large 1x50", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 450, pventa: 531, margen: 15, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_15", nombre: "Training Pads 22x23 Large 1x30", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 308, pventa: 364, margen: 15, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_16", nombre: "Daldog Adulto Rza Peq 3kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 531, pventa: 626, margen: 15, proveedor: "MEDIVET", fechaEntrada: "2026-01-30" },
+  { id: "inv_17", nombre: "Frontline Plus 0-10 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 491, pventa: 491, margen: 25, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
+  { id: "inv_18", nombre: "NG Spectra L 15.1 - 30 kg", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 1275, pventa: 2550, margen: 50, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
+  { id: "inv_19", nombre: "Frontline Plus 10-20 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 560, pventa: 560, margen: 25, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
+  { id: "inv_20", nombre: "NG Spectra M 7.6 - 15 kg", categoria: "farmaco", stock: 6, stockInicial: 6, stockMin: 1, costo: 1099, pventa: 2198, margen: 50, proveedor: "ESPAVET", fechaEntrada: "2026-02-13" },
+  { id: "inv_21", nombre: "Frontline Plus Gato", categoria: "farmaco", stock: 2, stockInicial: 2, stockMin: 1, costo: 571, pventa: 1142, margen: 50, proveedor: "ESPAVET", fechaEntrada: "2026-02-16" },
+  { id: "inv_22", nombre: "Shampoo Sensible Animal 16 Fl. Oz", categoria: "insumo", stock: 12, stockInicial: 12, stockMin: 1, costo: 3390, pventa: 4000, margen: 15, proveedor: "Casa Rodriguez", fechaEntrada: "2026-02-26" },
+  { id: "inv_23", nombre: "Wipe Limpiador Animal 100Pcs", categoria: "farmaco", stock: 12, stockInicial: 12, stockMin: 1, costo: 2542, pventa: 3000, margen: 15, proveedor: "Casa Rodriguez", fechaEntrada: "2026-02-26" },
+  { id: "inv_24", nombre: "RESMA DE BOND 20 NAVIGATOR 500/1", categoria: "papeleria", stock: 2, stockInicial: 2, stockMin: 1, costo: 325, pventa: 650, margen: 50, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
+  { id: "inv_25", nombre: "FOLDER MANILA 8 1/2 X 11 HAMSELL", categoria: "papeleria", stock: 2, stockInicial: 2, stockMin: 1, costo: 450, pventa: 900, margen: 50, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
+  { id: "inv_26", nombre: "RESMA DE PAPEL BOND 20 8 1/2 X 14 CHAMBRILL", categoria: "papeleria", stock: 1, stockInicial: 1, stockMin: 1, costo: 550, pventa: 550, margen: 25, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
+  { id: "inv_27", nombre: "TC TR Spray Desenredante 16oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 636, pventa: 750, margen: 15, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_28", nombre: "Epi-Soothe 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 831, pventa: 980, margen: 15, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_29", nombre: "Sebolytic 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 898, pventa: 1060, margen: 15, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_30", nombre: "Rilexine 600mg (Caja 14 Tab)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1340, pventa: 1340, margen: 25, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_31", nombre: "Allermyl 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 898, pventa: 1060, margen: 15, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_32", nombre: "Easotic (Unidad)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1350, pventa: 1350, margen: 25, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_33", nombre: "Rilexine 300mg (Caja 14 Tab)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1055, pventa: 1055, margen: 25, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_34", nombre: "Rilexine 75mg (Caja 14 Tab)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 845, pventa: 845, margen: 25, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_35", nombre: "Epiotic SIS 100 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 555, pventa: 555, margen: 25, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_36", nombre: "VASOS 4 ONZ PAPER PLUS TEMPORADA 50/1", categoria: "papeleria", stock: 2, stockInicial: 2, stockMin: 1, costo: 200, pventa: 400, margen: 50, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
+  { id: "inv_37", nombre: "Hexadene Spherulites 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 898, pventa: 1060, margen: 15, proveedor: "DIPROMEX", fechaEntrada: "2026-03-04" },
+  { id: "inv_38", nombre: "PAPEL BOND 20 8 1/2 CARTA PRETINTADO 100/1", categoria: "papeleria", stock: 1, stockInicial: 1, stockMin: 1, costo: 300, pventa: 150, margen: -100, proveedor: "SUPROCOMG MULTISERVICIOS", fechaEntrada: "2026-03-04" },
+  { id: "inv_39", nombre: "BELCANDO DINNER 4KG (PERRO)", categoria: "alimento", stock: 1, stockInicial: 1, stockMin: 1, costo: 1210, pventa: 1512, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_40", nombre: "BELCANDO GF POULTRY 4KG (PERRO)", categoria: "alimento", stock: 4, stockInicial: 4, stockMin: 1, costo: 2, pventa: 2160, margen: 100, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_41", nombre: "BELCANDO LAMB & RICE (PERRO)", categoria: "alimento", stock: 2, stockInicial: 2, stockMin: 1, costo: 1469, pventa: 1836, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_42", nombre: "BELCANDO GF BEEF 4 KG (PERRO)", categoria: "alimento", stock: 2, stockInicial: 2, stockMin: 1, costo: 1723, pventa: 2154, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_43", nombre: "ACANA FREE-RUN POULTRY 4,5LB (PERRO)", categoria: "alimento", stock: 1, stockInicial: 1, stockMin: 1, costo: 1883, pventa: 2354, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_44", nombre: "ACANA PUPPY RECIPE 4 LB (PERRO)", categoria: "alimento", stock: 2, stockInicial: 2, stockMin: 1, costo: 2045, pventa: 2556, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_45", nombre: "LEONARDO KITTEN GF 300G (GATO)", categoria: "alimento", stock: 4, stockInicial: 4, stockMin: 1, costo: 201, pventa: 300, margen: 33, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_46", nombre: "LEONARDO FRESH SALMON 250G (GATO)", categoria: "alimento", stock: 4, stockInicial: 4, stockMin: 1, costo: 432, pventa: 540, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_47", nombre: "LEONARDO GF MAXI 300G (GATO)", categoria: "alimento", stock: 3, stockInicial: 3, stockMin: 1, costo: 207, pventa: 259, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_48", nombre: "ALICAN FUNDA 4LBS (PERRO)", categoria: "alimento", stock: 2, stockInicial: 2, stockMin: 1, costo: 507, pventa: 633, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_49", nombre: "CANOVI FUNDA 4.44 LBS (PERRO)", categoria: "alimento", stock: 4, stockInicial: 4, stockMin: 1, costo: 373, pventa: 466, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_50", nombre: "Juguete para perro SPP6", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 112, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_51", nombre: "Juguete para perro SPP8", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 112, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_52", nombre: "Hueso para perro SPP14", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 112, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_53", nombre: "Hueso para perro SPP17", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 70, pventa: 140, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_54", nombre: "Cuerda de mascota SPP35", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 56, pventa: 112, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_55", nombre: "Collar de mascota SPP47", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 53, pventa: 106, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_56", nombre: "Arnés para perro SPP53", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 131, pventa: 262, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_57", nombre: "Arnés para perro SPP54", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 131, pventa: 262, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_58", nombre: "Correa mascota SPP66", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 156, pventa: 312, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_59", nombre: "Plato para mascota SPP70", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 88, pventa: 176, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_60", nombre: "Plato para mascota SPP71", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 103, pventa: 206, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_61", nombre: "Bozal SPP101", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 150, pventa: 300, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_62", nombre: "Recogedor SPP113", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 40, pventa: 100, margen: 60, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_63", nombre: "Jaula SPP133", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 5484, pventa: 6855, margen: 20, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_64", nombre: "Jaula SPP134", categoria: "accesorio", stock: 1, stockInicial: 1, stockMin: 1, costo: 8100, pventa: 9720, margen: 17, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_65", nombre: "Shampoo pelo largo", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 221, pventa: 442, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_66", nombre: "Colonia para mascota", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 175, pventa: 350, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_67", nombre: "Healthy Pet Shampoo 38208", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 120, pventa: 240, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_68", nombre: "Healthy Pet Shampoo 38215", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 115, pventa: 230, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_69", nombre: "Healthy Pet Shampoo 38239", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 100, pventa: 200, margen: 50, proveedor: "Dulce Hogar", fechaEntrada: "2025-08-01" },
+  { id: "inv_70", nombre: "Nexgard Spectra 3.6-7.5 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1375, pventa: 1581, margen: 13, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_71", nombre: "Nexgard Spectra M 7.6-15 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1495, pventa: 1719, margen: 13, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_72", nombre: "Nexgard 2-4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 956, pventa: 1099, margen: 13, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_73", nombre: "Simparica Trio 12mg Caramel", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 925, pventa: 1156, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_74", nombre: "Simparica Trio 6mg Purple", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 845, pventa: 1056, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_75", nombre: "Bravecto 112.5 mg 2-4.5 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2095, pventa: 2409, margen: 13, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_76", nombre: "Bravecto 1000 mg 20-40 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2495, pventa: 3119, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_77", nombre: "Bravecto 250 mg 4.5-10 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2195, pventa: 2744, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_78", nombre: "Bravecto 500 mg 10-20 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 2295, pventa: 2869, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_79", nombre: "Healthy Pet Spray Garrapaticida", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 165, pventa: 206, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_80", nombre: "Healthy Pet Shampoo Cachorro Anti", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 161, pventa: 201, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_81", nombre: "Healthy Pet Shampoo Cachorro 16 oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 161, pventa: 201, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_82", nombre: "Healthy Pet Cachorro Shampoo 8 oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 131, pventa: 164, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_83", nombre: "Shampoo Campeon 520 ml 16 oz", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 296, pventa: 370, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_84", nombre: "Alerdrag Shampoo 100 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 655, pventa: 819, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_85", nombre: "Shampoo Canish Espuma 160 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 762, pventa: 953, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_86", nombre: "Healthy Pet Spray Garrapaticida Pu", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 139, pventa: 278, margen: 50, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_87", nombre: "Minervit Jarabe 120 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 245, pventa: 306, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_88", nombre: "Bonavit Suspension 250 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 545, pventa: 681, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_89", nombre: "Antiparasitario Protek Pet Spot On", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 525, pventa: 656, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_90", nombre: "Fiprostar Spot On Aplicador 2.68 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 324, pventa: 405, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_91", nombre: "Apetitet Jarabe 100 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 415, pventa: 519, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_92", nombre: "Fiprostar Spray 60 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 380, pventa: 475, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_93", nombre: "Oxantel Gel 10 ml", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 295, pventa: 369, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_94", nombre: "Pramectica Caja 4 Tbs", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 175, pventa: 350, margen: 50, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_95", nombre: "Pañales Comfort Nappy 1-12 pc", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 461, pventa: 576, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_96", nombre: "Dog Chow Cachorro Extra Life Minis", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 504, pventa: 630, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_97", nombre: "Pad absorcion mascotas (M)", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 508, pventa: 635, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_98", nombre: "Belcando Adult Dinner 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1050, pventa: 1313, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_99", nombre: "Belcando Puppy GF Poultry 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1500, pventa: 1875, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_100", nombre: "Belcando Junior Lamb & Rice 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1275, pventa: 1594, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_101", nombre: "Belcando Adult GF Beef 4 kg", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1495, pventa: 1869, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_102", nombre: "Acana Free-Run Poultry 4.5 lb", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1750, pventa: 2188, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_103", nombre: "Acana Puppy Recipe Junior Dog", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1775, pventa: 2219, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_104", nombre: "Leonardo Kitten GF 300 g", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 175, pventa: 219, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_105", nombre: "Leonardo Fresh Salmon 250 g", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 375, pventa: 469, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_106", nombre: "Leonardo Adult GF Maxi 300 g", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 180, pventa: 225, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_107", nombre: "Atican Cachorro Pollo 4 lbs", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 440, pventa: 550, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_108", nombre: "Canovi Cachorro para Pequeño 4.4 lb", categoria: "farmaco", stock: 1, stockInicial: 1, stockMin: 1, costo: 1580, pventa: 1975, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_109", nombre: "Papel LBT-2", categoria: "papeleria", stock: 1, stockInicial: 1, stockMin: 1, costo: 150, pventa: 300, margen: 50, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_110", nombre: "LEONARDO DRINK DUCK 40G (GATO)", categoria: "alimento", stock: 23, stockInicial: 23, stockMin: 1, costo: 1242, pventa: 1553, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
+  { id: "inv_111", nombre: "LEONARDO DRINK SALMON 40G (GATO)", categoria: "alimento", stock: 22, stockInicial: 22, stockMin: 1, costo: 1389, pventa: 1736, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" }
+];
+function PetColinasApp({ session, onLogout }) {
+  const [tab, setTab] = useState("dashboard");
+  const [dbReady, setDbReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("conectando");
+  const [crmClienteInicial, setCrmClienteInicial] = useState(null);
+  const clearCrmClienteInicial = useCallback(() => setCrmClienteInicial(null), []);
+  // IDs de notificaciones marcadas como "listas/vistas" — persiste en localStorage
+  const [notifLeidas, setNotifLeidas] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("pc_notif_leidas") || "[]")); }
+    catch { return new Set(); }
+  });
+  const marcarNotifLeida = (id) => {
+    setNotifLeidas(prev => {
+      const next = new Set(prev);
+      next.add(String(id));
+      localStorage.setItem("pc_notif_leidas", JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const limpiarTodasNotif = () => {
+    setNotifLeidas(new Set());
+    localStorage.setItem("pc_notif_leidas", "[]");
+  };
+  useMemo(() => {
+    try {
+      const f = localStorage.getItem("pc_facturas");
+      if (f) {
+        const arr = JSON.parse(f);
+        if (Array.isArray(arr) && arr.length === 0) {
+          localStorage.removeItem("pc_facturas");
+        }
+      }
+    } catch {
+    }
+  }, []);
+  const [ventas, setVentas, ventasLoaded, , deleteVenta] = useSupabase("pc_ventas", VENTAS_SEED);
+  const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
+  const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
+  const [inventario, setInventario, invLoaded, , deleteInv] = useSupabase("pc_inventario", INVENTARIO_SEED);
+  const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
+  const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", EMPLEADOS_INIT);
+  const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
+  const [historial, setHistorial] = useState([]);
+  const [undoMsg, setUndoMsg] = useState(null);
+  const pushHistorial = (desc, snap) => {
+    setHistorial((prev) => {
+      const nuevo = { desc, snap, ts: Date.now() };
+      return [nuevo, ...prev].slice(0, 20);
+    });
+  };
+  const deshacer = async () => {
+    if (historial.length === 0) return;
+    const [ultimo, ...resto] = historial;
+    const { ventas: sv, clientes: sc, seguimientos: ss, gastos: sg, inventario: si } = ultimo.snap;
+    if (sv !== void 0) setVentas(sv);
+    if (sc !== void 0) setClientes(sc);
+    if (ss !== void 0) setSeguimientos(ss);
+    if (sg !== void 0) setGastos(sg);
+    if (si !== void 0) setInventario(si);
+    setHistorial(resto);
+    setUndoMsg(`\u21A9 Deshecho: ${ultimo.desc}`);
+    setTimeout(() => setUndoMsg(null), 3e3);
+  };
+  useEffect(() => {
+    if (ventasLoaded && clientesLoaded && segsLoaded && invLoaded && gastosLoaded && empLoaded && pagosLoaded) {
+      setDbReady(true);
+      setSyncStatus("ok");
+    }
+  }, [ventasLoaded, clientesLoaded, segsLoaded, invLoaded, gastosLoaded, empLoaded, pagosLoaded]);
+  const clientesDeVentas = useMemo(() => {
+    if (!ventasLoaded || !clientesLoaded) return [];
+    const nombresEnCRM = new Set(clientes.map((c) => (c.nombreMascota || "").toLowerCase().trim()));
+    const nuevosMap = {};
+    ventas.forEach((v) => {
+      const nombre = (v.cliente || "").trim();
+      if (!nombre) return;
+      const key = nombre.toLowerCase();
+      if (!nombresEnCRM.has(key) && !nuevosMap[key]) nuevosMap[key] = v;
+    });
+    return Object.values(nuevosMap).map((v, i) => ({
+      id: 9e4 + i,
+      nombreMascota: v.cliente,
+      especie: "Perro",
+      raza: "",
+      sexo: "",
+      tamano: "",
+      nombrePropietario: v.cliente,
+      telefono: "",
+      email: "",
+      alergias: "",
+      notas: "Auto-creado desde venta",
+      fechaRegistro: v.fecha,
+      ultimaVisita: v.fecha
+    }));
+  }, [ventasLoaded, clientesLoaded, ventas.length, clientes.length]);
+  const todosClientes = useMemo(() => {
+    const existentes = new Set(clientes.map((c) => (c.nombreMascota || "").toLowerCase().trim()));
+    const nuevos = clientesDeVentas.filter((c) => !existentes.has((c.nombreMascota || "").toLowerCase().trim()));
+    return [...clientes, ...nuevos];
+  }, [clientes, clientesDeVentas]);
+  const inventarioDeGastos = useMemo(() => {
+    const existentes = new Set(inventario.map((p) => String(p.id)));
+    const parseProductosGasto = (g) => {
+      const desc = g.descripcion || "";
+      const dNorm = desc.replace(/\bc\/u\b/gi, "CPU");
+      const partes = dNorm.split(/\s*\/\s*(?=\(\d+\))/).map((s) => s.trim()).filter(Boolean);
+      return partes.map((parte, idx) => {
+        const cantMatch = parte.match(/^\((\d+)\)\s*/);
+        const cantidad = cantMatch ? parseInt(cantMatch[1]) : 1;
+        const precioMatch = parte.match(/\(\$\s*([\d,\.]+)\s*(?:CPU)?\s*\)\s*$/i);
+        const precioUnit = precioMatch ? parseFloat(precioMatch[1].replace(/,/g, "")) : 0;
+        let nombre = parte;
+        if (cantMatch) nombre = nombre.slice(cantMatch[0].length);
+        nombre = nombre.replace(/\s*\(\$[^)]*\)\s*$/, "").trim().slice(0, 55);
+        const costoUnit = precioUnit > 0 ? precioUnit : Math.round(g.monto / partes.length / Math.max(cantidad, 1));
+        return {
+          id: "inv_" + g.id + "_" + idx,
+          nombre,
+          categoria: "farmaco",
+          stock: cantidad,
+          stockInicial: cantidad,
+          stockMin: Math.max(1, Math.round(cantidad * 0.3)),
+          costo: costoUnit,
+          pventa: Math.round(costoUnit * 1.3),
+          fechaEntrada: g.fecha,
+          proveedor: g.proveedor || "",
+          autoGenerado: true
+        };
+      });
+    };
+    return gastos.filter((g) => g.categoria === "Inventario" && g.descripcion && g.monto > 0).filter((g) => !existentes.has("inv_" + String(g.id) + "_0")).flatMap((g) => parseProductosGasto(g));
+  }, [gastos.length, inventario.length]);
+  const todoInventario = useMemo(() => {
+    const deletedAuto = new Set(JSON.parse(sessionStorage.getItem("pc_deleted_inv_auto") || "[]"));
+    const todosAuto = inventarioDeGastos.filter((p) => !deletedAuto.has(String(p.id)));
+    const todos = [...inventario, ...todosAuto];
+    const ventasCount = {};
+    ventas.filter((v) => v.area === "farmacia").forEach((v) => {
+      const key = (v.servicio || "").toLowerCase().trim();
+      if (key) ventasCount[key] = (ventasCount[key] || 0) + 1;
+    });
+    return todos.map((p) => {
+      const key = (p.nombre || "").toLowerCase().trim();
+      const vendidos = Object.entries(ventasCount).filter(([k]) => k.includes(key.slice(0, 8)) || key.includes(k.slice(0, 8))).reduce((s, [, c]) => s + c, 0);
+      const stockActual = Math.max(0, (p.stockInicial || p.stock || 0) - vendidos);
+      return { ...p, stock: stockActual };
+    });
+  }, [inventario, inventarioDeGastos, ventas]);
+  if (!dbReady) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f4f5f6", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: "#1a6b3a" } }, "PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "#5a6472" } }, "Conectando con la base de datos..."), /* @__PURE__ */ React.createElement("div", { style: { width: 200, height: 4, background: "#e0e4e8", borderRadius: 4, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", background: "#1a6b3a", borderRadius: 4, animation: "loadbar 1.5s ease-in-out infinite" } })), /* @__PURE__ */ React.createElement("style", null, `@keyframes loadbar { 0%{width:0%} 60%{width:80%} 100%{width:100%} }`));
+  const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
+  const ventasMes = ventas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
+  const gastosMes = gastos.filter((g) => g.fecha?.slice(0, 7) === mesActual);
+  const pagosMes = pagosNom.filter((p) => p.mes === mesActual);
+  const totalVentas = ventasMes.reduce((s, v) => s + v.total, 0);
+  const totalGastos = gastosMes.reduce((s, g) => s + g.monto, 0);
+  const totalNomina = pagosMes.reduce((s, p) => s + (p.mensualidad + p.comisiones - p.descuentos), 0);
+  const totalEgresos = totalGastos + totalNomina;
+  const utilidad = totalVentas - totalEgresos;
+  const comGrmSistema = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + (v.comision || 0), 0);
+  const comVetSistema = ventasMes.filter((v) => v.area === "veterinaria").reduce((s, v) => s + (v.comision || 0), 0);
+  const COM_GRM_EXCEL_MARZO = 0;
+  const COM_VET_EXCEL_MARZO = 0;
+  const comisionesGrm = comGrmSistema;
+  const comisionesVet = comVetSistema;
+  return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    background: `linear-gradient(135deg, ${C.verde} 0%, ${C.verde2} 100%)`,
+    padding: "20px 32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
+    background: "rgba(255,255,255,0.15)",
+    border: "1px solid rgba(255,255,255,0.3)",
+    color: "#fff",
+    borderRadius: 6,
+    padding: "4px 10px",
+    fontSize: 11,
+    cursor: "pointer",
+    marginTop: 2,
+    fontWeight: 600
+  } }, "\u{1F6AA} Cerrar sesi\xF3n"), /* @__PURE__ */ React.createElement("div", { style: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    background: "rgba(0,0,0,0.2)",
+    borderRadius: 20,
+    padding: "3px 10px",
+    fontSize: 11
+  } }, /* @__PURE__ */ React.createElement("div", { style: {
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: syncStatus === "ok" ? "#4ade80" : syncStatus === "error" ? "#f87171" : "#fbbf24",
+    animation: syncStatus === "ok" ? "pulse 2s infinite" : "none"
+  } }), /* @__PURE__ */ React.createElement("span", { style: { color: "rgba(255,255,255,0.85)" } }, syncStatus === "ok" ? "\u2601\uFE0F En la nube" : syncStatus === "error" ? "Sin conexi\xF3n" : "Conectando..."))), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
+    background: "#fff",
+    borderBottom: "2px solid #eef0f2",
+    display: "flex",
+    gap: 0,
+    overflowX: "auto",
+    padding: "0 24px"
+  } }, TABS.map((t) => {
+    const pendientes = t.id === "notificaciones"
+      ? (todosClientes || []).filter(c => c.notas && c.notas.includes("Nos conocio") && !(notifLeidas instanceof Set ? notifLeidas : new Set()).has(String(c.id))).length
+      : 0;
+    return /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTab(t.id), style: {
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      padding: "14px 20px",
+      fontSize: 13,
+      fontWeight: 700,
+      color: tab === t.id ? C.verde : C.grisd,
+      borderBottom: tab === t.id ? `3px solid ${C.verde}` : "3px solid transparent",
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      whiteSpace: "nowrap",
+      transition: "color .15s"
+    } },
+      /* @__PURE__ */ React.createElement("span", null, t.icon),
+      t.label,
+      pendientes > 0 && /* @__PURE__ */ React.createElement("span", { style: {
+        background: "#e53e3e", color: "#fff", borderRadius: "50%",
+        fontSize: 10, fontWeight: 800, minWidth: 18, height: 18,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "0 4px", marginLeft: 2
+      }}, pendientes)
+    );
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comGrmSistema, comVetSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+    tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
+      clientes: todosClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
+      setTab, setCrmClienteInicial
+    })), historial.length > 0 && !undoMsg && /* @__PURE__ */ React.createElement("div", { style: {
+    position: "fixed",
+    bottom: 24,
+    right: 24,
+    zIndex: 9999,
+    display: "flex",
+    alignItems: "center",
+    gap: 8
+  } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: deshacer,
+      style: {
+        background: "#1a1a2e",
+        color: "#fff",
+        border: "none",
+        borderRadius: 12,
+        padding: "10px 18px",
+        fontSize: 13,
+        fontWeight: 700,
+        cursor: "pointer",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        transition: "all 0.2s"
+      },
+      onMouseEnter: (e) => e.currentTarget.style.background = "#2d2d4e",
+      onMouseLeave: (e) => e.currentTarget.style.background = "#1a1a2e",
+      title: `Deshacer: ${historial[0]?.desc}`
+    },
+    "\u21A9 Deshacer",
+    /* @__PURE__ */ React.createElement("span", { style: {
+      background: "rgba(255,255,255,0.2)",
+      borderRadius: 8,
+      padding: "2px 8px",
+      fontSize: 11
+    } }, historial[0]?.desc?.slice(0, 30)),
+    /* @__PURE__ */ React.createElement("span", { style: {
+      background: "rgba(255,255,255,0.15)",
+      borderRadius: 6,
+      padding: "2px 6px",
+      fontSize: 10,
+      opacity: 0.8
+    } }, historial.length)
+  )), undoMsg && /* @__PURE__ */ React.createElement("div", { style: {
+    position: "fixed",
+    bottom: 24,
+    right: 24,
+    zIndex: 9999,
+    background: "#1a6b3a",
+    color: "#fff",
+    borderRadius: 12,
+    padding: "12px 20px",
+    fontSize: 13,
+    fontWeight: 700,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+    animation: "fadeIn 0.2s ease"
+  } }, undoMsg));
+}
+const HISTORICO = {
+  "2026-01": { grm: 62201, far: 17128, vet: 28970, med: 0, total: 108299, servicios: 79, gastos: 20289, nomina: 60354 },
+  "2026-02": { grm: 61370, far: 23483, vet: 34550, med: 0, total: 119403, servicios: 86, gastos: 21457, nomina: 36078 },
+  "2026-03": { grm: 79727, far: 33874, vet: 19070, med: 0, total: 132671, servicios: 95, gastos: 0, nomina: 0 }
+};
+const _PE_DIA = Math.round(203739 / 26);
+const MARZO_SEMANAS = [
+  { sem: "Semana 1", dias: "1\u20137 mar", meta: _PE_DIA * 6, real: 0, color: C.azul },
+  { sem: "Semana 2", dias: "9\u201314 mar", meta: _PE_DIA * 7, real: 0, color: C.verde },
+  { sem: "Semana 3", dias: "16\u201321 mar", meta: _PE_DIA * 7, real: 0, color: C.verde },
+  { sem: "Semana 4", dias: "23\u201329 mar", meta: _PE_DIA * 6, real: 0, color: C.gold }
+];
 const TIPOS_SEGUIMIENTO = [
   { id: "bano_medicado", label: "Ba\xF1o medicado", color: "#9b59b6", icono: "\u{1F6C1}", frecDefault: 14 },
   { id: "vacuna_rabia", label: "Vacuna rabia", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365 },
@@ -5067,9 +5373,8 @@ function InventarioAnalytics({ inventario, ventas }) {
   ].map(([ico, tit, desc]) => /* @__PURE__ */ React.createElement("div", { key: tit, style: { display: "flex", gap: 10, padding: "10px 12px", background: "rgba(255,255,255,0.7)", borderRadius: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20 } }, ico), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, tit), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 2 } }, desc))))))));
 }
 function Inventario({ inventario, setInventario, ventas, deleteInv }) {
-  const [form, setForm] = useState({ nombre: "", categoria: "farmaco", stock: "", stockMin: "", costo: "", pventa: "", proveedor: "" });
+  const [form, setForm] = useState({ nombre: "", categoria: "farmaco", stock: "", stockMin: "", costo: "", pventa: "" });
   const [filtro, setFiltro] = useState("todo");
-  const [vistaTab, setVistaTab] = useState("catalogo"); // catalogo | analisis | alertas
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
   const [pendientes, setPendientes] = useState({});
@@ -5099,13 +5404,11 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
       stockMin: parseInt(form.stockMin) || 0,
       costo: parseFloat(form.costo) || 0,
       pventa: parseFloat(form.pventa) || 0,
-      margen: form.pventa > 0 ? Math.round((form.pventa - form.costo) / form.pventa * 100) : 25,
-      proveedor: form.proveedor || "",
       stockInicial: parseInt(form.stock) || 0,
       fechaEntrada: hoy()
     };
     setInventario([...inventario, nuevo]);
-    setForm({ nombre: "", categoria: "farmaco", stock: "", stockMin: "", costo: "", pventa: "", proveedor: "" });
+    setForm({ nombre: "", categoria: "farmaco", stock: "", stockMin: "", costo: "", pventa: "" });
   };
   const startEdit = (p) => {
     setEditId(p.id);
