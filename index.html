@@ -4382,7 +4382,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     );
     setTab("clientes");
   };
-  const [formaPago, setFormaPago] = useState("efectivo");
+  const [formaPago, setFormaPago] = useState("pendiente");
+  const [bancoOtro, setBancoOtro] = useState("");
   const [banco, setBanco] = useState("");
   const [items, setItems] = useState([]);
   const [tipoItem, setTipoItem] = useState("grooming");
@@ -4531,7 +4532,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       total: totalNeto,
       comision: totalComision,
       descuento: totalDescuento,
-      formapago: formaPago === "transferencia" ? ("Transferencia " + banco).trim() : formaPago,
+      formapago: formaPago === "pendiente" ? "Pago pendiente" : formaPago === "transferencia" ? ("Transferencia " + (banco === "Otro" ? bancoOtro : banco)).trim() : formaPago,
       banco: banco || "",
       items: items.map((i) => ({ nombre: i.nombre, precio: i.precio, descPct: i.descPct, subtotal: i.subtotal, area: i.area }))
     };
@@ -4539,8 +4540,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     setItems([]);
     setCliente("");
     setDescPct(0);
-    setFormaPago("efectivo");
+    setFormaPago("pendiente");
     setBanco("");
+    setBancoOtro("");
     enviarASheet(nueva);
     setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area });
     setTimeout(() => setNotifExito(null), 4e3);
@@ -4595,7 +4597,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   )), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 16 } }, "\u2795 Nueva venta"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16, alignItems: "flex-end" } },
     /* @__PURE__ */ React.createElement("div", { style: { display:"flex", flexDirection:"column", gap:4 } },
       /* @__PURE__ */ React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:C.grisd, textTransform:"uppercase", letterSpacing:1 }}, "Forma de pago"),
-      /* @__PURE__ */ React.createElement("select", { value: formaPago, onChange: e => { setFormaPago(e.target.value); if(e.target.value !== "transferencia") setBanco(""); }, style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }},
+      /* @__PURE__ */ React.createElement("select", { value: formaPago, onChange: e => { setFormaPago(e.target.value); if(e.target.value !== "transferencia") { setBanco(""); setBancoOtro(""); } }, style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }},
+        /* @__PURE__ */ React.createElement("option", { value:"pendiente"}, "⏳ Pago pendiente"),
         /* @__PURE__ */ React.createElement("option", { value:"efectivo"}, "💵 Efectivo (Caja)"),
         /* @__PURE__ */ React.createElement("option", { value:"transferencia"}, "🏦 Transferencia"),
         /* @__PURE__ */ React.createElement("option", { value:"tarjeta"}, "💳 Tarjeta")
@@ -4603,17 +4606,32 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     ),
     formaPago === "transferencia" && /* @__PURE__ */ React.createElement("div", { style:{ display:"flex", flexDirection:"column", gap:4 }},
       /* @__PURE__ */ React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:C.grisd, textTransform:"uppercase", letterSpacing:1 }}, "Banco"),
-      /* @__PURE__ */ React.createElement("select", { value: banco, onChange: e => setBanco(e.target.value), style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }},
+      /* @__PURE__ */ React.createElement("select", { value: banco, onChange: e => { setBanco(e.target.value); if(e.target.value !== "Otro") setBancoOtro(""); }, style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }},
         /* @__PURE__ */ React.createElement("option", { value:""}, "— Selecciona banco —"),
         /* @__PURE__ */ React.createElement("option", { value:"Reservas"}, "Banco de Reservas"),
         /* @__PURE__ */ React.createElement("option", { value:"Popular"}, "Banco Popular"),
         /* @__PURE__ */ React.createElement("option", { value:"BHD"}, "Banco BHD"),
         /* @__PURE__ */ React.createElement("option", { value:"Bremer"}, "Bremer"),
-        /* @__PURE__ */ React.createElement("option", { value:"Otro"}, "Otro")
+        /* @__PURE__ */ React.createElement("option", { value:"Otro"}, "✏️ Otro (escribir)"),
+        /* @__PURE__ */ React.createElement("option", { value:"Otro"}, "\u270F\uFE0F Otro (escribir)")
       )
     ),
+    banco === "Otro" && /* @__PURE__ */ React.createElement("div", { style:{ display:"flex", flexDirection:"column", gap:4 }},
+      /* @__PURE__ */ React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:C.grisd, textTransform:"uppercase", letterSpacing:1 }}, "Nombre del banco"),
+      /* @__PURE__ */ React.createElement("input", {
+        type:"text",
+        value: bancoOtro,
+        onChange: e => setBancoOtro(e.target.value),
+        placeholder: "Ej: Scotiabank, Lafise...",
+        autoFocus: true,
+        style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #93c5fd", fontSize:13, fontWeight:600, background:"#fff", minWidth:170, outline:"none" }
+      })
+    ),
     formaPago === "efectivo" && /* @__PURE__ */ React.createElement("div", { style:{ background:"#d1fae5", border:"1.5px solid #059669", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#065f46", display:"flex", alignItems:"center", gap:6 }},
-      "💵 Entra a Caja Chica"
+      "\u{1F4B5} Entra a Caja Chica"
+    ),
+    formaPago === "pendiente" && /* @__PURE__ */ React.createElement("div", { style:{ background:"#fef9c3", border:"1.5px solid #ca8a04", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#854d0e", display:"flex", alignItems:"center", gap:6 }},
+      "\u23F3 Pago pendiente \u2014 registrar al cobrar"
     ),
     /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: fecha, onChange: setFecha }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 220 } }, /* @__PURE__ */ React.createElement(
     Input,
