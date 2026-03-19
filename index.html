@@ -3049,6 +3049,8 @@ function PetColinas() {
       window.__inventarioGlobal = INVENTARIO_SEED;
       window.__pagosNomGlobal = [];
     }
+    // Exponer setVentas para portales
+    window.__setVentasGlobal = setVentasVet;
   }, []);
 
   useEffect(() => {
@@ -5627,7 +5629,34 @@ function Nomina({ empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mes
   const deletePago = (id) => {
     if (confirm("\xBFEliminar este registro de pago?")) setPagosNom(pagosNom.filter((p) => p.id !== id));
   };
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "N\xF3mina y Comisiones"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Mensualidades, comisiones calculadas y descuentos por empleado"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center" } }, /* @__PURE__ */ React.createElement(Input, { label: "Ver mes", type: "month", value: mes, onChange: setMes })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16, marginBottom: 28 } }, empleados.map((emp) => {
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "N\xF3mina y Comisiones"),
+    /* Ranking farmacia */
+    (() => {
+      const mesActual2 = new Date().toISOString().slice(0,7);
+      return /* @__PURE__ */ React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:"18px 20px", marginBottom:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }},
+        /* @__PURE__ */ React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }},
+          /* @__PURE__ */ React.createElement("div", null,
+            /* @__PURE__ */ React.createElement("div", { style:{ fontFamily:"Georgia,serif", fontSize:18, fontWeight:700 }}, "🏆 Ranking Ventas Farmacia — " + mesActual2),
+            /* @__PURE__ */ React.createElement("div", { style:{ fontSize:12, color:C.grisd, marginTop:2 }}, "Solo visible para administrador · Ordenado por comisiones ganadas")
+          ),
+          /* @__PURE__ */ React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:10 }},
+            /* @__PURE__ */ React.createElement("label", { style:{ fontSize:12, fontWeight:700, color:C.grisd }}, "🎯 Meta mes (" + mesActual2 + "):"),
+            /* @__PURE__ */ React.createElement("input", {
+              type:"number", min:0, step:100,
+              defaultValue: parseInt(localStorage.getItem("pc_meta_farmacia_"+mesActual2)||"0"),
+              onChange: e => {
+                const v = parseInt(e.target.value)||0;
+                localStorage.setItem("pc_meta_farmacia_"+mesActual2, v);
+              },
+              placeholder:"RD$ meta...",
+              style:{ width:130, padding:"7px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:700 }
+            }),
+            /* @__PURE__ */ React.createElement("span", { style:{ fontSize:11, color:C.grisd }}, "← Victor define la meta mensual para todos")
+          )
+        ),
+        /* @__PURE__ */ React.createElement(RankingVentasFarmacia, { ventas, mes: mesActual2 })
+      );
+    })(), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Mensualidades, comisiones calculadas y descuentos por empleado"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center" } }, /* @__PURE__ */ React.createElement(Input, { label: "Ver mes", type: "month", value: mes, onChange: setMes })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16, marginBottom: 28 } }, empleados.map((emp) => {
     const pagado = pagosMes.find((p) => p.empleadoId === emp.id);
     const comAuto = mes === mesActual ? comAutoMap[emp.id] || 0 : null;
     return /* @__PURE__ */ React.createElement(Card, { key: emp.id, style: { borderTop: `4px solid ${emp.id === "e1" ? C.verde : emp.id === "e2" ? C.azul : emp.id === "e4" ? C.naranja : emp.id === "e5" ? "#7c3aed" : C.gold}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 16 } }, emp.nombre), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, emp.cargo),
@@ -5678,6 +5707,45 @@ function Nomina({ empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mes
     padding: 20
   } }, /* @__PURE__ */ React.createElement(Card, { style: { width: "100%", maxWidth: 480 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, marginBottom: 4 } }, "\u{1F4B3} Registrar pago \u2014 ", modal.nombre), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 20 } }, "Mes: ", mes), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: "10px 14px", fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Mensualidad base: ", RD(modal.mensualidad)), /* @__PURE__ */ React.createElement("br", null), /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "Comisiones calculadas del mes: ", RD(comAutoMap[modal.id] || 0))), /* @__PURE__ */ React.createElement(Input, { label: "Comisiones adicionales (RD$)", type: "number", value: comExt, onChange: setComExt, placeholder: "0" }), /* @__PURE__ */ React.createElement(Input, { label: "Descuentos / adelantos (RD$)", type: "number", value: desc, onChange: setDesc, placeholder: "0" }), /* @__PURE__ */ React.createElement(Input, { label: "Nota (opcional)", value: nota, onChange: setNota, placeholder: "Adelanto, deuda, etc." }), /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 8, padding: "12px 16px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Total a pagar"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 26, color: C.verde, fontWeight: 700 } }, RD(modal.mensualidad + (comAutoMap[modal.id] || 0) + (parseFloat(comExt) || 0) - (parseFloat(desc) || 0))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: registrarPago }, "\u2705 Confirmar pago"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModal(null), color: C.grisd, outline: true }, "Cancelar")))));
 }
+// ─────────────────────────────────────────────────────────
+// RANKING DE VENTAS FARMACIA — solo admin
+// ─────────────────────────────────────────────────────────
+function RankingVentasFarmacia({ ventas, mes }) {
+  const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gold:"#b8860b", gris:"#5a6472" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+  const mesActual = mes || new Date().toISOString().slice(0,7);
+  const EMPLEADOS = [
+    { id:"alexander", nombre:"Alexander", emoji:"✂️" },
+    { id:"aylein",    nombre:"Aylein",    emoji:"🩺" },
+    { id:"valentina", nombre:"Valentina", emoji:"🩺" },
+    { id:"laura",     nombre:"Laura",     emoji:"📋" },
+    { id:"leydeli",   nombre:"Leydeli",   emoji:"🐾" },
+    { id:"victor",    nombre:"Victor",    emoji:"👑" },
+  ];
+  const ventasFarm = ventas.filter(v => v.area === "farmacia" && v.fecha?.slice(0,7) === mesActual);
+  const ranking = EMPLEADOS.map(emp => {
+    const misV = ventasFarm.filter(v => (v.recibidopor||"").toLowerCase().includes(emp.id));
+    return { ...emp, ventas: misV.length, comision: misV.reduce((s,v)=>s+(v.comision||0),0), total: misV.reduce((s,v)=>s+v.total,0) };
+  }).filter(e => e.ventas > 0).sort((a,b) => b.comision - a.comision);
+  
+  const medallas = ["🥇","🥈","🥉"];
+  if (ranking.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:13, padding:"12px 0" }}, "Sin ventas de farmacia registradas este mes.");
+  return React.createElement("div", null,
+    ranking.map((e,i) => React.createElement("div", { key:e.id,
+      style:{ display:"flex", alignItems:"center", gap:14, padding:"10px 0", borderBottom:"1px solid #f4f5f6" }},
+      React.createElement("div", { style:{ fontSize:22, width:32, textAlign:"center" }}, medallas[i] || "🏅"),
+      React.createElement("div", { style:{ flex:1 }},
+        React.createElement("div", { style:{ fontWeight:700, fontSize:14 }}, e.emoji + " " + e.nombre),
+        React.createElement("div", { style:{ fontSize:11, color:CC.gris }}, e.ventas + " ventas · Total: " + RD2(e.total))
+      ),
+      React.createElement("div", { style:{ textAlign:"right" }},
+        React.createElement("div", { style:{ fontWeight:900, fontSize:16, color:CC.azul }}, RD2(e.comision)),
+        React.createElement("div", { style:{ fontSize:10, color:CC.gris }}, "comisión ganada")
+      )
+    ))
+  );
+}
+
 function Gastos({ gastos, setGastos }) {
   const [fecha, setFecha] = useState(hoy());
   const [proveedor, setProv] = useState("");
@@ -6932,7 +7000,292 @@ const VET_EMAILS = [
 // ═══════════════════════════════════════════════
 // FARMACIA / TIENDA — Portal Veterinaria
 // ═══════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// MI VITRINA — Sistema de motivación de ventas
+// Componente compartido para vet y groomer
+// ═══════════════════════════════════════════════════════════
+function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
+  const [busq, setBusq] = React.useState("");
+  const [selProd, setSelProd] = React.useState(null);
+  const [qty, setQty] = React.useState(1);
+  const [cliente, setCliente] = React.useState("");
+  const [pago, setPago] = React.useState("efectivo");
+  const [celebracion, setCelebracion] = React.useState(null);
+  const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",azulL:"#e8eef8",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojo:"#c0392b",fondo:"#f0f4f8" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+  const mesActual = new Date().toISOString().slice(0,7);
+  const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
+
+  // Meta desde localStorage (la pone Victor)
+  const metaKey = "pc_meta_farmacia_" + mesActual;
+  const metaMes = parseInt(localStorage.getItem(metaKey) || "0");
+
+  // Mis ventas de farmacia este mes
+  const misVentasMes = ventas.filter(v =>
+    v.area === "farmacia" &&
+    v.fecha?.slice(0,7) === mesActual &&
+    (v.recibidopor||"").toLowerCase().includes(nombreBase)
+  );
+  const miComisionMes = misVentasMes.reduce((s,v) => s+(v.comision||0), 0);
+  const pctMeta = metaMes > 0 ? Math.min(100, Math.round(miComisionMes / metaMes * 100)) : null;
+
+  // Inventario con ganancia calculada
+  const inv = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[]))
+    .filter(p => p.pventa > 0)
+    .map(p => ({ ...p, ganancia: Math.max(0, p.pventa - (p.costo||0)), miComision: Math.round(Math.max(0, p.pventa - (p.costo||0)) * comPct) }))
+    .sort((a,b) => b.miComision - a.miComision); // ordenar por mayor comisión
+
+  // Top 3 productos estrella
+  const top3 = inv.slice(0,3).map(p => p.id);
+
+  // Filtro búsqueda
+  const invFiltrado = busq.length >= 2
+    ? inv.filter(p => p.nombre.toLowerCase().includes(busq.toLowerCase()))
+    : inv;
+
+  const gananciaActual = selProd ? selProd.ganancia * qty : 0;
+  const miComisionActual = Math.round(gananciaActual * comPct);
+
+  function registrar() {
+    if (!selProd || !cliente.trim()) return alert("Selecciona producto y escribe el nombre del cliente");
+    const v = {
+      id: Date.now(),
+      fecha: new Date().toISOString().slice(0,10),
+      cliente: cliente.trim(),
+      area: "farmacia",
+      servicio: qty > 1 ? qty + "x " + selProd.nombre : selProd.nombre,
+      descripcion: selProd.nombre,
+      total: selProd.pventa * qty,
+      comision: Math.round(selProd.ganancia * qty * comPct),
+      formapago: pago,
+      recibidopor: usuario.nombre,
+      cobradopor: usuario.nombre
+    };
+    setVentas(prev => [...(prev||[]), v]);
+    setCelebracion(v);
+    setSelProd(null); setCliente(""); setQty(1); setBusq("");
+    setTimeout(() => setCelebracion(null), 5000);
+  }
+
+  return React.createElement("div", null,
+    // ── Título ──
+    React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16, flexWrap:"wrap", gap:12 }},
+      React.createElement("div", null,
+        React.createElement("h2", { style:{ fontSize:22, fontWeight:900, margin:0, color:CC.verde }}, "🛍️ Mi Vitrina"),
+        React.createElement("p", { style:{ color:CC.gris, fontSize:13, margin:"4px 0 0" }}, "Vende productos y gana " + Math.round(comPct*100) + "% de la ganancia neta · Los ⭐ son los más rentables para ti")
+      )
+    ),
+
+    // ── BARRA DE PROGRESO (si hay meta) ──
+    metaMes > 0 && React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:"14px 18px", marginBottom:16, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", marginBottom:8 }},
+        React.createElement("span", { style:{ fontSize:13, fontWeight:700 }}, "🎯 Meta de comisiones " + mesActual),
+        React.createElement("span", { style:{ fontSize:13, fontWeight:900, color: pctMeta >= 100 ? CC.verde : CC.gold }},
+          RD2(miComisionMes) + " / " + RD2(metaMes) + " (" + (pctMeta||0) + "%)"
+        )
+      ),
+      React.createElement("div", { style:{ background:"#f0f2f0", borderRadius:20, height:14, overflow:"hidden" }},
+        React.createElement("div", { style:{
+          width: (pctMeta||0) + "%", height:"100%",
+          background: pctMeta >= 100 ? "linear-gradient(90deg,#1a6b3a,#2ecc71)" : pctMeta >= 70 ? "linear-gradient(90deg,#b8860b,#f1c40f)" : "linear-gradient(90deg,#1a4fa0,#3498db)",
+          borderRadius:20, transition:"width 0.6s ease"
+        }}),
+      ),
+      pctMeta >= 100 && React.createElement("div", { style:{ textAlign:"center", marginTop:6, fontSize:13, fontWeight:800, color:CC.verde }}, "🎉 ¡Meta alcanzada este mes! Excelente trabajo")
+    ),
+
+    // ── CELEBRACIÓN AL VENDER ──
+    celebracion && React.createElement("div", { style:{
+      background:"linear-gradient(135deg,#1a6b3a,#2ecc71)", borderRadius:14, padding:"16px 20px",
+      marginBottom:16, color:"#fff", animation:"fadeIn 0.3s",
+      display:"flex", justifyContent:"space-between", alignItems:"center",
+      boxShadow:"0 4px 20px rgba(26,107,58,0.4)"
+    }},
+      React.createElement("div", null,
+        React.createElement("div", { style:{ fontSize:16, fontWeight:900 }}, "🎉 ¡Venta registrada!"),
+        React.createElement("div", { style:{ fontSize:13, opacity:0.9, marginTop:2 }},
+          celebracion.servicio + " · " + (celebracion.cliente)
+        )
+      ),
+      React.createElement("div", { style:{ textAlign:"right" }},
+        React.createElement("div", { style:{ fontSize:11, opacity:0.8 }}, "Tu comisión"),
+        React.createElement("div", { style:{ fontSize:28, fontWeight:900 }}, RD2(celebracion.comision)),
+      )
+    ),
+
+    // ── FORM DE VENTA ──
+    React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, marginBottom:16, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+      React.createElement("div", { style:{ fontWeight:800, fontSize:15, marginBottom:14, color:CC.azul }}, "➕ Registrar venta"),
+
+      // Preview comisión si hay producto seleccionado
+      selProd && React.createElement("div", { style:{
+        background:"linear-gradient(135deg,#1a4fa0,#1a6b3a)", borderRadius:10, padding:"12px 18px",
+        marginBottom:14, color:"#fff", display:"flex", justifyContent:"space-between", alignItems:"center"
+      }},
+        React.createElement("div", null,
+          React.createElement("div", { style:{ fontSize:12, opacity:0.8 }}, qty + "x " + selProd.nombre),
+          React.createElement("div", { style:{ fontSize:22, fontWeight:900 }}, "Tu ganancia: " + RD2(miComisionActual))
+        ),
+        React.createElement("div", { style:{ textAlign:"right", fontSize:11, opacity:0.8 }},
+          React.createElement("div", null, "Precio venta: " + RD2(selProd.pventa * qty)),
+          React.createElement("div", null, "Gan. neta: " + RD2(gananciaActual) + " × " + Math.round(comPct*100) + "%")
+        )
+      ),
+
+      React.createElement("div", { style:{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }},
+        React.createElement("div", { style:{ flex:"1 1 180px" }},
+          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cliente / Mascota"),
+          React.createElement("input", { value:cliente, onChange:e=>setCliente(e.target.value), placeholder:"Nombre del cliente...",
+            style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Forma de pago"),
+          React.createElement("select", { value:pago, onChange:e=>setPago(e.target.value),
+            style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }},
+            React.createElement("option", { value:"efectivo" }, "💵 Efectivo"),
+            React.createElement("option", { value:"Transferencia Popular" }, "🏦 Popular"),
+            React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Reservas"),
+            React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta")
+          )
+        )
+      ),
+
+      // Buscador de productos
+      React.createElement("div", { style:{ position:"relative", marginBottom:12 }},
+        React.createElement("input", { value:busq, onChange:e=>{setBusq(e.target.value);setSelProd(null);},
+          placeholder:"🔍 Buscar producto...",
+          style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }}),
+        busq && React.createElement("button", { onClick:()=>{setBusq("");setSelProd(null);},
+          style:{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:16, color:CC.gris }}, "✕")
+      ),
+
+      // Grid de productos
+      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(185px,1fr))", gap:10, maxHeight:320, overflowY:"auto", paddingRight:4 }},
+        invFiltrado.length === 0
+          ? React.createElement("div", { style:{ gridColumn:"1/-1", textAlign:"center", color:CC.gris, padding:"20px 0", fontSize:13 }}, "Sin productos que coincidan con la búsqueda")
+          : invFiltrado.slice(0,40).map(p => {
+            const sel = selProd?.id === p.id;
+            const esEstrella = top3.includes(p.id);
+            return React.createElement("div", { key:p.id, onClick:()=>{setSelProd(p);setQty(1);},
+              style:{ border:"2px solid "+(sel?CC.azul:esEstrella?"#f1c40f":"#e8eaed"),
+                borderRadius:11, padding:"10px 12px", cursor:"pointer",
+                background:sel?CC.azulL:esEstrella?CC.goldL:"#fff",
+                transition:"all 0.15s", position:"relative" }},
+              esEstrella && React.createElement("span", { style:{ position:"absolute", top:6, right:8, fontSize:14 }}, "⭐"),
+              React.createElement("div", { style:{ fontSize:10, color:CC.gris, textTransform:"capitalize", marginBottom:2 }}, p.categoria||"producto"),
+              React.createElement("div", { style:{ fontWeight:700, fontSize:12, marginBottom:6, lineHeight:1.3 }}, p.nombre.slice(0,32)),
+              React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
+                React.createElement("span", { style:{ fontSize:12, color:CC.gris }}, "RD$" + (p.pventa||0).toLocaleString()),
+                React.createElement("span", { style:{
+                  fontSize:12, fontWeight:900, padding:"3px 8px", borderRadius:20,
+                  background: p.miComision >= 50 ? CC.verdeL : "#f4f5f6",
+                  color: p.miComision >= 50 ? CC.verde : CC.gris
+                }}, "+" + RD2(p.miComision))
+              ),
+              p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#e67e22", marginTop:3 }}, "⚠️ Sin stock")
+            );
+          })
+      ),
+
+      // Cantidad y botón registrar
+      selProd && React.createElement("div", { style:{ marginTop:14, display:"flex", gap:10, alignItems:"flex-end", flexWrap:"wrap" }},
+        React.createElement("div", null,
+          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cantidad"),
+          React.createElement("input", { type:"number", min:1, value:qty, onChange:e=>setQty(Math.max(1,parseInt(e.target.value)||1)),
+            style:{ width:70, padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
+        ),
+        React.createElement("button", { onClick:registrar,
+          style:{ flex:1, background:"linear-gradient(135deg,"+CC.verde+",#2ecc71)", color:"#fff", border:"none",
+            borderRadius:10, padding:"11px 20px", fontWeight:900, fontSize:14, cursor:"pointer",
+            boxShadow:"0 4px 14px rgba(26,107,58,0.3)" }},
+          "✅ Vender " + selProd.nombre.slice(0,20) + " · +" + RD2(miComisionActual)
+        )
+      )
+    ),
+
+    // ── HISTORIAL DE GANANCIAS ──
+    React.createElement(HistorialGanancias, { usuario, ventas, comPct, mesActual })
+  );
+}
+
+// ─────────────────────────────────────────────
+// Historial de ganancias de farmacia
+// ─────────────────────────────────────────────
+function HistorialGanancias({ usuario, ventas, comPct, mesActual }) {
+  const [filtro, setFiltro] = React.useState(mesActual);
+  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",gris:"#5a6472" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+  const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
+
+  const misVentas = ventas.filter(v =>
+    v.area === "farmacia" &&
+    (v.recibidopor||"").toLowerCase().includes(nombreBase)
+  );
+  const meses = ["todos", ...new Set(misVentas.map(v=>v.fecha?.slice(0,7)).filter(Boolean).sort().reverse())];
+  const filtradas = (filtro === "todos" ? misVentas : misVentas.filter(v=>v.fecha?.slice(0,7)===filtro))
+    .sort((a,b) => b.fecha.localeCompare(a.fecha));
+
+  const totalCom  = filtradas.reduce((s,v)=>s+(v.comision||0),0);
+  const totalVtas = filtradas.reduce((s,v)=>s+v.total,0);
+  const nVtas = filtradas.length;
+
+  return React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+    React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:8 }},
+      React.createElement("div", { style:{ fontWeight:800, fontSize:15 }}, "📊 Historial de ganancias — Farmacia"),
+      React.createElement("div", { style:{ display:"flex", gap:6, flexWrap:"wrap" }},
+        meses.slice(0,6).map(m => React.createElement("button", { key:m, onClick:()=>setFiltro(m),
+          style:{ padding:"5px 12px", borderRadius:20, border:"1.5px solid "+(filtro===m?CC.azul:"#e0e4e8"),
+            background:filtro===m?CC.azul:"#fff", color:filtro===m?"#fff":CC.gris, fontSize:11, fontWeight:700, cursor:"pointer" }},
+          m==="todos"?"Todos":m))
+      )
+    ),
+
+    // KPIs resumen
+    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:16 }},
+      [
+        { l:"Ventas", v:nVtas, c:CC.azul },
+        { l:"Total vendido", v:RD2(totalVtas), c:CC.verde },
+        { l:"Mis comisiones", v:RD2(totalCom), c:CC.gold },
+      ].map(k => React.createElement("div", { key:k.l, style:{ background:"#f8f9fa", borderRadius:10, padding:"10px 14px", textAlign:"center" }},
+        React.createElement("div", { style:{ fontSize:10, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, k.l),
+        React.createElement("div", { style:{ fontSize:16, fontWeight:900, color:k.c, marginTop:2 }}, k.v)
+      ))
+    ),
+
+    filtradas.length === 0
+      ? React.createElement("div", { style:{ color:CC.gris, fontSize:13, textAlign:"center", padding:"16px 0" }}, "Sin ventas de farmacia en este período.")
+      : React.createElement("div", { style:{ maxHeight:260, overflowY:"auto" }},
+          React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:12 }},
+            React.createElement("thead", null,
+              React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
+                ["Fecha","Cliente","Producto","Total","Comisión"].map(t =>
+                  React.createElement("th", { key:t, style:{ textAlign:"left", padding:"6px 10px", color:CC.gris, fontSize:10, fontWeight:700, textTransform:"uppercase" }}, t)
+                )
+              )
+            ),
+            React.createElement("tbody", null,
+              filtradas.map((v,i) =>
+                React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f8f9fa" }},
+                  React.createElement("td", { style:{ padding:"7px 10px", whiteSpace:"nowrap" }}, v.fecha),
+                  React.createElement("td", { style:{ padding:"7px 10px", fontWeight:600 }}, (v.cliente||"—").slice(0,18)),
+                  React.createElement("td", { style:{ padding:"7px 10px", color:CC.gris }}, (v.servicio||v.descripcion||"").slice(0,28)),
+                  React.createElement("td", { style:{ padding:"7px 10px", fontWeight:700, color:CC.verde }}, RD2(v.total)),
+                  React.createElement("td", { style:{ padding:"7px 10px", fontWeight:900, color:CC.azul }}, v.comision > 0 ? RD2(v.comision) : "—")
+                )
+              )
+            )
+          )
+        )
+  );
+}
+
 function FarmaciaVet({ usuario, ventas, setVentas, inventario }) {
+  // Usa MiVitrina con comisión del usuario (30% vet, 5% farmacia)
+  const comPct = 0.05; // 5% ganancia neta de farmacia
+  return React.createElement(MiVitrina, { usuario, ventas, setVentas, inventario, comPct });
+}
+function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
   const [busq, setBusq] = React.useState("");
   const [selProd, setSelProd] = React.useState(null);
   const [qty, setQty] = React.useState(1);
@@ -7208,9 +7561,10 @@ function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
   const totalCobrado = pagosAlexander.reduce((s,p)=>s+(p.totalPagado||0),0);
 
   const TABS_GRM = [
-    { id:"dashboard_grm", icon:"📊", label:"Mi Dashboard" },
-    { id:"mis_baños",     icon:"🛁", label:"Mis Baños" },
-    { id:"mis_comisiones_grm", icon:"💰", label:"Mis Comisiones" }
+    { id:"dashboard_grm",      icon:"📊", label:"Mi Dashboard" },
+    { id:"mis_baños",          icon:"🛁", label:"Mis Baños" },
+    { id:"mis_comisiones_grm", icon:"💰", label:"Mis Comisiones" },
+    { id:"mi_vitrina_grm",     icon:"🛍️", label:"Mi Vitrina" }
   ];
 
   return React.createElement("div", { style:{ fontFamily:"'Segoe UI',sans-serif", background:CC.fondo, minHeight:"100vh" }},
@@ -7305,6 +7659,13 @@ function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
       ),
 
       // MIS COMISIONES
+      tabGrm === "mi_vitrina_grm" && React.createElement(MiVitrina, {
+        usuario,
+        ventas,
+        setVentas: window.__setVentasGlobal || (() => {}),
+        inventario: window.__inventarioGlobal || [],
+        comPct: 0.05
+      }),
       tabGrm === "mis_comisiones_grm" && React.createElement("div", null,
         React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
         React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }}, "Comisión fija por servicio según tarifario"),
