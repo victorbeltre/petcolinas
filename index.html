@@ -3030,7 +3030,19 @@ function ImportarExcel({ ventas, setVentas, gastos, setGastos, clientes, setClie
 }
 function PetColinas() {
   const [session, setSession] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked, setAuthChecked] = useState(() => {
+    // Si no hay sesión guardada, no hay que esperar — mostrar login de inmediato
+    try {
+      const s = localStorage.getItem("pc_session");
+      if (!s) return true; // sin sesión → mostrar login directo
+      const parsed = JSON.parse(s);
+      if (parsed.expires_at && Date.now() / 1e3 > parsed.expires_at) {
+        localStorage.removeItem("pc_session");
+        return true;
+      }
+      return false; // hay sesión válida → esperar verificación
+    } catch { return true; }
+  });
   // Hooks siempre al tope — antes de cualquier return condicional (reglas de React)
   const [ventasVet, setVentasVet]   = useVentasConSeed(VENTAS_SEED);
   const setVentas = setVentasVet;
@@ -3055,7 +3067,7 @@ function PetColinas() {
   }, []);
 
   useEffect(() => {
-    Promise.resolve(supaGetSession()).then((s) => {
+    supaGetSession().then((s) => {
       setSession(s);
       setAuthChecked(true);
     });
