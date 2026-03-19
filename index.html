@@ -4392,6 +4392,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [descPct, setDescPct] = useState(0);
   const [prodSelId, setProdSelId] = useState("");
   const [cantProd, setCantProd] = useState(1);
+  const [busqProd, setBusqProd] = useState("");
   const [precioLibre, setPrecioLibre] = useState("");
   const [descLibre, setDescLibre] = useState("");
   const [modoFarmacia, setModoFarmacia] = useState("catalogo");
@@ -4444,7 +4445,11 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       if (modoFarmacia === "catalogo") {
         if (!prodSel) return alert("Selecciona un producto");
         const qty = Math.max(1, parseInt(cantProd) || 1);
-        if (prodSel.stock < qty) return alert(`Stock insuficiente. Solo hay ${prodSel.stock} unidades.`);
+        // Stock bajo: avisar pero permitir registrar (puede ser reposición manual)
+        if (prodSel.stock < qty) {
+          const ok = confirm(`\u26A0\uFE0F Stock insuficiente: solo hay ${prodSel.stock} unid. de "${prodSel.nombre}".\n\n\u00BFRegistrar la venta de todas formas?`);
+          if (!ok) return;
+        }
         const precio = prodSel.pventa * qty;
         const dto = Math.round(precio * pct / 100);
         setItems([...items, {
@@ -4464,6 +4469,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         setCantProd(1);
         setDescPct(0);
         setProdSelId("");
+        setBusqProd("");
       } else {
         const precio = parseFloat(precioLibre) || 0;
         if (!descLibre || precio <= 0) return alert("Completa descripci\xF3n y precio");
@@ -4805,7 +4811,22 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     fontSize: 11,
     fontWeight: 700,
     cursor: "pointer"
-  } }, l))), modoFarmacia === "catalogo" && /* @__PURE__ */ React.createElement("div", null, productosInv.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: C.naranja } }, "\u26A0\uFE0F No hay productos en inventario con precio de venta. Ve a ", /* @__PURE__ */ React.createElement("strong", null, "Inventario"), ".") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: {
+  } }, l))), modoFarmacia === "catalogo" && /* @__PURE__ */ React.createElement("div", null,
+    /* Buscador de productos */
+    /* @__PURE__ */ React.createElement("div", { style:{ position:"relative", marginBottom:12 }},
+      /* @__PURE__ */ React.createElement("input", {
+        type:"text",
+        value: busqProd,
+        onChange: e => { setBusqProd(e.target.value); setProdSelId(""); },
+        placeholder: "\uD83D\uDD0D Buscar producto por nombre...",
+        style:{ width:"100%", boxSizing:"border-box", padding:"9px 36px 9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, background:"#fff", outline:"none" }
+      }),
+      busqProd && /* @__PURE__ */ React.createElement("button", {
+        onClick: () => { setBusqProd(""); setProdSelId(""); },
+        style:{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:16, color:C.grisd }
+      }, "\u2715")
+    ),
+    productosInv.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: C.naranja } }, "\u26A0\uFE0F No hay productos en inventario con precio de venta. Ve a ", /* @__PURE__ */ React.createElement("strong", null, "Inventario"), ".") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))",
     gap: 8,
@@ -4813,21 +4834,21 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     maxHeight: 200,
     overflowY: "auto",
     padding: 4
-  } }, productosInv.map((p) => {
+  } }, (busqProd.trim() ? productosInv.filter(p => p.nombre.toLowerCase().includes(busqProd.toLowerCase())) : productosInv).map((p) => {
     const sel = prodSelId === String(p.id);
     const sinStock = p.stock === 0;
     return /* @__PURE__ */ React.createElement(
       "div",
       {
         key: p.id,
-        onClick: () => !sinStock && setProdSelId(String(p.id)),
+        onClick: () => setProdSelId(String(p.id)),
         style: {
-          border: `2px solid ${sel ? C.gold : sinStock ? "#e0e4e8" : "#e8eaed"}`,
+          border: `2px solid ${sel ? C.gold : sinStock ? "#f59e0b" : "#e8eaed"}`,
           borderRadius: 10,
           padding: "10px 12px",
-          cursor: sinStock ? "not-allowed" : "pointer",
-          background: sel ? C.goldL : sinStock ? "#fafafa" : "#fff",
-          opacity: sinStock ? 0.5 : 1
+          cursor: "pointer",
+          background: sel ? C.goldL : sinStock ? "#fffbeb" : "#fff",
+          opacity: 1
         }
       },
       /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "capitalize" } }, p.categoria),
@@ -4871,15 +4892,56 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         outline: "none"
       }
     }
-  ), /* @__PURE__ */ React.createElement("span", { style: { color: "#d97706", fontWeight: 700 } }, "%"))), previewPrecio > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, background: C.goldL, borderRadius: 8, padding: "8px 12px" } }, pct > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, textDecoration: "line-through" } }, RD(previewPrecio)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.gold } }, RD(previewNeto))), /* @__PURE__ */ React.createElement(Btn, { onClick: agregarItem, color: C.gold, small: true }, "\u2795 Agregar")))), modoFarmacia === "libre" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(
-    Input,
-    {
-      label: "Descripci\xF3n",
-      value: descLibre,
-      onChange: setDescLibre,
-      placeholder: "Ej: Collar antipulgas..."
-    }
-  ), /* @__PURE__ */ React.createElement(Input, { label: "Precio (RD$)", type: "number", value: precioLibre, onChange: setPrecioLibre, placeholder: "0" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Dto %"), /* @__PURE__ */ React.createElement("div", { style: {
+  ), /* @__PURE__ */ React.createElement("span", { style: { color: "#d97706", fontWeight: 700 } }, "%"))), previewPrecio > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, background: C.goldL, borderRadius: 8, padding: "8px 12px" } }, pct > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, textDecoration: "line-through" } }, RD(previewPrecio)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.gold } }, RD(previewNeto))), /* @__PURE__ */ React.createElement(Btn, { onClick: agregarItem, color: C.gold, small: true }, "\u2795 Agregar")))), modoFarmacia === "libre" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" } },
+    /* @__PURE__ */ React.createElement("div", { style:{ position:"relative", flex:"1 1 200px" }},
+      /* @__PURE__ */ React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:C.grisd, textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:6 }}, "Descripci\xF3n"),
+      /* @__PURE__ */ React.createElement("input", {
+        type:"text",
+        value: descLibre,
+        onChange: e => setDescLibre(e.target.value),
+        placeholder: "Escribe para buscar en inventario...",
+        style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, background:"#fff", outline:"none" }
+      }),
+      descLibre.length >= 2 && (() => {
+        const sugs = inventario
+          .filter(p => p.nombre.toLowerCase().includes(descLibre.toLowerCase()))
+          .slice(0, 7);
+        if (sugs.length === 0) return null;
+        return /* @__PURE__ */ React.createElement("div", {
+          style:{ position:"absolute", top:"100%", left:0, right:0, zIndex:200,
+            background:"#fff", border:"1.5px solid #e0e4e8", borderRadius:10,
+            boxShadow:"0 8px 24px rgba(0,0,0,0.12)", marginTop:4, overflow:"hidden",
+            maxHeight:260, overflowY:"auto" }
+        }, sugs.map(p =>
+          /* @__PURE__ */ React.createElement("div", {
+            key: p.id,
+            onMouseDown: e => {
+              e.preventDefault();
+              setDescLibre(p.nombre);
+              if (p.pventa > 0) setPrecioLibre(String(p.pventa));
+            },
+            style:{ padding:"9px 14px", cursor:"pointer", fontSize:13,
+              borderBottom:"1px solid #f4f5f6", display:"flex",
+              justifyContent:"space-between", alignItems:"center" },
+            onMouseEnter: e => e.currentTarget.style.background = C.goldL,
+            onMouseLeave: e => e.currentTarget.style.background = "#fff"
+          },
+            /* @__PURE__ */ React.createElement("div", null,
+              /* @__PURE__ */ React.createElement("div", { style:{ fontWeight:700, fontSize:13 }}, p.nombre),
+              /* @__PURE__ */ React.createElement("div", { style:{ fontSize:11, color:C.grisd }},
+                p.categoria,
+                p.stock > 0
+                  ? " \u00B7 Stock: " + p.stock + " unid."
+                  : " \u00B7 \u26A0\uFE0F Sin stock (se puede registrar igual)"
+              )
+            ),
+            p.pventa > 0 && /* @__PURE__ */ React.createElement("div", {
+              style:{ fontWeight:700, color:C.verde, fontSize:12, whiteSpace:"nowrap", marginLeft:8 }
+            }, RD(p.pventa))
+          )
+        ));
+      })()
+    ), /* @__PURE__ */ React.createElement(Input, { label: "Precio (RD$)", type: "number", value: precioLibre, onChange: setPrecioLibre, placeholder: "0" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Dto %"), /* @__PURE__ */ React.createElement("div", { style: {
     display: "flex",
     alignItems: "center",
     gap: 6,
