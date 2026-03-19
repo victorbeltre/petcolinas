@@ -4445,11 +4445,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       if (modoFarmacia === "catalogo") {
         if (!prodSel) return alert("Selecciona un producto");
         const qty = Math.max(1, parseInt(cantProd) || 1);
-        // Stock bajo: avisar pero permitir registrar (puede ser reposición manual)
-        if (prodSel.stock < qty) {
-          const ok = confirm(`\u26A0\uFE0F Stock insuficiente: solo hay ${prodSel.stock} unid. de "${prodSel.nombre}".\n\n\u00BFRegistrar la venta de todas formas?`);
-          if (!ok) return;
-        }
+        // Stock 0: se permite registrar igual (puede ser reposición o error de inventario)
         const precio = prodSel.pventa * qty;
         const dto = Math.round(precio * pct / 100);
         setItems([...items, {
