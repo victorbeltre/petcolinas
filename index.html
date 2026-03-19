@@ -3052,6 +3052,7 @@ function PetColinas() {
 
   const VET_EMAILS_LIST = ["aylein@petcolinas.com", "valentina@petcolinas.com"];
   const GRM_EMAILS_LIST = ["alexander@petcolinas.com"];
+  // petcolinasrd@gmail.com es también admin — cae en else → PetColinasApp
   const isVet = session?.user?.email && VET_EMAILS_LIST.includes(session.user.email);
   const isGrm = session?.user?.email && GRM_EMAILS_LIST.includes(session.user.email);
 
