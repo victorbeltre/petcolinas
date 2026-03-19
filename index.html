@@ -3055,7 +3055,7 @@ function PetColinas() {
   }, []);
 
   useEffect(() => {
-    supaGetSession().then((s) => {
+    Promise.resolve(supaGetSession()).then((s) => {
       setSession(s);
       setAuthChecked(true);
     });
