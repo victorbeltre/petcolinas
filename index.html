@@ -4385,6 +4385,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [formaPago, setFormaPago] = useState("pendiente");
   const [bancoOtro, setBancoOtro] = useState("");
   const [banco, setBanco] = useState("");
+  const [empleadoVenta, setEmpleadoVenta] = useState("e1");
   const [items, setItems] = useState([]);
   const [tipoItem, setTipoItem] = useState("grooming");
   const [servId, setServId] = useState(TARIFAS_GROOMING[0].id);
@@ -4534,6 +4535,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       total: totalNeto,
       comision: totalComision,
       descuento: totalDescuento,
+      recibidopor: empleadoVenta === "e1" ? "Alexander" : empleadoVenta === "e2" ? "Aylein" : empleadoVenta === "e5" ? "Valentina" : empleadoVenta === "e4" ? "Laura" : "",
       formapago: formaPago === "pendiente" ? "Pago pendiente" : formaPago === "transferencia" ? ("Transferencia " + (banco === "Otro" ? bancoOtro : banco)).trim() : formaPago,
       banco: banco || "",
       items: items.map((i) => ({ nombre: i.nombre, precio: i.precio, descPct: i.descPct, subtotal: i.subtotal, area: i.area }))
@@ -4545,6 +4547,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     setFormaPago("pendiente");
     setBanco("");
     setBancoOtro("");
+    setEmpleadoVenta("e1");
     enviarASheet(nueva);
     setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area });
     setTimeout(() => setNotifExito(null), 4e3);
@@ -4635,7 +4638,22 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     formaPago === "pendiente" && /* @__PURE__ */ React.createElement("div", { style:{ background:"#fef9c3", border:"1.5px solid #ca8a04", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#854d0e", display:"flex", alignItems:"center", gap:6 }},
       "\u23F3 Pago pendiente \u2014 registrar al cobrar"
     ),
-    /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: fecha, onChange: setFecha }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 220 } }, /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: fecha, onChange: setFecha }),
+    /* Selector de empleado — cambia automáticamente según el área */
+    /* @__PURE__ */ React.createElement("div", { style:{ display:"flex", flexDirection:"column", gap:4 }},
+      /* @__PURE__ */ React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:C.grisd, textTransform:"uppercase", letterSpacing:1 }}, "\uD83D\uDC64 Atendido por"),
+      /* @__PURE__ */ React.createElement("select", {
+        value: empleadoVenta,
+        onChange: e => setEmpleadoVenta(e.target.value),
+        style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }
+      },
+        /* @__PURE__ */ React.createElement("option", { value:"e1" }, "\u2702\uFE0F Alexander — Grooming"),
+        /* @__PURE__ */ React.createElement("option", { value:"e2" }, "\uD83E\uDE7A Dra. Aylein — Veterinaria"),
+        /* @__PURE__ */ React.createElement("option", { value:"e5" }, "\uD83E\uDE7A Dra. Valentina — Veterinaria"),
+        /* @__PURE__ */ React.createElement("option", { value:"e4" }, "\uD83D\uDCCB Laura — Admin"),
+        /* @__PURE__ */ React.createElement("option", { value:"e3" }, "\uD83D\uDC3E Leydeli — Apoyo")
+      )
+    ), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 220 } }, /* @__PURE__ */ React.createElement(
     Input,
     {
       label: "Cliente / Mascota",
@@ -4742,6 +4760,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     setTipoItem(v);
     setServId(v === "grooming" ? TARIFAS_GROOMING[0].id : TARIFAS_VET[0].id);
     setDescPct(0);
+    if (v === "grooming") setEmpleadoVenta("e1");
+    else if (v === "veterinaria" && empleadoVenta === "e1") setEmpleadoVenta("e2");
   }, style: {
     padding: "7px 16px",
     borderRadius: 20,
