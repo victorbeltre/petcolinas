@@ -3018,6 +3018,21 @@ function PetColinas() {
   const [ventasVet, setVentasVet]   = useVentasConSeed(VENTAS_SEED);
   const setVentas = setVentasVet;
   const [clientesVet, setClientesVet] = useClientesConSeed(CLIENTES_SEED);
+  const [pagosNomVet, setPagosNomVet] = React.useState([]);
+  const [invGlobal, setInvGlobal]     = React.useState([]);
+  // Exponer inventario y pagos via window para portales veterinaria/groomer
+  React.useEffect(() => {
+    try {
+      const inv = JSON.parse(localStorage.getItem("pc_inventario") || "[]");
+      if (inv.length > 0) { window.__inventarioGlobal = inv; setInvGlobal(inv); }
+      else window.__inventarioGlobal = INVENTARIO_SEED;
+      const pagos = JSON.parse(localStorage.getItem("pc_pagos") || "[]");
+      window.__pagosNomGlobal = pagos; setPagosNomVet(pagos);
+    } catch(e) {
+      window.__inventarioGlobal = INVENTARIO_SEED;
+      window.__pagosNomGlobal = [];
+    }
+  }, []);
 
   useEffect(() => {
     supaGetSession().then((s) => {
@@ -3036,12 +3051,20 @@ function PetColinas() {
   if (!session) return /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin });
 
   const VET_EMAILS_LIST = ["aylein@petcolinas.com", "valentina@petcolinas.com"];
+  const GRM_EMAILS_LIST = ["alexander@petcolinas.com"];
   const isVet = session?.user?.email && VET_EMAILS_LIST.includes(session.user.email);
+  const isGrm = session?.user?.email && GRM_EMAILS_LIST.includes(session.user.email);
 
   if (isVet) return /* @__PURE__ */ React.createElement(PortalVeterinaria, {
     session, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     clientes: clientesVet, setClientes: setClientesVet
+  });
+
+  if (isGrm) return /* @__PURE__ */ React.createElement(PortalGroomer, {
+    session, onLogout: handleLogout,
+    ventas: ventasVet,
+    pagosNom: pagosNomVet || []
   });
 
   return /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout });
@@ -6452,7 +6475,12 @@ const TARIFAS_VET_MODAL = [
 function DashboardVet({ usuario, ventas, onVerHistorias, onVerServicios }) {
   const [vistaActiva, setVistaActiva] = useState(null);
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
-  const misVentas = ventas.filter((v) => v.area === "veterinaria" && v.veterinaria_id === usuario.id);
+  // Filtrar por veterinaria_id (viejo) O por recibidopor (nuevo)
+  const misVentas = ventas.filter((v) => {
+    if (v.area !== "veterinaria" && v.area !== "farmacia") return false;
+    const r = (v.recibidopor || v.recibidoPor || "").toLowerCase();
+    return v.veterinaria_id === usuario.id || r.includes(usuario.nombre.split(" ")[0].toLowerCase()) || r.includes(usuario.id);
+  });
   const misMes = misVentas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
   const totalMes = misMes.reduce((s, v) => s + v.total, 0);
   const comisionMes = misMes.reduce((s, v) => s + (v.comision || 0), 0);
@@ -6819,7 +6847,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
   ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 16 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: crearPaciente, color: C.azul }, "Crear paciente"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalNuevo(false), color: C.grisd, outline: true }, "Cancelar")))));
 }
 function VacunasVet({ usuario, ventas }) {
-  const vacunas = ventas.filter((v) => v.area === "veterinaria" && v.veterinaria_id === usuario.id && (v.descripcion || v.servicio || "")?.toLowerCase().includes("vacuna")).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const vacunas = ventas.filter((v) => (v.area === "veterinaria" || v.area === "farmacia") && ((v.recibidopor||v.recibidoPor||"").toLowerCase().includes(usuario.nombre.split(" ")[0].toLowerCase()) || (v.recibidopor||v.recibidoPor||"").toLowerCase().includes(usuario.id) || v.veterinaria_id === usuario.id) && (v.descripcion || v.servicio || "")?.toLowerCase().includes("vacuna")).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const tipos = {};
   vacunas.forEach((v) => {
     (v.descripcion || v.servicio || "").split("+").filter((p) => p.toLowerCase().includes("vacuna")).forEach((p) => {
@@ -6832,7 +6860,7 @@ function VacunasVet({ usuario, ventas }) {
 function MisServiciosVet({ usuario, ventas }) {
   const [filtroMes, setFiltroMes] = useState("todos");
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
-  const misVentas = ventas.filter((v) => v.area === "veterinaria" && v.veterinaria_id === usuario.id);
+  const misVentas = ventas.filter((v) => (v.area === "veterinaria" || v.area === "farmacia") && ((v.recibidopor||v.recibidoPor||"").toLowerCase().includes(usuario.nombre.split(" ")[0].toLowerCase()) || (v.recibidopor||v.recibidoPor||"").toLowerCase().includes(usuario.id) || v.veterinaria_id === usuario.id));
   const misMes = misVentas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
   const mesesDisp = ["todos", ...new Set(misVentas.map((v) => v.fecha?.slice(0, 7)).filter(Boolean).sort().reverse())];
   const ventasFiltradas = filtroMes === "todos" ? [...misVentas].sort((a, b) => b.fecha.localeCompare(a.fecha)) : misVentas.filter((v) => v.fecha?.slice(0, 7) === filtroMes).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -6866,10 +6894,12 @@ function MisServiciosVet({ usuario, ventas }) {
   ))), /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 10, padding: "10px 16px", marginBottom: 16, display: "flex", gap: 24, fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.azul, fontWeight: 700 } }, ventasFiltradas.length, " servicio(s)"), /* @__PURE__ */ React.createElement("span", { style: { color: C.verde, fontWeight: 700 } }, "Ingresos: ", RD(totalFiltro)), /* @__PURE__ */ React.createElement("span", { style: { color: C.azul, fontWeight: 700 } }, "Comisi\xF3n: ", RD(comFiltro))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Descripci\xF3n", "Total", "Comisi\xF3n"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, ventasFiltradas.map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, (v.descripcion || v.servicio || "")?.slice(0, 80), (v.descripcion || v.servicio || "")?.length > 80 ? "\u2026" : ""), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.verde } }, RD(v.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.azul, fontWeight: 700 } }, RD(v.comision || 0)))), ventasFiltradas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 5, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin servicios en este per\xEDodo."))))));
 }
 const TABS_VET = [
-  { id: "dashboard_vet", icon: "\u{1F4CA}", label: "Dashboard" },
-  { id: "historias", icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
-  { id: "vacunas", icon: "\u{1F489}", label: "Vacunas" },
-  { id: "mis_servicios", icon: "\u{1F4DD}", label: "Mis Servicios" }
+  { id: "dashboard_vet",  icon: "\u{1F4CA}", label: "Dashboard" },
+  { id: "historias",      icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
+  { id: "vacunas",        icon: "\u{1F489}", label: "Vacunas" },
+  { id: "mis_servicios",  icon: "\u{1F4DD}", label: "Mis Servicios" },
+  { id: "farmacia_vet",   icon: "\u{1F48A}", label: "Farmacia / Tienda" },
+  { id: "mis_comisiones", icon: "\uD83D\uDCB0", label: "Mis Comisiones" }
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -6877,8 +6907,415 @@ const TABS_VET = [
 // ═══════════════════════════════════════════════════════════
 const VET_EMAILS = [
   { email: "aylein@petcolinas.com",    nombre: "Aylein Santiago",  id: "aylein",    comision_pct: 0.30 },
-  { email: "valentina@petcolinas.com", nombre: "Dra. Valentina",   id: "valentina", comision_pct: 0.35 },
+  { email: "valentina@petcolinas.com", nombre: "Dra. Valentina",   id: "valentina", comision_pct: 0.40 },
 ];
+
+
+// ═══════════════════════════════════════════════
+// FARMACIA / TIENDA — Portal Veterinaria
+// ═══════════════════════════════════════════════
+function FarmaciaVet({ usuario, ventas, setVentas, inventario }) {
+  const [busq, setBusq] = React.useState("");
+  const [selProd, setSelProd] = React.useState(null);
+  const [qty, setQty] = React.useState(1);
+  const [cliente, setCliente] = React.useState("");
+  const [pago, setPago] = React.useState("efectivo");
+  const [ok, setOk] = React.useState(null);
+  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",fondo:"#f0f4f8",rojo:"#c0392b" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+
+  const prods = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[]))
+    .filter(p => p.pventa > 0 && (busq.length < 2 || p.nombre.toLowerCase().includes(busq.toLowerCase())));
+
+  const ganancia = selProd ? Math.max(0, (selProd.pventa - selProd.costo) * qty) : 0;
+  const miComision = Math.round(ganancia * 0.05);
+
+  function registrar() {
+    if (!selProd || !cliente.trim()) return alert("Selecciona producto y cliente");
+    const v = {
+      id: Date.now(),
+      fecha: new Date().toISOString().slice(0,10),
+      cliente: cliente.trim(),
+      area: "farmacia",
+      servicio: qty > 1 ? qty + "x " + selProd.nombre : selProd.nombre,
+      total: selProd.pventa * qty,
+      comision: miComision,
+      formapago: pago,
+      recibidopor: usuario.nombre,
+      cobradopor: usuario.nombre
+    };
+    setVentas(prev => [...(prev||[]), v]);
+    setOk(v);
+    setSelProd(null); setCliente(""); setQty(1); setBusq("");
+    setTimeout(() => setOk(null), 4000);
+  }
+
+  return React.createElement("div", null,
+    React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💊 Farmacia / Tienda"),
+    React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }}, "Vende productos y gana el 5% de la ganancia neta por cada venta"),
+
+    // Badge motivacional
+    selProd && React.createElement("div", { style:{ background:"linear-gradient(135deg,#1a4fa0,#1a6b3a)", borderRadius:12, padding:"14px 20px", marginBottom:16, color:"#fff", display:"flex", justifyContent:"space-between", alignItems:"center" }},
+      React.createElement("div", null,
+        React.createElement("div", { style:{ fontSize:12, opacity:0.8 }}, "Tu comisión si vendes " + qty + "x " + selProd.nombre),
+        React.createElement("div", { style:{ fontSize:26, fontWeight:900 }}, RD2(miComision)),
+        React.createElement("div", { style:{ fontSize:11, opacity:0.7 }}, "Ganancia neta: " + RD2(ganancia) + " × 5%")
+      ),
+      React.createElement("div", { style:{ fontSize:40 }}, "🤑")
+    ),
+
+    ok && React.createElement("div", { style:{ background:"#d1fae5", border:"2px solid #059669", borderRadius:10, padding:"12px 16px", marginBottom:16, fontSize:13, color:"#065f46", fontWeight:700 }},
+      "✅ Venta registrada — " + ok.servicio + " · " + RD2(ok.total) + " · Tu comisión: " + RD2(ok.comision)
+    ),
+
+    // Form
+    React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, marginBottom:16, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:14 }}, "➕ Registrar venta"),
+
+      React.createElement("div", { style:{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }},
+        React.createElement("div", { style:{ flex:"1 1 200px" }},
+          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cliente / Mascota"),
+          React.createElement("input", { value:cliente, onChange:e=>setCliente(e.target.value), placeholder:"Nombre del cliente...", style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
+        ),
+        React.createElement("div", { style:{ display:"flex", flexDirection:"column", gap:4 }},
+          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Forma de pago"),
+          React.createElement("select", { value:pago, onChange:e=>setPago(e.target.value), style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }},
+            React.createElement("option", { value:"efectivo" }, "💵 Efectivo"),
+            React.createElement("option", { value:"Transferencia Popular" }, "🏦 Popular"),
+            React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Reservas"),
+            React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta")
+          )
+        )
+      ),
+
+      // Buscador
+      React.createElement("div", { style:{ position:"relative", marginBottom:12 }},
+        React.createElement("input", { value:busq, onChange:e=>{setBusq(e.target.value); setSelProd(null);}, placeholder:"🔍 Buscar producto...", style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
+      ),
+
+      // Grid de productos
+      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:10, maxHeight:300, overflowY:"auto" }},
+        prods.slice(0,30).map(p => {
+          const gan = Math.max(0, p.pventa - p.costo);
+          const com5 = Math.round(gan * 0.05);
+          const sel = selProd?.id === p.id;
+          return React.createElement("div", {
+            key: p.id,
+            onClick: () => { setSelProd(p); setQty(1); },
+            style:{ border:"2px solid " + (sel ? CC.azul : "#e8eaed"), borderRadius:10, padding:"10px 12px", cursor:"pointer", background: sel ? "#e8eef8" : "#fff", transition:"all 0.15s" }
+          },
+            React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"capitalize" }}, p.categoria),
+            React.createElement("div", { style:{ fontWeight:700, fontSize:12, marginBottom:4 }}, p.nombre.slice(0,28)),
+            React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
+              React.createElement("span", { style:{ fontWeight:800, color:CC.verde }}, RD2(p.pventa)),
+              React.createElement("span", { style:{ fontSize:11, background:"#d1fae5", color:CC.verde, borderRadius:20, padding:"2px 6px", fontWeight:700 }}, "+" + RD2(com5))
+            ),
+            p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#d97706", marginTop:2 }}, "⚠️ Sin stock")
+          );
+        })
+      ),
+
+      selProd && React.createElement("div", { style:{ marginTop:14, display:"flex", gap:10, alignItems:"flex-end" }},
+        React.createElement("div", null,
+          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cantidad"),
+          React.createElement("input", { type:"number", min:1, value:qty, onChange:e=>setQty(Math.max(1,parseInt(e.target.value)||1)), style:{ width:70, padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
+        ),
+        React.createElement("button", {
+          onClick: registrar,
+          style:{ flex:1, background:CC.verde, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:800, fontSize:14, cursor:"pointer" }
+        }, "✅ Registrar venta · " + RD2(selProd.pventa * qty))
+      )
+    ),
+
+    // Historial ventas farmacia de esta doctora
+    React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "📋 Mis ventas de farmacia"),
+      (() => {
+        const mis = ventas.filter(v => v.area === "farmacia" && (v.recibidopor||"").toLowerCase().includes(usuario.nombre.split(" ")[0].toLowerCase())).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,15);
+        if (mis.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:13 }}, "Aún no tienes ventas de farmacia registradas.");
+        return React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
+          React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
+            ["Fecha","Cliente","Producto","Total","Comisión"].map(t => React.createElement("th", { key:t, style:{ textAlign:"left", padding:"6px 10px", color:CC.gris, fontSize:11, fontWeight:700, textTransform:"uppercase" }}, t))
+          )),
+          React.createElement("tbody", null, mis.map((v,i) =>
+            React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f4f5f6" }},
+              React.createElement("td", { style:{ padding:"8px 10px" }}, v.fecha),
+              React.createElement("td", { style:{ padding:"8px 10px", fontWeight:600 }}, v.cliente||"—"),
+              React.createElement("td", { style:{ padding:"8px 10px", color:CC.gris, fontSize:12 }}, (v.servicio||v.descripcion||"").slice(0,30)),
+              React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700, color:CC.verde }}, RD2(v.total)),
+              React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700, color:CC.azul }}, RD2(v.comision))
+            )
+          ))
+        );
+      })()
+    )
+  );
+}
+
+
+// ═══════════════════════════════════════════════
+// MIS COMISIONES — Portal Veterinaria
+// ═══════════════════════════════════════════════
+function MisComisionesVet({ usuario, ventas, pagosNom }) {
+  const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
+  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojoL:"#fdecea",rojo:"#c0392b" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+
+  const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
+  const todasMisVentas = ventas.filter(v => {
+    const r = (v.recibidopor||v.recibidoPor||"").toLowerCase();
+    return r.includes(nombreBase) || r.includes(usuario.id) || v.veterinaria_id === usuario.id;
+  });
+
+  const meses = ["todos", ...new Set(todasMisVentas.map(v=>v.fecha?.slice(0,7)).filter(Boolean).sort().reverse())];
+  const filtradas = filtroMes === "todos" ? todasMisVentas : todasMisVentas.filter(v=>v.fecha?.slice(0,7)===filtroMes);
+  const filtradas2 = [...filtradas].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+
+  const totalComision = filtradas2.reduce((s,v)=>s+(v.comision||0), 0);
+  const totalVentas   = filtradas2.reduce((s,v)=>s+v.total, 0);
+  const nServicios    = filtradas2.length;
+
+  // Pagos recibidos de nómina
+  const pagosEmp = (pagosNom||[]).filter(p => p.empleadoId === (usuario.id === "aylein" ? "e2" : "e5"));
+  const totalPagado = pagosEmp.reduce((s,p)=>s+(p.totalPagado||0),0);
+
+  const pctDisplay = usuario.comision_pct ? (usuario.comision_pct * 100).toFixed(0) + "%" : "—";
+
+  return React.createElement("div", null,
+    React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
+    React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }},
+      "Detalle de comisiones por servicio · " + (usuario.id === "valentina" ? "40% veterinaria · 5% farmacia" : "30% veterinaria · 5% farmacia")
+    ),
+
+    // KPIs
+    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
+      [
+        { label:"Servicios", val: nServicios, color: CC.azul, icon:"🩺" },
+        { label:"Total generado", val: RD2(totalVentas), color: CC.verde, icon:"📊" },
+        { label:"Comisiones ganadas", val: RD2(totalComision), color: CC.gold, icon:"💰" },
+        { label:"Total cobrado (nómina)", val: RD2(totalPagado), color: CC.gris, icon:"✅" },
+      ].map(k => React.createElement("div", { key:k.label, style:{ background:"#fff", borderRadius:12, padding:"14px 16px", borderTop:"4px solid "+k.color, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+        React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, k.icon + " " + k.label),
+        React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:k.color, marginTop:4 }}, k.val)
+      ))
+    ),
+
+    // Filtro mes
+    React.createElement("div", { style:{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }},
+      meses.map(m => React.createElement("button", {
+        key:m, onClick:()=>setFiltroMes(m),
+        style:{ padding:"6px 14px", borderRadius:20, border:"1.5px solid "+(filtroMes===m?CC.azul:"#e0e4e8"), background:filtroMes===m?CC.azul:"#fff", color:filtroMes===m?"#fff":CC.gris, fontSize:12, fontWeight:700, cursor:"pointer" }
+      }, m === "todos" ? "Todos" : m))
+    ),
+
+    // Tabla detallada por servicio
+    React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", marginBottom:16 }},
+      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "📋 Detalle por servicio"),
+      filtradas2.length === 0
+        ? React.createElement("div", { style:{ color:CC.gris, fontSize:13, textAlign:"center", padding:"24px 0" }}, "No hay servicios en este período.")
+        : React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
+            React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
+              ["Fecha","Cliente","Servicio/Producto","Área","Total","Comisión"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
+            )),
+            React.createElement("tbody", null, filtradas2.map((v,i) =>
+              React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f4f5f6" }},
+                React.createElement("td", { style:{padding:"8px 10px",whiteSpace:"nowrap"}}, v.fecha),
+                React.createElement("td", { style:{padding:"8px 10px",fontWeight:600}}, (v.cliente||"—").slice(0,20)),
+                React.createElement("td", { style:{padding:"8px 10px",color:CC.gris,fontSize:12}}, (v.servicio||v.descripcion||"").slice(0,35)),
+                React.createElement("td", { style:{padding:"8px 10px"}},
+                  React.createElement("span", { style:{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:20, background: v.area==="veterinaria"?"#e8eef8":"#fdf6e3", color: v.area==="veterinaria"?CC.azul:CC.gold }}, v.area)
+                ),
+                React.createElement("td", { style:{padding:"8px 10px",fontWeight:700,color:CC.verde}}, RD2(v.total)),
+                React.createElement("td", { style:{padding:"8px 10px",fontWeight:800,color:CC.azul}}, v.comision > 0 ? RD2(v.comision) : "—")
+              )
+            ))
+          )
+    ),
+
+    // Historial de pagos de nómina
+    pagosEmp.length > 0 && React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "✅ Historial de pagos recibidos"),
+      React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
+        React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
+          ["Mes","Mensualidad","Comisiones","Descuentos","Total pagado"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
+        )),
+        React.createElement("tbody", null, [...pagosEmp].sort((a,b)=>b.mes.localeCompare(a.mes)).map((p,i)=>
+          React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f4f5f6" }},
+            React.createElement("td", { style:{padding:"8px 10px",fontWeight:600}}, p.mes),
+            React.createElement("td", { style:{padding:"8px 10px"}}, RD2(p.mensualidad||0)),
+            React.createElement("td", { style:{padding:"8px 10px",color:CC.azul,fontWeight:700}}, RD2(p.comisiones||0)),
+            React.createElement("td", { style:{padding:"8px 10px",color:CC.rojo}}, p.descuentos > 0 ? "-" + RD2(p.descuentos) : "—"),
+            React.createElement("td", { style:{padding:"8px 10px",fontWeight:800,color:CC.verde}}, RD2(p.totalPagado))
+          )
+        ))
+      )
+    )
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// PORTAL GROOMER — Alexander
+// ═══════════════════════════════════════════════════════════
+function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
+  const [tabGrm, setTabGrm] = React.useState("dashboard_grm");
+  const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
+  const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",gris:"#5a6472",grisd:"#5a6472",fondo:"#f0f4f8",gold:"#b8860b" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+
+  const mesActual = new Date().toISOString().slice(0,7);
+  const misVentas = ventas.filter(v => v.area === "grooming" && (
+    (v.recibidopor||"").toLowerCase().includes("alexander") ||
+    (v.recibidopor||"").toLowerCase().includes("e1")
+  ));
+  const misMes = misVentas.filter(v => v.fecha?.slice(0,7) === mesActual);
+  const totalMes = misMes.reduce((s,v)=>s+v.total,0);
+  const comisionMes = misMes.reduce((s,v)=>s+(v.comision||0),0);
+  const banosMes = misMes.length;
+
+  const ventasFiltro = filtroMes === "todos"
+    ? [...misVentas].sort((a,b)=>b.fecha.localeCompare(a.fecha))
+    : misVentas.filter(v=>v.fecha?.slice(0,7)===filtroMes).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const meses = ["todos", ...new Set(misVentas.map(v=>v.fecha?.slice(0,7)).filter(Boolean).sort().reverse())];
+  const totalFiltro = ventasFiltro.reduce((s,v)=>s+v.total,0);
+  const comFiltro   = ventasFiltro.reduce((s,v)=>s+(v.comision||0),0);
+
+  const pagosAlexander = (pagosNom||[]).filter(p=>p.empleadoId==="e1").sort((a,b)=>b.mes.localeCompare(a.mes));
+  const totalCobrado = pagosAlexander.reduce((s,p)=>s+(p.totalPagado||0),0);
+
+  const TABS_GRM = [
+    { id:"dashboard_grm", icon:"📊", label:"Mi Dashboard" },
+    { id:"mis_baños",     icon:"🛁", label:"Mis Baños" },
+    { id:"mis_comisiones_grm", icon:"💰", label:"Mis Comisiones" }
+  ];
+
+  return React.createElement("div", { style:{ fontFamily:"'Segoe UI',sans-serif", background:CC.fondo, minHeight:"100vh" }},
+    // Header
+    React.createElement("div", { style:{ background:"linear-gradient(135deg,#1a6b3a,#145a30)", padding:"16px 28px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 18px rgba(0,0,0,0.15)" }},
+      React.createElement("div", null,
+        React.createElement("div", { style:{ fontSize:19, fontWeight:800, color:"#fff" }}, "✂️ PetColinas · Portal Groomer"),
+        React.createElement("div", { style:{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:2 }}, "Plaza Las Colinas · SDO")
+      ),
+      React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:16 }},
+        React.createElement("div", { style:{ fontSize:12, color:"rgba(255,255,255,0.8)", fontWeight:700, textAlign:"right" }},
+          "✂️ Alexander Ramírez",
+          React.createElement("div", { style:{ fontSize:11, color:"rgba(255,255,255,0.6)" }}, "Groomer · Comisión fija por servicio")
+        ),
+        React.createElement("button", { onClick:onLogout, style:{ background:"rgba(255,255,255,0.15)", color:"#fff", border:"1px solid rgba(255,255,255,0.3)", borderRadius:10, padding:"8px 16px", cursor:"pointer", fontWeight:700, fontSize:13 }}, "Cerrar sesión")
+      )
+    ),
+    // Nav
+    React.createElement("div", { style:{ background:"#fff", borderBottom:"2px solid #eef0f2", display:"flex", gap:0, overflowX:"auto", padding:"0 20px" }},
+      TABS_GRM.map(t => React.createElement("button", {
+        key:t.id, onClick:()=>setTabGrm(t.id),
+        style:{ background:"none", border:"none", cursor:"pointer", padding:"13px 18px", fontSize:13, fontWeight:700, color:tabGrm===t.id?CC.verde:CC.gris, borderBottom:tabGrm===t.id?"3px solid "+CC.verde:"3px solid transparent", whiteSpace:"nowrap" }
+      }, t.icon + " " + t.label))
+    ),
+    // Contenido
+    React.createElement("div", { style:{ maxWidth:1100, margin:"0 auto", padding:"24px 20px" }},
+
+      // DASHBOARD
+      tabGrm === "dashboard_grm" && React.createElement("div", null,
+        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:16 }}, "📊 Mi Dashboard — Marzo 2026"),
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
+          [
+            { label:"Baños este mes", val:banosMes, color:CC.verde, icon:"🛁" },
+            { label:"Ingresos generados", val:RD2(totalMes), color:CC.azul, icon:"📊" },
+            { label:"Mis comisiones", val:RD2(comisionMes), color:CC.gold, icon:"💰" },
+            { label:"Total cobrado", val:RD2(totalCobrado), color:CC.gris, icon:"✅" },
+          ].map(k => React.createElement("div", { key:k.label, style:{ background:"#fff", borderRadius:12, padding:"14px 16px", borderTop:"4px solid "+k.color, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+            React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, k.icon + " " + k.label),
+            React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:k.color, marginTop:4 }}, k.val)
+          ))
+        ),
+        // Últimos 5 servicios
+        React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+          React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "🕐 Últimos servicios"),
+          misMes.length === 0
+            ? React.createElement("div", { style:{ color:CC.gris, fontSize:13 }}, "No hay servicios registrados este mes.")
+            : [...misMes].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,8).map((v,i) =>
+                React.createElement("div", { key:i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:13 }},
+                  React.createElement("div", null,
+                    React.createElement("div", { style:{ fontWeight:600 }}, v.cliente||"—"),
+                    React.createElement("div", { style:{ fontSize:11, color:CC.gris }}, v.fecha + " · " + (v.servicio||v.descripcion||"").slice(0,30))
+                  ),
+                  React.createElement("div", { style:{ textAlign:"right" }},
+                    React.createElement("div", { style:{ fontWeight:800, color:CC.verde }}, RD2(v.total)),
+                    React.createElement("div", { style:{ fontSize:11, color:CC.azul }}, "com. " + RD2(v.comision||0))
+                  )
+                )
+              )
+        )
+      ),
+
+      // MIS BAÑOS
+      tabGrm === "mis_baños" && React.createElement("div", null,
+        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:8 }}, "🛁 Mis Baños y Servicios"),
+        React.createElement("div", { style:{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }},
+          meses.map(m => React.createElement("button", {
+            key:m, onClick:()=>setFiltroMes(m),
+            style:{ padding:"6px 14px", borderRadius:20, border:"1.5px solid "+(filtroMes===m?CC.verde:"#e0e4e8"), background:filtroMes===m?CC.verde:"#fff", color:filtroMes===m?"#fff":CC.gris, fontSize:12, fontWeight:700, cursor:"pointer" }
+          }, m==="todos"?"Todos":m))
+        ),
+        React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:16, marginBottom:12, display:"flex", gap:20 }},
+          React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Servicios"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.verde }}, ventasFiltro.length)),
+          React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Total generado"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.azul }}, RD2(totalFiltro))),
+          React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Mis comisiones"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.gold }}, RD2(comFiltro)))
+        ),
+        React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
+          ventasFiltro.length === 0
+            ? React.createElement("div", { style:{ color:CC.gris, fontSize:13 }}, "No hay servicios en este período.")
+            : React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
+                React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
+                  ["Fecha","Cliente","Servicio","Total","Comisión"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
+                )),
+                React.createElement("tbody", null, ventasFiltro.map((v,i)=>
+                  React.createElement("tr",{key:i,style:{borderBottom:"1px solid #f4f5f6"}},
+                    React.createElement("td",{style:{padding:"8px 10px",whiteSpace:"nowrap"}},v.fecha),
+                    React.createElement("td",{style:{padding:"8px 10px",fontWeight:600}},(v.cliente||"—").slice(0,20)),
+                    React.createElement("td",{style:{padding:"8px 10px",color:CC.gris,fontSize:12}},(v.servicio||v.descripcion||"").slice(0,35)),
+                    React.createElement("td",{style:{padding:"8px 10px",fontWeight:700,color:CC.verde}},RD2(v.total)),
+                    React.createElement("td",{style:{padding:"8px 10px",fontWeight:800,color:CC.azul}},v.comision>0?RD2(v.comision):"—")
+                  )
+                ))
+              )
+        )
+      ),
+
+      // MIS COMISIONES
+      tabGrm === "mis_comisiones_grm" && React.createElement("div", null,
+        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
+        React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }}, "Comisión fija por servicio según tarifario"),
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
+          [
+            { label:"Total ganado (histórico)", val:RD2(misVentas.reduce((s,v)=>s+(v.comision||0),0)), color:CC.gold, icon:"💰" },
+            { label:"Total cobrado", val:RD2(totalCobrado), color:CC.verde, icon:"✅" },
+          ].map(k => React.createElement("div",{key:k.label,style:{background:"#fff",borderRadius:12,padding:"14px 16px",borderTop:"4px solid "+k.color,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}},
+            React.createElement("div",{style:{fontSize:11,color:CC.gris,textTransform:"uppercase",letterSpacing:1}},k.icon+" "+k.label),
+            React.createElement("div",{style:{fontSize:20,fontWeight:900,color:k.color,marginTop:4}},k.val)
+          ))
+        ),
+        pagosAlexander.length > 0 && React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}},
+          React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:12}},"✅ Historial de pagos recibidos"),
+          React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:13}},
+            React.createElement("thead",null,React.createElement("tr",{style:{borderBottom:"2px solid #f0f2f0"}},
+              ["Mes","Sueldo base","Comisiones","Descuentos","Total"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
+            )),
+            React.createElement("tbody",null,pagosAlexander.map((p,i)=>
+              React.createElement("tr",{key:i,style:{borderBottom:"1px solid #f4f5f6"}},
+                React.createElement("td",{style:{padding:"8px 10px",fontWeight:600}},p.mes),
+                React.createElement("td",{style:{padding:"8px 10px"}},RD2(p.mensualidad||0)),
+                React.createElement("td",{style:{padding:"8px 10px",color:CC.azul,fontWeight:700}},RD2(p.comisiones||0)),
+                React.createElement("td",{style:{padding:"8px 10px",color:CC.gris}},p.descuentos>0?"-"+RD2(p.descuentos):"—"),
+                React.createElement("td",{style:{padding:"8px 10px",fontWeight:800,color:CC.verde}},RD2(p.totalPagado))
+              )
+            ))
+          )
+        )
+      )
+    )
+  );
+}
 
 function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes }) {
   const [tabVet, setTabVet] = React.useState("dashboard_vet");
@@ -6942,7 +7379,9 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       }),
       tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas }),
-      tabVet === "mis_servicios" && React.createElement(MisServiciosVet, { usuario, ventas })
+      tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
+      tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [] }),
+      tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] })
     )
   );
 }
