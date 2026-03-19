@@ -644,21 +644,38 @@ function useLS(key, def) {
   return [val, setVal];
 }
 function useVentasConSeed(seed) {
-  const seedIds = useMemo(() => new Set(seed.map((v) => v.id)), []);
+  const seedIds = useMemo(() => new Set(seed.map((v) => String(v.id))), []);
   const [val, setVal] = useState(() => {
     try {
       const s = localStorage.getItem("pc_ventas");
       const stored = s ? JSON.parse(s) : [];
-      const manuales = stored.filter((v) => !seedIds.has(v.id));
-      return [...seed, ...manuales];
+      // Si localStorage tiene más ventas que el seed, usar localStorage completo
+      // (sincronizado desde Supabase con comisiones corregidas)
+      if (stored.length > seed.length) {
+        // Combinar: localStorage base + manuales nuevas no en localStorage
+        const storedIds = new Set(stored.map(v => String(v.id)));
+        const extras = seed.filter(v => !storedIds.has(String(v.id)));
+        return [...stored, ...extras];
+      }
+      // Si localStorage tiene pocas/ninguna venta, usar seed + manuales del LS
+      const manuales = stored.filter((v) => !seedIds.has(String(v.id)));
+      // Para ventas del seed que están en LS con datos actualizados, usar LS
+      const lsMap = new Map(stored.map(v => [String(v.id), v]));
+      const seedConUpdates = seed.map(sv => {
+        const lsV = lsMap.get(String(sv.id));
+        // Si el LS tiene comisión corregida (>0 cuando seed=0), usar LS
+        if (lsV && lsV.comision > 0 && sv.comision === 0) return lsV;
+        return sv;
+      });
+      return [...seedConUpdates, ...manuales];
     } catch { return seed; }
   });
   const setValYGuardar = useCallback((updater) => {
     setVal((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       try {
-        const soloManuales = next.filter((v) => !seedIds.has(v.id));
-        localStorage.setItem("pc_ventas", JSON.stringify(soloManuales));
+        // Guardar todo en localStorage (no solo manuales)
+        localStorage.setItem("pc_ventas", JSON.stringify(next));
       } catch(e) { console.warn("localStorage ventas:", e); }
       return next;
     });
