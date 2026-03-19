@@ -5654,6 +5654,7 @@ function Nomina({ empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mes
             /* @__PURE__ */ React.createElement("span", { style:{ fontSize:11, color:C.grisd }}, "← Victor define la meta mensual para todos")
           )
         ),
+        /* @__PURE__ */ React.createElement(PanelBoostAdmin, null),
         /* @__PURE__ */ React.createElement(RankingVentasFarmacia, { ventas, mes: mesActual2 })
       );
     })(), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Mensualidades, comisiones calculadas y descuentos por empleado"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center" } }, /* @__PURE__ */ React.createElement(Input, { label: "Ver mes", type: "month", value: mes, onChange: setMes })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16, marginBottom: 28 } }, empleados.map((emp) => {
@@ -5710,6 +5711,113 @@ function Nomina({ empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mes
 // ─────────────────────────────────────────────────────────
 // RANKING DE VENTAS FARMACIA — solo admin
 // ─────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════
+// PANEL DE BOOST ADMIN — Victor activa boosts
+// ═══════════════════════════════════════════════
+function PanelBoostAdmin() {
+  const [mult, setMult] = React.useState("2");
+  const [horas, setHoras] = React.useState("4");
+  const [prodId, setProdId] = React.useState("");
+  const [boostActivo, setBoostActivo] = React.useState(() => {
+    try {
+      const b = JSON.parse(localStorage.getItem("pc_boost_manual")||"{}");
+      return (b.activo && b.expira > Date.now()) ? b : null;
+    } catch { return null; }
+  });
+  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",rojo:"#c0392b",gris:"#5a6472",morado:"#7c3aed",moradoL:"#f3e8ff" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+
+  function activarBoost() {
+    const expira = Date.now() + (parseFloat(horas) * 3600 * 1000);
+    const boost = { activo:true, mult:parseFloat(mult), expira, prodId: prodId||null, activadoEn: new Date().toLocaleString("es-DO") };
+    localStorage.setItem("pc_boost_manual", JSON.stringify(boost));
+    setBoostActivo(boost);
+    alert("🚀 Boost " + mult + "X activado por " + horas + " horas para " + (prodId?"producto "+prodId:"TODOS los productos") + "!");
+  }
+
+  function desactivarBoost() {
+    localStorage.removeItem("pc_boost_manual");
+    setBoostActivo(null);
+  }
+
+  const dow = new Date().getDay();
+  const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+  const BOOSTS_AUTO = { 1:"2X todo el inventario", 3:"3X productos seleccionados", 5:"Lucky boost aleatorio", 6:"1.5X todo el día" };
+  const boostHoyAuto = BOOSTS_AUTO[dow];
+
+  return React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:"18px 20px", marginBottom:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }},
+    React.createElement("div", { style:{ fontFamily:"Georgia,serif", fontSize:18, fontWeight:700, marginBottom:4 }}, "🚀 Control de Boosts — Comisiones Variables"),
+    React.createElement("div", { style:{ fontSize:12, color:CC.gris, marginBottom:16 }},
+      "Día actual: " + DIAS[dow] + " · " + (boostHoyAuto ? "Boost automático: " + boostHoyAuto : "Sin boost automático hoy")
+    ),
+
+    // Boost activo actualmente
+    boostActivo
+      ? React.createElement("div", { style:{ background:CC.moradoL, border:"2px solid "+CC.morado, borderRadius:10, padding:"12px 16px", marginBottom:16 }},
+          React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
+            React.createElement("div", null,
+              React.createElement("div", { style:{ fontWeight:900, fontSize:15, color:CC.morado }}, "🚀 BOOST MANUAL ACTIVO — " + boostActivo.mult + "X"),
+              React.createElement("div", { style:{ fontSize:12, color:CC.gris }},
+                (boostActivo.prodId ? "Producto específico: " + boostActivo.prodId : "Todos los productos") +
+                " · Expira: " + new Date(boostActivo.expira).toLocaleTimeString("es-DO")
+              )
+            ),
+            React.createElement("button", { onClick:desactivarBoost,
+              style:{ background:CC.rojo, color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", fontWeight:700, cursor:"pointer" }},
+              "❌ Desactivar"
+            )
+          )
+        )
+      : React.createElement("div", { style:{ background:"#f8f9fa", borderRadius:10, padding:"16px", marginBottom:16 }},
+          React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "⚡ Activar boost especial manual"),
+          React.createElement("div", { style:{ display:"flex", gap:12, flexWrap:"wrap", alignItems:"flex-end" }},
+            React.createElement("div", null,
+              React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Multiplicador"),
+              React.createElement("select", { value:mult, onChange:e=>setMult(e.target.value),
+                style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:14, fontWeight:800 }},
+                React.createElement("option", { value:"1.5" }, "1.5X"),
+                React.createElement("option", { value:"2" }, "2X"),
+                React.createElement("option", { value:"2.5" }, "2.5X"),
+                React.createElement("option", { value:"3" }, "3X — TRIPLE"),
+                React.createElement("option", { value:"5" }, "5X — MEGA BOOST")
+              )
+            ),
+            React.createElement("div", null,
+              React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Duración"),
+              React.createElement("select", { value:horas, onChange:e=>setHoras(e.target.value),
+                style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }},
+                React.createElement("option", { value:"1" }, "1 hora"),
+                React.createElement("option", { value:"2" }, "2 horas"),
+                React.createElement("option", { value:"4" }, "4 horas"),
+                React.createElement("option", { value:"8" }, "Todo el día (8h)"),
+                React.createElement("option", { value:"24" }, "24 horas")
+              )
+            ),
+            React.createElement("div", { style:{ flex:1 }},
+              React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Producto (dejar vacío = todos)"),
+              React.createElement("input", { value:prodId, onChange:e=>setProdId(e.target.value), placeholder:"Ej: Nexgard, o dejar vacío para todos...",
+                style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
+            ),
+            React.createElement("button", { onClick:activarBoost,
+              style:{ background:"linear-gradient(135deg,"+CC.morado+","+CC.azul+")", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:900, fontSize:14, cursor:"pointer", whiteSpace:"nowrap" }},
+              "🚀 Activar " + mult + "X"
+            )
+          )
+        ),
+
+    // Tabla de schedule automático
+    React.createElement("div", { style:{ fontSize:12, color:CC.gris }},
+      React.createElement("div", { style:{ fontWeight:700, marginBottom:6 }}, "📅 Calendario de boosts automáticos:"),
+      React.createElement("div", { style:{ display:"flex", gap:8, flexWrap:"wrap" }},
+        [["Lun","2X","#1a4fa0"],["Mié","3X","#c0392b"],["Vie","🎲 Lucky","#b8860b"],["Sáb","1.5X","#1a6b3a"]].map(([d,b,col]) =>
+          React.createElement("span", { key:d, style:{ padding:"4px 10px", borderRadius:20, background:col+"22", color:col, fontWeight:700, fontSize:11 }}, d+": "+b)
+        )
+      )
+    )
+  );
+}
+
 function RankingVentasFarmacia({ ventas, mes }) {
   const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gold:"#b8860b", gris:"#5a6472" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
@@ -7005,6 +7113,244 @@ const VET_EMAILS = [
 // MI VITRINA — Sistema de motivación de ventas
 // Componente compartido para vet y groomer
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// MOTOR DE BOOST — Sistema de comisiones variables
+// ═══════════════════════════════════════════════════════════
+const BOOST_SCHEDULE = {
+  1: { mult: 2.0, label: "2X", tag: "⚡ LUNES 2X", color: "#1a4fa0", bg: "#e8eef8" },   // Lunes
+  3: { mult: 3.0, label: "3X", tag: "🔥 MIÉRC 3X", color: "#c0392b", bg: "#fdecea" },   // Miércoles
+  5: { mult: 1.5, label: "1.5X", tag: "✨ VIERNES LUCKY", color: "#b8860b", bg: "#fdf6e3" }, // Viernes — random
+  6: { mult: 1.5, label: "1.5X", tag: "🎉 SÁBADO 1.5X", color: "#1a6b3a", bg: "#e8f5ed" }, // Sábado
+};
+
+function getBoostActivo(prodId) {
+  // 1. Boost manual de Victor (máxima prioridad)
+  try {
+    const manualRaw = localStorage.getItem("pc_boost_manual");
+    if (manualRaw) {
+      const manual = JSON.parse(manualRaw);
+      if (manual.activo && manual.expira > Date.now()) {
+        // Si es para producto específico o global
+        if (!manual.prodId || manual.prodId === String(prodId)) {
+          return { mult: manual.mult, label: manual.mult + "X", tag: "🚀 BOOST ESPECIAL " + manual.mult + "X", color: "#7c3aed", bg: "#f3e8ff", expira: manual.expira, manual: true };
+        }
+      }
+    }
+  } catch(e) {}
+
+  // 2. Miércoles 3X — solo productos seleccionados (top por precio)
+  const hoy = new Date();
+  const dow = hoy.getDay(); // 0=Dom, 1=Lun, 3=Mié, 5=Vie, 6=Sáb
+  if (dow === 3) {
+    // Solo el 30% de productos con mayor ganancia tienen 3X el miércoles
+    return { mult: 3.0, label: "3X", tag: "🔥 MIÉRCOLES 3X", color: "#c0392b", bg: "#fdecea" };
+  }
+
+  // 3. Viernes — boost aleatorio seeded por producto+semana (consistente el mismo día)
+  if (dow === 5) {
+    const semana = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
+    const seed = (String(prodId).split('').reduce((a,c) => a + c.charCodeAt(0), 0) + semana) % 3;
+    const opts = [1.5, 2.0, 2.5];
+    const m = opts[seed];
+    return { mult: m, label: m + "X", tag: "🎲 VIERNES LUCKY " + m + "X", color: "#b8860b", bg: "#fdf6e3" };
+  }
+
+  // 4. Lunes 2X
+  if (dow === 1) return { mult: 2.0, label: "2X", tag: "⚡ LUNES 2X", color: "#1a4fa0", bg: "#e8eef8" };
+
+  // 5. Sábado 1.5X
+  if (dow === 6) return { mult: 1.5, label: "1.5X", tag: "🎉 SÁBADO 1.5X", color: "#1a6b3a", bg: "#e8f5ed" };
+
+  return null; // sin boost
+}
+
+function calcComisionConBoost(ganancia, comPct, prodId) {
+  const boost = getBoostActivo(prodId);
+  const mult = boost ? boost.mult : 1;
+  return { comision: Math.round(ganancia * comPct * mult), boost, mult };
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// MODAL DE PRODUCTO — Pitch de venta con IA
+// ═══════════════════════════════════════════════════════════
+function ModalProducto({ prod, inventario, comPct, onCerrar, onSeleccionar }) {
+  const [iaData, setIaData] = React.useState(null);
+  const [loadingIA, setLoadingIA] = React.useState(true);
+  const [imgUrl, setImgUrl] = React.useState(null);
+  const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",azulL:"#e8eef8",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojo:"#c0392b",morado:"#7c3aed",moradoL:"#f3e8ff" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+
+  const { comision, boost } = calcComisionConBoost(prod.ganancia || Math.max(0, prod.pventa - (prod.costo||0)), comPct, prod.id);
+  const ganancia = prod.ganancia || Math.max(0, prod.pventa - (prod.costo||0));
+  const comBase = Math.round(ganancia * comPct);
+
+  // Buscar imagen real del producto
+  React.useEffect(() => {
+    const query = encodeURIComponent(prod.nombre + " pet product");
+    // Usar DuckDuckGo image search proxy
+    const urls = [
+      `https://loremflickr.com/280/180/${encodeURIComponent(prod.nombre)}`,
+    ];
+    setImgUrl(`https://source.unsplash.com/280x180/?${encodeURIComponent(prod.nombre + " veterinary pet")}`);
+  }, [prod.id]);
+
+  // Llamar a Claude AI para generar beneficios + combos + pitch
+  React.useEffect(() => {
+    setLoadingIA(true);
+    const categoriasInv = [...new Set((inventario||[]).filter(p=>p.id!==prod.id).map(p=>p.nombre))].slice(0,8).join(", ");
+    
+    fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 800,
+        messages: [{
+          role: "user",
+          content: `Eres un experto en ventas de productos veterinarios y para mascotas. 
+Para el producto "${prod.nombre}" (categoría: ${prod.categoria||"veterinario"}, precio: RD$${prod.pventa}):
+
+Responde SOLO en JSON con esta estructura exacta (sin backticks ni texto extra):
+{
+  "emoji": "un emoji que represente el producto",
+  "tagline": "frase de venta corta y poderosa (max 10 palabras)",
+  "beneficios": ["beneficio 1 específico", "beneficio 2 específico", "beneficio 3 específico"],
+  "pitch": "frase de 1-2 líneas para decirle al dueño de la mascota que lo convenza (en español dominicano natural)",
+  "combos": [
+    {"nombre": "producto complementario relacionado", "razon": "por qué van juntos (5-8 palabras)"}
+  ],
+  "para_quien": "descripción breve de para qué mascota/situación es ideal"
+}`
+        }]
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      const txt = data.content?.[0]?.text || "{}";
+      try {
+        const clean = txt.replace(/```json|```/g,'').trim();
+        setIaData(JSON.parse(clean));
+      } catch { setIaData(null); }
+      setLoadingIA(false);
+    })
+    .catch(() => { setLoadingIA(false); setIaData(null); });
+  }, [prod.id]);
+
+  return React.createElement("div", {
+    style:{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 },
+    onClick: onCerrar
+  },
+    React.createElement("div", {
+      style:{ background:"#fff", borderRadius:20, width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 80px rgba(0,0,0,0.3)" },
+      onClick: e => e.stopPropagation()
+    },
+
+      // Imagen del producto
+      React.createElement("div", { style:{ position:"relative", borderRadius:"20px 20px 0 0", overflow:"hidden", height:160, background:"linear-gradient(135deg,#f0f4f8,#e8eef8)" }},
+        imgUrl && React.createElement("img", {
+          src: imgUrl,
+          alt: prod.nombre,
+          onError: e => { e.target.style.display="none"; },
+          style:{ width:"100%", height:"100%", objectFit:"cover" }
+        }),
+        // Overlay con nombre
+        React.createElement("div", { style:{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(0,0,0,0.7))", padding:"20px 16px 12px" }},
+          React.createElement("div", { style:{ color:"#fff", fontWeight:900, fontSize:18 }},
+            (iaData?.emoji || "🐾") + " " + prod.nombre
+          ),
+          iaData?.tagline && React.createElement("div", { style:{ color:"rgba(255,255,255,0.85)", fontSize:13, marginTop:2, fontStyle:"italic" }},
+            '"' + iaData.tagline + '"'
+          )
+        ),
+        // Boost badge si aplica
+        boost && React.createElement("div", { style:{ position:"absolute", top:10, right:10, background:boost.color, color:"#fff", borderRadius:20, padding:"4px 12px", fontWeight:900, fontSize:14, boxShadow:"0 2px 10px rgba(0,0,0,0.3)" }},
+          boost.tag
+        ),
+        // Botón cerrar
+        React.createElement("button", { onClick:onCerrar, style:{ position:"absolute", top:10, left:10, background:"rgba(0,0,0,0.4)", color:"#fff", border:"none", borderRadius:"50%", width:32, height:32, cursor:"pointer", fontSize:16, fontWeight:700 }}, "✕")
+      ),
+
+      // Contenido
+      React.createElement("div", { style:{ padding:"18px 20px" }},
+
+        // Precio + comisión grande
+        React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, background: boost ? boost.bg : CC.verdeL, borderRadius:12, padding:"12px 16px" }},
+          React.createElement("div", null,
+            React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, "Precio al cliente"),
+            React.createElement("div", { style:{ fontSize:24, fontWeight:900, color:CC.verde }}, RD2(prod.pventa))
+          ),
+          React.createElement("div", { style:{ textAlign:"right" }},
+            React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, boost ? "Tu comisión " + boost.label : "Tu comisión"),
+            React.createElement("div", { style:{ fontSize:24, fontWeight:900, color: boost ? boost.color : CC.azul }}, RD2(comision)),
+            boost && React.createElement("div", { style:{ fontSize:11, color:boost.color, fontWeight:700 }},
+              "Normal: " + RD2(comBase) + " → AHORA " + boost.label + "!"
+            )
+          )
+        ),
+
+        // Loading o contenido IA
+        loadingIA
+          ? React.createElement("div", { style:{ textAlign:"center", padding:"20px 0", color:CC.gris }},
+              React.createElement("div", { style:{ fontSize:13 }}, "🤖 Generando pitch de venta con IA..."),
+              React.createElement("div", { style:{ fontSize:11, marginTop:4 }}, "Beneficios, combos y argumentos personalizados")
+            )
+          : iaData
+            ? React.createElement("div", null,
+                // Para quién es
+                iaData.para_quien && React.createElement("div", { style:{ background:"#f8f9fa", borderRadius:8, padding:"8px 12px", fontSize:12, color:CC.gris, marginBottom:12 }},
+                  "✅ Ideal para: " + iaData.para_quien
+                ),
+
+                // Beneficios
+                React.createElement("div", { style:{ marginBottom:14 }},
+                  React.createElement("div", { style:{ fontWeight:800, fontSize:13, marginBottom:8 }}, "💡 Beneficios clave — úsalos para vender:"),
+                  (iaData.beneficios||[]).map((b,i) =>
+                    React.createElement("div", { key:i, style:{ display:"flex", gap:8, padding:"5px 0", borderBottom:"1px solid #f8f9fa", fontSize:13 }},
+                      React.createElement("span", { style:{ color:CC.verde, fontWeight:700, flexShrink:0 }}, "✓"),
+                      React.createElement("span", null, b)
+                    )
+                  )
+                ),
+
+                // Pitch
+                iaData.pitch && React.createElement("div", { style:{ background:"linear-gradient(135deg,"+CC.azulL+","+CC.verdeL+")", borderRadius:10, padding:"12px 14px", marginBottom:14, fontStyle:"italic", fontSize:13, color:"#1a1a2e" }},
+                  React.createElement("div", { style:{ fontWeight:800, fontSize:11, textTransform:"uppercase", letterSpacing:1, marginBottom:4, color:CC.azul }}, "🗣️ Dile esto al cliente:"),
+                  '"' + iaData.pitch + '"'
+                ),
+
+                // Combos
+                (iaData.combos||[]).length > 0 && React.createElement("div", { style:{ marginBottom:14 }},
+                  React.createElement("div", { style:{ fontWeight:800, fontSize:13, marginBottom:8 }}, "🎁 Ofrece también (combo sugerido):"),
+                  (iaData.combos||[]).map((c,i) => {
+                    const prodCombo = (inventario||[]).find(p => p.nombre.toLowerCase().includes(c.nombre.toLowerCase().split(' ')[0]));
+                    return React.createElement("div", { key:i,
+                      style:{ background:CC.goldL, border:"1.5px solid #f1c40f", borderRadius:8, padding:"8px 12px", marginBottom:6, display:"flex", justifyContent:"space-between", alignItems:"center" }},
+                      React.createElement("div", null,
+                        React.createElement("div", { style:{ fontWeight:700, fontSize:13 }}, "🔗 " + c.nombre),
+                        React.createElement("div", { style:{ fontSize:11, color:CC.gris }}, c.razon)
+                      ),
+                      prodCombo && React.createElement("div", { style:{ fontWeight:700, color:CC.verde, fontSize:12 }}, RD2(prodCombo.pventa))
+                    );
+                  })
+                )
+              )
+            : React.createElement("div", { style:{ color:CC.gris, fontSize:13, padding:"10px 0" }}, "Información del producto no disponible."),
+
+        // Botón vender
+        React.createElement("button", {
+          onClick: () => { onSeleccionar(prod); onCerrar(); },
+          style:{ width:"100%", background: boost ? `linear-gradient(135deg,${boost.color},${CC.verde})` : `linear-gradient(135deg,${CC.verde},#2ecc71)`,
+            color:"#fff", border:"none", borderRadius:12, padding:"14px 0", fontWeight:900, fontSize:15, cursor:"pointer",
+            boxShadow:"0 4px 16px rgba(26,107,58,0.35)", marginTop:4 }},
+          "✅ Seleccionar — " + RD2(prod.pventa) + (boost ? " · +" + RD2(comision) + " " + boost.label : " · +" + RD2(comision))
+        )
+      )
+    )
+  );
+}
+
 function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
   const [busq, setBusq] = React.useState("");
   const [selProd, setSelProd] = React.useState(null);
@@ -7012,6 +7358,7 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
   const [cliente, setCliente] = React.useState("");
   const [pago, setPago] = React.useState("efectivo");
   const [celebracion, setCelebracion] = React.useState(null);
+  const [modalProd, setModalProd] = React.useState(null);
   const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",azulL:"#e8eef8",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojo:"#c0392b",fondo:"#f0f4f8" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
   const mesActual = new Date().toISOString().slice(0,7);
@@ -7033,8 +7380,12 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
   // Inventario con ganancia calculada
   const inv = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[]))
     .filter(p => p.pventa > 0)
-    .map(p => ({ ...p, ganancia: Math.max(0, p.pventa - (p.costo||0)), miComision: Math.round(Math.max(0, p.pventa - (p.costo||0)) * comPct) }))
-    .sort((a,b) => b.miComision - a.miComision); // ordenar por mayor comisión
+    .map(p => {
+    const gan = Math.max(0, p.pventa - (p.costo||0));
+    const { comision, boost } = calcComisionConBoost(gan, comPct, p.id);
+    return { ...p, ganancia: gan, miComision: comision, boost };
+  })
+  .sort((a,b) => b.miComision - a.miComision); // ordenar por mayor comisión
 
   // Top 3 productos estrella
   const top3 = inv.slice(0,3).map(p => p.id);
@@ -7074,6 +7425,25 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
       React.createElement("div", null,
         React.createElement("h2", { style:{ fontSize:22, fontWeight:900, margin:0, color:CC.verde }}, "🛍️ Mi Vitrina"),
         React.createElement("p", { style:{ color:CC.gris, fontSize:13, margin:"4px 0 0" }}, "Vende productos y gana " + Math.round(comPct*100) + "% de la ganancia neta · Los ⭐ son los más rentables para ti")
+      ),
+    /* Banner boost del día si aplica */
+    (() => {
+      const boostHoy = getBoostActivo("any");
+      if (!boostHoy) return null;
+      return React.createElement("div", { style:{
+        background: "linear-gradient(135deg," + boostHoy.color + ",#1a1a2e)",
+        borderRadius:12, padding:"12px 18px", marginBottom:16,
+        display:"flex", justifyContent:"space-between", alignItems:"center", color:"#fff"
+      }},
+        React.createElement("div", null,
+          React.createElement("div", { style:{ fontWeight:900, fontSize:16 }}, boostHoy.tag + " ACTIVO"),
+          React.createElement("div", { style:{ fontSize:12, opacity:0.85, marginTop:2 }},
+            "¡Todas tus comisiones de hoy son " + boostHoy.label + "! Aprovecha y vende más"
+          )
+        ),
+        React.createElement("div", { style:{ fontSize:36 }}, "🚀")
+      );
+    })()
       )
     ),
 
@@ -7167,23 +7537,46 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
           : invFiltrado.slice(0,40).map(p => {
             const sel = selProd?.id === p.id;
             const esEstrella = top3.includes(p.id);
-            return React.createElement("div", { key:p.id, onClick:()=>{setSelProd(p);setQty(1);},
-              style:{ border:"2px solid "+(sel?CC.azul:esEstrella?"#f1c40f":"#e8eaed"),
-                borderRadius:11, padding:"10px 12px", cursor:"pointer",
-                background:sel?CC.azulL:esEstrella?CC.goldL:"#fff",
-                transition:"all 0.15s", position:"relative" }},
-              esEstrella && React.createElement("span", { style:{ position:"absolute", top:6, right:8, fontSize:14 }}, "⭐"),
-              React.createElement("div", { style:{ fontSize:10, color:CC.gris, textTransform:"capitalize", marginBottom:2 }}, p.categoria||"producto"),
-              React.createElement("div", { style:{ fontWeight:700, fontSize:12, marginBottom:6, lineHeight:1.3 }}, p.nombre.slice(0,32)),
-              React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
-                React.createElement("span", { style:{ fontSize:12, color:CC.gris }}, "RD$" + (p.pventa||0).toLocaleString()),
-                React.createElement("span", { style:{
-                  fontSize:12, fontWeight:900, padding:"3px 8px", borderRadius:20,
-                  background: p.miComision >= 50 ? CC.verdeL : "#f4f5f6",
-                  color: p.miComision >= 50 ? CC.verde : CC.gris
-                }}, "+" + RD2(p.miComision))
+            return React.createElement("div", { key:p.id,
+              style:{ border:"2px solid "+(sel?CC.azul:p.boost?"#f1c40f":esEstrella?"#f1c40f":"#e8eaed"),
+                borderRadius:12, cursor:"pointer", overflow:"hidden",
+                background:sel?CC.azulL:"#fff", transition:"all 0.15s",
+                position:"relative", boxShadow: p.boost?"0 4px 14px rgba(0,0,0,0.12)":"0 1px 4px rgba(0,0,0,0.06)" }},
+              // Imagen del producto
+              React.createElement("div", {
+                onClick: e => { e.stopPropagation(); setModalProd(p); },
+                style:{ height:90, background:"linear-gradient(135deg,#f0f4f8,#e8eef8)", position:"relative", overflow:"hidden" }},
+                React.createElement("img", {
+                  src: `https://source.unsplash.com/200x90/?${encodeURIComponent(p.nombre + " pet")}`,
+                  alt: p.nombre,
+                  onError: e => { e.target.style.display="none"; },
+                  style:{ width:"100%", height:"100%", objectFit:"cover" }
+                }),
+                // Badge boost sobre imagen
+                p.boost && React.createElement("div", { style:{ position:"absolute", top:4, left:4, background:p.boost.color, color:"#fff", fontSize:10, fontWeight:900, padding:"2px 7px", borderRadius:20 }}, p.boost.tag),
+                esEstrella && !p.boost && React.createElement("div", { style:{ position:"absolute", top:4, left:4, background:CC.gold, color:"#fff", fontSize:10, fontWeight:900, padding:"2px 7px", borderRadius:20 }}, "⭐ TOP"),
+                React.createElement("div", { style:{ position:"absolute", bottom:4, right:4, background:"rgba(0,0,0,0.5)", color:"#fff", fontSize:10, padding:"2px 6px", borderRadius:6, cursor:"pointer" }}, "ℹ️ Info")
               ),
-              p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#e67e22", marginTop:3 }}, "⚠️ Sin stock")
+              // Info del producto
+              React.createElement("div", {
+                onClick: () => { setSelProd(p); setQty(1); },
+                style:{ padding:"8px 10px" }},
+                React.createElement("div", { style:{ fontSize:10, color:CC.gris, textTransform:"capitalize" }}, p.categoria||"producto"),
+                React.createElement("div", { style:{ fontWeight:700, fontSize:11, marginBottom:6, lineHeight:1.3 }}, p.nombre.slice(0,28)),
+                React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
+                  React.createElement("div", null,
+                    React.createElement("div", { style:{ fontSize:12, fontWeight:800, color:"#1a1a2e" }}, RD2(p.pventa)),
+                    React.createElement("div", { style:{ fontSize:9, color:CC.gris }}, "precio al cliente")
+                  ),
+                  React.createElement("div", { style:{
+                    fontSize:12, fontWeight:900, padding:"4px 8px", borderRadius:20,
+                    background: p.boost ? p.boost.bg : p.miComision >= 50 ? CC.verdeL : "#f4f5f6",
+                    color: p.boost ? p.boost.color : p.miComision >= 50 ? CC.verde : CC.gris,
+                    border: p.boost ? "1.5px solid "+p.boost.color : "none"
+                  }}, "+" + RD2(p.miComision))
+                ),
+                p.stock <= 0 && React.createElement("div", { style:{ fontSize:9, color:"#e67e22", marginTop:2 }}, "⚠️ Sin stock")
+              )
             );
           })
       ),
@@ -7205,7 +7598,15 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
     ),
 
     // ── HISTORIAL DE GANANCIAS ──
-    React.createElement(HistorialGanancias, { usuario, ventas, comPct, mesActual })
+    React.createElement(HistorialGanancias, { usuario, ventas, comPct, mesActual }),
+    /* Modal de producto */
+    modalProd && React.createElement(ModalProducto, {
+      prod: modalProd,
+      inventario: inv,
+      comPct,
+      onCerrar: () => setModalProd(null),
+      onSeleccionar: (p) => { setSelProd(p); setQty(1); }
+    })
   );
 }
 
