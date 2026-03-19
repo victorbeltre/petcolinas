@@ -4398,7 +4398,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [modoFarmacia, setModoFarmacia] = useState("catalogo");
   const tarifas = tipoItem === "grooming" ? TARIFAS_GROOMING : TARIFAS_VET;
   const servSel = tarifas.find((t) => t.id === servId) || null;
-  const prodSel = inventario.find((p) => p.id === Number(prodSelId)) || null;
+  const prodSel = inventario.find((p) => String(p.id) === String(prodSelId)) || null;
   const productosInv = inventario.filter((p) => p.pventa > 0);
   const previewPrecio = (() => {
     if (tipoItem === "grooming" || tipoItem === "veterinaria") {
