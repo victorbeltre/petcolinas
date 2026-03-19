@@ -3083,7 +3083,7 @@ function PetColinas() {
 
   if (isGrm) return /* @__PURE__ */ React.createElement(PortalGroomer, {
     session, onLogout: handleLogout,
-    ventas: ventasVet,
+    ventas: ventasVet, setVentas: setVentasVet,
     pagosNom: pagosNomVet || []
   });
 
@@ -7528,9 +7528,11 @@ function MisComisionesVet({ usuario, ventas, pagosNom }) {
 // ═══════════════════════════════════════════════════════════
 // PORTAL GROOMER — Alexander
 // ═══════════════════════════════════════════════════════════
-function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
+function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom }) {
   const [tabGrm, setTabGrm] = React.useState("dashboard_grm");
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
+  // Objeto usuario para compatibilidad con MiVitrina
+  const usuario = { id:"e1", nombre:"Alexander Ramírez", email:"alexander@petcolinas.com", comision_pct:0.05 };
   const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",gris:"#5a6472",grisd:"#5a6472",fondo:"#f0f4f8",gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
 
@@ -7662,7 +7664,7 @@ function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
       tabGrm === "mi_vitrina_grm" && React.createElement(MiVitrina, {
         usuario,
         ventas,
-        setVentas: window.__setVentasGlobal || (() => {}),
+        setVentas: setVentas || window.__setVentasGlobal || (() => {}),
         inventario: window.__inventarioGlobal || [],
         comPct: 0.05
       }),
