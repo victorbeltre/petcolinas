@@ -3051,6 +3051,7 @@ function PetColinas() {
     }
     // Exponer setVentas para portales
     window.__setVentasGlobal = setVentasVet;
+    window.__clientesGlobal = clientesVet || [];
   }, []);
 
   useEffect(() => {
@@ -3202,9 +3203,205 @@ const INVENTARIO_SEED = [
   { id: "inv_110", nombre: "LEONARDO DRINK DUCK 40G (GATO)", categoria: "alimento", stock: 23, stockInicial: 23, stockMin: 1, costo: 1242, pventa: 1553, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
   { id: "inv_111", nombre: "LEONARDO DRINK SALMON 40G (GATO)", categoria: "alimento", stock: 22, stockInicial: 22, stockMin: 1, costo: 1389, pventa: 1736, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" }
 ];
+
+// ═══════════════════════════════════════════════════════════
+// APROBACIÓN DE VENTAS — Panel del admin
+// ═══════════════════════════════════════════════════════════
+function AprobacionVentas({ ventas, setVentas, clientes, setClientes, onCerrar }) {
+  const [pends, setPends] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("pc_ventas_pendientes")||"[]"); } catch { return []; }
+  });
+  const [datos, setDatos]   = React.useState({});   // datos[id] = {nombreDueno, telefono, direccion, email}
+  const [pagos, setPagos]   = React.useState({});   // pagos[id] = formapago
+  const [motivo, setMotivo] = React.useState({});   // motivo[id] = texto
+  const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",azulL:"#e8eef8",rojo:"#c0392b",rojoL:"#fdecea",naranja:"#e67e22",naranjaL:"#fef4e8",gris:"#5a6472",oro:"#b8860b" };
+  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
+
+  const soloP   = pends.filter(v => v.estadoAprobacion === "pendiente");
+  const historial = pends.filter(v => v.estadoAprobacion !== "pendiente").slice(-6).reverse();
+
+  function setD(id, field, val) { setDatos(prev => ({ ...prev, [id]: { ...(prev[id]||{}), [field]: val } })); }
+
+  function aprobar(venta) {
+    const d = datos[venta.id]||{};
+    const pago = pagos[venta.id]||"efectivo";
+    const ventaFinal = {
+      ...venta,
+      estadoAprobacion: "aprobada",
+      comisionConfirmada: true,
+      formapago: pago,
+    };
+    setVentas(prev => [...(prev||[]), ventaFinal]);
+    // Crear/actualizar cliente en CRM si hay datos del dueño
+    if (d.nombreDueno && setClientes) {
+      const existente = (clientes||[]).find(c =>
+        c.id === venta.clienteId ||
+        (c.nombreMascota||c.nombre||"").toLowerCase() === (venta.mascotaNombre||"").toLowerCase()
+      );
+      if (existente) {
+        setClientes(prev => prev.map(c => c.id===existente.id ? {
+          ...c,
+          nombrePropietario: d.nombreDueno||c.nombrePropietario,
+          dueno: d.nombreDueno||c.dueno,
+          telefono: d.telefono||c.telefono,
+          direccion: d.direccion||c.direccion,
+          email: d.email||c.email
+        } : c));
+      } else {
+        setClientes(prev => [...(prev||[]), {
+          id: Date.now(),
+          nombreMascota: venta.mascotaNombre||venta.cliente,
+          nombre: venta.mascotaNombre||venta.cliente,
+          especie: venta.especieMascota||"",
+          nombrePropietario: d.nombreDueno,
+          dueno: d.nombreDueno,
+          telefono: d.telefono||"",
+          direccion: d.direccion||"",
+          email: d.email||"",
+          notas: "Cliente registrado vía venta de "+venta.empleadoNombre+" · "+venta.fecha,
+          fechaRegistro: venta.fecha
+        }]);
+      }
+    }
+    const nueva = pends.map(p => p.id===venta.id ? {...p,estadoAprobacion:"aprobada"} : p);
+    localStorage.setItem("pc_ventas_pendientes", JSON.stringify(nueva));
+    setPends(nueva);
+  }
+
+  function rechazar(venta) {
+    const nueva = pends.map(p => p.id===venta.id ? {...p,estadoAprobacion:"rechazada",motivoRechazo:motivo[venta.id]||""} : p);
+    localStorage.setItem("pc_ventas_pendientes", JSON.stringify(nueva));
+    setPends(nueva);
+  }
+
+  return React.createElement("div", { style:{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:2000, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"16px", overflowY:"auto" }, onClick:onCerrar },
+    React.createElement("div", { style:{ background:"#fff", borderRadius:18, padding:24, width:"100%", maxWidth:660, boxShadow:"0 20px 60px rgba(0,0,0,0.25)", marginTop:16 }, onClick:e=>e.stopPropagation() },
+
+      // Header
+      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }},
+        React.createElement("div", null,
+          React.createElement("div", { style:{ fontSize:20, fontWeight:900 }}, "✅ Aprobación de Ventas"),
+          React.createElement("div", { style:{ fontSize:13, color:CC.gris, marginTop:2 }},
+            soloP.length > 0 ? soloP.length + " venta(s) esperando aprobación" : "Sin ventas pendientes"
+          )
+        ),
+        React.createElement("button", { onClick:onCerrar, style:{ background:"none", border:"none", cursor:"pointer", fontSize:22, color:CC.gris }}, "✕")
+      ),
+
+      // Ventas pendientes
+      soloP.length === 0
+        ? React.createElement("div", { style:{ textAlign:"center", padding:"32px 0", color:CC.gris }},
+            React.createElement("div", { style:{ fontSize:40 }}, "🎉"),
+            React.createElement("div", { style:{ fontWeight:700, fontSize:15, marginTop:8 }}, "Todo al día"),
+            React.createElement("div", { style:{ fontSize:13, marginTop:4 }}, "No hay ventas pendientes de aprobación")
+          )
+        : soloP.map((v,i) => {
+            const d = datos[v.id]||{};
+            const pago = pagos[v.id]||"efectivo";
+            return React.createElement("div", { key:i, style:{ background:CC.naranjaL, border:"2px solid "+CC.naranja, borderRadius:12, padding:"16px 18px", marginBottom:14 }},
+              // Info de la venta
+              React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }},
+                React.createElement("div", null,
+                  React.createElement("div", { style:{ fontWeight:900, fontSize:15, marginBottom:6 }}, "🛍️ " + v.servicio),
+                  React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4px 16px", fontSize:12 }},
+                    [
+                      ["👤 Empleado", v.empleadoNombre||v.recibidopor],
+                      ["🐾 Mascota", (v.mascotaNombre||v.cliente) + (v.especieMascota?" · "+v.especieMascota:"")],
+                      ["📅 Fecha/hora", v.fecha+(v.hora?" · "+v.hora:"")],
+                    ].map(([l,val]) => React.createElement("div", {key:l},
+                      React.createElement("span", { style:{ color:CC.gris }}, l+": "),
+                      React.createElement("span", { style:{ fontWeight:600 }}, val||"—")
+                    ))
+                  )
+                ),
+                React.createElement("div", { style:{ textAlign:"right", flexShrink:0, marginLeft:12 }},
+                  React.createElement("div", { style:{ fontSize:22, fontWeight:900, color:CC.verde }}, RD2(v.total)),
+                  React.createElement("div", { style:{ fontSize:12, color:CC.azul, fontWeight:700 }}, "Comisión: "+RD2(v.comision))
+                )
+              ),
+
+              // Datos del cliente — el admin completa
+              React.createElement("div", { style:{ background:"#fff", borderRadius:10, padding:"12px 14px", marginBottom:12 }},
+                React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.azul, marginBottom:10, textTransform:"uppercase", letterSpacing:0.5 }}, "📋 Completar datos del cliente para CRM"),
+                React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }},
+                  [
+                    ["Nombre completo del dueño *", "nombreDueno", "text", "Juan Rodríguez"],
+                    ["Teléfono", "telefono", "tel", "809-000-0000"],
+                    ["Dirección / Sector", "direccion", "text", "Ej: Los Alcarrizos"],
+                    ["Email", "email", "email", "cliente@email.com"],
+                  ].map(([lbl, field, type, ph]) =>
+                    React.createElement("div", { key:field },
+                      React.createElement("label", { style:{ fontSize:10, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:3 }}, lbl),
+                      React.createElement("input", { type, value:d[field]||"", onChange:e=>setD(v.id,field,e.target.value), placeholder:ph,
+                        style:{ width:"100%", boxSizing:"border-box", padding:"7px 10px", borderRadius:7, border:"1.5px solid #d1d5db", fontSize:12 }})
+                    )
+                  )
+                )
+              ),
+
+              // Forma de pago
+              React.createElement("div", { style:{ display:"flex", gap:10, alignItems:"flex-end", marginBottom:12 }},
+                React.createElement("div", { style:{ flex:1 }},
+                  React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "💳 Forma de pago"),
+                  React.createElement("select", { value:pago, onChange:e=>setPagos(prev=>({...prev,[v.id]:e.target.value})),
+                    style:{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }},
+                    React.createElement("option",{value:"efectivo"},"💵 Efectivo"),
+                    React.createElement("option",{value:"Transferencia Popular"},"🏦 Popular"),
+                    React.createElement("option",{value:"Transferencia Reservas"},"🏦 Reservas"),
+                    React.createElement("option",{value:"Transferencia BHD"},"🏦 BHD"),
+                    React.createElement("option",{value:"tarjeta"},"💳 Tarjeta")
+                  )
+                )
+              ),
+
+              // Motivo rechazo
+              React.createElement("input", { type:"text", placeholder:"Motivo de rechazo (opcional)...", value:motivo[v.id]||"",
+                onChange:e=>setMotivo(prev=>({...prev,[v.id]:e.target.value})),
+                style:{ width:"100%", boxSizing:"border-box", padding:"8px 12px", borderRadius:8, border:"1.5px solid #e0e4e8", fontSize:12, marginBottom:10, background:"#fafafa" }
+              }),
+
+              // Botones
+              React.createElement("div", { style:{ display:"flex", gap:10 }},
+                React.createElement("button", { onClick:()=>aprobar(v),
+                  style:{ flex:1, background:CC.verde, color:"#fff", border:"none", borderRadius:10, padding:"11px 0", fontWeight:900, fontSize:14, cursor:"pointer" }},
+                  "✅ Aprobar y registrar"
+                ),
+                React.createElement("button", { onClick:()=>rechazar(v),
+                  style:{ flex:1, background:"#fff", color:CC.rojo, border:"2px solid "+CC.rojo, borderRadius:10, padding:"11px 0", fontWeight:900, fontSize:14, cursor:"pointer" }},
+                  "❌ Rechazar"
+                )
+              )
+            );
+          }),
+
+      // Historial
+      historial.length > 0 && React.createElement("div", { style:{ borderTop:"1px solid #f0f2f0", paddingTop:14, marginTop:8 }},
+        React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:10 }}, "📋 Procesadas recientemente"),
+        historial.map((v,i) => {
+          const ok = v.estadoAprobacion==="aprobada";
+          return React.createElement("div", { key:i, style:{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid #f8f9fa", fontSize:13 }},
+            React.createElement("span", null, ok?"✅ ":"❌ ", React.createElement("b", null, v.servicio.slice(0,25)), " · ", v.empleadoNombre, " · ", v.fecha),
+            React.createElement("span", { style:{ color:ok?CC.verde:CC.rojo, fontWeight:700 }}, ok?RD2(v.total):"Rechazada")
+          );
+        })
+      )
+    )
+  );
+}
+
 function PetColinasApp({ session, onLogout }) {
   const [tab, setTab] = useState("dashboard");
   const [dbReady, setDbReady] = useState(false);
+  const [showAprobacion, setShowAprobacion] = useState(false);
+  const [ventasPendientesCount, setVentasPendientesCount] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("pc_ventas_pendientes")||"[]").filter(v=>v.estadoAprobacion==="pendiente").length; } catch { return 0; }
+  });
+  React.useEffect(() => {
+    const iv = setInterval(()=>{
+      try { setVentasPendientesCount(JSON.parse(localStorage.getItem("pc_ventas_pendientes")||"[]").filter(v=>v.estadoAprobacion==="pendiente").length); } catch {}
+    }, 10000);
+    return () => clearInterval(iv);
+  }, []);
   const [syncStatus, setSyncStatus] = useState("conectando");
   const [crmClienteInicial, setCrmClienteInicial] = useState(null);
   const clearCrmClienteInicial = useCallback(() => setCrmClienteInicial(null), []);
@@ -3366,7 +3563,11 @@ function PetColinasApp({ session, onLogout }) {
   const COM_VET_EXCEL_MARZO = 0;
   const comisionesGrm = comGrmSistema;
   const comisionesVet = comVetSistema;
-  return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: {
+  return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } },
+    showAprobacion && React.createElement(AprobacionVentas, {
+      ventas, setVentas, clientes, setClientes,
+      onCerrar: () => { setShowAprobacion(false); try { setVentasPendientesCount(JSON.parse(localStorage.getItem("pc_ventas_pendientes")||"[]").filter(v=>v.estadoAprobacion==="pendiente").length); } catch {} }
+    }), /* @__PURE__ */ React.createElement("div", { style: {
     background: `linear-gradient(135deg, ${C.verde} 0%, ${C.verde2} 100%)`,
     padding: "20px 32px",
     display: "flex",
@@ -3407,7 +3608,7 @@ function PetColinasApp({ session, onLogout }) {
   } }, TABS.map((t) => {
     const pendientes = t.id === "notificaciones"
       ? (todosClientes || []).filter(c => c.notas && c.notas.includes("Nos conocio") && !(notifLeidas instanceof Set ? notifLeidas : new Set()).has(String(c.id))).length
-      : 0;
+      : t.id === "ventas" ? ventasPendientesCount : 0;
     return /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTab(t.id), style: {
       background: "none",
       border: "none",
@@ -7187,14 +7388,7 @@ function ModalProducto({ prod, inventario, comPct, onCerrar, onSeleccionar }) {
   const comBase = Math.round(ganancia * comPct);
 
   // Buscar imagen real del producto
-  React.useEffect(() => {
-    const query = encodeURIComponent(prod.nombre + " pet product");
-    // Usar DuckDuckGo image search proxy
-    const urls = [
-      `https://loremflickr.com/280/180/${encodeURIComponent(prod.nombre)}`,
-    ];
-    setImgUrl(`https://source.unsplash.com/280x180/?${encodeURIComponent(prod.nombre + " veterinary pet")}`);
-  }, [prod.id]);
+  // Imágenes por emoji — sin API externa
 
   // Llamar a Claude AI para generar beneficios + combos + pitch
   React.useEffect(() => {
@@ -7203,7 +7397,7 @@ function ModalProducto({ prod, inventario, comPct, onCerrar, onSeleccionar }) {
     
     fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "anthropic-dangerous-direct-browser-ipc": "true" },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 800,
@@ -7249,12 +7443,13 @@ Responde SOLO en JSON con esta estructura exacta (sin backticks ni texto extra):
 
       // Imagen del producto
       React.createElement("div", { style:{ position:"relative", borderRadius:"20px 20px 0 0", overflow:"hidden", height:160, background:"linear-gradient(135deg,#f0f4f8,#e8eef8)" }},
-        imgUrl && React.createElement("img", {
-          src: imgUrl,
-          alt: prod.nombre,
-          onError: e => { e.target.style.display="none"; },
-          style:{ width:"100%", height:"100%", objectFit:"cover" }
-        }),
+        React.createElement("div", { style:{
+          width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center",
+          background: `linear-gradient(135deg,${["#e8f5ed","#e8eef8","#fdf6e3","#fef4e8","#fdecea","#f3e8ff"][String(prod.id).split('').reduce((a,c)=>a+c.charCodeAt(0),0)%6]},#f8f9fa)`,
+          fontSize:80, userSelect:"none"
+        }},
+          (() => { const cat=(prod.categoria||"").toLowerCase(); return cat.includes("farmac")||cat.includes("medic")?"💊":cat.includes("antipar")?"🦟":cat.includes("aliment")?"🥩":cat.includes("acceso")?"🎀":cat.includes("higien")?"🛁":cat.includes("vacun")?"💉":cat.includes("snack")?"🍖":cat.includes("collar")?"🔗":"🐾"; })()
+        ),
         // Overlay con nombre
         React.createElement("div", { style:{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(0,0,0,0.7))", padding:"20px 16px 12px" }},
           React.createElement("div", { style:{ color:"#fff", fontWeight:900, fontSize:18 }},
@@ -7358,6 +7553,10 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
   const [cliente, setCliente] = React.useState("");
   const [pago, setPago] = React.useState("efectivo");
   const [celebracion, setCelebracion] = React.useState(null);
+  const [mascotaQuery, setMascotaQuery] = React.useState("");
+  const [mascotaSel, setMascotaSel] = React.useState(null);
+  const [especieMascota, setEspecieMascota] = React.useState("");
+  const [showSugs, setShowSugs] = React.useState(false);
   const [modalProd, setModalProd] = React.useState(null);
   const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",azulL:"#e8eef8",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojo:"#c0392b",fondo:"#f0f4f8" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
@@ -7399,902 +7598,28 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
   const miComisionActual = Math.round(gananciaActual * comPct);
 
   function registrar() {
-    if (!selProd || !cliente.trim()) return alert("Selecciona producto y escribe el nombre del cliente");
+    const nomMasc = mascotaSel ? (mascotaSel.nombreMascota||mascotaSel.nombre) : mascotaQuery.trim();
+    if (!selProd || !nomMasc) return alert("Selecciona el producto y escribe el nombre de la mascota");
+    const hora = new Date().toLocaleTimeString("es-DO",{hour:"2-digit",minute:"2-digit"});
     const v = {
       id: Date.now(),
       fecha: new Date().toISOString().slice(0,10),
-      cliente: cliente.trim(),
+      hora,
+      cliente: nomMasc,
+      mascotaNombre: nomMasc,
+      especieMascota: especieMascota||(mascotaSel?.especie)||"",
+      clienteId: mascotaSel?.id||null,
+      clienteObj: mascotaSel||null,
       area: "farmacia",
       servicio: qty > 1 ? qty + "x " + selProd.nombre : selProd.nombre,
       descripcion: selProd.nombre,
       total: selProd.pventa * qty,
-      comision: Math.round(selProd.ganancia * qty * comPct),
-      formapago: pago,
+      comision: Math.round((selProd.ganancia||Math.max(0,selProd.pventa-(selProd.costo||0))) * qty * comPct),
+      formapago: "pendiente_admin",
       recibidopor: usuario.nombre,
-      cobradopor: usuario.nombre
+      cobradopor: usuario.nombre,
+      estadoAprobacion: "pendiente",
+      empleadoNombre: usuario.nombre,
+      empleadoId: usuario.id
     };
-    setVentas(prev => [...(prev||[]), v]);
-    setCelebracion(v);
-    setSelProd(null); setCliente(""); setQty(1); setBusq("");
-    setTimeout(() => setCelebracion(null), 5000);
-  }
-
-  return React.createElement("div", null,
-    // ── Título ──
-    React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16, flexWrap:"wrap", gap:12 }},
-      React.createElement("div", null,
-        React.createElement("h2", { style:{ fontSize:22, fontWeight:900, margin:0, color:CC.verde }}, "🛍️ Mi Vitrina"),
-        React.createElement("p", { style:{ color:CC.gris, fontSize:13, margin:"4px 0 0" }}, "Vende productos y gana " + Math.round(comPct*100) + "% de la ganancia neta · Los ⭐ son los más rentables para ti")
-      ),
-    /* Banner boost del día si aplica */
-    (() => {
-      const boostHoy = getBoostActivo("any");
-      if (!boostHoy) return null;
-      return React.createElement("div", { style:{
-        background: "linear-gradient(135deg," + boostHoy.color + ",#1a1a2e)",
-        borderRadius:12, padding:"12px 18px", marginBottom:16,
-        display:"flex", justifyContent:"space-between", alignItems:"center", color:"#fff"
-      }},
-        React.createElement("div", null,
-          React.createElement("div", { style:{ fontWeight:900, fontSize:16 }}, boostHoy.tag + " ACTIVO"),
-          React.createElement("div", { style:{ fontSize:12, opacity:0.85, marginTop:2 }},
-            "¡Todas tus comisiones de hoy son " + boostHoy.label + "! Aprovecha y vende más"
-          )
-        ),
-        React.createElement("div", { style:{ fontSize:36 }}, "🚀")
-      );
-    })()
-    ),
-
-    // ── BARRA DE PROGRESO (si hay meta) ──
-    metaMes > 0 && React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:"14px 18px", marginBottom:16, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", marginBottom:8 }},
-        React.createElement("span", { style:{ fontSize:13, fontWeight:700 }}, "🎯 Meta de comisiones " + mesActual),
-        React.createElement("span", { style:{ fontSize:13, fontWeight:900, color: pctMeta >= 100 ? CC.verde : CC.gold }},
-          RD2(miComisionMes) + " / " + RD2(metaMes) + " (" + (pctMeta||0) + "%)"
-        )
-      ),
-      React.createElement("div", { style:{ background:"#f0f2f0", borderRadius:20, height:14, overflow:"hidden" }},
-        React.createElement("div", { style:{
-          width: (pctMeta||0) + "%", height:"100%",
-          background: pctMeta >= 100 ? "linear-gradient(90deg,#1a6b3a,#2ecc71)" : pctMeta >= 70 ? "linear-gradient(90deg,#b8860b,#f1c40f)" : "linear-gradient(90deg,#1a4fa0,#3498db)",
-          borderRadius:20, transition:"width 0.6s ease"
-        }}),
-      ),
-      pctMeta >= 100 && React.createElement("div", { style:{ textAlign:"center", marginTop:6, fontSize:13, fontWeight:800, color:CC.verde }}, "🎉 ¡Meta alcanzada este mes! Excelente trabajo")
-    ),
-
-    // ── CELEBRACIÓN AL VENDER ──
-    celebracion && React.createElement("div", { style:{
-      background:"linear-gradient(135deg,#1a6b3a,#2ecc71)", borderRadius:14, padding:"16px 20px",
-      marginBottom:16, color:"#fff", animation:"fadeIn 0.3s",
-      display:"flex", justifyContent:"space-between", alignItems:"center",
-      boxShadow:"0 4px 20px rgba(26,107,58,0.4)"
-    }},
-      React.createElement("div", null,
-        React.createElement("div", { style:{ fontSize:16, fontWeight:900 }}, "🎉 ¡Venta registrada!"),
-        React.createElement("div", { style:{ fontSize:13, opacity:0.9, marginTop:2 }},
-          celebracion.servicio + " · " + (celebracion.cliente)
-        )
-      ),
-      React.createElement("div", { style:{ textAlign:"right" }},
-        React.createElement("div", { style:{ fontSize:11, opacity:0.8 }}, "Tu comisión"),
-        React.createElement("div", { style:{ fontSize:28, fontWeight:900 }}, RD2(celebracion.comision)),
-      )
-    ),
-
-    // ── FORM DE VENTA ──
-    React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, marginBottom:16, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-      React.createElement("div", { style:{ fontWeight:800, fontSize:15, marginBottom:14, color:CC.azul }}, "➕ Registrar venta"),
-
-      // Preview comisión si hay producto seleccionado
-      selProd && React.createElement("div", { style:{
-        background:"linear-gradient(135deg,#1a4fa0,#1a6b3a)", borderRadius:10, padding:"12px 18px",
-        marginBottom:14, color:"#fff", display:"flex", justifyContent:"space-between", alignItems:"center"
-      }},
-        React.createElement("div", null,
-          React.createElement("div", { style:{ fontSize:12, opacity:0.8 }}, qty + "x " + selProd.nombre),
-          React.createElement("div", { style:{ fontSize:22, fontWeight:900 }}, "Tu ganancia: " + RD2(miComisionActual))
-        ),
-        React.createElement("div", { style:{ textAlign:"right", fontSize:11, opacity:0.8 }},
-          React.createElement("div", null, "Precio venta: " + RD2(selProd.pventa * qty)),
-          React.createElement("div", null, "Gan. neta: " + RD2(gananciaActual) + " × " + Math.round(comPct*100) + "%")
-        )
-      ),
-
-      React.createElement("div", { style:{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }},
-        React.createElement("div", { style:{ flex:"1 1 180px" }},
-          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cliente / Mascota"),
-          React.createElement("input", { value:cliente, onChange:e=>setCliente(e.target.value), placeholder:"Nombre del cliente...",
-            style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
-        ),
-        React.createElement("div", null,
-          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Forma de pago"),
-          React.createElement("select", { value:pago, onChange:e=>setPago(e.target.value),
-            style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }},
-            React.createElement("option", { value:"efectivo" }, "💵 Efectivo"),
-            React.createElement("option", { value:"Transferencia Popular" }, "🏦 Popular"),
-            React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Reservas"),
-            React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta")
-          )
-        )
-      ),
-
-      // Buscador de productos
-      React.createElement("div", { style:{ position:"relative", marginBottom:12 }},
-        React.createElement("input", { value:busq, onChange:e=>{setBusq(e.target.value);setSelProd(null);},
-          placeholder:"🔍 Buscar producto...",
-          style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }}),
-        busq && React.createElement("button", { onClick:()=>{setBusq("");setSelProd(null);},
-          style:{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:16, color:CC.gris }}, "✕")
-      ),
-
-      // Grid de productos
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(185px,1fr))", gap:10, maxHeight:320, overflowY:"auto", paddingRight:4 }},
-        invFiltrado.length === 0
-          ? React.createElement("div", { style:{ gridColumn:"1/-1", textAlign:"center", color:CC.gris, padding:"20px 0", fontSize:13 }}, "Sin productos que coincidan con la búsqueda")
-          : invFiltrado.slice(0,40).map(p => {
-            const sel = selProd?.id === p.id;
-            const esEstrella = top3.includes(p.id);
-            return React.createElement("div", { key:p.id,
-              style:{ border:"2px solid "+(sel?CC.azul:p.boost?"#f1c40f":esEstrella?"#f1c40f":"#e8eaed"),
-                borderRadius:12, cursor:"pointer", overflow:"hidden",
-                background:sel?CC.azulL:"#fff", transition:"all 0.15s",
-                position:"relative", boxShadow: p.boost?"0 4px 14px rgba(0,0,0,0.12)":"0 1px 4px rgba(0,0,0,0.06)" }},
-              // Imagen del producto
-              React.createElement("div", {
-                onClick: e => { e.stopPropagation(); setModalProd(p); },
-                style:{ height:90, background:"linear-gradient(135deg,#f0f4f8,#e8eef8)", position:"relative", overflow:"hidden" }},
-                React.createElement("img", {
-                  src: `https://source.unsplash.com/200x90/?${encodeURIComponent(p.nombre + " pet")}`,
-                  alt: p.nombre,
-                  onError: e => { e.target.style.display="none"; },
-                  style:{ width:"100%", height:"100%", objectFit:"cover" }
-                }),
-                // Badge boost sobre imagen
-                p.boost && React.createElement("div", { style:{ position:"absolute", top:4, left:4, background:p.boost.color, color:"#fff", fontSize:10, fontWeight:900, padding:"2px 7px", borderRadius:20 }}, p.boost.tag),
-                esEstrella && !p.boost && React.createElement("div", { style:{ position:"absolute", top:4, left:4, background:CC.gold, color:"#fff", fontSize:10, fontWeight:900, padding:"2px 7px", borderRadius:20 }}, "⭐ TOP"),
-                React.createElement("div", { style:{ position:"absolute", bottom:4, right:4, background:"rgba(0,0,0,0.5)", color:"#fff", fontSize:10, padding:"2px 6px", borderRadius:6, cursor:"pointer" }}, "ℹ️ Info")
-              ),
-              // Info del producto
-              React.createElement("div", {
-                onClick: () => { setSelProd(p); setQty(1); },
-                style:{ padding:"8px 10px" }},
-                React.createElement("div", { style:{ fontSize:10, color:CC.gris, textTransform:"capitalize" }}, p.categoria||"producto"),
-                React.createElement("div", { style:{ fontWeight:700, fontSize:11, marginBottom:6, lineHeight:1.3 }}, p.nombre.slice(0,28)),
-                React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
-                  React.createElement("div", null,
-                    React.createElement("div", { style:{ fontSize:12, fontWeight:800, color:"#1a1a2e" }}, RD2(p.pventa)),
-                    React.createElement("div", { style:{ fontSize:9, color:CC.gris }}, "precio al cliente")
-                  ),
-                  React.createElement("div", { style:{
-                    fontSize:12, fontWeight:900, padding:"4px 8px", borderRadius:20,
-                    background: p.boost ? p.boost.bg : p.miComision >= 50 ? CC.verdeL : "#f4f5f6",
-                    color: p.boost ? p.boost.color : p.miComision >= 50 ? CC.verde : CC.gris,
-                    border: p.boost ? "1.5px solid "+p.boost.color : "none"
-                  }}, "+" + RD2(p.miComision))
-                ),
-                p.stock <= 0 && React.createElement("div", { style:{ fontSize:9, color:"#e67e22", marginTop:2 }}, "⚠️ Sin stock")
-              )
-            );
-          })
-      ),
-
-      // Cantidad y botón registrar
-      selProd && React.createElement("div", { style:{ marginTop:14, display:"flex", gap:10, alignItems:"flex-end", flexWrap:"wrap" }},
-        React.createElement("div", null,
-          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cantidad"),
-          React.createElement("input", { type:"number", min:1, value:qty, onChange:e=>setQty(Math.max(1,parseInt(e.target.value)||1)),
-            style:{ width:70, padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
-        ),
-        React.createElement("button", { onClick:registrar,
-          style:{ flex:1, background:"linear-gradient(135deg,"+CC.verde+",#2ecc71)", color:"#fff", border:"none",
-            borderRadius:10, padding:"11px 20px", fontWeight:900, fontSize:14, cursor:"pointer",
-            boxShadow:"0 4px 14px rgba(26,107,58,0.3)" }},
-          "✅ Vender " + selProd.nombre.slice(0,20) + " · +" + RD2(miComisionActual)
-        )
-      )
-    ),
-
-    // ── HISTORIAL DE GANANCIAS ──
-    React.createElement(HistorialGanancias, { usuario, ventas, comPct, mesActual }),
-    /* Modal de producto */
-    modalProd && React.createElement(ModalProducto, {
-      prod: modalProd,
-      inventario: inv,
-      comPct,
-      onCerrar: () => setModalProd(null),
-      onSeleccionar: (p) => { setSelProd(p); setQty(1); }
-    })
-  );
-}
-
-// ─────────────────────────────────────────────
-// Historial de ganancias de farmacia
-// ─────────────────────────────────────────────
-function HistorialGanancias({ usuario, ventas, comPct, mesActual }) {
-  const [filtro, setFiltro] = React.useState(mesActual);
-  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",gris:"#5a6472" };
-  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
-  const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
-
-  const misVentas = ventas.filter(v =>
-    v.area === "farmacia" &&
-    (v.recibidopor||"").toLowerCase().includes(nombreBase)
-  );
-  const meses = ["todos", ...new Set(misVentas.map(v=>v.fecha?.slice(0,7)).filter(Boolean).sort().reverse())];
-  const filtradas = (filtro === "todos" ? misVentas : misVentas.filter(v=>v.fecha?.slice(0,7)===filtro))
-    .sort((a,b) => b.fecha.localeCompare(a.fecha));
-
-  const totalCom  = filtradas.reduce((s,v)=>s+(v.comision||0),0);
-  const totalVtas = filtradas.reduce((s,v)=>s+v.total,0);
-  const nVtas = filtradas.length;
-
-  return React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-    React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:8 }},
-      React.createElement("div", { style:{ fontWeight:800, fontSize:15 }}, "📊 Historial de ganancias — Farmacia"),
-      React.createElement("div", { style:{ display:"flex", gap:6, flexWrap:"wrap" }},
-        meses.slice(0,6).map(m => React.createElement("button", { key:m, onClick:()=>setFiltro(m),
-          style:{ padding:"5px 12px", borderRadius:20, border:"1.5px solid "+(filtro===m?CC.azul:"#e0e4e8"),
-            background:filtro===m?CC.azul:"#fff", color:filtro===m?"#fff":CC.gris, fontSize:11, fontWeight:700, cursor:"pointer" }},
-          m==="todos"?"Todos":m))
-      )
-    ),
-
-    // KPIs resumen
-    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:16 }},
-      [
-        { l:"Ventas", v:nVtas, c:CC.azul },
-        { l:"Total vendido", v:RD2(totalVtas), c:CC.verde },
-        { l:"Mis comisiones", v:RD2(totalCom), c:CC.gold },
-      ].map(k => React.createElement("div", { key:k.l, style:{ background:"#f8f9fa", borderRadius:10, padding:"10px 14px", textAlign:"center" }},
-        React.createElement("div", { style:{ fontSize:10, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, k.l),
-        React.createElement("div", { style:{ fontSize:16, fontWeight:900, color:k.c, marginTop:2 }}, k.v)
-      ))
-    ),
-
-    filtradas.length === 0
-      ? React.createElement("div", { style:{ color:CC.gris, fontSize:13, textAlign:"center", padding:"16px 0" }}, "Sin ventas de farmacia en este período.")
-      : React.createElement("div", { style:{ maxHeight:260, overflowY:"auto" }},
-          React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:12 }},
-            React.createElement("thead", null,
-              React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
-                ["Fecha","Cliente","Producto","Total","Comisión"].map(t =>
-                  React.createElement("th", { key:t, style:{ textAlign:"left", padding:"6px 10px", color:CC.gris, fontSize:10, fontWeight:700, textTransform:"uppercase" }}, t)
-                )
-              )
-            ),
-            React.createElement("tbody", null,
-              filtradas.map((v,i) =>
-                React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f8f9fa" }},
-                  React.createElement("td", { style:{ padding:"7px 10px", whiteSpace:"nowrap" }}, v.fecha),
-                  React.createElement("td", { style:{ padding:"7px 10px", fontWeight:600 }}, (v.cliente||"—").slice(0,18)),
-                  React.createElement("td", { style:{ padding:"7px 10px", color:CC.gris }}, (v.servicio||v.descripcion||"").slice(0,28)),
-                  React.createElement("td", { style:{ padding:"7px 10px", fontWeight:700, color:CC.verde }}, RD2(v.total)),
-                  React.createElement("td", { style:{ padding:"7px 10px", fontWeight:900, color:CC.azul }}, v.comision > 0 ? RD2(v.comision) : "—")
-                )
-              )
-            )
-          )
-        )
-  );
-}
-
-function FarmaciaVet({ usuario, ventas, setVentas, inventario }) {
-  // Usa MiVitrina con comisión del usuario (30% vet, 5% farmacia)
-  const comPct = 0.05; // 5% ganancia neta de farmacia
-  return React.createElement(MiVitrina, { usuario, ventas, setVentas, inventario, comPct });
-}
-function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
-  const [busq, setBusq] = React.useState("");
-  const [selProd, setSelProd] = React.useState(null);
-  const [qty, setQty] = React.useState(1);
-  const [cliente, setCliente] = React.useState("");
-  const [pago, setPago] = React.useState("efectivo");
-  const [ok, setOk] = React.useState(null);
-  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",fondo:"#f0f4f8",rojo:"#c0392b" };
-  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
-
-  const prods = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[]))
-    .filter(p => p.pventa > 0 && (busq.length < 2 || p.nombre.toLowerCase().includes(busq.toLowerCase())));
-
-  const ganancia = selProd ? Math.max(0, (selProd.pventa - selProd.costo) * qty) : 0;
-  const miComision = Math.round(ganancia * 0.05);
-
-  function registrar() {
-    if (!selProd || !cliente.trim()) return alert("Selecciona producto y cliente");
-    const v = {
-      id: Date.now(),
-      fecha: new Date().toISOString().slice(0,10),
-      cliente: cliente.trim(),
-      area: "farmacia",
-      servicio: qty > 1 ? qty + "x " + selProd.nombre : selProd.nombre,
-      total: selProd.pventa * qty,
-      comision: miComision,
-      formapago: pago,
-      recibidopor: usuario.nombre,
-      cobradopor: usuario.nombre
-    };
-    setVentas(prev => [...(prev||[]), v]);
-    setOk(v);
-    setSelProd(null); setCliente(""); setQty(1); setBusq("");
-    setTimeout(() => setOk(null), 4000);
-  }
-
-  return React.createElement("div", null,
-    React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💊 Farmacia / Tienda"),
-    React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }}, "Vende productos y gana el 5% de la ganancia neta por cada venta"),
-
-    // Badge motivacional
-    selProd && React.createElement("div", { style:{ background:"linear-gradient(135deg,#1a4fa0,#1a6b3a)", borderRadius:12, padding:"14px 20px", marginBottom:16, color:"#fff", display:"flex", justifyContent:"space-between", alignItems:"center" }},
-      React.createElement("div", null,
-        React.createElement("div", { style:{ fontSize:12, opacity:0.8 }}, "Tu comisión si vendes " + qty + "x " + selProd.nombre),
-        React.createElement("div", { style:{ fontSize:26, fontWeight:900 }}, RD2(miComision)),
-        React.createElement("div", { style:{ fontSize:11, opacity:0.7 }}, "Ganancia neta: " + RD2(ganancia) + " × 5%")
-      ),
-      React.createElement("div", { style:{ fontSize:40 }}, "🤑")
-    ),
-
-    ok && React.createElement("div", { style:{ background:"#d1fae5", border:"2px solid #059669", borderRadius:10, padding:"12px 16px", marginBottom:16, fontSize:13, color:"#065f46", fontWeight:700 }},
-      "✅ Venta registrada — " + ok.servicio + " · " + RD2(ok.total) + " · Tu comisión: " + RD2(ok.comision)
-    ),
-
-    // Form
-    React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, marginBottom:16, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:14 }}, "➕ Registrar venta"),
-
-      React.createElement("div", { style:{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }},
-        React.createElement("div", { style:{ flex:"1 1 200px" }},
-          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cliente / Mascota"),
-          React.createElement("input", { value:cliente, onChange:e=>setCliente(e.target.value), placeholder:"Nombre del cliente...", style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
-        ),
-        React.createElement("div", { style:{ display:"flex", flexDirection:"column", gap:4 }},
-          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Forma de pago"),
-          React.createElement("select", { value:pago, onChange:e=>setPago(e.target.value), style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }},
-            React.createElement("option", { value:"efectivo" }, "💵 Efectivo"),
-            React.createElement("option", { value:"Transferencia Popular" }, "🏦 Popular"),
-            React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Reservas"),
-            React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta")
-          )
-        )
-      ),
-
-      // Buscador
-      React.createElement("div", { style:{ position:"relative", marginBottom:12 }},
-        React.createElement("input", { value:busq, onChange:e=>{setBusq(e.target.value); setSelProd(null);}, placeholder:"🔍 Buscar producto...", style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
-      ),
-
-      // Grid de productos
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:10, maxHeight:300, overflowY:"auto" }},
-        prods.slice(0,30).map(p => {
-          const gan = Math.max(0, p.pventa - p.costo);
-          const com5 = Math.round(gan * 0.05);
-          const sel = selProd?.id === p.id;
-          return React.createElement("div", {
-            key: p.id,
-            onClick: () => { setSelProd(p); setQty(1); },
-            style:{ border:"2px solid " + (sel ? CC.azul : "#e8eaed"), borderRadius:10, padding:"10px 12px", cursor:"pointer", background: sel ? "#e8eef8" : "#fff", transition:"all 0.15s" }
-          },
-            React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"capitalize" }}, p.categoria),
-            React.createElement("div", { style:{ fontWeight:700, fontSize:12, marginBottom:4 }}, p.nombre.slice(0,28)),
-            React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
-              React.createElement("span", { style:{ fontWeight:800, color:CC.verde }}, RD2(p.pventa)),
-              React.createElement("span", { style:{ fontSize:11, background:"#d1fae5", color:CC.verde, borderRadius:20, padding:"2px 6px", fontWeight:700 }}, "+" + RD2(com5))
-            ),
-            p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#d97706", marginTop:2 }}, "⚠️ Sin stock")
-          );
-        })
-      ),
-
-      selProd && React.createElement("div", { style:{ marginTop:14, display:"flex", gap:10, alignItems:"flex-end" }},
-        React.createElement("div", null,
-          React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cantidad"),
-          React.createElement("input", { type:"number", min:1, value:qty, onChange:e=>setQty(Math.max(1,parseInt(e.target.value)||1)), style:{ width:70, padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
-        ),
-        React.createElement("button", {
-          onClick: registrar,
-          style:{ flex:1, background:CC.verde, color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:800, fontSize:14, cursor:"pointer" }
-        }, "✅ Registrar venta · " + RD2(selProd.pventa * qty))
-      )
-    ),
-
-    // Historial ventas farmacia de esta doctora
-    React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "📋 Mis ventas de farmacia"),
-      (() => {
-        const mis = ventas.filter(v => v.area === "farmacia" && (v.recibidopor||"").toLowerCase().includes(usuario.nombre.split(" ")[0].toLowerCase())).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,15);
-        if (mis.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:13 }}, "Aún no tienes ventas de farmacia registradas.");
-        return React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
-          React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
-            ["Fecha","Cliente","Producto","Total","Comisión"].map(t => React.createElement("th", { key:t, style:{ textAlign:"left", padding:"6px 10px", color:CC.gris, fontSize:11, fontWeight:700, textTransform:"uppercase" }}, t))
-          )),
-          React.createElement("tbody", null, mis.map((v,i) =>
-            React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f4f5f6" }},
-              React.createElement("td", { style:{ padding:"8px 10px" }}, v.fecha),
-              React.createElement("td", { style:{ padding:"8px 10px", fontWeight:600 }}, v.cliente||"—"),
-              React.createElement("td", { style:{ padding:"8px 10px", color:CC.gris, fontSize:12 }}, (v.servicio||v.descripcion||"").slice(0,30)),
-              React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700, color:CC.verde }}, RD2(v.total)),
-              React.createElement("td", { style:{ padding:"8px 10px", fontWeight:700, color:CC.azul }}, RD2(v.comision))
-            )
-          ))
-        );
-      })()
-    )
-  );
-}
-
-
-// ═══════════════════════════════════════════════
-// MIS COMISIONES — Portal Veterinaria
-// ═══════════════════════════════════════════════
-function MisComisionesVet({ usuario, ventas, pagosNom }) {
-  const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
-  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojoL:"#fdecea",rojo:"#c0392b" };
-  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
-
-  const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
-  const todasMisVentas = ventas.filter(v => {
-    const r = (v.recibidopor||v.recibidoPor||"").toLowerCase();
-    return r.includes(nombreBase) || r.includes(usuario.id) || v.veterinaria_id === usuario.id;
-  });
-
-  const meses = ["todos", ...new Set(todasMisVentas.map(v=>v.fecha?.slice(0,7)).filter(Boolean).sort().reverse())];
-  const filtradas = filtroMes === "todos" ? todasMisVentas : todasMisVentas.filter(v=>v.fecha?.slice(0,7)===filtroMes);
-  const filtradas2 = [...filtradas].sort((a,b)=>b.fecha.localeCompare(a.fecha));
-
-  const totalComision = filtradas2.reduce((s,v)=>s+(v.comision||0), 0);
-  const totalVentas   = filtradas2.reduce((s,v)=>s+v.total, 0);
-  const nServicios    = filtradas2.length;
-
-  // Pagos recibidos de nómina
-  const pagosEmp = (pagosNom||[]).filter(p => p.empleadoId === (usuario.id === "aylein" ? "e2" : "e5"));
-  const totalPagado = pagosEmp.reduce((s,p)=>s+(p.totalPagado||0),0);
-
-  const pctDisplay = usuario.comision_pct ? (usuario.comision_pct * 100).toFixed(0) + "%" : "—";
-
-  return React.createElement("div", null,
-    React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
-    React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }},
-      "Detalle de comisiones por servicio · " + (usuario.id === "valentina" ? "40% veterinaria · 5% farmacia" : "30% veterinaria · 5% farmacia")
-    ),
-
-    // KPIs
-    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
-      [
-        { label:"Servicios", val: nServicios, color: CC.azul, icon:"🩺" },
-        { label:"Total generado", val: RD2(totalVentas), color: CC.verde, icon:"📊" },
-        { label:"Comisiones ganadas", val: RD2(totalComision), color: CC.gold, icon:"💰" },
-        { label:"Total cobrado (nómina)", val: RD2(totalPagado), color: CC.gris, icon:"✅" },
-      ].map(k => React.createElement("div", { key:k.label, style:{ background:"#fff", borderRadius:12, padding:"14px 16px", borderTop:"4px solid "+k.color, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-        React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, k.icon + " " + k.label),
-        React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:k.color, marginTop:4 }}, k.val)
-      ))
-    ),
-
-    // Filtro mes
-    React.createElement("div", { style:{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }},
-      meses.map(m => React.createElement("button", {
-        key:m, onClick:()=>setFiltroMes(m),
-        style:{ padding:"6px 14px", borderRadius:20, border:"1.5px solid "+(filtroMes===m?CC.azul:"#e0e4e8"), background:filtroMes===m?CC.azul:"#fff", color:filtroMes===m?"#fff":CC.gris, fontSize:12, fontWeight:700, cursor:"pointer" }
-      }, m === "todos" ? "Todos" : m))
-    ),
-
-    // Tabla detallada por servicio
-    React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", marginBottom:16 }},
-      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "📋 Detalle por servicio"),
-      filtradas2.length === 0
-        ? React.createElement("div", { style:{ color:CC.gris, fontSize:13, textAlign:"center", padding:"24px 0" }}, "No hay servicios en este período.")
-        : React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
-            React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
-              ["Fecha","Cliente","Servicio/Producto","Área","Total","Comisión"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
-            )),
-            React.createElement("tbody", null, filtradas2.map((v,i) =>
-              React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f4f5f6" }},
-                React.createElement("td", { style:{padding:"8px 10px",whiteSpace:"nowrap"}}, v.fecha),
-                React.createElement("td", { style:{padding:"8px 10px",fontWeight:600}}, (v.cliente||"—").slice(0,20)),
-                React.createElement("td", { style:{padding:"8px 10px",color:CC.gris,fontSize:12}}, (v.servicio||v.descripcion||"").slice(0,35)),
-                React.createElement("td", { style:{padding:"8px 10px"}},
-                  React.createElement("span", { style:{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:20, background: v.area==="veterinaria"?"#e8eef8":"#fdf6e3", color: v.area==="veterinaria"?CC.azul:CC.gold }}, v.area)
-                ),
-                React.createElement("td", { style:{padding:"8px 10px",fontWeight:700,color:CC.verde}}, RD2(v.total)),
-                React.createElement("td", { style:{padding:"8px 10px",fontWeight:800,color:CC.azul}}, v.comision > 0 ? RD2(v.comision) : "—")
-              )
-            ))
-          )
-    ),
-
-    // Historial de pagos de nómina
-    pagosEmp.length > 0 && React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "✅ Historial de pagos recibidos"),
-      React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
-        React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
-          ["Mes","Mensualidad","Comisiones","Descuentos","Total pagado"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
-        )),
-        React.createElement("tbody", null, [...pagosEmp].sort((a,b)=>b.mes.localeCompare(a.mes)).map((p,i)=>
-          React.createElement("tr", { key:i, style:{ borderBottom:"1px solid #f4f5f6" }},
-            React.createElement("td", { style:{padding:"8px 10px",fontWeight:600}}, p.mes),
-            React.createElement("td", { style:{padding:"8px 10px"}}, RD2(p.mensualidad||0)),
-            React.createElement("td", { style:{padding:"8px 10px",color:CC.azul,fontWeight:700}}, RD2(p.comisiones||0)),
-            React.createElement("td", { style:{padding:"8px 10px",color:CC.rojo}}, p.descuentos > 0 ? "-" + RD2(p.descuentos) : "—"),
-            React.createElement("td", { style:{padding:"8px 10px",fontWeight:800,color:CC.verde}}, RD2(p.totalPagado))
-          )
-        ))
-      )
-    )
-  );
-}
-
-
-// ═══════════════════════════════════════════════════════════
-// PORTAL GROOMER — Alexander
-// ═══════════════════════════════════════════════════════════
-function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom }) {
-  const [tabGrm, setTabGrm] = React.useState("dashboard_grm");
-  const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
-  // Objeto usuario para compatibilidad con MiVitrina
-  const usuario = { id:"e1", nombre:"Alexander Ramírez", email:"alexander@petcolinas.com", comision_pct:0.05 };
-  const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",gris:"#5a6472",grisd:"#5a6472",fondo:"#f0f4f8",gold:"#b8860b" };
-  const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
-
-  const mesActual = new Date().toISOString().slice(0,7);
-  // Todos los grooming son de Alexander (es el único groomer)
-  // recibidopor en grooming histórico = quien cobró, no quien hizo el baño
-  // El campo "servicioPor" diferencia esto en nuevas ventas
-  const misVentas = ventas.filter(v => {
-    if (v.area !== "grooming") return false;
-    const serv = (v.servicioPor || v.serviciopor || "").toLowerCase();
-    // Si hay serviciopor explícito y NO es alexander, no contarlo
-    if (serv && !serv.includes("alexander") && !serv.includes("e1")) return false;
-    return true; // todos los grooming son de Alexander por defecto
-  });
-  const misMes = misVentas.filter(v => v.fecha?.slice(0,7) === mesActual);
-  const totalMes = misMes.reduce((s,v)=>s+v.total,0);
-  const comisionMes = misMes.reduce((s,v)=>s+(v.comision||0),0);
-  const banosMes = misMes.length;
-
-  const ventasFiltro = filtroMes === "todos"
-    ? [...misVentas].sort((a,b)=>b.fecha.localeCompare(a.fecha))
-    : misVentas.filter(v=>v.fecha?.slice(0,7)===filtroMes).sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  const meses = ["todos", ...new Set(misVentas.map(v=>v.fecha?.slice(0,7)).filter(Boolean).sort().reverse())];
-  const totalFiltro = ventasFiltro.reduce((s,v)=>s+v.total,0);
-  const comFiltro   = ventasFiltro.reduce((s,v)=>s+(v.comision||0),0);
-
-  const pagosAlexander = (pagosNom||[]).filter(p=>p.empleadoId==="e1").sort((a,b)=>b.mes.localeCompare(a.mes));
-  const totalCobrado = pagosAlexander.reduce((s,p)=>s+(p.totalPagado||0),0);
-
-  const TABS_GRM = [
-    { id:"dashboard_grm",      icon:"📊", label:"Mi Dashboard" },
-    { id:"mis_baños",          icon:"🛁", label:"Mis Baños" },
-    { id:"mis_comisiones_grm", icon:"💰", label:"Mis Comisiones" },
-    { id:"mi_vitrina_grm",     icon:"🛍️", label:"Mi Vitrina" }
-  ];
-
-  return React.createElement("div", { style:{ fontFamily:"'Segoe UI',sans-serif", background:CC.fondo, minHeight:"100vh" }},
-    // Header
-    React.createElement("div", { style:{ background:"linear-gradient(135deg,#1a6b3a,#145a30)", padding:"16px 28px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 18px rgba(0,0,0,0.15)" }},
-      React.createElement("div", null,
-        React.createElement("div", { style:{ fontSize:19, fontWeight:800, color:"#fff" }}, "✂️ PetColinas · Portal Groomer"),
-        React.createElement("div", { style:{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:2 }}, "Plaza Las Colinas · SDO")
-      ),
-      React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:16 }},
-        React.createElement("div", { style:{ fontSize:12, color:"rgba(255,255,255,0.8)", fontWeight:700, textAlign:"right" }},
-          "✂️ Alexander Ramírez",
-          React.createElement("div", { style:{ fontSize:11, color:"rgba(255,255,255,0.6)" }}, "Groomer · Comisión fija por servicio")
-        ),
-        React.createElement("button", { onClick:onLogout, style:{ background:"rgba(255,255,255,0.15)", color:"#fff", border:"1px solid rgba(255,255,255,0.3)", borderRadius:10, padding:"8px 16px", cursor:"pointer", fontWeight:700, fontSize:13 }}, "Cerrar sesión")
-      )
-    ),
-    // Nav
-    React.createElement("div", { style:{ background:"#fff", borderBottom:"2px solid #eef0f2", display:"flex", gap:0, overflowX:"auto", padding:"0 20px" }},
-      TABS_GRM.map(t => React.createElement("button", {
-        key:t.id, onClick:()=>setTabGrm(t.id),
-        style:{ background:"none", border:"none", cursor:"pointer", padding:"13px 18px", fontSize:13, fontWeight:700, color:tabGrm===t.id?CC.verde:CC.gris, borderBottom:tabGrm===t.id?"3px solid "+CC.verde:"3px solid transparent", whiteSpace:"nowrap" }
-      }, t.icon + " " + t.label))
-    ),
-    // Contenido
-    React.createElement("div", { style:{ maxWidth:1100, margin:"0 auto", padding:"24px 20px" }},
-
-      // DASHBOARD
-      tabGrm === "dashboard_grm" && React.createElement("div", null,
-        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:16 }}, "📊 Mi Dashboard — Marzo 2026"),
-        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
-          [
-            { label:"Baños este mes", val:banosMes, color:CC.verde, icon:"🛁" },
-            { label:"Mis comisiones", val:RD2(comisionMes), color:CC.gold, icon:"💰" },
-            { label:"Total cobrado", val:RD2(totalCobrado), color:CC.gris, icon:"✅" },
-          ].map(k => React.createElement("div", { key:k.label, style:{ background:"#fff", borderRadius:12, padding:"14px 16px", borderTop:"4px solid "+k.color, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-            React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase", letterSpacing:1 }}, k.icon + " " + k.label),
-            React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:k.color, marginTop:4 }}, k.val)
-          ))
-        ),
-        // Últimos 5 servicios
-        React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-          React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "🕐 Últimos servicios"),
-          misMes.length === 0
-            ? React.createElement("div", { style:{ color:CC.gris, fontSize:13 }}, "No hay servicios registrados este mes.")
-            : [...misMes].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,8).map((v,i) =>
-                React.createElement("div", { key:i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:13 }},
-                  React.createElement("div", null,
-                    React.createElement("div", { style:{ fontWeight:600 }}, v.cliente||"—"),
-                    React.createElement("div", { style:{ fontSize:11, color:CC.gris }}, v.fecha + " · " + (v.servicio||v.descripcion||"").slice(0,30))
-                  ),
-                  React.createElement("div", { style:{ textAlign:"right" }},
-                    React.createElement("div", { style:{ fontWeight:800, color:CC.verde }}, RD2(v.total)),
-                    React.createElement("div", { style:{ fontSize:11, color:CC.azul }}, "com. " + RD2(v.comision||0))
-                  )
-                )
-              )
-        )
-      ),
-
-      // MIS BAÑOS
-      tabGrm === "mis_baños" && React.createElement("div", null,
-        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:8 }}, "🛁 Mis Baños y Servicios"),
-        React.createElement("div", { style:{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }},
-          meses.map(m => React.createElement("button", {
-            key:m, onClick:()=>setFiltroMes(m),
-            style:{ padding:"6px 14px", borderRadius:20, border:"1.5px solid "+(filtroMes===m?CC.verde:"#e0e4e8"), background:filtroMes===m?CC.verde:"#fff", color:filtroMes===m?"#fff":CC.gris, fontSize:12, fontWeight:700, cursor:"pointer" }
-          }, m==="todos"?"Todos":m))
-        ),
-        React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:16, marginBottom:12, display:"flex", gap:20 }},
-          React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Servicios"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.verde }}, ventasFiltro.length)),
-          React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Mis comisiones"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.gold }}, RD2(comFiltro)))
-        ),
-        React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-          ventasFiltro.length === 0
-            ? React.createElement("div", { style:{ color:CC.gris, fontSize:13 }}, "No hay servicios en este período.")
-            : React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", fontSize:13 }},
-                React.createElement("thead", null, React.createElement("tr", { style:{ borderBottom:"2px solid #f0f2f0" }},
-                  ["Fecha","Cliente","Servicio","Total","Comisión"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
-                )),
-                React.createElement("tbody", null, ventasFiltro.map((v,i)=>
-                  React.createElement("tr",{key:i,style:{borderBottom:"1px solid #f4f5f6"}},
-                    React.createElement("td",{style:{padding:"8px 10px",whiteSpace:"nowrap"}},v.fecha),
-                    React.createElement("td",{style:{padding:"8px 10px",fontWeight:600}},(v.cliente||"—").slice(0,20)),
-                    React.createElement("td",{style:{padding:"8px 10px",color:CC.gris,fontSize:12}},(v.servicio||v.descripcion||"").slice(0,35)),
-                    React.createElement("td",{style:{padding:"8px 10px",fontWeight:700,color:CC.verde}},RD2(v.total)),
-                    React.createElement("td",{style:{padding:"8px 10px",fontWeight:800,color:CC.azul}},v.comision>0?RD2(v.comision):"—")
-                  )
-                ))
-              )
-        )
-      ),
-
-      // MIS COMISIONES
-      tabGrm === "mi_vitrina_grm" && React.createElement(MiVitrina, {
-        usuario,
-        ventas,
-        setVentas: setVentas || window.__setVentasGlobal || (() => {}),
-        inventario: window.__inventarioGlobal || [],
-        comPct: 0.05
-      }),
-      tabGrm === "mis_comisiones_grm" && React.createElement("div", null,
-        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
-        React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }}, "Comisión fija por servicio según tarifario"),
-        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
-          [
-            { label:"Total ganado (histórico)", val:RD2(misVentas.reduce((s,v)=>s+(v.comision||0),0)), color:CC.gold, icon:"💰" },
-            { label:"Total cobrado", val:RD2(totalCobrado), color:CC.verde, icon:"✅" },
-          ].map(k => React.createElement("div",{key:k.label,style:{background:"#fff",borderRadius:12,padding:"14px 16px",borderTop:"4px solid "+k.color,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}},
-            React.createElement("div",{style:{fontSize:11,color:CC.gris,textTransform:"uppercase",letterSpacing:1}},k.icon+" "+k.label),
-            React.createElement("div",{style:{fontSize:20,fontWeight:900,color:k.color,marginTop:4}},k.val)
-          ))
-        ),
-        pagosAlexander.length > 0 && React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}},
-          React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:12}},"✅ Historial de pagos recibidos"),
-          React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:13}},
-            React.createElement("thead",null,React.createElement("tr",{style:{borderBottom:"2px solid #f0f2f0"}},
-              ["Mes","Sueldo base","Comisiones","Descuentos","Total"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
-            )),
-            React.createElement("tbody",null,pagosAlexander.map((p,i)=>
-              React.createElement("tr",{key:i,style:{borderBottom:"1px solid #f4f5f6"}},
-                React.createElement("td",{style:{padding:"8px 10px",fontWeight:600}},p.mes),
-                React.createElement("td",{style:{padding:"8px 10px"}},RD2(p.mensualidad||0)),
-                React.createElement("td",{style:{padding:"8px 10px",color:CC.azul,fontWeight:700}},RD2(p.comisiones||0)),
-                React.createElement("td",{style:{padding:"8px 10px",color:CC.gris}},p.descuentos>0?"-"+RD2(p.descuentos):"—"),
-                React.createElement("td",{style:{padding:"8px 10px",fontWeight:800,color:CC.verde}},RD2(p.totalPagado))
-              )
-            ))
-          )
-        )
-      )
-    )
-  );
-}
-
-function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes }) {
-  const [tabVet, setTabVet] = React.useState("dashboard_vet");
-  const userEmail = session?.user?.email || "";
-  const vetInfo   = VET_EMAILS.find(v => v.email === userEmail) || VET_EMAILS[0];
-  const usuario   = { ...vetInfo, rol: "veterinaria" };
-
-  const C = { verde: "#1a6b3a", azul: "#1a4fa0", gris: "#5a6472", fondo: "#f0f4f8" };
-
-  return React.createElement("div", { style: { fontFamily: "'Segoe UI', sans-serif", background: C.fondo, minHeight: "100vh" } },
-
-    // ── Header ──────────────────────────────────────────────
-    React.createElement("div", { style: {
-      background: "linear-gradient(135deg, #1a4fa0 0%, #1a3d80 100%)",
-      padding: "16px 28px", display: "flex", alignItems: "center",
-      justifyContent: "space-between", boxShadow: "0 4px 18px rgba(0,0,0,0.15)"
-    }},
-      React.createElement("div", null,
-        React.createElement("div", { style: { fontSize: 19, fontWeight: 800, color: "#fff" } }, "🐾 PetColinas · Portal Clínico"),
-        React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 } }, "Plaza Las Colinas · SDO")
-      ),
-      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16 } },
-        React.createElement("div", { style: { textAlign: "right" } },
-          React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.9)", fontWeight: 700 } },
-            new Date().toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })
-          ),
-          React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 } },
-            "👩‍⚕️ " + usuario.nombre + " — Veterinaria"
-          )
-        ),
-        React.createElement("button", {
-          onClick: onLogout,
-          style: { background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }
-        }, "Cerrar sesión")
-      )
-    ),
-
-    // ── Nav Tabs ─────────────────────────────────────────────
-    React.createElement("div", { style: {
-      background: "#fff", borderBottom: "2px solid #eef0f2",
-      display: "flex", gap: 0, overflowX: "auto", padding: "0 20px"
-    }},
-      TABS_VET.map(t => React.createElement("button", {
-        key: t.id, onClick: () => setTabVet(t.id),
-        style: {
-          background: "none", border: "none", cursor: "pointer",
-          padding: "13px 18px", fontSize: 13, fontWeight: 700,
-          color: tabVet === t.id ? "#1a4fa0" : "#5a6472",
-          borderBottom: tabVet === t.id ? "3px solid #1a4fa0" : "3px solid transparent",
-          display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", transition: "all 0.15s"
-        }
-      }, React.createElement("span", null, t.icon), t.label))
-    ),
-
-    // ── Contenido ────────────────────────────────────────────
-    React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "24px 20px" } },
-      tabVet === "dashboard_vet" && React.createElement(DashboardVet, {
-        usuario, ventas,
-        onVerHistorias: () => setTabVet("historias"),
-        onVerServicios: () => setTabVet("mis_servicios")
-      }),
-      tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes }),
-      tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas }),
-      tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
-      tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [] }),
-      tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] })
-    )
-  );
-}
-
-
-
-// ═══════════════════════════════════════════════════════════
-// PESTAÑA NOTIFICACIONES
-// ═══════════════════════════════════════════════════════════
-function TabNotificaciones({ clientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif, setTab, setCrmClienteInicial }) {
-  const leidas = notifLeidas instanceof Set ? notifLeidas : new Set();
-  const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#e53e3e" };
-
-  const todosFormulario = (clientes || []).filter(function(c) { return c.notas && c.notas.includes("Nos conocio"); });
-  const pendientes      = todosFormulario.filter(function(c) { return !leidas.has(String(c.id)); });
-  const vistos          = todosFormulario.filter(function(c) { return  leidas.has(String(c.id)); });
-
-  function irACRM(c) {
-    if (setCrmClienteInicial) setCrmClienteInicial({ modo: "detalle", cliente: c });
-    if (setTab) setTab("clientes");
-  }
-  function irAVenta(c) {
-    if (setCrmClienteInicial) setCrmClienteInicial({ modo: "ventaCliente", cliente: c });
-    if (setTab) setTab("ventas");
-  }
-  function marcarTodos() {
-    pendientes.forEach(function(c) { marcarNotifLeida(c.id); });
-  }
-
-  function renderCard(c, leida) {
-    var nomMasc  = c.nombreMascota || c.nombremascota || "Sin nombre";
-    var nomDueno = c.nombrePropietario || c.nombrepropietario || "";
-    var especie  = c.especie || "";
-    var raza     = c.raza || "";
-    var tel      = c.telefono || "";
-    var fecha    = c.fechaRegistro || c.fecharegistro || "";
-    var servicioMatch = (c.notas || "").match(/Servicio: ([^|]+)/);
-    var servicio = servicioMatch ? servicioMatch[1].trim() : "";
-    var icono    = especie === "Gato" ? "\u{1F431}" : "\u{1F436}";
-
-    return /* @__PURE__ */ React.createElement("div", { key: c.id, style: {
-        background: leida ? "#f8f9fa" : "#fff",
-        border: leida ? "1.5px solid #e2e8f0" : "1.5px solid #7c3aed44",
-        borderRadius: 14, padding: "16px 20px", marginBottom: 12,
-        boxShadow: leida ? "none" : "0 2px 12px rgba(124,58,237,0.08)",
-        opacity: leida ? 0.7 : 1
-      }},
-      /* @__PURE__ */ React.createElement("div", { style: { display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:10 }},
-        /* @__PURE__ */ React.createElement("div", { style: { display:"flex", alignItems:"center", gap:14 }},
-          /* @__PURE__ */ React.createElement("div", { style: { fontSize:32 } }, icono),
-          /* @__PURE__ */ React.createElement("div", null,
-            /* @__PURE__ */ React.createElement("div", { style: { fontWeight:800, fontSize:15, color:C.verde } }, nomMasc),
-            /* @__PURE__ */ React.createElement("div", { style: { fontSize:13, color:C.grisd, marginTop:2 } },
-              nomDueno + (raza ? " \u00B7 " + raza : "") + (especie ? " \u00B7 " + especie : "")
-            ),
-            tel && /* @__PURE__ */ React.createElement("div", { style: { fontSize:12, color:C.grisd, marginTop:2 } }, "\u{1F4DE} " + tel),
-            servicio && /* @__PURE__ */ React.createElement("div", { style: { fontSize:12, color:"#7c3aed", marginTop:4, fontWeight:600 } }, "\u{1F3AF} Servicio: " + servicio),
-            fecha && /* @__PURE__ */ React.createElement("div", { style: { fontSize:11, color:"#94a3b8", marginTop:2 } }, "Registrado: " + fecha)
-          )
-        ),
-        /* @__PURE__ */ React.createElement("div", { style: { display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" } },
-          !leida && /* @__PURE__ */ React.createElement("button", {
-            onClick: function() { irACRM(c); },
-            style: { background:C.azul, color:"#fff", border:"none", borderRadius:8, padding:"7px 14px", cursor:"pointer", fontWeight:700, fontSize:12 }
-          }, "\u{1F464} Ver perfil"),
-          !leida && /* @__PURE__ */ React.createElement("button", {
-            onClick: function() { irAVenta(c); },
-            style: { background:C.verde, color:"#fff", border:"none", borderRadius:8, padding:"7px 14px", cursor:"pointer", fontWeight:700, fontSize:12 }
-          }, "\u{1F4B0} Registrar venta"),
-          /* @__PURE__ */ React.createElement("button", {
-            onClick: function() { marcarNotifLeida(c.id); },
-            style: { background: leida ? "#f1f5f9" : "#dcfce7", color: leida ? C.grisd : C.verde, border:"none", borderRadius:8, padding:"7px 14px", cursor:"pointer", fontWeight:700, fontSize:12 }
-          }, leida ? "\u2713 Listo" : "\u2705 Marcar como listo")
-        )
-      )
-    );
-  }
-
-  return /* @__PURE__ */ React.createElement("div", null,
-    /* @__PURE__ */ React.createElement("div", { style: { display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 } },
-      /* @__PURE__ */ React.createElement("div", null,
-        /* @__PURE__ */ React.createElement("h2", { style: { margin:0, fontSize:22, fontWeight:800 } }, "\u{1F514} Notificaciones"),
-        /* @__PURE__ */ React.createElement("div", { style: { fontSize:13, color:C.grisd, marginTop:4 } }, "Clientes nuevos registrados desde el formulario web")
-      ),
-      todosFormulario.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display:"flex", gap:8 } },
-        pendientes.length > 0 && /* @__PURE__ */ React.createElement("button", {
-          onClick: marcarTodos,
-          style: { background:"#dcfce7", color:C.verde, border:"none", borderRadius:10, padding:"8px 16px", cursor:"pointer", fontWeight:700, fontSize:13 }
-        }, "\u2705 Marcar todos como listos"),
-        vistos.length > 0 && /* @__PURE__ */ React.createElement("button", {
-          onClick: limpiarTodasNotif,
-          style: { background:"#fee2e2", color:C.rojo, border:"none", borderRadius:10, padding:"8px 16px", cursor:"pointer", fontWeight:700, fontSize:13 }
-        }, "\u{1F5D1}\uFE0F Limpiar historial")
-      )
-    ),
-    pendientes.length > 0
-      ? /* @__PURE__ */ React.createElement("div", null,
-          /* @__PURE__ */ React.createElement("div", { style: { fontWeight:700, fontSize:14, color:"#7c3aed", marginBottom:10, display:"flex", alignItems:"center", gap:8 } },
-            /* @__PURE__ */ React.createElement("span", { style: { background:"#7c3aed", color:"#fff", borderRadius:"50%", width:22, height:22, display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:12 } }, pendientes.length),
-            " Pendientes de atender"
-          ),
-          pendientes.map(function(c) { return renderCard(c, false); })
-        )
-      : /* @__PURE__ */ React.createElement("div", { style: { background:"#dcfce7", borderRadius:14, padding:"20px 24px", marginBottom:16, display:"flex", alignItems:"center", gap:12 } },
-          /* @__PURE__ */ React.createElement("span", { style: { fontSize:28 } }, "\u2705"),
-          /* @__PURE__ */ React.createElement("div", null,
-            /* @__PURE__ */ React.createElement("div", { style: { fontWeight:800, color:C.verde } }, "Todo al dia"),
-            /* @__PURE__ */ React.createElement("div", { style: { fontSize:13, color:"#16a34a", marginTop:2 } }, "No hay clientes nuevos pendientes de atender.")
-          )
-        ),
-    vistos.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop:24 } },
-      /* @__PURE__ */ React.createElement("div", { style: { fontWeight:700, fontSize:14, color:C.grisd, marginBottom:10 } }, "\u2713 Ya atendidos (" + vistos.length + ")"),
-      vistos.map(function(c) { return renderCard(c, true); })
-    ),
-    todosFormulario.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign:"center", padding:"60px 0", color:"#94a3b8" } },
-      /* @__PURE__ */ React.createElement("div", { style: { fontSize:48, marginBottom:12 } }, "\u{1F514}"),
-      /* @__PURE__ */ React.createElement("div", { style: { fontSize:16, fontWeight:700 } }, "Sin notificaciones"),
-      /* @__PURE__ */ React.createElement("div", { style: { fontSize:13, marginTop:6 } }, "Cuando un cliente llene el formulario, aparecera aqui.")
-    )
-  );
-}
-
-
-const rootEl = document.getElementById("root");
-const appRoot = ReactDOM.createRoot(rootEl);
-appRoot.render(React.createElement(PetColinas));
-
-</script>
-</body>
-</html>
- 
+    
