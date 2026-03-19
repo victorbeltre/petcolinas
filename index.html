@@ -7227,7 +7227,6 @@ function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
         React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
           [
             { label:"Baños este mes", val:banosMes, color:CC.verde, icon:"🛁" },
-            { label:"Ingresos generados", val:RD2(totalMes), color:CC.azul, icon:"📊" },
             { label:"Mis comisiones", val:RD2(comisionMes), color:CC.gold, icon:"💰" },
             { label:"Total cobrado", val:RD2(totalCobrado), color:CC.gris, icon:"✅" },
           ].map(k => React.createElement("div", { key:k.label, style:{ background:"#fff", borderRadius:12, padding:"14px 16px", borderTop:"4px solid "+k.color, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
@@ -7266,7 +7265,6 @@ function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
         ),
         React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:16, marginBottom:12, display:"flex", gap:20 }},
           React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Servicios"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.verde }}, ventasFiltro.length)),
-          React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Total generado"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.azul }}, RD2(totalFiltro))),
           React.createElement("div", null, React.createElement("div", { style:{ fontSize:11, color:CC.gris, textTransform:"uppercase" }}, "Mis comisiones"), React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:CC.gold }}, RD2(comFiltro)))
         ),
         React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:20, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
