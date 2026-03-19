@@ -7165,10 +7165,16 @@ function PortalGroomer({ session, onLogout, ventas, pagosNom }) {
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
 
   const mesActual = new Date().toISOString().slice(0,7);
-  const misVentas = ventas.filter(v => v.area === "grooming" && (
-    (v.recibidopor||"").toLowerCase().includes("alexander") ||
-    (v.recibidopor||"").toLowerCase().includes("e1")
-  ));
+  // Todos los grooming son de Alexander (es el único groomer)
+  // recibidopor en grooming histórico = quien cobró, no quien hizo el baño
+  // El campo "servicioPor" diferencia esto en nuevas ventas
+  const misVentas = ventas.filter(v => {
+    if (v.area !== "grooming") return false;
+    const serv = (v.servicioPor || v.serviciopor || "").toLowerCase();
+    // Si hay serviciopor explícito y NO es alexander, no contarlo
+    if (serv && !serv.includes("alexander") && !serv.includes("e1")) return false;
+    return true; // todos los grooming son de Alexander por defecto
+  });
   const misMes = misVentas.filter(v => v.fecha?.slice(0,7) === mesActual);
   const totalMes = misMes.reduce((s,v)=>s+v.total,0);
   const comisionMes = misMes.reduce((s,v)=>s+(v.comision||0),0);
