@@ -3423,6 +3423,8 @@ function PetColinasApp({ session, onLogout }) {
   } }, TABS.map((t) => {
     const pendientes = t.id === "notificaciones"
       ? (todosClientes || []).filter(c => c.notas && c.notas.includes("Nos conocio") && !(notifLeidas instanceof Set ? notifLeidas : new Set()).has(String(c.id))).length
+      : t.id === "ventas"
+      ? (ventas || []).filter(v => v.formaPago === "Pago pendiente").length
       : 0;
     return /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTab(t.id), style: {
       background: "none",
