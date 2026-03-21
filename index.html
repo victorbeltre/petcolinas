@@ -2154,21 +2154,29 @@ function Facturas({ ventas, clientes }) {
   function calcGroomingLealtad(mascota, excluirFacturaId) {
     if (!mascota) return 0;
     const key = mascota.toLowerCase().trim();
-    // Cuenta VISITAS (facturas) con al menos 1 item de grooming, no items individuales
-    const dFact = facturas.filter(fac => {
+    // Cuenta FECHAS ÚNICAS con al menos 1 item de grooming (2 facturas mismo día = 1 visita)
+    const fechas = new Set(facturas.filter(fac => {
       if (excluirFacturaId && fac.id === excluirFacturaId) return false;
       if ((fac.mascota || "").toLowerCase().trim() !== key) return false;
       if (!fac.items) return false;
       return fac.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)));
-    }).length;
+    }).map(fac => fac.fecha));
     const crmCli = clientes.find(c => (c.nombreMascota || "").toLowerCase().trim() === key);
     const dCRM = crmCli ? parseInt(crmCli.banos2025) || 0 : 0;
-    return dFact + dCRM;
+    return fechas.size + dCRM;
   }
   function crearFactura() {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
-    // Esta visita cuenta como 1 si tiene al menos 1 item de grooming (no por cantidad de items)
-    const estaVisitaGrooming = form.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w))) ? 1 : 0;
+    // Esta visita suma 1 solo si tiene grooming Y no hay otra factura de grooming para esa fecha
+    const hayGroomingEnEsteFact = form.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)));
+    const yaHayGroomingEsaFecha = hayGroomingEnEsteFact && facturas.some(fac =>
+      !editandoId || fac.id !== editandoId
+      ? (fac.mascota || "").toLowerCase().trim() === (form.mascota || "").toLowerCase().trim() &&
+        fac.fecha === form.fecha &&
+        fac.items && fac.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)))
+      : false
+    );
+    const estaVisitaGrooming = hayGroomingEnEsteFact && !yaHayGroomingEsaFecha ? 1 : 0;
     const gCount = calcGroomingLealtad(form.mascota) + estaVisitaGrooming;
     const nueva = {
       id: Date.now(),
@@ -2491,9 +2499,15 @@ Mascota: ${f.mascota}
   }, [resumenClientes, ordenClientes]);
   if (vista === "nueva") {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
-    // Grooming previo (sin contar esta visita) + 1 si esta visita tiene al menos 1 item grooming
+    // Grooming previo + 1 si esta visita agrega una fecha nueva con grooming
     const gPrevio = form.mascota ? calcGroomingLealtad(form.mascota) : 0;
-    const gEstaFact = form.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w))) ? 1 : 0;
+    const hayGroomingAqui = form.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)));
+    const fechaYaTieneGrooming = hayGroomingAqui && form.mascota && facturas.some(fac =>
+      (fac.mascota || "").toLowerCase().trim() === form.mascota.toLowerCase().trim() &&
+      fac.fecha === form.fecha &&
+      fac.items && fac.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)))
+    );
+    const gEstaFact = hayGroomingAqui && !fechaYaTieneGrooming ? 1 : 0;
     const gCountLealtad = gPrevio + gEstaFact;
     const esBanoGratis = gCountLealtad > 0 && gCountLealtad % 10 === 0;
     const yaAgregadoGratis = form.items.some(it => (it.descripcion || "").toLowerCase().includes("gratis"));
