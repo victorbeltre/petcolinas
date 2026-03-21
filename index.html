@@ -2148,9 +2148,27 @@ function Facturas({ ventas, clientes }) {
       (v) => v.cliente === mascota && v.area === "grooming"
     ).length;
   }
+  // Cuenta SOLO items de grooming en facturas (baño, corte, etc.) + historico CRM 2025
+  // Esta es la fuente de verdad para el programa de lealtad
+  const GROOMING_WORDS = ["baño", "bath", "grooming", "corte", "pelado", "higiénico", "medicado"];
+  function calcGroomingLealtad(mascota, excluirFacturaId) {
+    if (!mascota) return 0;
+    const key = mascota.toLowerCase().trim();
+    const dFact = facturas.reduce((a, fac) => {
+      if (excluirFacturaId && fac.id === excluirFacturaId) return a;
+      if ((fac.mascota || "").toLowerCase().trim() !== key) return a;
+      if (!fac.items) return a;
+      return a + fac.items.filter(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w))).length;
+    }, 0);
+    const crmCli = clientes.find(c => (c.nombreMascota || "").toLowerCase().trim() === key);
+    const dCRM = crmCli ? parseInt(crmCli.banos2025) || 0 : 0;
+    return dFact + dCRM;
+  }
   function crearFactura() {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
-    const gCount = groomingCount(form.mascota);
+    // Solo cuenta items de grooming en esta factura + historial previo
+    const gEstaFactura = form.items.filter(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w))).length;
+    const gCount = calcGroomingLealtad(form.mascota) + gEstaFactura;
     const nueva = {
       id: Date.now(),
       numero: nextNumero(),
@@ -2484,8 +2502,11 @@ Mascota: ${f.mascota}
   }, [resumenClientes, ordenClientes]);
   if (vista === "nueva") {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
-    const gCountLealtad = form.mascota ? groomingsCliente(form.mascota) : 0;
-    const esBanoGratis = gCountLealtad > 0 && gCountLealtad % 10 === 9;
+    // Grooming previo (sin contar esta factura) + items grooming de esta factura
+    const gPrevio = form.mascota ? calcGroomingLealtad(form.mascota) : 0;
+    const gEstaFact = form.items.filter(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w))).length;
+    const gCountLealtad = gPrevio + gEstaFact;
+    const esBanoGratis = gCountLealtad > 0 && gCountLealtad % 10 === 0;
     const yaAgregadoGratis = form.items.some(it => (it.descripcion || "").toLowerCase().includes("gratis"));
     return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro } }, "\u{1F4C4} Nueva Factura #", nextNumero())), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Buscar cliente registrado"), /* @__PURE__ */ React.createElement(
       "select",
@@ -2561,9 +2582,8 @@ Mascota: ${f.mascota}
       fontWeight: 700,
       display: "inline-block"
     } }, "\u{1F43E} ", f.groomingCount, " grooming", f.groomingCount >= 10 ? " \u2014 \xA1BA\xD1O GRATIS! \u{1F389}" : ` / 10 para ba\xF1o gratis`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, f.propietario), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, f.telefono)), /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Paciente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, "\u{1F43E} ", f.mascota))), /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", marginBottom: 20, fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: C.verde, color: "#fff" } }, /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "left" } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Cant."), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Precio"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Subtotal"))), /* @__PURE__ */ React.createElement("tbody", null, f.items.map((it, i) => /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: `1px solid ${C.gris}`, background: i % 2 === 0 ? "#fff" : C.gris } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, it.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center" } }, it.cantidad), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right" } }, RD(it.precio)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right", fontWeight: 600 } }, RD((parseFloat(it.precio) || 0) * (parseInt(it.cantidad) || 1))))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 240 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), f.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 20, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total))))), f.notas && f.notas !== "Historial 2026" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: C.gris, borderRadius: 8, padding: 12, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Notas:"), " ", f.notas), (() => {
-      const groomings = groomingsCliente(f.mascota);
-      const enFactura = f.items.filter((it) => it.descripcion && (it.descripcion.toLowerCase().includes("ba\xF1o") || it.descripcion.toLowerCase().includes("corte"))).length;
-      const total_g = groomings;
+      // Contar solo items de grooming en facturas (no todas las ventas area=grooming)
+      const total_g = calcGroomingLealtad(f.mascota);
       const progreso = Math.min(total_g, 10);
       const pct = progreso / 10 * 100;
       if (total_g === 0) return null;
