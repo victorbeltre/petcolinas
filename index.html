@@ -5755,7 +5755,7 @@ function Nomina({ empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mes
             /* @__PURE__ */ React.createElement("span", { style:{ fontSize:11, color:C.grisd }}, "← Victor define la meta mensual para todos")
           )
         ),
-        /* @__PURE__ */ React.createElement(RankingVentasFarmacia, { ventas, mes: mesActual2 })
+        /* @__PURE__ */ React.createElement(RankingVentasFarmacia, { ventas: ventasMes, mes: mesActual2 })
       );
     })(), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Mensualidades, comisiones calculadas y descuentos por empleado"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center" } }, /* @__PURE__ */ React.createElement(Input, { label: "Ver mes", type: "month", value: mes, onChange: setMes })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16, marginBottom: 28 } }, empleados.map((emp) => {
     const pagado = pagosMes.find((p) => p.empleadoId === emp.id);
