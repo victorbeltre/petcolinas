@@ -2356,7 +2356,10 @@ Mascota: ${f.mascota}
 *Total: RD$ ${total.toLocaleString("es-DO")}*
 
 \xA1Gracias por visitarnos! \u{1F43E}`;
-    const url = `https://wa.me/${(f.telefono || "").replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
+    const telRaw = (f.telefono || "").replace(/\D/g, "");
+    const tel = telRaw.length >= 11 ? telRaw : (telRaw ? "1" + telRaw : "");
+    if (!tel) { alert("Esta factura no tiene número de teléfono registrado."); return; }
+    const url = `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
     window.open(url, "_blank");
   }
   const [busqueda, setBusqueda] = useState("");
