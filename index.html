@@ -769,6 +769,7 @@ const TABS = [
   { id: "gastos", icon: "\u{1F4B8}", label: "Gastos" },
   { id: "reportes", icon: "\u{1F4C8}", label: "Reportes" },
   { id: "facturas", icon: "\u{1F4C4}", label: "Facturas" },
+  { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
   { id: "importar", icon: "\u{1F4E5}", label: "Importar Excel" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
@@ -3298,6 +3299,8 @@ function PetColinasApp({ session, onLogout }) {
     } catch {
     }
   }, []);
+  const [tarifasGrooming, setTarifasGrooming] = useLS("pc_tarifas_g", TARIFAS_GROOMING);
+  const [tarifasVet, setTarifasVet] = useLS("pc_tarifas_v", TARIFAS_VET);
   const [ventas, setVentas, ventasLoaded, , deleteVenta] = useSupabase("pc_ventas", VENTAS_SEED);
   const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
   const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
@@ -3496,7 +3499,8 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comGrmSistema, comVetSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comGrmSistema, comVetSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+    tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
       setTab, setCrmClienteInicial
@@ -4518,7 +4522,7 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
     )
   ));
 }
-function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial }) {
+function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial, tarifasGrooming = TARIFAS_GROOMING, tarifasVet = TARIFAS_VET }) {
   const [fecha, setFecha] = useState(hoy());
   const clienteVentaRef = useRef(null);
   useEffect(() => {
@@ -4560,7 +4564,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [servicioPor, setServicioPor] = useState("e1");
   const [items, setItems] = useState([]);
   const [tipoItem, setTipoItem] = useState("grooming");
-  const [servId, setServId] = useState(TARIFAS_GROOMING[0].id);
+  const [servId, setServId] = useState(tarifasGrooming[0]?.id || "g1");
   const [cantidad, setCantidad] = useState(1);
   const [descPct, setDescPct] = useState(0);
   const [prodSelId, setProdSelId] = useState("");
@@ -4569,7 +4573,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [precioLibre, setPrecioLibre] = useState("");
   const [descLibre, setDescLibre] = useState("");
   const [modoFarmacia, setModoFarmacia] = useState("catalogo");
-  const tarifas = tipoItem === "grooming" ? TARIFAS_GROOMING : TARIFAS_VET;
+  const tarifas = tipoItem === "grooming" ? tarifasGrooming : tarifasVet;
   const servSel = tarifas.find((t) => t.id === servId) || null;
   const prodSel = inventario.find((p) => String(p.id) === String(prodSelId)) || null;
   const productosInv = inventario.filter((p) => p.pventa > 0);
@@ -4966,7 +4970,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     { v: "farmacia", l: "\u{1F48A} Farmacia" }
   ].map(({ v, l }) => /* @__PURE__ */ React.createElement("button", { key: v, onClick: () => {
     setTipoItem(v);
-    setServId(v === "grooming" ? TARIFAS_GROOMING[0].id : TARIFAS_VET[0].id);
+    setServId(v === "grooming" ? (tarifasGrooming[0]?.id || "g1") : (tarifasVet[0]?.id || "v1"));
     setDescPct(0);
     if (v === "grooming") setServicioPor("e1");
     else if (v === "veterinaria") setServicioPor("e2");
@@ -8090,6 +8094,172 @@ function TabNotificaciones({ clientes, notifLeidas, marcarNotifLeida, limpiarTod
   );
 }
 
+
+// ─── TAB SERVICIOS ──────────────────────────────────────────────────────────
+function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }) {
+  const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#e53e3e", gris: "#f8f9fa" };
+  const [seccion, setSeccion] = React.useState("grooming");
+  const [editandoId, setEditandoId] = React.useState(null);
+  const [editForm, setEditForm] = React.useState({});
+  const [agregando, setAgregando] = React.useState(false);
+  const [nuevoForm, setNuevoForm] = React.useState({ nombre: "", precio: "", comision: "" });
+
+  const tarifas = seccion === "grooming" ? tarifasGrooming : tarifasVet;
+  const setTarifas = seccion === "grooming" ? setTarifasGrooming : setTarifasVet;
+  const esGrooming = seccion === "grooming";
+
+  function abrirEditar(t) {
+    setEditandoId(t.id);
+    setEditForm({ nombre: t.nombre, precio: t.precio, comision: t.comision });
+    setAgregando(false);
+  }
+  function guardarEdicion() {
+    if (!editForm.nombre || !editForm.precio) return alert("Nombre y precio son obligatorios.");
+    setTarifas(prev => prev.map(t => t.id === editandoId
+      ? { ...t, nombre: editForm.nombre.trim(), precio: Number(editForm.precio) || 0, comision: Number(editForm.comision) || t.comision }
+      : t
+    ));
+    setEditandoId(null);
+  }
+  function eliminar(id) {
+    if (!confirm("¿Eliminar este servicio del catálogo?")) return;
+    setTarifas(prev => prev.filter(t => t.id !== id));
+  }
+  function agregarNuevo() {
+    if (!nuevoForm.nombre || !nuevoForm.precio) return alert("Nombre y precio son obligatorios.");
+    const prefix = esGrooming ? "g" : "v";
+    const newId = prefix + Date.now();
+    const comision = Number(nuevoForm.comision) || (esGrooming ? 100 : 0.3);
+    setTarifas(prev => [...prev, { id: newId, nombre: nuevoForm.nombre.trim(), precio: Number(nuevoForm.precio), comision }]);
+    setNuevoForm({ nombre: "", precio: "", comision: "" });
+    setAgregando(false);
+  }
+  function resetearDefaults() {
+    if (!confirm("¿Restaurar todos los servicios " + (esGrooming ? "de grooming" : "veterinarios") + " a los valores originales?")) return;
+    if (esGrooming) setTarifasGrooming(TARIFAS_GROOMING);
+    else setTarifasVet(TARIFAS_VET);
+    setEditandoId(null);
+    setAgregando(false);
+  }
+
+  function comisionLabel(t) {
+    if (esGrooming) return "RD$ " + t.comision.toLocaleString("es-DO") + " (Alexander)";
+    const pAylein = Math.round(t.precio * 0.30);
+    const pValentina = Math.round(t.precio * 0.40);
+    return "Aylein: RD$ " + pAylein.toLocaleString("es-DO") + " (30%) · Valentina: RD$ " + pValentina.toLocaleString("es-DO") + " (40%)";
+  }
+
+  const thStyle = { padding: "10px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: "2px solid #e0e4e8", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
+  const tdStyle = { padding: "10px 14px", borderBottom: "1px solid #f4f5f6", fontSize: 13, verticalAlign: "middle" };
+
+  return React.createElement("div", null,
+    // Header
+    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 } },
+      React.createElement("div", null,
+        React.createElement("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800 } }, "\u2699\uFE0F Catálogo de Servicios"),
+        React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Edita precios y comisiones. Los cambios se reflejan inmediatamente en ventas.")
+      ),
+      React.createElement("div", { style: { display: "flex", gap: 8 } },
+        React.createElement("button", { onClick: () => { setAgregando(true); setEditandoId(null); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "+ Agregar servicio"),
+        React.createElement("button", { onClick: resetearDefaults, style: { background: "#f1f5f9", color: C.grisd, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12 } }, "\u21BA Restaurar defaults")
+      )
+    ),
+
+    // Selector de sección
+    React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
+      [["grooming", "\u2702\uFE0F Grooming"], ["veterinaria", "\u{1FA7A} Veterinaria"]].map(([id, label]) =>
+        React.createElement("button", { key: id, onClick: () => { setSeccion(id); setEditandoId(null); setAgregando(false); }, style: { padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: seccion === id ? (id === "grooming" ? "#25d366" : C.azul) : "#e0e4e8", color: seccion === id ? "#fff" : C.grisd } }, label)
+      )
+    ),
+
+    // Info comisiones
+    React.createElement("div", { style: { background: seccion === "grooming" ? "#e8faf0" : "#eaf4ff", border: "1.5px solid " + (seccion === "grooming" ? "#25d36644" : C.azul + "44"), borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13 } },
+      seccion === "grooming"
+        ? React.createElement("span", null, "\u2702\uFE0F ", React.createElement("strong", null, "Grooming:"), " Comisión fija en RD$ por servicio (Alexander).")
+        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " Comisión: Aylein 30% · Valentina 40% sobre el precio del servicio.")
+    ),
+
+    // Formulario agregar nuevo
+    agregando && React.createElement("div", { style: { background: "#fffbeb", border: "1.5px solid #f59e0b", borderRadius: 10, padding: 16, marginBottom: 16 } },
+      React.createElement("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12, color: "#92400e" } }, "+ Nuevo servicio de " + (esGrooming ? "grooming" : "veterinaria")),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto auto", gap: 10, alignItems: "end" } },
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Nombre del servicio"),
+          React.createElement("input", { value: nuevoForm.nombre, onChange: e => setNuevoForm(f => ({ ...f, nombre: e.target.value })), placeholder: "Ej: Baño premium", style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Precio (RD$)"),
+          React.createElement("input", { type: "number", value: nuevoForm.precio, onChange: e => setNuevoForm(f => ({ ...f, precio: e.target.value })), placeholder: "0", style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, esGrooming ? "Comisión (RD$)" : "Comisión (ej: 0.30)"),
+          React.createElement("input", { type: "number", value: nuevoForm.comision, onChange: e => setNuevoForm(f => ({ ...f, comision: e.target.value })), placeholder: esGrooming ? "100" : "0.30", style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
+        ),
+        React.createElement("button", { onClick: agregarNuevo, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "✓ Agregar"),
+        React.createElement("button", { onClick: () => setAgregando(false), style: { background: "#f1f5f9", color: C.grisd, border: "none", borderRadius: 7, padding: "8px 14px", cursor: "pointer", fontSize: 13 } }, "✕")
+      )
+    ),
+
+    // Tabla de servicios
+    React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: "1px solid #e0e4e8", overflow: "hidden" } },
+      React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+        React.createElement("thead", null,
+          React.createElement("tr", { style: { background: C.gris } },
+            React.createElement("th", { style: thStyle }, "#"),
+            React.createElement("th", { style: thStyle }, "Servicio"),
+            React.createElement("th", { style: { ...thStyle, textAlign: "right" } }, "Precio"),
+            React.createElement("th", { style: thStyle }, "Comisión"),
+            React.createElement("th", { style: { ...thStyle, textAlign: "center" } }, "Acciones")
+          )
+        ),
+        React.createElement("tbody", null,
+          tarifas.map((t, i) =>
+            editandoId === t.id
+              // Fila en modo edición
+              ? React.createElement("tr", { key: t.id, style: { background: "#fffbeb" } },
+                  React.createElement("td", { style: tdStyle }, React.createElement("span", { style: { color: C.grisd, fontSize: 11 } }, i + 1)),
+                  React.createElement("td", { style: tdStyle },
+                    React.createElement("input", { value: editForm.nombre, onChange: e => setEditForm(f => ({ ...f, nombre: e.target.value })), style: { width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #f59e0b", fontSize: 13 } })
+                  ),
+                  React.createElement("td", { style: { ...tdStyle, textAlign: "right" } },
+                    React.createElement("input", { type: "number", value: editForm.precio, onChange: e => setEditForm(f => ({ ...f, precio: e.target.value })), style: { width: 100, padding: "6px 8px", borderRadius: 6, border: "1px solid #f59e0b", fontSize: 13, textAlign: "right" } })
+                  ),
+                  React.createElement("td", { style: tdStyle },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                      React.createElement("input", { type: "number", value: editForm.comision, onChange: e => setEditForm(f => ({ ...f, comision: e.target.value })), style: { width: 80, padding: "6px 8px", borderRadius: 6, border: "1px solid #f59e0b", fontSize: 13 } }),
+                      React.createElement("span", { style: { fontSize: 11, color: C.grisd } }, esGrooming ? "RD$" : "(0.30 = 30%)")
+                    )
+                  ),
+                  React.createElement("td", { style: { ...tdStyle, textAlign: "center" } },
+                    React.createElement("div", { style: { display: "flex", gap: 6, justifyContent: "center" } },
+                      React.createElement("button", { onClick: guardarEdicion, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "✓ Guardar"),
+                      React.createElement("button", { onClick: () => setEditandoId(null), style: { background: "#f1f5f9", color: C.grisd, border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12 } }, "✕ Cancelar")
+                    )
+                  )
+                )
+              // Fila normal
+              : React.createElement("tr", { key: t.id, style: { background: i % 2 === 0 ? "#fff" : C.gris } },
+                  React.createElement("td", { style: { ...tdStyle, color: C.grisd, fontSize: 11 } }, i + 1),
+                  React.createElement("td", { style: { ...tdStyle, fontWeight: 600 } }, t.nombre),
+                  React.createElement("td", { style: { ...tdStyle, textAlign: "right", fontWeight: 700, color: C.verde } }, "RD$ " + t.precio.toLocaleString("es-DO")),
+                  React.createElement("td", { style: { ...tdStyle, fontSize: 12, color: "#555" } }, comisionLabel(t)),
+                  React.createElement("td", { style: { ...tdStyle, textAlign: "center" } },
+                    React.createElement("div", { style: { display: "flex", gap: 6, justifyContent: "center" } },
+                      React.createElement("button", { onClick: () => abrirEditar(t), style: { background: "#dbeafe", color: C.azul, border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "✏️ Editar"),
+                      React.createElement("button", { onClick: () => eliminar(t.id), style: { background: "#fee2e2", color: C.rojo, border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12 } }, "🗑️")
+                    )
+                  )
+                )
+          )
+        )
+      ),
+      React.createElement("div", { style: { padding: "12px 16px", background: C.gris, borderTop: "1px solid #e0e4e8", fontSize: 12, color: C.grisd, display: "flex", justifyContent: "space-between" } },
+        React.createElement("span", null, tarifas.length + " servicios en catálogo"),
+        React.createElement("span", null, "Total ingresos potenciales: RD$ " + tarifas.reduce((s, t) => s + t.precio, 0).toLocaleString("es-DO"))
+      )
+    )
+  );
+}
 
 const rootEl = document.getElementById("root");
 const appRoot = ReactDOM.createRoot(rootEl);
