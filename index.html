@@ -6844,8 +6844,56 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
   const [pacienteVer, setPacienteVer] = useState(null);
   const [modalNuevo, setModalNuevo] = useState(false);
   const [modalEntrada, setModalEntrada] = useState(false);
+  const [modalHistoria, setModalHistoria] = useState(false);
   const [editFicha, setEditFicha] = useState(false);
   const [fichaTemp, setFichaTemp] = useState({});
+  const HISTORIA_EMPTY = {
+    fecha: hoy(), propietario: "", telefono: "", mascota: "", especie: "", raza: "",
+    fechaNacimiento: "", sexo: "", ultimoCelo: "", anticonceptivas: "",
+    motivo: "",
+    vacunadoAlDia: "", ultimaVacunacion: "", desparasitacion: "", ultimaDesparasitacion: "",
+    garrapatas: "", preventivoAlDia: "", ultimaPrev: "", medicSinPrescripcion: "", medicCuales: "",
+    tipoAlimentacion: "", marcaConcentrado: "", otraMarca: "", frecuenciaComida: "",
+    cambioAlimentacion: "", cualesCambios: "", contactoCallejeros: "", salidaExterior: "", cuandoDonde: "",
+    cambioApetito: "", cambioAgua: "", cambioOrina: [], cambioHeces: [],
+    vomitos: "", vomitoDesc: "", cambioPeso: "", cambioComport: "", cambioComportDesc: "",
+    veterinario: usuario?.nombre || ""
+  };
+  const [historiaForm, setHistoriaForm] = useState(HISTORIA_EMPTY);
+  const setHF = (k, v) => setHistoriaForm(f => ({ ...f, [k]: v }));
+  const toggleArr = (k, val) => setHistoriaForm(f => {
+    const arr = f[k] || [];
+    return { ...f, [k]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] };
+  });
+  function abrirModalHistoria() {
+    const c = clientes.find(x => (x.nombre || x.nombreMascota || "") === pacienteVer) || {};
+    setHistoriaForm({ ...HISTORIA_EMPTY,
+      mascota: pacienteVer || "",
+      propietario: c.dueno || c.nombrePropietario || "",
+      telefono: c.telefono || "",
+      especie: c.especie || "",
+      raza: c.raza || "",
+      fechaNacimiento: c.fechaNacimiento || c.fechanacimiento || "",
+      sexo: c.sexo || ""
+    });
+    setModalHistoria(true);
+  }
+  function guardarHistoria() {
+    if (!historiaForm.motivo.trim()) return alert("El motivo de consulta es obligatorio.");
+    const nombre = historiaForm.mascota || pacienteVer;
+    setClientes(prev => {
+      const idx = prev.findIndex(c => (c.nombre || c.nombreMascota || "") === nombre);
+      const nuevaHist = { ...historiaForm, id: Date.now() };
+      if (idx >= 0) {
+        const copy = [...prev];
+        const hists = Array.isArray(copy[idx].historias_clinicas) ? copy[idx].historias_clinicas : [];
+        copy[idx] = { ...copy[idx], historias_clinicas: [nuevaHist, ...hists] };
+        return copy;
+      }
+      return [...prev, { id: Date.now(), nombre, historias_clinicas: [nuevaHist] }];
+    });
+    setModalHistoria(false);
+  }
   const C = { verde: "#1a6b3a", verdeL: "#e8f5ed", azul: "#1a4fa0", azulL: "#e8eef8", gris: "#f4f5f6", grisd: "#5a6472", fondo: "#f0f4f8", gold: "#b8860b", goldL: "#fdf6e3", rojo: "#c0392b", rojoL: "#fdecea", naranja: "#e67e22", naranjaL: "#fef4e8", negro: "#1a1a2e" };
   // Normalizar clientes — compatibilidad entre seed viejo (nombreMascota) y nuevo (nombre)
   const clientesNorm = clientes.map((c) => ({
@@ -6957,7 +7005,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
       { label: "Due\xF1o", val: c.dueno },
       { label: "Tel\xE9fono", val: c.telefono }
     ].filter((i) => i.val);
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 24, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPacienteVer(null), style: { background: C.gris, border: "none", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 700, color: C.grisd, fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("h2", { style: { margin: 0, fontSize: 20, fontWeight: 800 } }, "\u{1F43E} ", pacienteVer), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: abrirEditFicha, color: C.grisd, small: true, outline: true }, "\u270F\uFE0F Editar ficha"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalEntrada(true), color: C.azul, small: true }, "+ Nueva entrada"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "300px 1fr", gap: 20, alignItems: "start" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14 } }, "\u{1F4CB} Ficha m\xE9dica"), /* @__PURE__ */ React.createElement("button", { onClick: abrirEditFicha, style: { background: "none", border: "none", cursor: "pointer", color: C.azul, fontSize: 11, fontWeight: 700 } }, "\u270F\uFE0F Editar")), editFicha ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, [
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 24, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPacienteVer(null), style: { background: C.gris, border: "none", borderRadius: 10, padding: "8px 16px", cursor: "pointer", fontWeight: 700, color: C.grisd, fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("h2", { style: { margin: 0, fontSize: 20, fontWeight: 800 } }, "\u{1F43E} ", pacienteVer), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: abrirEditFicha, color: C.grisd, small: true, outline: true }, "\u270F\uFE0F Editar ficha"), /* @__PURE__ */ React.createElement(Btn, { onClick: abrirModalHistoria, color: C.verde, small: true }, "\u{1F4CB} Historia cl\xEDnica"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalEntrada(true), color: C.azul, small: true }, "+ Nueva entrada"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "300px 1fr", gap: 20, alignItems: "start" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14 } }, "\u{1F4CB} Ficha m\xE9dica"), /* @__PURE__ */ React.createElement("button", { onClick: abrirEditFicha, style: { background: "none", border: "none", cursor: "pointer", color: C.azul, fontSize: 11, fontWeight: 700 } }, "\u270F\uFE0F Editar")), editFicha ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, [
       { key: "especie", label: "Especie", placeholder: "Perro / Gato / Conejo..." },
       { key: "raza", label: "Raza", placeholder: "Labrador, Siam\xE9s..." },
       { key: "color", label: "Color/pelaje", placeholder: "Negro, caf\xE9 con blanco..." },
@@ -7022,7 +7070,284 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
       { label: "\xDAltima visita", val: visitas[0]?.fecha || "\u2014" },
       { label: "Vacunas recibidas", val: vacunas.length },
       { label: "Ticket promedio", val: visitas.length > 0 ? RD(Math.round(totalGast / visitas.length)) : "\u2014" }
-    ].map((i) => /* @__PURE__ */ React.createElement("div", { key: i.label, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, i.label), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: i.color || C.negro } }, i.val)))), vacunas.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "\u{1F489} Vacunas"), vacunas.map((v) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, color: C.negro } }, (v.descripcion || v.servicio || "")?.split("(")[0]?.trim()), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 11 } }, v.fecha))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 16 } }, "\u{1F550} Historia cl\xEDnica completa"), visitas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: C.grisd, padding: 40 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 40, marginBottom: 8 } }, "\u{1F4C4}"), "Sin registros. Agrega la primera entrada cl\xEDnica.") : visitas.map((v, i) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { borderLeft: `3px solid ${C.azul}`, paddingLeft: 16, marginBottom: 20, paddingBottom: 16, borderBottom: i < visitas.length - 1 ? "1px solid #f4f5f6" : "none" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.negro, fontSize: 14 } }, (v.descripcion || v.servicio || "")?.split("(")[0]?.trim()), (v.descripcion || v.servicio || "")?.includes("(") && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.azul, marginTop: 3, fontStyle: "italic" } }, (v.descripcion || v.servicio || "").match(/\(([^)]+)\)/)?.[1]), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 4 } }, "\u{1F4C5} ", v.fecha, v.veterinaria_id && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 8, color: C.azul } }, "\xB7 ", USUARIOS.find((u) => u.id === v.veterinaria_id)?.nombre || v.veterinaria_id))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.verde, fontSize: 15 } }, RD(v.total)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, "comisi\xF3n ", RD(v.comision || 0)))))))), modalEntrada && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1e3, padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 28, maxWidth: 620, width: "100%", maxHeight: "92vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, marginBottom: 4 } }, "\u2795 Nueva entrada cl\xEDnica"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Paciente: ", /* @__PURE__ */ React.createElement("strong", null, pacienteVer)), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 } }, [
+    ].map((i) => /* @__PURE__ */ React.createElement("div", { key: i.label, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, i.label), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: i.color || C.negro } }, i.val)))), vacunas.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "\u{1F489} Vacunas"), vacunas.map((v) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, color: C.negro } }, (v.descripcion || v.servicio || "")?.split("(")[0]?.trim()), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 11 } }, v.fecha))))), (() => {
+      const hists = Array.isArray(clienteObj?.historias_clinicas) ? clienteObj.historias_clinicas : [];
+      if (hists.length === 0) return null;
+      return React.createElement(Card, null,
+        React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 14, color: C.verde } }, "\u{1F4CB} Formularios de consulta (" + hists.length + ")"),
+        hists.map((h, i) => React.createElement("details", { key: h.id || i, style: { marginBottom: 10, border: "1px solid #e0e4e8", borderRadius: 8 } },
+          React.createElement("summary", { style: { padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, listStyle: "none", display: "flex", justifyContent: "space-between" } },
+            React.createElement("span", null, "\u{1F4C5} " + h.fecha + (h.motivo ? " — " + h.motivo.slice(0, 60) + (h.motivo.length > 60 ? "…" : "") : "")),
+            React.createElement("span", { style: { color: C.grisd, fontSize: 11 } }, h.veterinario || "")
+          ),
+          React.createElement("div", { style: { padding: "14px 16px", fontSize: 13, display: "grid", gap: 6, borderTop: "1px solid #f0f0f0" } },
+            h.motivo && React.createElement("div", null, React.createElement("strong", null, "Motivo: "), h.motivo),
+            (h.especie || h.raza || h.sexo) && React.createElement("div", null, React.createElement("strong", null, "Paciente: "), [h.especie, h.raza, h.sexo, h.fechaNacimiento].filter(Boolean).join(" · ")),
+            (h.propietario || h.telefono) && React.createElement("div", null, React.createElement("strong", null, "Propietario: "), h.propietario, h.telefono ? " · " + h.telefono : ""),
+            h.vacunadoAlDia && React.createElement("div", null, React.createElement("strong", null, "Vacunado: "), h.vacunadoAlDia, h.ultimaVacunacion ? " (última: " + h.ultimaVacunacion + ")" : ""),
+            h.desparasitacion && React.createElement("div", null, React.createElement("strong", null, "Desparasitación: "), h.desparasitacion, h.ultimaDesparasitacion ? " (última: " + h.ultimaDesparasitacion + ")" : ""),
+            h.tipoAlimentacion && React.createElement("div", null, React.createElement("strong", null, "Alimentación: "), h.tipoAlimentacion, h.marcaConcentrado ? " · " + h.marcaConcentrado : ""),
+            (h.cambioApetito && h.cambioApetito !== "No") && React.createElement("div", null, React.createElement("strong", null, "Apetito: "), h.cambioApetito),
+            (h.cambioAgua && h.cambioAgua !== "No") && React.createElement("div", null, React.createElement("strong", null, "Agua: "), h.cambioAgua),
+            h.cambioOrina?.length > 0 && React.createElement("div", null, React.createElement("strong", null, "Orina: "), h.cambioOrina.join(", ")),
+            h.cambioHeces?.length > 0 && React.createElement("div", null, React.createElement("strong", null, "Heces: "), h.cambioHeces.join(", ")),
+            (h.vomitos && h.vomitos !== "No") && React.createElement("div", null, React.createElement("strong", null, "Vómitos: "), h.vomitoDesc || h.vomitos),
+            (h.cambioComport && h.cambioComport !== "No") && React.createElement("div", null, React.createElement("strong", null, "Comportamiento: "), h.cambioComportDesc || h.cambioComport)
+          )
+        ))
+      );
+    })(),
+    /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 16 } }, "\u{1F550} Historia cl\xEDnica completa"), visitas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: C.grisd, padding: 40 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 40, marginBottom: 8 } }, "\u{1F4C4}"), "Sin registros. Agrega la primera entrada cl\xEDnica.") : visitas.map((v, i) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { borderLeft: `3px solid ${C.azul}`, paddingLeft: 16, marginBottom: 20, paddingBottom: 16, borderBottom: i < visitas.length - 1 ? "1px solid #f4f5f6" : "none" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.negro, fontSize: 14 } }, (v.descripcion || v.servicio || "")?.split("(")[0]?.trim()), (v.descripcion || v.servicio || "")?.includes("(") && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.azul, marginTop: 3, fontStyle: "italic" } }, (v.descripcion || v.servicio || "").match(/\(([^)]+)\)/)?.[1]), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 4 } }, "\u{1F4C5} ", v.fecha, v.veterinaria_id && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 8, color: C.azul } }, "\xB7 ", USUARIOS.find((u) => u.id === v.veterinaria_id)?.nombre || v.veterinaria_id))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.verde, fontSize: 15 } }, RD(v.total)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, "comisi\xF3n ", RD(v.comision || 0)))))))), modalHistoria && React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 } },
+  React.createElement("div", { style: { background: "#fff", borderRadius: 18, padding: 0, maxWidth: 720, width: "100%", maxHeight: "95vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 48px rgba(0,0,0,0.3)" } },
+    // Header fijo
+    React.createElement("div", { style: { padding: "20px 28px 16px", borderBottom: "1px solid #e0e4e8", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+      React.createElement("div", null,
+        React.createElement("div", { style: { fontWeight: 900, fontSize: 18, color: C.verde } }, "\u{1F4CB} Formulario de Consulta General"),
+        React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 2 } }, "Paciente: ", React.createElement("strong", null, pacienteVer))
+      ),
+      React.createElement("button", { onClick: () => setModalHistoria(false), style: { background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#888" } }, "\u2715")
+    ),
+    // Cuerpo scrollable
+    React.createElement("div", { style: { overflowY: "auto", flex: 1, padding: "20px 28px" } },
+      // Sección: Datos básicos
+      React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, borderBottom: "2px solid #e8f5ed", paddingBottom: 6, marginBottom: 14 } }, "📌 Datos básicos"),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 } },
+        ...[
+          ["fecha", "Fecha", "date"],
+          ["propietario", "Nombre del propietario", "text"],
+          ["telefono", "Teléfono de contacto", "text"],
+          ["mascota", "Nombre de la mascota", "text"],
+          ["raza", "Raza", "text"],
+          ["fechaNacimiento", "Fecha de nacimiento", "date"]
+        ].map(([k, label, type]) =>
+          React.createElement("div", { key: k },
+            React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, label),
+            React.createElement("input", { type, value: historiaForm[k] || "", onChange: e => setHF(k, e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13, boxSizing: "border-box" } })
+          )
+        )
+      ),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 } },
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Especie"),
+          React.createElement("div", { style: { display: "flex", gap: 12 } },
+            ...(["Perro", "Gato", "Otro"]).map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "especie", checked: historiaForm.especie === op, onChange: () => setHF("especie", op) }), op
+            ))
+          )
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Sexo"),
+          React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 10 } },
+            ...["Macho", "Hembra", "Esterilizado/Castrado", "Entero"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "sexo", checked: historiaForm.sexo === op, onChange: () => setHF("sexo", op) }), op
+            ))
+          )
+        )
+      ),
+      (historiaForm.sexo === "Hembra") && React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8, background: "#fef9ff", padding: "10px 12px", borderRadius: 8 } },
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Último celo"),
+          React.createElement("input", { value: historiaForm.ultimoCelo || "", onChange: e => setHF("ultimoCelo", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13, boxSizing: "border-box" } })
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Inyecciones anticonceptivas?"),
+          React.createElement("div", { style: { display: "flex", gap: 12 } },
+            ...["Sí", "No", "No sabe"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "anticoncep", checked: historiaForm.anticonceptivas === op, onChange: () => setHF("anticonceptivas", op) }), op
+            ))
+          )
+        )
+      ),
+
+      // Sección: Motivo de consulta
+      React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.azul, borderBottom: "2px solid #eaf4ff", paddingBottom: 6, marginTop: 20, marginBottom: 14 } }, "🔍 Motivo de la consulta"),
+      React.createElement("div", null,
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Describa el motivo principal de la consulta *"),
+        React.createElement("textarea", { value: historiaForm.motivo || "", onChange: e => setHF("motivo", e.target.value), rows: 3, placeholder: "Describir síntomas, razón de la visita...", style: { width: "100%", padding: "10px 12px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13, resize: "vertical", boxSizing: "border-box" } })
+      ),
+
+      // Sección: Historia médica
+      React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#7c3aed", borderBottom: "2px solid #f3e8ff", paddingBottom: 6, marginTop: 20, marginBottom: 14 } }, "💉 Historia médica y preventiva"),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 } },
+        ...[
+          ["vacunadoAlDia", "¿Vacunado al día?"],
+          ["desparasitacion", "¿Desparasitación al día?"],
+          ["garrapatas", "¿Le han visto garrapatas?"],
+          ["preventivoAlDia", "¿Preventivo pulgas/garrapatas?"]
+        ].map(([k, label]) =>
+          React.createElement("div", { key: k },
+            React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, label),
+            React.createElement("div", { style: { display: "flex", gap: 12 } },
+              ...["Sí", "No", "No sabe"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+                React.createElement("input", { type: "radio", name: k, checked: historiaForm[k] === op, onChange: () => setHF(k, op) }), op
+              ))
+            )
+          )
+        )
+      ),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 8 } },
+        ...[
+          ["ultimaVacunacion", "Última vacunación"],
+          ["ultimaDesparasitacion", "Última desparasitación"],
+          ["ultimaPrev", "Última aplicación preventivo"]
+        ].map(([k, label]) =>
+          React.createElement("div", { key: k },
+            React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, label),
+            React.createElement("input", { value: historiaForm[k] || "", onChange: e => setHF(k, e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13, boxSizing: "border-box" } })
+          )
+        )
+      ),
+      React.createElement("div", { style: { marginBottom: 8 } },
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Medicamento sin prescripción veterinaria?"),
+        React.createElement("div", { style: { display: "flex", gap: 16, alignItems: "center" } },
+          ...["Sí", "No"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+            React.createElement("input", { type: "radio", name: "medicSinPres", checked: historiaForm.medicSinPrescripcion === op, onChange: () => setHF("medicSinPrescripcion", op) }), op
+          )),
+          historiaForm.medicSinPrescripcion === "Sí" && React.createElement("input", { value: historiaForm.medicCuales || "", onChange: e => setHF("medicCuales", e.target.value), placeholder: "¿Cuál y cuándo?", style: { flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
+        )
+      ),
+
+      // Sección: Alimentación
+      React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#d97706", borderBottom: "2px solid #fef3c7", paddingBottom: 6, marginTop: 20, marginBottom: 14 } }, "🍖 Alimentación y hábitos"),
+      React.createElement("div", { style: { marginBottom: 10 } },
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Tipo de alimentación"),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12 } },
+          ...["Concentrado/pienso", "Dieta casera", "Mixta", "Otro"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+            React.createElement("input", { type: "radio", name: "tipoAlim", checked: historiaForm.tipoAlimentacion === op, onChange: () => setHF("tipoAlimentacion", op) }), op
+          ))
+        )
+      ),
+      React.createElement("div", { style: { marginBottom: 10 } },
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Marca de concentrado"),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 10 } },
+          ...["Royal Canin", "Hill's", "Purina Pro Plan", "Pedigree", "Dog Chow", "Otro"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+            React.createElement("input", { type: "radio", name: "marcaConc", checked: historiaForm.marcaConcentrado === op, onChange: () => setHF("marcaConcentrado", op) }), op
+          )),
+          historiaForm.marcaConcentrado === "Otro" && React.createElement("input", { value: historiaForm.otraMarca || "", onChange: e => setHF("otraMarca", e.target.value), placeholder: "Especificar", style: { padding: "5px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
+        )
+      ),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 10 } },
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Veces/día que come"),
+          React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+            ...["1", "2", "3", "Libre acceso"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "frecComida", checked: historiaForm.frecuenciaComida === op, onChange: () => setHF("frecuenciaComida", op) }), op
+            ))
+          )
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Contacto con callejeros?"),
+          React.createElement("div", { style: { display: "flex", gap: 12 } },
+            ...["Sí", "No"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "callejeros", checked: historiaForm.contactoCallejeros === op, onChange: () => setHF("contactoCallejeros", op) }), op
+            ))
+          )
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Salida al exterior?"),
+          React.createElement("div", { style: { display: "flex", gap: 12 } },
+            ...["Sí", "No"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "salidaExt", checked: historiaForm.salidaExterior === op, onChange: () => setHF("salidaExterior", op) }), op
+            ))
+          )
+        )
+      ),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 4 } },
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Cambios en alimentación?"),
+          React.createElement("div", { style: { display: "flex", gap: 12, alignItems: "center" } },
+            ...["Sí", "No"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "cambioAlim", checked: historiaForm.cambioAlimentacion === op, onChange: () => setHF("cambioAlimentacion", op) }), op
+            ))
+          )
+        ),
+        historiaForm.cambioAlimentacion === "Sí" && React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "¿Cuáles cambios?"),
+          React.createElement("input", { value: historiaForm.cualesCambios || "", onChange: e => setHF("cualesCambios", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13, boxSizing: "border-box" } })
+        ),
+        historiaForm.salidaExterior === "Sí" && React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "¿Cuándo y dónde?"),
+          React.createElement("input", { value: historiaForm.cuandoDonde || "", onChange: e => setHF("cuandoDonde", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13, boxSizing: "border-box" } })
+        )
+      ),
+
+      // Sección: Síntomas
+      React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.rojo, borderBottom: "2px solid #fdecea", paddingBottom: 6, marginTop: 20, marginBottom: 14 } }, "🩺 Síntomas generales"),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 } },
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Cambios en apetito"),
+          React.createElement("div", { style: { display: "flex", gap: 10 } },
+            ...["No", "Aumento", "Disminución"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "apetito", checked: historiaForm.cambioApetito === op, onChange: () => setHF("cambioApetito", op) }), op
+            ))
+          )
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Cambios en consumo de agua"),
+          React.createElement("div", { style: { display: "flex", gap: 10 } },
+            ...["No", "Aumento", "Disminución"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "agua", checked: historiaForm.cambioAgua === op, onChange: () => setHF("cambioAgua", op) }), op
+            ))
+          )
+        )
+      ),
+      React.createElement("div", { style: { marginBottom: 10 } },
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Cambios en orina (puede seleccionar varios)"),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 10 } },
+          ...["No", "Orina más", "Orina menos", "Dificultad", "Sangre en orina", "Más clara", "Más oscura"].map(op =>
+            React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer" } },
+              React.createElement("input", { type: "checkbox", checked: (historiaForm.cambioOrina || []).includes(op), onChange: () => toggleArr("cambioOrina", op) }), op
+            )
+          )
+        )
+      ),
+      React.createElement("div", { style: { marginBottom: 10 } },
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "Cambios en heces (puede seleccionar varios)"),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 10 } },
+          ...["No", "Diarrea", "Estreñimiento", "Sangre", "Moco", "Pastosas", "Lombrices", "Blancas"].map(op =>
+            React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer" } },
+              React.createElement("input", { type: "checkbox", checked: (historiaForm.cambioHeces || []).includes(op), onChange: () => toggleArr("cambioHeces", op) }), op
+            )
+          )
+        )
+      ),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 10 } },
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Vómitos?"),
+          React.createElement("div", { style: { display: "flex", gap: 12 } },
+            ...["No", "Sí"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "vomitos", checked: historiaForm.vomitos === op, onChange: () => setHF("vomitos", op) }), op
+            ))
+          ),
+          historiaForm.vomitos === "Sí" && React.createElement("input", { value: historiaForm.vomitoDesc || "", onChange: e => setHF("vomitoDesc", e.target.value), placeholder: "Frecuencia, aspecto...", style: { marginTop: 6, width: "100%", padding: "7px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 12, boxSizing: "border-box" } })
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Cambios en peso?"),
+          React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+            ...["No", "Aumento", "Pérdida"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "cambioPeso", checked: historiaForm.cambioPeso === op, onChange: () => setHF("cambioPeso", op) }), op
+            ))
+          )
+        ),
+        React.createElement("div", null,
+          React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 6 } }, "¿Cambios en comportamiento?"),
+          React.createElement("div", { style: { display: "flex", gap: 12 } },
+            ...["No", "Sí"].map(op => React.createElement("label", { key: op, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer" } },
+              React.createElement("input", { type: "radio", name: "comportamiento", checked: historiaForm.cambioComport === op, onChange: () => setHF("cambioComport", op) }), op
+            ))
+          ),
+          historiaForm.cambioComport === "Sí" && React.createElement("input", { value: historiaForm.cambioComportDesc || "", onChange: e => setHF("cambioComportDesc", e.target.value), placeholder: "Describir...", style: { marginTop: 6, width: "100%", padding: "7px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 12, boxSizing: "border-box" } })
+        )
+      )
+    ),
+    // Footer fijo
+    React.createElement("div", { style: { padding: "16px 28px", borderTop: "1px solid #e0e4e8", display: "flex", justifyContent: "flex-end", gap: 10, background: "#f8f9fa", borderRadius: "0 0 18px 18px" } },
+      React.createElement("button", { onClick: () => setModalHistoria(false), style: { background: "#e0e4e8", color: C.grisd, border: "none", borderRadius: 8, padding: "10px 20px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "Cancelar"),
+      React.createElement("button", { onClick: guardarHistoria, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", cursor: "pointer", fontWeight: 800, fontSize: 14 } }, "\u{1F4BE} Guardar historia clínica")
+    )
+  )
+),
+modalEntrada && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1e3, padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: 28, maxWidth: 620, width: "100%", maxHeight: "92vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, marginBottom: 4 } }, "\u2795 Nueva entrada cl\xEDnica"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Paciente: ", /* @__PURE__ */ React.createElement("strong", null, pacienteVer)), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 } }, [
       { key: "fecha", label: "Fecha", type: "date" },
       { key: "peso", label: "Peso actual (kg)", placeholder: "4.5" },
       { key: "temperatura", label: "Temperatura (\xB0C)", placeholder: "38.5" }
