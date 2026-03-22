@@ -7896,13 +7896,15 @@ const VET_EMAILS = [
 // MI VITRINA — Sistema de motivación de ventas
 // Componente compartido para vet y groomer
 // ═══════════════════════════════════════════════════════════
-function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
+function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05, clientes = [] }) {
   const [busq, setBusq] = React.useState("");
   const [selProd, setSelProd] = React.useState(null);
   const [qty, setQty] = React.useState(1);
   const [cliente, setCliente] = React.useState("");
-  const [pago, setPago] = React.useState("efectivo");
+  const [pago, setPago] = React.useState("pendiente");
   const [celebracion, setCelebracion] = React.useState(null);
+  const [catFiltro, setCatFiltro] = React.useState("todo");
+  const [showSugg, setShowSugg] = React.useState(false);
   const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",azulL:"#e8eef8",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojo:"#c0392b",fondo:"#f0f4f8" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
   const mesActual = new Date().toISOString().slice(0,7);
@@ -7930,10 +7932,29 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
   // Top 3 productos estrella
   const top3 = inv.slice(0,3).map(p => p.id);
 
-  // Filtro búsqueda
-  const invFiltrado = busq.length >= 2
-    ? inv.filter(p => p.nombre.toLowerCase().includes(busq.toLowerCase()))
+  // Sugerencias CRM
+  const sugerencias = React.useMemo(() => {
+    if (cliente.length < 2) return [];
+    const q = cliente.toLowerCase();
+    const names = new Set();
+    (clientes.length > 0 ? clientes : []).forEach(c => {
+      const n = c.nombre || c.nombreMascota || "";
+      const d = c.dueno || c.nombrePropietario || "";
+      if (n && n.toLowerCase().includes(q)) names.add(n);
+      if (d && d.toLowerCase().includes(q)) names.add(d);
+    });
+    return [...names].slice(0, 6);
+  }, [cliente, clientes]);
+
+  // Filtro búsqueda + categoría
+  const invPorCat = catFiltro === "farmacia"
+    ? inv.filter(p => (p.categoria || "").toLowerCase() === "farmaco")
+    : catFiltro === "tienda"
+    ? inv.filter(p => (p.categoria || "").toLowerCase() !== "farmaco")
     : inv;
+  const invFiltrado = busq.length >= 2
+    ? invPorCat.filter(p => p.nombre.toLowerCase().includes(busq.toLowerCase()))
+    : invPorCat;
 
   const gananciaActual = selProd ? selProd.ganancia * qty : 0;
   const miComisionActual = Math.round(gananciaActual * comPct);
@@ -8025,20 +8046,54 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05 }) {
       ),
 
       React.createElement("div", { style:{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }},
-        React.createElement("div", { style:{ flex:"1 1 180px" }},
+        React.createElement("div", { style:{ flex:"1 1 180px", position:"relative" }},
           React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Cliente / Mascota"),
-          React.createElement("input", { value:cliente, onChange:e=>setCliente(e.target.value), placeholder:"Nombre del cliente...",
-            style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }})
+          React.createElement("input", {
+            value: cliente,
+            onChange: e => { setCliente(e.target.value); setShowSugg(true); },
+            onFocus: () => setShowSugg(true),
+            onBlur: () => setTimeout(() => setShowSugg(false), 150),
+            placeholder: "Buscar cliente o mascota...",
+            style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }
+          }),
+          showSugg && sugerencias.length > 0 && React.createElement("div", {
+            style:{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #d1d5db",
+              borderRadius:8, zIndex:50, boxShadow:"0 4px 14px rgba(0,0,0,0.12)", marginTop:2 }
+          },
+            sugerencias.map(s => React.createElement("div", {
+              key: s,
+              onMouseDown: () => { setCliente(s); setShowSugg(false); },
+              style:{ padding:"8px 12px", cursor:"pointer", fontSize:13, borderBottom:"1px solid #f0f0f0" },
+              onMouseEnter: e => e.target.style.background="#f4f5f6",
+              onMouseLeave: e => e.target.style.background="#fff"
+            }, s))
+          )
         ),
         React.createElement("div", null,
           React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", display:"block", marginBottom:4 }}, "Forma de pago"),
           React.createElement("select", { value:pago, onChange:e=>setPago(e.target.value),
             style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13 }},
-            React.createElement("option", { value:"efectivo" }, "💵 Efectivo"),
-            React.createElement("option", { value:"Transferencia Popular" }, "🏦 Popular"),
-            React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Reservas"),
-            React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta")
+            React.createElement("option", { value:"pendiente" }, "\u23F3 Pendiente de pago"),
+            React.createElement("option", { value:"efectivo" }, "\u{1F4B5} Efectivo"),
+            React.createElement("option", { value:"Transferencia Popular" }, "\u{1F3E6} Popular"),
+            React.createElement("option", { value:"Transferencia Reservas" }, "\u{1F3E6} Reservas"),
+            React.createElement("option", { value:"tarjeta" }, "\u{1F4B3} Tarjeta")
           )
+        )
+      ),
+
+      // Filtros de categoría
+      React.createElement("div", { style:{ display:"flex", gap:6, marginBottom:10 }},
+        [["todo","🛒 Todos"],["farmacia","💊 Farmacia"],["tienda","🏪 Tienda"]].map(([v, label]) =>
+          React.createElement("button", {
+            key: v,
+            onClick: () => setCatFiltro(v),
+            style:{
+              padding:"5px 14px", borderRadius:20, border:"1.5px solid "+(catFiltro===v?"#1a4fa0":"#e0e4e8"),
+              background: catFiltro===v?"#e8eef8":"#fff", color: catFiltro===v?"#1a4fa0":"#5a6472",
+              fontWeight: catFiltro===v?700:500, fontSize:12, cursor:"pointer"
+            }
+          }, label)
         )
       ),
 
@@ -8167,10 +8222,10 @@ function HistorialGanancias({ usuario, ventas, comPct, mesActual }) {
   );
 }
 
-function FarmaciaVet({ usuario, ventas, setVentas, inventario }) {
+function FarmaciaVet({ usuario, ventas, setVentas, inventario, clientes }) {
   // Usa MiVitrina con comisión del usuario (30% vet, 5% farmacia)
   const comPct = 0.05; // 5% ganancia neta de farmacia
-  return React.createElement(MiVitrina, { usuario, ventas, setVentas, inventario, comPct });
+  return React.createElement(MiVitrina, { usuario, ventas, setVentas, inventario, comPct, clientes });
 }
 function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
   const [busq, setBusq] = React.useState("");
@@ -8648,7 +8703,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
-      tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [] }),
+      tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [], clientes }),
       tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] })
     )
   );
