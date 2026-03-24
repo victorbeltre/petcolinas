@@ -3350,7 +3350,7 @@ function PetColinasApp({ session, onLogout }) {
     return Object.values(nuevosMap).map((v, i) => ({
       id: 9e4 + i,
       nombreMascota: v.cliente,
-      especie: "Perro",
+      especie: "",
       raza: "",
       sexo: "",
       tamano: "",
@@ -3391,7 +3391,7 @@ function PetColinasApp({ session, onLogout }) {
           stockInicial: cantidad,
           stockMin: Math.max(1, Math.round(cantidad * 0.3)),
           costo: costoUnit,
-          pventa: Math.round(costoUnit * 1.3),
+          pventa: 0,
           fechaEntrada: g.fecha,
           proveedor: g.proveedor || "",
           autoGenerado: true
@@ -5373,7 +5373,7 @@ function InventarioAnalytics({ inventario, ventas }) {
     const cantVendida = ventas_prod.length;
     const fechas = ventas_prod.map((v) => v.fecha).filter(Boolean).sort();
     const ultimaVenta = fechas[fechas.length - 1] || null;
-    const margen = prod.pventa > 0 && prod.costo > 0 ? Math.round((prod.pventa - prod.costo) / prod.pventa * 100) : null;
+    const margen = prod.pventa > 0 && prod.costo > 0 && prod.pventa !== prod.costo ? Math.round((prod.pventa - prod.costo) / prod.pventa * 100) : (prod.margen != null ? prod.margen : null);
     const diasSinVenta = ultimaVenta ? Math.floor((/* @__PURE__ */ new Date() - new Date(ultimaVenta)) / 864e5) : prod.fechaEntrada ? Math.floor((/* @__PURE__ */ new Date() - new Date(prod.fechaEntrada)) / 864e5) : null;
     return { cantVendida, totalVendido, ultimaVenta, margen, diasSinVenta, ventas_prod };
   };
@@ -5653,7 +5653,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
   ))), /* @__PURE__ */ React.createElement("tbody", null, filtrados.map((p) => {
     const enEdicion = editId === p.id;
     const _pv = parseFloat(p.pventa) || 0; const _pc = parseFloat(p.costo) || 0;
-    const margen = _pv > 0 && _pc > 0 ? Math.round((_pv - _pc) / _pv * 100) : null;
+    const margen = _pv > 0 && _pc > 0 && _pv !== _pc ? Math.round((_pv - _pc) / _pv * 100) : (p.margen != null ? p.margen : null);
     const bajo = p.stockMin > 0 && p.stock <= p.stockMin;
     const tieneChange = !!pendientes[p.id];
     if (enEdicion) {
@@ -6136,6 +6136,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
   const [clienteSel, setClienteSel] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [filtroEspecie, setFiltroEspecie] = useState("todos");
+  const [filtroRaza, setFiltroRaza] = useState("");
   const [ordenCRM, setOrdenCRM] = useState("nombre_az");
   const [editando, setEditando] = useState(false);
   const [modalFactura, setModalFactura] = useState(false);
@@ -6198,14 +6199,19 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     let lista = clientes.filter((c) => {
       if (filtroEspecie === "Perro" && c.especie !== "Perro") return false;
       if (filtroEspecie === "Gato" && c.especie !== "Gato") return false;
-      if (filtroEspecie === "Otros" && ["Perro", "Gato"].includes(c.especie)) return false;
+      if (filtroEspecie === "Otros" && (!c.especie || ["Perro", "Gato"].includes(c.especie))) return false;
+      if (filtroRaza && filtroRaza.trim()) {
+        const qr = filtroRaza.trim().toLowerCase();
+        if (!(c.raza || "").toLowerCase().includes(qr)) return false;
+      }
       if (!busqueda || !busqueda.trim()) return true;
       const q = busqueda.trim().toLowerCase();
       const mascota = (c.nombreMascota || c.nombre || c.nombremascota || "").toLowerCase().trim();
       const dueno   = (c.nombrePropietario || c.dueno || c.nombrepropietario || "").toLowerCase().trim();
+      const raza    = (c.raza || "").toLowerCase().trim();
       const tel     = (c.telefono || "").replace(/[\s\-().]/g, "");
       const telQ    = q.replace(/[\s\-().]/g, "");
-      return mascota.includes(q) || dueno.includes(q) || (telQ.length >= 3 && tel.includes(telQ)) || (c.telefono || "").includes(q);
+      return mascota.includes(q) || dueno.includes(q) || raza.includes(q) || (telQ.length >= 3 && tel.includes(telQ)) || (c.telefono || "").includes(q);
     });
     if (ordenCRM === "nombre_az") lista.sort((a, b) => (a.nombreMascota || "").localeCompare(b.nombreMascota || ""));
     else if (ordenCRM === "nombre_za") lista.sort((a, b) => (b.nombreMascota || "").localeCompare(a.nombreMascota || ""));
@@ -6225,7 +6231,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       });
     }
     return lista;
-  }, [clientes, busqueda, filtroEspecie, ordenCRM, ventas]);
+  }, [clientes, busqueda, filtroEspecie, filtroRaza, ordenCRM, ventas]);
   const ventasCliente = clienteSel ? ventas.filter((v) => v.cliente?.toLowerCase() === clienteSel.nombreMascota?.toLowerCase()) : [];
   const totalGastado = ventasCliente.reduce((s, v) => s + v.total, 0);
   const ultimaVisita = ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : null;
@@ -6238,7 +6244,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     { label: "Total pacientes", val: clientes.length, color: C.verde, filtro: "todos" },
     { label: "Perros \uD83D\uDC15", val: clientes.filter((c) => c.especie === "Perro").length, color: C.azul, filtro: "Perro" },
     { label: "Gatos \uD83D\uDC08", val: clientes.filter((c) => c.especie === "Gato").length, color: C.gold, filtro: "Gato" },
-    { label: "Otros", val: clientes.filter((c) => !["Perro", "Gato"].includes(c.especie)).length, color: C.grisd, filtro: "Otros" }
+    { label: "Otros", val: clientes.filter((c) => c.especie && !["Perro", "Gato"].includes(c.especie)).length, color: C.grisd, filtro: "Otros" }
   ].map((kpi) => /* @__PURE__ */ React.createElement("div", { key: kpi.label, onClick: () => setFiltroEspecie(filtroEspecie === kpi.filtro ? "todos" : kpi.filtro), style: { cursor: "pointer", outline: filtroEspecie === kpi.filtro ? `2px solid ${kpi.color}` : "none", borderRadius: 12, transition: "transform .1s", transform: filtroEspecie === kpi.filtro ? "scale(1.03)" : "scale(1)" }, title: filtroEspecie === kpi.filtro ? "Click para quitar filtro" : "Click para filtrar" }, /* @__PURE__ */ React.createElement(KPI, { label: kpi.label, val: kpi.val, color: kpi.color })))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement(
     Input,
     {
@@ -6252,7 +6258,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     /* @__PURE__ */ React.createElement("option", { value: "nombre_za" }, "\uD83D\uDD24 Z\u2192A"),
     /* @__PURE__ */ React.createElement("option", { value: "reciente" }, "\uD83D\uDCC5 M\xE1s reciente"),
     /* @__PURE__ */ React.createElement("option", { value: "mas_servicios" }, "\uD83D\uDCCA M\xE1s servicios")
-  ), (filtroEspecie !== "todos" || busqueda) && /* @__PURE__ */ React.createElement("button", { onClick: () => { setFiltroEspecie("todos"); setBusqueda(""); }, style: { background: "#fdeaea", color: "#b8232a", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "\u2715 Limpiar")), clientesFiltrados.length === 0 ? /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0", color: C.grisd } }, clientes.length === 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay clientes registrados"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13 } }, "Registra tu primer cliente con el bot\xF3n de arriba.")) : "No se encontraron resultados para esta b\xFAsqueda.")) : /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 } }, clientesFiltrados.map((c) => {
+  ), (filtroEspecie !== "todos" || busqueda || filtroRaza) && /* @__PURE__ */ React.createElement("button", { onClick: () => { setFiltroEspecie("todos"); setBusqueda(""); setFiltroRaza(""); }, style: { background: "#fdeaea", color: "#b8232a", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "\u2715 Limpiar")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 160 } }, /* @__PURE__ */ React.createElement(Input, { label: "", value: filtroRaza, onChange: setFiltroRaza, placeholder: "\uD83D\uDC3E  Filtrar por raza (ej: Pitbull, Poodle...)" })), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, clientesFiltrados.length, " resultado(s)")), clientesFiltrados.length === 0 ? /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0", color: C.grisd } }, clientes.length === 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay clientes registrados"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13 } }, "Registra tu primer cliente con el bot\xF3n de arriba.")) : "No se encontraron resultados para esta b\xFAsqueda.")) : /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 } }, clientesFiltrados.map((c) => {
     const vC = ventas.filter((v) => v.cliente?.toLowerCase() === c.nombreMascota?.toLowerCase());
     const total = vC.reduce((s, v) => s + v.total, 0);
     const ultima = vC.length > 0 ? [...vC].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : null;
