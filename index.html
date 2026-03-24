@@ -3428,10 +3428,13 @@ function PetColinasApp({ session, onLogout }) {
   const utilidad = totalVentas - totalEgresos;
   const comGrmSistema = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + (v.comision || 0), 0);
   const comVetSistema = ventasMes.filter((v) => v.area === "veterinaria").reduce((s, v) => s + (v.comision || 0), 0);
+  const comAyleinSistema = ventasMes.filter((v) => v.area === "veterinaria" && !(v.recibidopor || v.recibidoPor || "").toLowerCase().includes("valentina")).reduce((s, v) => s + (v.comision || 0), 0);
+  const comValenSistema = ventasMes.filter((v) => v.area === "veterinaria" && (v.recibidopor || v.recibidoPor || "").toLowerCase().includes("valentina")).reduce((s, v) => s + (v.comision || 0), 0);
   const COM_GRM_EXCEL_MARZO = 0;
   const COM_VET_EXCEL_MARZO = 0;
   const comisionesGrm = comGrmSistema;
-  const comisionesVet = comVetSistema;
+  const comisionesVet = comAyleinSistema;
+  const comisionesValen = comValenSistema;
   const ventasPendientesCount = (ventas || []).filter(v => (v.formaPago || v.formapago || "") === "Pago pendiente").length;
   return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: {
     background: `linear-gradient(135deg, ${C.verde} 0%, ${C.verde2} 100%)`,
@@ -3501,7 +3504,7 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comGrmSistema, comVetSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
@@ -3646,6 +3649,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   const [filtro, setFiltro] = useState("pendientes");
   const [busq, setBusq] = useState("");
   const [showWaMasivo, setShowWaMasivo] = useState(false);
+  const [showCrmLink, setShowCrmLink] = useState(false);
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const sugerencias = busq.length > 1 ? clientes.filter(
     (c) => c.nombreMascota?.toLowerCase().includes(busq.toLowerCase()) || c.nombrePropietario?.toLowerCase().includes(busq.toLowerCase())
@@ -3735,7 +3739,8 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
       setVista("panel");
       setForm(empty);
       setBusq("");
-    } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18 } }, vista === "editar" ? "\u270F\uFE0F Editar Seguimiento" : "\u2795 Nuevo Seguimiento")), /* @__PURE__ */ React.createElement(Card, { style: { maxWidth: 640 } }, vista === "nuevo" && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20, position: "relative" } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, "Buscar en CRM (opcional)"), /* @__PURE__ */ React.createElement(
+      setShowCrmLink(false);
+    } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18 } }, vista === "editar" ? "\u270F\uFE0F Editar Seguimiento" : "\u2795 Nuevo Seguimiento")), /* @__PURE__ */ React.createElement(Card, { style: { maxWidth: 640 } }, (vista === "nuevo" || (vista === "editar" && showCrmLink)) && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20, position: "relative" } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, vista === "editar" ? "Vincular con cliente del CRM" : "Buscar en CRM (opcional)"), /* @__PURE__ */ React.createElement(
       "input",
       {
         value: busq,
@@ -3752,6 +3757,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
           setF("propietario", c.nombrePropietario);
           setF("telefono", c.telefono || "");
           setBusq("");
+          setShowCrmLink(false);
         },
         style: { padding: "10px 14px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #f4f5f6" },
         onMouseEnter: (e) => e.currentTarget.style.background = "#f4f5f6",
@@ -3762,7 +3768,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
       c.nombrePropietario,
       " ",
       c.telefono && /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "\xB7 ", c.telefono)
-    )))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota *", value: form.mascota, onChange: (v) => setF("mascota", v), placeholder: "Ej: Copito" }), /* @__PURE__ */ React.createElement(Input, { label: "Propietario *", value: form.propietario, onChange: (v) => setF("propietario", v), placeholder: "Ej: Juan P\xE9rez" })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono WhatsApp", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "8091234567" })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 } }, "Tipo de servicio *"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 } }, TIPOS_SEGUIMIENTO.map((t) => /* @__PURE__ */ React.createElement(
+    )))), vista === "editar" && !showCrmLink && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => { setShowCrmLink(true); setBusq(""); }, style: { background: "#e8effd", color: "#1a4fa0", border: "1.5px solid #1a4fa0", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "\uD83D\uDD17 Vincular datos con cliente del CRM")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota *", value: form.mascota, onChange: (v) => setF("mascota", v), placeholder: "Ej: Copito" }), /* @__PURE__ */ React.createElement(Input, { label: "Propietario *", value: form.propietario, onChange: (v) => setF("propietario", v), placeholder: "Ej: Juan P\xE9rez" })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono WhatsApp", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "8091234567" })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 } }, "Tipo de servicio *"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 } }, TIPOS_SEGUIMIENTO.map((t) => /* @__PURE__ */ React.createElement(
       "div",
       {
         key: t.id,
@@ -4184,7 +4190,7 @@ function AlertaClientesInactivos({ clientes = [], ventas = [], onIr }) {
     cursor: onIr ? "pointer" : "default"
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28 } }, "\u{1F634}"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#e67e22", fontSize: 14 } }, inactivos90.length, " clientes llevan m\xE1s de 90 d\xEDas sin venir"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 3 } }, conTel, " tienen WhatsApp disponible para reactivarlos. Ve a Seguimientos \u2192 Clientes sin venir.")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#e67e22" } }, "Ver \u2192 "));
 }
-function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comGrmSistema, comVetSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos = [], clientes = [], ventas = [], inventario = [], setTab }) {
+function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen = 0, comGrmSistema, comVetSistema, comAyleinSistema = 0, comValenSistema = 0, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos = [], clientes = [], ventas = [], inventario = [], setTab }) {
   const PDE = 203739;
   const pct = Math.min(100, Math.round(totalVentas / PDE * 100));
   const grm = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + v.total, 0);
@@ -4295,7 +4301,18 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
     },
     /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 6 } }, "\u{1FA7A} Aylein \u2014 Veterinaria (30%) ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.azul } }, "\xB7 Ver detalle \u2192")),
     /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.azul, fontWeight: 700, marginBottom: 8 } }, RD(comisionesVet)),
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11, borderTop: `1px solid ${C.azul}30`, paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4CB} Del Excel (sem.1 Marzo)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(COM_VET_EXCEL_MARZO))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4BB} Registrados en sistema"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(comVetSistema))))
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11, borderTop: `1px solid ${C.azul}30`, paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4CB} Del Excel (sem.1 Marzo)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(COM_VET_EXCEL_MARZO))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4BB} Registrados en sistema"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(comAyleinSistema))))
+  ), /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      onClick: () => setComisionModal("valentina"),
+      style: { background: "#fce7f3", borderRadius: 10, padding: "14px 16px", cursor: "pointer", transition: "box-shadow .15s" },
+      onMouseEnter: (e) => e.currentTarget.style.boxShadow = "0 4px 14px rgba(219,39,119,0.15)",
+      onMouseLeave: (e) => e.currentTarget.style.boxShadow = "none"
+    },
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 6 } }, "\u{1FA7A} Dra. Valentina \u2014 Veterinaria (40%) ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#db2777" } }, "\xB7 Ver detalle \u2192")),
+    /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: "#db2777", fontWeight: 700, marginBottom: 8 } }, RD(comisionesValen)),
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11, borderTop: "1px solid #db277730", paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4BB} Registrados en sistema"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: "#db2777" } }, RD(comValenSistema))))
   ), /* @__PURE__ */ React.createElement("div", { style: { background: "#f8f9fa", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.grisd } }, "\u{1F4A1} Las comisiones del Excel se actualizan cada vez que subas un archivo nuevo. Las del sistema se calculan en tiempo real desde las ventas que registres."))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u26A1 Alertas del mes"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (() => { const histPrev = Object.values(HISTORICO).slice(-2)[0]; const vetPrev = histPrev?.vet || 34550; const vetMeta = Math.round(PDE * 0.23); return vet < vetMeta && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.rojo}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u{1FA7A} Veterinaria baja:"), " Solo ", RD(vet), ". Mes anterior: ", RD(vetPrev), ". Activar consultas urgente."); })(), (() => { const histPrev = Object.values(HISTORICO).slice(-2)[0]; const farPrev = histPrev?.far || 23483; const farMeta = Math.round(PDE * 0.20); return far < farMeta && /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.naranja}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.naranja } }, "\u{1F48A} Farmacia baja:"), " Solo ", RD(far), ". Mes anterior: ", RD(farPrev), ". \xBFHay Nexgard en stock?"); })(), totalVentas >= PDE && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.verde } }, "\u2705 Meta alcanzada!"), " Superaste ", RD(PDE), " este mes. \u{1F389}"), grm > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.azul}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.azul } }, "\u{1F4CA} Ticket promedio grooming:"), " ", RD(Math.round(grm / (ventasMes.filter((v) => v.area === "grooming").length || 1))), " por servicio este mes."), vet >= 1e4 && far >= 1e4 && totalVentas < PDE && /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.gold}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.gold } }, "\u{1F3AF} Buen ritmo:"), " Faltan ", RD(PDE - totalVentas), " para el punto de equilibrio (", RD(PDE), ").")))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F550} \xDAltimas transacciones del mes"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("ventas"), style: {
     background: "none",
     border: `1.5px solid ${C.verde}`,
@@ -4447,11 +4464,13 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
         "\u2715"
       )),
       (() => {
-        const color = comisionModal === "grooming" ? C.verde : C.azul;
-        const ventasCom = ventasMes.filter((v) => v.area === comisionModal && (v.comision || 0) > 0);
+        const color = comisionModal === "grooming" ? C.verde : comisionModal === "valentina" ? "#db2777" : C.azul;
+        const ventasCom = comisionModal === "valentina"
+          ? ventasMes.filter((v) => v.area === "veterinaria" && (v.recibidopor || v.recibidoPor || "").toLowerCase().includes("valentina") && (v.comision || 0) > 0)
+          : ventasMes.filter((v) => v.area === comisionModal && (v.comision || 0) > 0);
         const total = ventasCom.reduce((s, v) => s + (v.comision || 0), 0);
         return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: {
-          background: comisionModal === "grooming" ? C.verdeL : C.azulL,
+          background: comisionModal === "grooming" ? C.verdeL : comisionModal === "valentina" ? "#fce7f3" : C.azulL,
           borderRadius: 10,
           padding: "14px 16px",
           marginBottom: 16,
@@ -5633,7 +5652,8 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase", whiteSpace: "nowrap" } }, h)
   ))), /* @__PURE__ */ React.createElement("tbody", null, filtrados.map((p) => {
     const enEdicion = editId === p.id;
-    const margen = p.pventa > 0 && p.costo > 0 ? Math.round((p.pventa - p.costo) / p.pventa * 100) : null;
+    const _pv = parseFloat(p.pventa) || 0; const _pc = parseFloat(p.costo) || 0;
+    const margen = _pv > 0 && _pc > 0 ? Math.round((_pv - _pc) / _pv * 100) : null;
     const bajo = p.stockMin > 0 && p.stock <= p.stockMin;
     const tieneChange = !!pendientes[p.id];
     if (enEdicion) {
@@ -6115,6 +6135,8 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
   const [vista, setVista] = useState("lista");
   const [clienteSel, setClienteSel] = useState(null);
   const [busqueda, setBusqueda] = useState("");
+  const [filtroEspecie, setFiltroEspecie] = useState("todos");
+  const [ordenCRM, setOrdenCRM] = useState("nombre_az");
   const [editando, setEditando] = useState(false);
   const [modalFactura, setModalFactura] = useState(false);
   const [serviciosFactura, setServiciosFactura] = useState([]);
@@ -6172,14 +6194,38 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     setEditando(true);
     setVista("nuevo");
   };
-  const clientesFiltrados = clientes.filter((c) => {
-    if (!busqueda) return true;
-    const q = busqueda.toLowerCase();
-    const mascota = (c.nombreMascota || c.nombre || c.nombremascota || "").toLowerCase();
-    const dueno   = (c.nombrePropietario || c.dueno || c.nombrepropietario || "").toLowerCase();
-    const tel     = c.telefono || "";
-    return mascota.includes(q) || dueno.includes(q) || tel.includes(busqueda);
-  });
+  const clientesFiltrados = useMemo(() => {
+    let lista = clientes.filter((c) => {
+      if (filtroEspecie === "Perro" && c.especie !== "Perro") return false;
+      if (filtroEspecie === "Gato" && c.especie !== "Gato") return false;
+      if (filtroEspecie === "Otros" && ["Perro", "Gato"].includes(c.especie)) return false;
+      if (!busqueda || !busqueda.trim()) return true;
+      const q = busqueda.trim().toLowerCase();
+      const mascota = (c.nombreMascota || c.nombre || c.nombremascota || "").toLowerCase().trim();
+      const dueno   = (c.nombrePropietario || c.dueno || c.nombrepropietario || "").toLowerCase().trim();
+      const tel     = (c.telefono || "").replace(/[\s\-().]/g, "");
+      const telQ    = q.replace(/[\s\-().]/g, "");
+      return mascota.includes(q) || dueno.includes(q) || (telQ.length >= 3 && tel.includes(telQ)) || (c.telefono || "").includes(q);
+    });
+    if (ordenCRM === "nombre_az") lista.sort((a, b) => (a.nombreMascota || "").localeCompare(b.nombreMascota || ""));
+    else if (ordenCRM === "nombre_za") lista.sort((a, b) => (b.nombreMascota || "").localeCompare(a.nombreMascota || ""));
+    else if (ordenCRM === "reciente") {
+      lista.sort((a, b) => {
+        const vA = ventas.filter((v) => (v.cliente || "").toLowerCase() === (a.nombreMascota || "").toLowerCase());
+        const vB = ventas.filter((v) => (v.cliente || "").toLowerCase() === (b.nombreMascota || "").toLowerCase());
+        const uA = vA.length > 0 ? [...vA].sort((x, y) => y.fecha.localeCompare(x.fecha))[0].fecha : "0";
+        const uB = vB.length > 0 ? [...vB].sort((x, y) => y.fecha.localeCompare(x.fecha))[0].fecha : "0";
+        return uB.localeCompare(uA);
+      });
+    } else if (ordenCRM === "mas_servicios") {
+      lista.sort((a, b) => {
+        const cA = ventas.filter((v) => (v.cliente || "").toLowerCase() === (a.nombreMascota || "").toLowerCase()).length;
+        const cB = ventas.filter((v) => (v.cliente || "").toLowerCase() === (b.nombreMascota || "").toLowerCase()).length;
+        return cB - cA;
+      });
+    }
+    return lista;
+  }, [clientes, busqueda, filtroEspecie, ordenCRM, ventas]);
   const ventasCliente = clienteSel ? ventas.filter((v) => v.cliente?.toLowerCase() === clienteSel.nombreMascota?.toLowerCase()) : [];
   const totalGastado = ventasCliente.reduce((s, v) => s + v.total, 0);
   const ultimaVisita = ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : null;
@@ -6188,7 +6234,12 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     setForm(emptyForm);
     setEditando(false);
     setVista("nuevo");
-  } }, "\u2795 Nuevo cliente")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 24 } }, /* @__PURE__ */ React.createElement(KPI, { label: "Total pacientes", val: clientes.length, color: C.verde }), /* @__PURE__ */ React.createElement(KPI, { label: "Perros", val: clientes.filter((c) => c.especie === "Perro").length, color: C.azul }), /* @__PURE__ */ React.createElement(KPI, { label: "Gatos", val: clientes.filter((c) => c.especie === "Gato").length, color: C.gold }), /* @__PURE__ */ React.createElement(KPI, { label: "Otros", val: clientes.filter((c) => !["Perro", "Gato"].includes(c.especie)).length, color: C.grisd })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(
+  } }, "\u2795 Nuevo cliente")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 24 } }, [
+    { label: "Total pacientes", val: clientes.length, color: C.verde, filtro: "todos" },
+    { label: "Perros \uD83D\uDC15", val: clientes.filter((c) => c.especie === "Perro").length, color: C.azul, filtro: "Perro" },
+    { label: "Gatos \uD83D\uDC08", val: clientes.filter((c) => c.especie === "Gato").length, color: C.gold, filtro: "Gato" },
+    { label: "Otros", val: clientes.filter((c) => !["Perro", "Gato"].includes(c.especie)).length, color: C.grisd, filtro: "Otros" }
+  ].map((kpi) => /* @__PURE__ */ React.createElement("div", { key: kpi.label, onClick: () => setFiltroEspecie(filtroEspecie === kpi.filtro ? "todos" : kpi.filtro), style: { cursor: "pointer", outline: filtroEspecie === kpi.filtro ? `2px solid ${kpi.color}` : "none", borderRadius: 12, transition: "transform .1s", transform: filtroEspecie === kpi.filtro ? "scale(1.03)" : "scale(1)" }, title: filtroEspecie === kpi.filtro ? "Click para quitar filtro" : "Click para filtrar" }, /* @__PURE__ */ React.createElement(KPI, { label: kpi.label, val: kpi.val, color: kpi.color })))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement(
     Input,
     {
       label: "",
@@ -6196,7 +6247,12 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       onChange: setBusqueda,
       placeholder: "\u{1F50D}  Buscar por nombre de mascota, due\xF1o o tel\xE9fono..."
     }
-  )), clientesFiltrados.length === 0 ? /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0", color: C.grisd } }, clientes.length === 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay clientes registrados"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13 } }, "Registra tu primer cliente con el bot\xF3n de arriba.")) : "No se encontraron resultados para esta b\xFAsqueda.")) : /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 } }, clientesFiltrados.map((c) => {
+  )), /* @__PURE__ */ React.createElement("select", { value: ordenCRM, onChange: (e) => setOrdenCRM(e.target.value), style: { padding: "10px 12px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, background: "#fff", color: C.negro, cursor: "pointer" } },
+    /* @__PURE__ */ React.createElement("option", { value: "nombre_az" }, "\uD83D\uDD24 A\u2192Z"),
+    /* @__PURE__ */ React.createElement("option", { value: "nombre_za" }, "\uD83D\uDD24 Z\u2192A"),
+    /* @__PURE__ */ React.createElement("option", { value: "reciente" }, "\uD83D\uDCC5 M\xE1s reciente"),
+    /* @__PURE__ */ React.createElement("option", { value: "mas_servicios" }, "\uD83D\uDCCA M\xE1s servicios")
+  ), (filtroEspecie !== "todos" || busqueda) && /* @__PURE__ */ React.createElement("button", { onClick: () => { setFiltroEspecie("todos"); setBusqueda(""); }, style: { background: "#fdeaea", color: "#b8232a", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "\u2715 Limpiar")), clientesFiltrados.length === 0 ? /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0", color: C.grisd } }, clientes.length === 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay clientes registrados"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13 } }, "Registra tu primer cliente con el bot\xF3n de arriba.")) : "No se encontraron resultados para esta b\xFAsqueda.")) : /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 } }, clientesFiltrados.map((c) => {
     const vC = ventas.filter((v) => v.cliente?.toLowerCase() === c.nombreMascota?.toLowerCase());
     const total = vC.reduce((s, v) => s + v.total, 0);
     const ultima = vC.length > 0 ? [...vC].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : null;
@@ -6288,6 +6344,47 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
         style: { width: 80, border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 14, fontWeight: 700, textAlign: "center" }
       }
     ), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, "Se suman al contador del programa de lealtad (d\xE9cimo ba\xF1o gratis)")))), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F489} Vacunas" }, (() => {
+      const calcEdad = (fn) => {
+        if (!fn) return null;
+        const hoyD = new Date(); const nac = new Date(fn);
+        const meses = (hoyD.getFullYear() - nac.getFullYear()) * 12 + (hoyD.getMonth() - nac.getMonth());
+        return meses >= 0 ? meses : null;
+      };
+      const edadMeses = calcEdad(form.fechaNacimiento);
+      const esPerro = (form.especie || "").toLowerCase() === "perro";
+      const esGato = (form.especie || "").toLowerCase() === "gato";
+      let vacRecomendadas = [];
+      if (esPerro && edadMeses !== null) {
+        if (edadMeses < 4) vacRecomendadas = [{ v: "Qu\xEDntuple", nota: "Serie inicial: 6, 9, 12 semanas" }, { v: "Parvovirus", nota: "Incluida en qu\xEDntuple" }];
+        else if (edadMeses < 7) vacRecomendadas = [{ v: "Qu\xEDntuple", nota: "Completar serie" }, { v: "Rabia", nota: "Primera dosis" }, { v: "Giardia", nota: "Recomendada" }];
+        else vacRecomendadas = [{ v: "Qu\xEDntuple", nota: "Refuerzo anual" }, { v: "Rabia", nota: "Refuerzo anual" }, { v: "Giardia", nota: "Refuerzo anual" }, { v: "Bordetella", nota: "Si tiene contacto social" }];
+      } else if (esGato && edadMeses !== null) {
+        if (edadMeses < 6) vacRecomendadas = [{ v: "Triple felina", nota: "Serie inicial 8-12 semanas" }, { v: "Rabia", nota: "3-4 meses" }];
+        else vacRecomendadas = [{ v: "Triple felina", nota: "Refuerzo anual" }, { v: "Rabia", nota: "Refuerzo anual" }, { v: "Leucocell", nota: "Si sale al exterior" }];
+      }
+      let vacunasCarg = [];
+      try { vacunasCarg = JSON.parse(form.vacunas || "[]"); } catch(e2) {}
+      const tiposReg = vacunasCarg.map(v => (v.tipo || "").toLowerCase());
+      const faltantes = vacRecomendadas.filter(r => !tiposReg.some(t => t.includes(r.v.toLowerCase().split(" ")[0])));
+      const analisis = (form.especie && edadMeses !== null) ? /* @__PURE__ */ React.createElement("div", { style: { background: faltantes.length > 0 ? "#fff7ed" : "#f0fdf4", border: "1.5px solid " + (faltantes.length > 0 ? "#f59e0b" : "#22c55e"), borderRadius: 10, padding: "12px 14px", marginBottom: 14, fontSize: 13 } },
+        /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 6, color: faltantes.length > 0 ? "#92400e" : "#166534" } },
+          "\uD83E\uDDA0 An\xE1lisis — ",
+          edadMeses < 12 ? `${edadMeses} mes${edadMeses !== 1 ? "es" : ""}` : `${Math.floor(edadMeses/12)} a\xF1o${Math.floor(edadMeses/12)!==1?"s":""}${edadMeses%12>0?` ${edadMeses%12}m`:""}`,
+          " \u2014 ", form.especie
+        ),
+        faltantes.length === 0 && vacunasCarg.length > 0
+          ? /* @__PURE__ */ React.createElement("div", { style: { color: "#166534" } }, "\u2705 Vacunas al d\xEDa seg\xFAn la edad.")
+          : vacRecomendadas.length === 0
+            ? /* @__PURE__ */ React.createElement("div", { style: { color: "#5a6472" } }, "Consultar protocolo con el veterinario.")
+            : /* @__PURE__ */ React.createElement("div", null,
+                /* @__PURE__ */ React.createElement("div", { style: { color: "#92400e", marginBottom: 4 } }, "\u26A0\uFE0F Vacunas recomendadas:"),
+                faltantes.map((r, i2) => /* @__PURE__ */ React.createElement("div", { key: i2, style: { marginTop: 3, fontSize: 12 } },
+                  /* @__PURE__ */ React.createElement("strong", { style: { color: "#c2410c" } }, "\u2022 " + r.v + ":"),
+                  " " + r.nota
+                ))
+              )
+      ) : null;
+      return /* @__PURE__ */ React.createElement(React.Fragment, null, analisis, (() => {
       let vacunas = [];
       try {
         vacunas = JSON.parse(form.vacunas || "[]");
@@ -6359,7 +6456,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
         },
         "+ Agregar vacuna"
       ));
-    })()), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F4F8} Fotos de la mascota" }, (() => {
+    })()); })()), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F4F8} Fotos de la mascota" }, (() => {
       let fotos = [];
       try {
         fotos = JSON.parse(form.fotosMascota || "[]");
