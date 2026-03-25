@@ -596,7 +596,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "24 mar 2026 · 23:10";
+const LAST_UPDATE = "25 mar 2026 · 00:05";
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -3347,7 +3347,7 @@ function PetColinasApp({ session, onLogout }) {
   const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
   const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
   const [inventario, setInventario, invLoaded, , deleteInv] = useSupabase("pc_inventario", INVENTARIO_SEED);
-  const [citas, setCitas, citasLoaded, , deleteCita] = useSupabase("pc_citas", []);
+  const [citas, setCitas] = useLS("pc_citas_agenda", []);
   const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
   const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", EMPLEADOS_INIT);
   const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
@@ -3543,7 +3543,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab, citas }),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
@@ -9301,7 +9301,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     return aS < bE && bS < aE;
   });
 
-  const guardarCita = async (data) => {
+  const guardarCita = (data) => {
     const esNueva = !data.id || data.id === "nuevo";
     const cita = { ...data, id: esNueva ? "cita_"+Date.now() : data.id };
     const conflictos = detectarConflictos(cita, esNueva ? null : cita.id);
@@ -9309,29 +9309,22 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
       setConflictoMsg(`⚠️ ${cita.empleado} ya tiene ${conflictos.length} cita(s) en ese horario. Guardada en lista de espera.`);
       cita.enEspera = true;
     } else { cita.enEspera = false; setConflictoMsg(null); }
-    if (esNueva) setCitas([...citas, cita]);
-    else setCitas(citas.map(c => c.id === cita.id ? cita : c));
-    await upsertOne("pc_citas", cita);
+    if (esNueva) setCitas(prev => [...prev, cita]);
+    else setCitas(prev => prev.map(c => c.id === cita.id ? cita : c));
     setModalCita(null);
   };
 
-  const cambiarEstado = async (id, estado, motivo) => {
-    const c = citas.find(x => x.id === id); if (!c) return;
-    const upd = { ...c, estado, ...(motivo ? { motivoCancelacion: motivo } : {}) };
-    setCitas(citas.map(x => x.id === id ? upd : x));
-    await upsertOne("pc_citas", upd);
+  const cambiarEstado = (id, estado, motivo) => {
+    setCitas(prev => prev.map(c => c.id === id ? { ...c, estado, ...(motivo ? { motivoCancelacion: motivo } : {}) } : c));
   };
 
-  const registrarMensaje = async (citaId, tipo) => {
-    const c = citas.find(x => x.id === citaId); if (!c) return;
-    const upd = { ...c, mensajesEnviados: [...(c.mensajesEnviados||[]), { tipo, fecha: new Date().toISOString() }] };
-    setCitas(citas.map(x => x.id === citaId ? upd : x));
-    await upsertOne("pc_citas", upd);
+  const registrarMensaje = (citaId, tipo) => {
+    setCitas(prev => prev.map(c => c.id === citaId ? { ...c, mensajesEnviados: [...(c.mensajesEnviados||[]), { tipo, fecha: new Date().toISOString() }] } : c));
   };
 
-  const eliminarCita = async (id) => {
+  const eliminarCita = (id) => {
     if (!confirm("¿Eliminar esta cita?")) return;
-    if (deleteCita) deleteCita(id); else setCitas(citas.filter(c => c.id !== id));
+    setCitas(prev => prev.filter(c => c.id !== id));
     setModalCita(null);
   };
 
@@ -9455,8 +9448,25 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     const setF = (k,v) => setModalCita(m=>({...m,[k]:v}));
     const histMsgs = modalCita.mensajesEnviados||[];
     const tipoLabels = { confirmacion:"Confirmación", recordatorio:"Recordatorio mañana", recordatorio_hoy:"Recordatorio hoy", recordatorio_2h:"Recordatorio 2h", lista:"Mascota lista", reagendar:"Reagendar" };
+    // CRM search state (local to render using ref trick)
+    const [crmQuery, setCrmQuery] = React.useState(modalCita._crmQuery||"");
+    const [crmOpen, setCrmOpen] = React.useState(false);
+    const crmFiltrados = crmQuery.length>1 ? clientes.filter(cl=>{const q=crmQuery.toLowerCase();return (cl.nombreMascota||"").toLowerCase().includes(q)||(cl.nombrePropietario||"").toLowerCase().includes(q)||(cl.telefono||"").includes(q);}).slice(0,10) : [];
+    // Servicios array
+    const servicios = modalCita.servicios || (modalCita.servicio ? [{nombre:modalCita.servicio,precio:modalCita.precio||0,empleado:modalCita.empleado||""}] : []);
+    const totalServicios = servicios.reduce((s,x)=>s+(Number(x.precio)||0),0);
+    const [svcSel, setSvcSel] = React.useState("");
+    const [svcPrecio, setSvcPrecio] = React.useState("");
+    const [svcEmp, setSvcEmp] = React.useState(modalCita.empleado||"Alexander");
+    const agregarServicio = () => {
+      if (!svcSel) return;
+      const nuevo = {nombre:svcSel, precio:Number(svcPrecio)||0, empleado:svcEmp};
+      setModalCita(m=>({...m, servicios:[...(m.servicios||[]), nuevo], servicio:svcSel, precio:totalServicios+nuevo.precio}));
+      setSvcSel(""); setSvcPrecio("");
+    };
+    const quitarServicio = (i) => setModalCita(m=>{ const arr=[...(m.servicios||[])]; arr.splice(i,1); return {...m, servicios:arr, precio:arr.reduce((s,x)=>s+(Number(x.precio)||0),0)}; });
     return E("div", { style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:3000,padding:16} },
-      E("div", { style:{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:560,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"} },
+      E("div", { style:{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:580,maxHeight:"93vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"} },
         E("div", { style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18} },
           E("h3", { style:{margin:0,fontFamily:"Georgia,serif",fontSize:19} }, esNueva?"➕ Nueva cita":"✏️ Editar cita"),
           E("button", { onClick:()=>setModalCita(null), style:{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.grisd} }, "×")
@@ -9465,34 +9475,61 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
         E("div", { style:{display:"flex",gap:10,marginBottom:14} },
           E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Fecha"), E("input", {type:"date",value:modalCita.fecha||"",onChange:e=>setF("fecha",e.target.value),style:inputStyle})),
           E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Hora"), E("select", {value:modalCita.hora||"08:00",onChange:e=>setF("hora",e.target.value),style:inputStyle}, HORAS.map(h=>E("option",{key:h,value:h},h)))),
-          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Duración"), E("select", {value:modalCita.duracion||60,onChange:e=>setF("duracion",Number(e.target.value)),style:inputStyle}, [[30,"30 min"],[60,"1 hora"],[90,"1h 30m"],[120,"2 horas"]].map(([v,l])=>E("option",{key:v,value:v},l))))
+          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Duración"), E("select", {value:modalCita.duracion||60,onChange:e=>setF("duracion",Number(e.target.value)),style:inputStyle}, [[30,"30 min"],[60,"1 hora"],[90,"1h 30m"],[120,"2 horas"],[150,"2h 30m"],[180,"3 horas"]].map(([v,l])=>E("option",{key:v,value:v},l))))
         ),
         E("div", { style:{display:"flex",gap:10,marginBottom:14} },
-          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Tipo"), E("select", {value:modalCita.tipo||"grooming",onChange:e=>setF("tipo",e.target.value),style:inputStyle}, Object.entries(TIPOS).map(([k,v])=>E("option",{key:k,value:k},`${v.icon} ${v.label}`)))),
-          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Empleado"), E("select", {value:modalCita.empleado||"Alexander",onChange:e=>setF("empleado",e.target.value),style:inputStyle}, Object.keys(EMPLEADOS).map(e=>E("option",{key:e,value:e},e)))),
+          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Tipo principal"), E("select", {value:modalCita.tipo||"grooming",onChange:e=>setF("tipo",e.target.value),style:inputStyle}, Object.entries(TIPOS).map(([k,v])=>E("option",{key:k,value:k},`${v.icon} ${v.label}`)))),
+          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Empleado principal"), E("select", {value:modalCita.empleado||"Alexander",onChange:e=>setF("empleado",e.target.value),style:inputStyle}, Object.keys(EMPLEADOS).map(e=>E("option",{key:e,value:e},e)))),
           E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Estado"), E("select", {value:modalCita.estado||"pendiente",onChange:e=>setF("estado",e.target.value),style:inputStyle}, Object.entries(ESTADOS).filter(([k])=>k!=="espera").map(([k,v])=>E("option",{key:k,value:k},v.label))))
         ),
-        E("div", { style:{marginBottom:14} },
-          E("label", {style:labelStyle}, "Cliente (CRM — opcional)"),
-          E("select", {value:modalCita.clienteId||"",onChange:e=>{const cl=clientes.find(c=>String(c.id)===e.target.value);setModalCita(m=>({...m,clienteId:e.target.value,nombreCliente:cl?cl.nombrePropietario||"":"",nombreMascota:cl?cl.nombreMascota||"":"",telefono:cl?cl.telefono||"":m.telefono}));},style:inputStyle},
-            E("option",{value:""},"— Sin vincular —"),
-            clientes.slice(0,300).map(cl=>E("option",{key:cl.id,value:String(cl.id)},`${cl.nombreMascota||"?"} (${cl.nombrePropietario||"?"})`))
+        E("div", { style:{marginBottom:14,position:"relative"} },
+          E("label", {style:labelStyle}, "🔍 Buscar cliente del CRM"),
+          E("input", {value:crmQuery, onChange:e=>{setCrmQuery(e.target.value);setCrmOpen(true);}, onFocus:()=>setCrmOpen(true), placeholder:"Escribe nombre de mascota, dueño o teléfono...", style:{...inputStyle,background:modalCita.clienteId?"#e6f4ec":"#fff"}}),
+          modalCita.clienteId && E("div",{style:{fontSize:12,color:C.verde,marginTop:4,fontWeight:600}},`✅ Vinculado: ${modalCita.nombreMascota||"?"} (${modalCita.nombreCliente||"?"}) · `,E("span",{style:{cursor:"pointer",textDecoration:"underline"},onClick:()=>{setModalCita(m=>({...m,clienteId:null}));setCrmQuery("");}},"quitar")),
+          crmOpen && crmFiltrados.length>0 && E("div",{style:{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e0e4e8",borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",zIndex:100,maxHeight:220,overflowY:"auto"}},
+            crmFiltrados.map(cl=>E("div",{key:cl.id,onClick:()=>{setModalCita(m=>({...m,clienteId:String(cl.id),nombreCliente:cl.nombrePropietario||"",nombreMascota:cl.nombreMascota||"",telefono:cl.telefono||m.telefono}));setCrmQuery(`${cl.nombreMascota||"?"} — ${cl.nombrePropietario||"?"}`);setCrmOpen(false);},style:{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #f4f5f6",fontSize:13}},
+              E("div",{style:{fontWeight:700}},`${cl.nombreMascota||"?"}  ·  ${cl.nombrePropietario||"?"}`),
+              E("div",{style:{fontSize:11,color:C.grisd}},cl.telefono||"sin teléfono")
+            ))
           )
         ),
         E("div", { style:{display:"flex",gap:10,marginBottom:14} },
           E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Dueño"), E("input",{value:modalCita.nombreCliente||"",onChange:e=>setF("nombreCliente",e.target.value),placeholder:"Nombre del propietario",style:inputStyle})),
-          E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Mascota"), E("input",{value:modalCita.nombreMascota||"",onChange:e=>setF("nombreMascota",e.target.value),placeholder:"Nombre de la mascota",style:inputStyle}))
+          E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Mascota"), E("input",{value:modalCita.nombreMascota||"",onChange:e=>setF("nombreMascota",e.target.value),placeholder:"Nombre de la mascota",style:inputStyle})),
+          E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Teléfono"), E("input",{value:modalCita.telefono||"",onChange:e=>setF("telefono",e.target.value),placeholder:"809-555-0000",type:"tel",style:inputStyle}))
         ),
-        E("div", { style:{display:"flex",gap:10,marginBottom:14} },
-          E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Teléfono"), E("input",{value:modalCita.telefono||"",onChange:e=>setF("telefono",e.target.value),placeholder:"809-555-0000",type:"tel",style:inputStyle})),
-          E("div", {style:{flex:2}},
-            E("label",{style:labelStyle},"Servicio (del catálogo)"),
-            E("select",{value:modalCita.servicio||"",onChange:e=>{const t=todasTarifas.find(x=>x.nombre===e.target.value);setModalCita(m=>({...m,servicio:e.target.value,precio:t?t.precio:m.precio}));},style:inputStyle},
-              E("option",{value:""},"— Seleccionar —"),
-              todasTarifas.map(t=>E("option",{key:t.id||t.nombre,value:t.nombre},`${t.nombre} — RD$ ${Number(t.precio).toLocaleString("es-DO")}`))
-            )
+        E("div", { style:{background:"#f8f9fa",borderRadius:10,padding:"14px 14px",marginBottom:14} },
+          E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"🛎️ Servicios de la cita"),
+          servicios.length>0 && E("div",{style:{marginBottom:10}},
+            servicios.map((s,i)=>E("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:8,padding:"8px 12px",marginBottom:6,border:"1px solid #e0e4e8"}},
+              E("div",{style:{flex:1}},
+                E("div",{style:{fontWeight:700,fontSize:13}},s.nombre),
+                E("div",{style:{fontSize:11,color:C.grisd}},`${s.empleado||"—"} · RD$ ${Number(s.precio).toLocaleString("es-DO")}`)
+              ),
+              E("button",{onClick:()=>quitarServicio(i),style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontWeight:700,fontSize:12}},"✕")
+            ))
           ),
-          E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Precio (RD$)"), E("input",{type:"number",value:modalCita.precio||"",onChange:e=>setF("precio",Number(e.target.value)),placeholder:"0",style:inputStyle}))
+          servicios.length>0 && E("div",{style:{textAlign:"right",fontWeight:800,color:C.verde,fontSize:14,marginBottom:10}},`Total: RD$ ${totalServicios.toLocaleString("es-DO")}`),
+          E("div",{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}},
+            E("div",{style:{flex:2,minWidth:160}},
+              E("label",{style:{...labelStyle,marginBottom:3}},"Servicio del catálogo"),
+              E("select",{value:svcSel,onChange:e=>{const t=todasTarifas.find(x=>x.nombre===e.target.value);setSvcSel(e.target.value);if(t)setSvcPrecio(String(t.precio));},style:{...inputStyle,fontSize:12}},
+                E("option",{value:""},"— Seleccionar —"),
+                todasTarifas.map(t=>E("option",{key:t.id||t.nombre,value:t.nombre},`${t.nombre} — RD$ ${Number(t.precio).toLocaleString("es-DO")}`))
+              )
+            ),
+            E("div",{style:{flex:1,minWidth:70}},
+              E("label",{style:{...labelStyle,marginBottom:3}},"Precio"),
+              E("input",{type:"number",value:svcPrecio,onChange:e=>setSvcPrecio(e.target.value),placeholder:"0",style:{...inputStyle,fontSize:12}})
+            ),
+            E("div",{style:{flex:1,minWidth:100}},
+              E("label",{style:{...labelStyle,marginBottom:3}},"Empleado"),
+              E("select",{value:svcEmp,onChange:e=>setSvcEmp(e.target.value),style:{...inputStyle,fontSize:12}},
+                Object.keys(EMPLEADOS).map(e=>E("option",{key:e,value:e},e))
+              )
+            ),
+            E("button",{onClick:agregarServicio,style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",alignSelf:"flex-end"}},"➕ Agregar")
+          )
         ),
         E("div", { style:{marginBottom:16} }, E("label",{style:labelStyle},"Notas internas 🔒"), E("textarea",{value:modalCita.notas||"",onChange:e=>setF("notas",e.target.value),placeholder:"Instrucciones especiales, comportamiento del animal...",rows:2,style:{...inputStyle,resize:"vertical"}})),
         !esNueva && E("div", { style:{marginBottom:16,background:"#f8f9fa",borderRadius:10,padding:"12px 14px"} },
