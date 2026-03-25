@@ -5428,10 +5428,15 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     const items = Object.values(pendientes);
     if (items.length === 0) return alert("No hay cambios pendientes");
     const inventarioActualizado = inventario.map((p) => pendientes[p.id] ? pendientes[p.id] : p);
-    await setInventario(inventarioActualizado);
+    setInventario(inventarioActualizado);
+    let saved = 0;
+    for (const row of items) {
+      const ok = await upsertOne("pc_inventario", row);
+      if (ok) saved++;
+    }
     setPendientes({});
     setHayBorrados(false);
-    alert("\u2705 " + items.length + " producto(s) guardados en Supabase");
+    alert("\u2705 " + saved + " producto(s) guardados en Supabase");
   };
   const updateStock = (id, delta) => {
     setInventario(inventario.map((p) => p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p));
