@@ -596,7 +596,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "25 mar 2026 · 00:05";
+const LAST_UPDATE = "24 mar 2026 · hooks-fix";
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -9257,6 +9257,11 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const [filtroEstado, setFiltroEstado] = React.useState("todos");
   const [busqueda, setBusqueda] = React.useState("");
   const [conflictoMsg, setConflictoMsg] = React.useState(null);
+  const [crmQuery, setCrmQuery] = React.useState("");
+  const [crmOpen, setCrmOpen] = React.useState(false);
+  const [svcSel, setSvcSel] = React.useState("");
+  const [svcPrecio, setSvcPrecio] = React.useState("");
+  const [svcEmp, setSvcEmp] = React.useState("Alexander");
 
   const HORAS = [];
   for (let h = 8; h <= 20; h++) { HORAS.push(`${String(h).padStart(2,"0")}:00`); if (h < 20) HORAS.push(`${String(h).padStart(2,"0")}:30`); }
@@ -9301,6 +9306,9 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     return aS < bE && bS < aE;
   });
 
+  const abrirModal = (data) => { setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(data.empleado||"Alexander"); setConflictoMsg(null); setModalCita(data); };
+  const cerrarModal = () => { setModalCita(null); setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); };
+
   const guardarCita = (data) => {
     const esNueva = !data.id || data.id === "nuevo";
     const cita = { ...data, id: esNueva ? "cita_"+Date.now() : data.id };
@@ -9311,7 +9319,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     } else { cita.enEspera = false; setConflictoMsg(null); }
     if (esNueva) setCitas(prev => [...prev, cita]);
     else setCitas(prev => prev.map(c => c.id === cita.id ? cita : c));
-    setModalCita(null);
+    cerrarModal();
   };
 
   const cambiarEstado = (id, estado, motivo) => {
@@ -9325,7 +9333,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const eliminarCita = (id) => {
     if (!confirm("¿Eliminar esta cita?")) return;
     setCitas(prev => prev.filter(c => c.id !== id));
-    setModalCita(null);
+    cerrarModal();
   };
 
   const generarMensajeWA = (tipo, cita) => {
@@ -9368,7 +9376,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     const emp = EMPLEADOS[cita.empleado];
     const est = ESTADOS[cita.enEspera ? "espera" : (cita.estado||"pendiente")];
     const ultimoMsg = (cita.mensajesEnviados||[]).slice(-1)[0];
-    return E("div", { key: cita.id, style: { background:tp.bg, borderLeft:`4px solid ${tp.border}`, borderRight: emp?`3px solid ${emp.color}`:undefined, borderRadius:8, padding: compact?"5px 8px":"10px 12px", marginBottom:5, cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,0.07)" }, onClick:()=>{ setConflictoMsg(null); setModalCita({...cita}); } },
+    return E("div", { key: cita.id, style: { background:tp.bg, borderLeft:`4px solid ${tp.border}`, borderRight: emp?`3px solid ${emp.color}`:undefined, borderRadius:8, padding: compact?"5px 8px":"10px 12px", marginBottom:5, cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,0.07)" }, onClick:()=>abrirModal({...cita}) },
       E("div", { style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6} },
         E("div", null,
           E("div", { style:{fontWeight:700,fontSize:compact?11:13,color:tp.color} }, `${tp.icon} ${cita.hora} · ${cita.nombreMascota||"Sin nombre"}`),
@@ -9396,7 +9404,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
           const citasSlot = citasDia.filter(c=>c.hora===hora);
           const hMin = horaToMin(hora);
           const esAhora = fechaActual===hoy() && ahoraMin>=hMin && ahoraMin<hMin+30;
-          return E("div", { key:hora, style:{display:"flex",minHeight:54,borderBottom:"1px solid #f4f5f6",background:esAhora?"rgba(26,107,58,0.04)":"transparent",cursor:"pointer"}, onClick:()=>setModalCita({id:"nuevo",fecha:fechaActual,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}) },
+          return E("div", { key:hora, style:{display:"flex",minHeight:54,borderBottom:"1px solid #f4f5f6",background:esAhora?"rgba(26,107,58,0.04)":"transparent",cursor:"pointer"}, onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}) },
             E("div", { style:{width:62,padding:"6px 10px",fontSize:11,fontWeight:600,color:esAhora?C.verde:C.grisd,borderRight:`2px solid ${esAhora?C.verde:"#f0f0f0"}`,flexShrink:0,display:"flex",alignItems:"flex-start"} }, hora),
             E("div", { style:{flex:1,padding:"4px 8px"} }, citasSlot.map(c=>renderCitaCard(c,false)))
           );
@@ -9432,7 +9440,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
             E("td", { style:{padding:"4px 6px",fontSize:10,color:C.grisd,fontWeight:600,whiteSpace:"nowrap",verticalAlign:"top",paddingTop:6} }, hora),
             ...dias.map(dia => {
               const slot = getCitasDia(dia).filter(c=>c.hora>=hora && c.hora<(String(Number(hora.split(":")[0])+1).padStart(2,"0")+":00"));
-              return E("td", { key:dia, style:{padding:"2px 3px",verticalAlign:"top",cursor:"pointer",background:dia===hoy()?"rgba(26,107,58,0.03)":"transparent",minHeight:40}, onClick:()=>setModalCita({id:"nuevo",fecha:dia,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}) },
+              return E("td", { key:dia, style:{padding:"2px 3px",verticalAlign:"top",cursor:"pointer",background:dia===hoy()?"rgba(26,107,58,0.03)":"transparent",minHeight:40}, onClick:()=>abrirModal({id:"nuevo",fecha:dia,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}) },
                 slot.map(c=>renderCitaCard(c,true))
               );
             })
@@ -9448,16 +9456,9 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     const setF = (k,v) => setModalCita(m=>({...m,[k]:v}));
     const histMsgs = modalCita.mensajesEnviados||[];
     const tipoLabels = { confirmacion:"Confirmación", recordatorio:"Recordatorio mañana", recordatorio_hoy:"Recordatorio hoy", recordatorio_2h:"Recordatorio 2h", lista:"Mascota lista", reagendar:"Reagendar" };
-    // CRM search state (local to render using ref trick)
-    const [crmQuery, setCrmQuery] = React.useState(modalCita._crmQuery||"");
-    const [crmOpen, setCrmOpen] = React.useState(false);
     const crmFiltrados = crmQuery.length>1 ? clientes.filter(cl=>{const q=crmQuery.toLowerCase();return (cl.nombreMascota||"").toLowerCase().includes(q)||(cl.nombrePropietario||"").toLowerCase().includes(q)||(cl.telefono||"").includes(q);}).slice(0,10) : [];
-    // Servicios array
     const servicios = modalCita.servicios || (modalCita.servicio ? [{nombre:modalCita.servicio,precio:modalCita.precio||0,empleado:modalCita.empleado||""}] : []);
     const totalServicios = servicios.reduce((s,x)=>s+(Number(x.precio)||0),0);
-    const [svcSel, setSvcSel] = React.useState("");
-    const [svcPrecio, setSvcPrecio] = React.useState("");
-    const [svcEmp, setSvcEmp] = React.useState(modalCita.empleado||"Alexander");
     const agregarServicio = () => {
       if (!svcSel) return;
       const nuevo = {nombre:svcSel, precio:Number(svcPrecio)||0, empleado:svcEmp};
@@ -9469,7 +9470,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
       E("div", { style:{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:580,maxHeight:"93vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"} },
         E("div", { style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18} },
           E("h3", { style:{margin:0,fontFamily:"Georgia,serif",fontSize:19} }, esNueva?"➕ Nueva cita":"✏️ Editar cita"),
-          E("button", { onClick:()=>setModalCita(null), style:{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.grisd} }, "×")
+          E("button", { onClick:cerrarModal, style:{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.grisd} }, "×")
         ),
         conflictoMsg && E("div", { style:{background:"#fff7ed",border:"1px solid #f59e0b",borderRadius:8,padding:"10px 12px",marginBottom:14,fontSize:13,color:"#92400e"} }, conflictoMsg),
         E("div", { style:{display:"flex",gap:10,marginBottom:14} },
@@ -9546,14 +9547,14 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
           )
         ),
         !esNueva && modalCita.estado !== "cancelada" && E("div",{style:{marginBottom:14,display:"flex",gap:8,flexWrap:"wrap"}},
-          E("button",{onClick:()=>cambiarEstado(modalCita.id,"completada").then(()=>setModalCita(null)),style:{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Completada"),
-          E("button",{onClick:()=>cambiarEstado(modalCita.id,"noshow").then(()=>setModalCita(null)),style:{background:"#f3f4f6",color:"#6b7280",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"👻 No-show"),
-          E("button",{onClick:()=>{setModalCancelar(modalCita.id);setModalCita(null);},style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"❌ Cancelar"),
+          E("button",{onClick:()=>{cambiarEstado(modalCita.id,"completada");cerrarModal();},style:{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Completada"),
+          E("button",{onClick:()=>{cambiarEstado(modalCita.id,"noshow");cerrarModal();},style:{background:"#f3f4f6",color:"#6b7280",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"👻 No-show"),
+          E("button",{onClick:()=>{setModalCancelar(modalCita.id);cerrarModal();},style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"❌ Cancelar"),
           modalCita.estado==="completada" && E("button",{onClick:()=>setTab("ventas"),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"💰 Cobrar cita")
         ),
         E("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",borderTop:"1px solid #f0f0f0",paddingTop:16}},
           !esNueva && E("button",{onClick:()=>eliminarCita(modalCita.id),style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"10px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}},"🗑️"),
-          E("button",{onClick:()=>setModalCita(null),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"10px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}},"Cancelar"),
+          E("button",{onClick:cerrarModal,style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"10px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}},"Cancelar"),
           E("button",{onClick:()=>guardarCita(modalCita),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:800,fontSize:13,cursor:"pointer"}},esNueva?"✅ Crear cita":"💾 Guardar")
         )
       )
@@ -9628,7 +9629,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
         E("h2",{style:{fontFamily:"Georgia,serif",fontSize:26,margin:0}},"📅 Agenda"),
         E("p",{style:{color:C.grisd,fontSize:13,margin:"4px 0 0"}},"Gestión de citas · PetColinas")
       ),
-      E("button",{onClick:()=>{setConflictoMsg(null);setModalCita({id:"nuevo",fecha:hoy(),hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]});},style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
+      E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:hoy(),hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
     ),
     recordatoriosPendientes.length>0 && E("div",{style:{background:"#fff7ed",border:"1.5px solid #f59e0b",borderRadius:12,padding:"14px 16px",marginBottom:20}},
       E("div",{style:{fontWeight:800,color:"#d97706",fontSize:13,marginBottom:10}},`⏰ ${recordatoriosPendientes.length} cita(s) mañana sin recordatorio enviado`),
