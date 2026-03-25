@@ -558,6 +558,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
+const LAST_UPDATE = "24 mar 2026 · 20:45";
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -3467,7 +3468,7 @@ function PetColinasApp({ session, onLogout }) {
     borderRadius: "50%",
     background: syncStatus === "ok" ? "#4ade80" : syncStatus === "error" ? "#f87171" : "#fbbf24",
     animation: syncStatus === "ok" ? "pulse 2s infinite" : "none"
-  } }), /* @__PURE__ */ React.createElement("span", { style: { color: "rgba(255,255,255,0.85)" } }, syncStatus === "ok" ? "\u2601\uFE0F En la nube" : syncStatus === "error" ? "Sin conexi\xF3n" : "Conectando..."))), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
+  } }), /* @__PURE__ */ React.createElement("span", { style: { color: "rgba(255,255,255,0.85)" } }, syncStatus === "ok" ? "\u2601\uFE0F En la nube" : syncStatus === "error" ? "Sin conexi\xF3n" : "Conectando...")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2, letterSpacing: 0.3 } }, "\u{1F504} \xDAlt. actualizaci\xF3n: ", LAST_UPDATE)), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
     background: "#fff",
     borderBottom: "2px solid #eef0f2",
     display: "flex",
