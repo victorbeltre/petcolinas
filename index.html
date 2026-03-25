@@ -558,7 +558,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "24 mar 2026 · 21:20";
+const LAST_UPDATE = "24 mar 2026 · 21:55";
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -3411,10 +3411,7 @@ function PetColinasApp({ session, onLogout }) {
       if (key) ventasCount[key] = (ventasCount[key] || 0) + 1;
     });
     return todos.map((p) => {
-      const key = (p.nombre || "").toLowerCase().trim();
-      const vendidos = Object.entries(ventasCount).filter(([k]) => k.includes(key.slice(0, 8)) || key.includes(k.slice(0, 8))).reduce((s, [, c]) => s + c, 0);
-      const stockActual = Math.max(0, (p.stockInicial || p.stock || 0) - vendidos);
-      return { ...p, stock: stockActual };
+      return { ...p };
     });
   }, [inventario, inventarioDeGastos, ventas]);
   if (!dbReady) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f4f5f6", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: "#1a6b3a" } }, "PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "#5a6472" } }, "Conectando con la base de datos..."), /* @__PURE__ */ React.createElement("div", { style: { width: 200, height: 4, background: "#e0e4e8", borderRadius: 4, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", background: "#1a6b3a", borderRadius: 4, animation: "loadbar 1.5s ease-in-out infinite" } })), /* @__PURE__ */ React.createElement("style", null, `@keyframes loadbar { 0%{width:0%} 60%{width:80%} 100%{width:100%} }`));
