@@ -596,7 +596,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "27 mar 2026 · facturas-comisiones";
+const LAST_UPDATE = "09 abr 2026 · agenda completa";
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -4283,8 +4283,7 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
     const totales = [0, 0, 0, 0];
     ventasMes.forEach((v) => {
       if (!v.fecha) return;
-      const [anio, mes, dia] = v.fecha.split("-").map(Number);
-      if (mes !== 3) return;
+      const dia = Number(v.fecha.split("-")[2]);
       if (dia <= 7) totales[0] += v.total;
       else if (dia <= 14) totales[1] += v.total;
       else if (dia <= 21) totales[2] += v.total;
@@ -4294,6 +4293,9 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
   })();
   const sem1Base = 0;
   const semConBase = semReales;
+  const diaHoy = new Date().getDate();
+  const semanaActualIdx = diaHoy <= 7 ? 0 : diaHoy <= 14 ? 1 : diaHoy <= 21 ? 2 : 3;
+  const mesNombreActual = new Date().toLocaleDateString("es-DO", { month: "long", year: "numeric" }).replace(/^\w/, c => c.toUpperCase());
   const mesActualKey = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const hist = HISTORICO[mesActualKey];
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Dashboard del Mes"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 16 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { month: "long", year: "numeric" }), " \xB7 Actualizaci\xF3n en tiempo real"), /* @__PURE__ */ React.createElement(AlertaStockBajo, { inventario, onIr: () => setTab("inventario") }), /* @__PURE__ */ React.createElement(AlertaVacunas, { ventas, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaSeguimientos, { seguimientos, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaClientesInactivos, { clientes, ventas, onIr: () => setTab("seguimientos") }), (() => {
@@ -4325,11 +4327,11 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
     background: `linear-gradient(90deg,${C.naranja},${C.verde2})`,
     borderRadius: 8,
     transition: "width 1s ease"
-  } }))), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 20, borderTop: `4px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, "\u{1F4C5} Tracker Semanal \u2014 Marzo 2026"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 18 } }, "Meta: ", /* @__PURE__ */ React.createElement("strong", null, RD(PDE)), " \xB7 Necesitas promediar ", /* @__PURE__ */ React.createElement("strong", null, RD(Math.round(PDE/26))+"/d\xEDa"), " (26 d\xEDas h\xE1biles)"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 } }, MARZO_SEMANAS.map((s, i) => {
+  } }))), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 20, borderTop: `4px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, "\u{1F4C5} Tracker Semanal \u2014 " + mesNombreActual), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 18 } }, "Meta: ", /* @__PURE__ */ React.createElement("strong", null, RD(PDE)), " \xB7 Necesitas promediar ", /* @__PURE__ */ React.createElement("strong", null, RD(Math.round(PDE/26))+"/d\xEDa"), " (26 d\xEDas h\xE1biles)"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 } }, MARZO_SEMANAS.map((s, i) => {
     const real = semConBase[i];
     const pctS = Math.min(100, Math.round(real / s.meta * 100));
     const ok = real >= s.meta;
-    const enCurso = i === 0;
+    const enCurso = i === semanaActualIdx;
     const ventasSem = ventasMes.filter((v) => {
       if (!v.fecha) return false;
       const [, , dd] = v.fecha.split("-").map(Number);
@@ -4360,7 +4362,7 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
       /* @__PURE__ */ React.createElement("div", { style: { background: "#e8eaed", borderRadius: 4, height: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${pctS}%`, height: "100%", background: ok ? C.verde : s.color, borderRadius: 4, transition: "width .8s ease" } })),
       /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", fontSize: 11, marginTop: 4, color: ok ? C.verde : C.grisd, fontWeight: 700 } }, pctS, "% ", !ok && real > 0 && `\xB7 Faltan ${RD(s.meta - real)}`)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: totalVentas < (PDE * 0.25) ? C.rojoL : C.verdeL, borderRadius: 10, padding: "10px 14px", fontSize: 13 } }, semConBase[0] < MARZO_SEMANAS[0].meta ? /* @__PURE__ */ React.createElement("span", null, "\u26A0\uFE0F ", /* @__PURE__ */ React.createElement("strong", null, "Semana 1 en riesgo:"), " Llevas ", RD(semConBase[0]), " de ", RD(MARZO_SEMANAS[0].meta), " meta. Necesitas activar veterinaria y farmacia esta semana.") : /* @__PURE__ */ React.createElement("span", null, "\u2705 ", /* @__PURE__ */ React.createElement("strong", null, "Semana 1 bien encaminada."), " Mant\xE9n el ritmo para la semana 2."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CA} Ingresos por \xC1rea \u2014 Mes actual"), /* @__PURE__ */ React.createElement("button", { onClick: () => setAreaModal("todas"), style: { background: "none", border: `1.5px solid ${C.verde}`, color: C.verde, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Ver \u2192")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic en un \xE1rea para ver sus ventas"), [
+  })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: totalVentas < (PDE * 0.25) ? C.rojoL : C.verdeL, borderRadius: 10, padding: "10px 14px", fontSize: 13 } }, semConBase[semanaActualIdx] < MARZO_SEMANAS[semanaActualIdx].meta ? /* @__PURE__ */ React.createElement("span", null, "\u26A0\uFE0F ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " en riesgo:"), " Llevas ", RD(semConBase[semanaActualIdx]), " de ", RD(MARZO_SEMANAS[semanaActualIdx].meta), " meta. Necesitas activar veterinaria y farmacia esta semana.") : /* @__PURE__ */ React.createElement("span", null, "\u2705 ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " bien encaminada."), " Mant\xE9n el ritmo para la semana " + Math.min(4, semanaActualIdx+2) + "."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CA} Ingresos por \xC1rea \u2014 Mes actual"), /* @__PURE__ */ React.createElement("button", { onClick: () => setAreaModal("todas"), style: { background: "none", border: `1.5px solid ${C.verde}`, color: C.verde, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Ver \u2192")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic en un \xE1rea para ver sus ventas"), [
     { label: "\u{1F415} Grooming", val: grm, color: C.verde, area: "grooming" },
     { label: "\u{1FA7A} Veterinaria", val: vet, color: C.azul, area: "veterinaria" },
     { label: "\u{1F48A} Farmacia/Tienda", val: far, color: C.gold, area: "farmacia" }
@@ -9307,9 +9309,15 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const [modalWA, setModalWA] = React.useState(null);
   const [modalCancelar, setModalCancelar] = React.useState(null);
   const [motivoCancelar, setMotivoCancelar] = React.useState("");
+  const [modalReagendar, setModalReagendar] = React.useState(null);
+  const [reaFecha, setReaFecha] = React.useState("");
+  const [reaHora, setReaHora] = React.useState("");
+  const [modalCobro, setModalCobro] = React.useState(null);
   const [filtroEmpleado, setFiltroEmpleado] = React.useState("todos");
   const [filtroTipo, setFiltroTipo] = React.useState("todos");
   const [filtroEstado, setFiltroEstado] = React.useState("todos");
+  const [filtroFechaDesde, setFiltroFechaDesde] = React.useState("");
+  const [filtroFechaHasta, setFiltroFechaHasta] = React.useState("");
   const [busqueda, setBusqueda] = React.useState("");
   const [conflictoMsg, setConflictoMsg] = React.useState(null);
   const [crmQuery, setCrmQuery] = React.useState("");
@@ -9317,6 +9325,11 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const [svcSel, setSvcSel] = React.useState("");
   const [svcPrecio, setSvcPrecio] = React.useState("");
   const [svcEmp, setSvcEmp] = React.useState("Alexander");
+  const [showHistCliente, setShowHistCliente] = React.useState(false);
+  const [paginaLista, setPaginaLista] = React.useState(0);
+  const [sortLista, setSortLista] = React.useState("fecha");
+  const [sortDir, setSortDir] = React.useState("asc");
+  const POR_PAGINA = 20;
 
   const HORAS = [];
   for (let h = 8; h <= 20; h++) { HORAS.push(`${String(h).padStart(2,"0")}:00`); if (h < 20) HORAS.push(`${String(h).padStart(2,"0")}:30`); }
@@ -9345,14 +9358,37 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const getDiasSemana = (ini) => { const dias=[]; const d=parseFecha(ini); for(let i=0;i<7;i++){const x=new Date(d);x.setDate(x.getDate()+i);dias.push(formatFecha(x));} return dias; };
   const horaToMin = (h) => { const [hh,mm]=(h||"0:0").split(":").map(Number); return hh*60+mm; };
 
+  const manana = () => { const d=new Date(); d.setDate(d.getDate()+1); return formatFecha(d); };
+
   const citasFiltradas = citas.filter(c => {
     if (filtroEmpleado !== "todos" && c.empleado !== filtroEmpleado) return false;
     if (filtroTipo !== "todos" && c.tipo !== filtroTipo) return false;
     if (filtroEstado !== "todos" && c.estado !== filtroEstado) return false;
-    if (busqueda) { const q=busqueda.toLowerCase(); if (!(c.nombreCliente||"").toLowerCase().includes(q) && !(c.nombreMascota||"").toLowerCase().includes(q)) return false; }
+    if (filtroFechaDesde && c.fecha < filtroFechaDesde) return false;
+    if (filtroFechaHasta && c.fecha > filtroFechaHasta) return false;
+    if (busqueda) { const q=busqueda.toLowerCase(); if (!(c.nombreCliente||"").toLowerCase().includes(q) && !(c.nombreMascota||"").toLowerCase().includes(q) && !(c.servicio||"").toLowerCase().includes(q)) return false; }
     return true;
   });
   const getCitasDia = (f) => citasFiltradas.filter(c => c.fecha === f).sort((a,b) => a.hora.localeCompare(b.hora));
+
+  // Alertas
+  const recordatoriosHoy = citas.filter(c => c.fecha === hoy() && c.estado !== "cancelada" && c.estado !== "noshow" && c.estado !== "completada" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio_hoy"));
+  const citasEspera = citas.filter(c => c.enEspera && c.estado !== "cancelada" && c.estado !== "completada");
+  const citasSinConfirmar = citas.filter(c => c.fecha >= hoy() && c.estado === "pendiente" && !c.enEspera);
+
+  // Stats mes
+  const citasMes = citas.filter(c => (c.fecha||"").slice(0,7) === hoy().slice(0,7));
+  const completadasN = citasMes.filter(c => c.estado === "completada").length;
+  const canceladasN = citasMes.filter(c => c.estado === "cancelada").length;
+  const noShowsN = citasMes.filter(c => c.estado === "noshow").length;
+  const tasaNS = citasMes.length > 0 ? Math.round(noShowsN/citasMes.length*100) : 0;
+  const ingresosMes = citasMes.filter(c=>c.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0);
+  const horaCounts = {}; citasMes.forEach(c => { horaCounts[c.hora] = (horaCounts[c.hora]||0)+1; });
+  const horaPico = Object.entries(horaCounts).sort((a,b)=>b[1]-a[1])[0];
+  const statsPorEmp = Object.keys(EMPLEADOS).map(emp => {
+    const arr = citasMes.filter(c=>c.empleado===emp);
+    return { emp, total: arr.length, completadas: arr.filter(c=>c.estado==="completada").length, ingresos: arr.filter(c=>c.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0) };
+  });
 
   const detectarConflictos = (cita, excId) => citas.filter(c => {
     if (c.id === excId || c.estado === "cancelada" || c.estado === "noshow") return false;
@@ -9361,8 +9397,24 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     return aS < bE && bS < aE;
   });
 
-  const abrirModal = (data) => { setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(data.empleado||"Alexander"); setConflictoMsg(null); setModalCita(data); };
-  const cerrarModal = () => { setModalCita(null); setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); };
+  const abrirModal = (data) => { setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(data.empleado||"Alexander"); setConflictoMsg(null); setShowHistCliente(false); setModalCita(data); };
+  const cerrarModal = () => { setModalCita(null); setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setShowHistCliente(false); };
+
+  const abrirReagendar = (cita) => { setModalReagendar(cita); setReaFecha(cita.fecha||hoy()); setReaHora(cita.hora||"08:00"); cerrarModal(); };
+  const confirmarReagendar = () => {
+    if (!reaFecha || !reaHora) return;
+    const conflictos = detectarConflictos({...modalReagendar, fecha:reaFecha, hora:reaHora}, modalReagendar.id);
+    setCitas(prev => prev.map(c => c.id === modalReagendar.id ? { ...c, fecha:reaFecha, hora:reaHora, estado:"pendiente", enEspera: conflictos.length > 0 } : c));
+    setModalReagendar(null);
+  };
+
+  const abrirCobro = (cita) => { setModalCobro({ cita, formaPago:"efectivo", desc: cita.servicio||(cita.servicios&&cita.servicios[0]?.nombre)||"Servicio", monto: cita.precio||0 }); cerrarModal(); };
+  const confirmarCobro = () => {
+    if (!modalCobro) return;
+    cambiarEstado(modalCobro.cita.id, "completada");
+    setModalCobro(null);
+    setTab("ventas");
+  };
 
   const guardarCita = (data) => {
     const esNueva = !data.id || data.id === "nuevo";
@@ -9410,16 +9462,10 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const abrirWA = (tipo, cita) => setModalWA({ tipo, mensaje: generarMensajeWA(tipo, cita), telefono: cita.telefono||"", citaId: cita.id });
   const enviarWA = (tel, msg, citaId, tipo) => { window.open(`https://wa.me/${(tel).replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`, "_blank"); registrarMensaje(citaId, tipo); setModalWA(null); };
 
-  const manana = () => { const d=new Date(); d.setDate(d.getDate()+1); return formatFecha(d); };
   const recordatoriosPendientes = citas.filter(c => c.fecha === manana() && c.estado !== "cancelada" && c.estado !== "noshow" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio"));
 
-  const citasMes = citas.filter(c => (c.fecha||"").slice(0,7) === hoy().slice(0,7));
-  const noShowsN = citasMes.filter(c => c.estado === "noshow").length;
-  const completadasN = citasMes.filter(c => c.estado === "completada").length;
-  const tasaNS = citasMes.length > 0 ? Math.round(noShowsN/citasMes.length*100) : 0;
-  const horaCounts = {}; citasMes.forEach(c => { horaCounts[c.hora] = (horaCounts[c.hora]||0)+1; });
-  const horaPico = Object.entries(horaCounts).sort((a,b)=>b[1]-a[1])[0];
   const todasTarifas = [...(tarifasGrooming||[]).map(t=>({...t,area:"grooming"})),...(tarifasVet||[]).map(t=>({...t,area:"consulta"}))];
+  const historialCliente = modalCita?.clienteId ? citas.filter(c => String(c.clienteId) === String(modalCita.clienteId) && c.id !== modalCita.id).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,6) : [];
 
   const E = React.createElement;
   const btnStyle = (active, color="#1a6b3a") => ({ padding:"7px 14px", borderRadius:8, border:"none", background: active ? color : "#f0f0f0", color: active ? "#fff" : "#5a6472", fontWeight:700, cursor:"pointer", fontSize:13 });
@@ -9431,11 +9477,14 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     const emp = EMPLEADOS[cita.empleado];
     const est = ESTADOS[cita.enEspera ? "espera" : (cita.estado||"pendiente")];
     const ultimoMsg = (cita.mensajesEnviados||[]).slice(-1)[0];
-    return E("div", { key: cita.id, style: { background:tp.bg, borderLeft:`4px solid ${tp.border}`, borderRight: emp?`3px solid ${emp.color}`:undefined, borderRadius:8, padding: compact?"5px 8px":"10px 12px", marginBottom:5, cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,0.07)" }, onClick:()=>abrirModal({...cita}) },
+    const svcsArr = cita.servicios && cita.servicios.length > 0 ? cita.servicios : (cita.servicio ? [{nombre:cita.servicio}] : []);
+    const svcsLabel = svcsArr.length === 0 ? (cita.tipo) : svcsArr.length === 1 ? svcsArr[0].nombre : `${svcsArr[0].nombre} +${svcsArr.length-1} más`;
+    return E("div", { key: cita.id, style: { background:tp.bg, borderLeft:`4px solid ${tp.border}`, borderRight: emp?`3px solid ${emp.color}`:undefined, borderRadius:8, padding: compact?"5px 8px":"10px 12px", marginBottom:5, cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,0.07)" }, onClick:(e)=>{e.stopPropagation();abrirModal({...cita});} },
       E("div", { style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6} },
         E("div", null,
           E("div", { style:{fontWeight:700,fontSize:compact?11:13,color:tp.color} }, `${tp.icon} ${cita.hora} · ${cita.nombreMascota||"Sin nombre"}`),
-          !compact && E("div", { style:{fontSize:12,color:"#374151",marginTop:2} }, `👤 ${cita.nombreCliente||"—"} · ${cita.servicio||cita.tipo}`),
+          !compact && E("div", { style:{fontSize:12,color:"#374151",marginTop:2} }, `👤 ${cita.nombreCliente||"—"} · ${svcsLabel}`),
+          !compact && svcsArr.length > 1 && E("div", { style:{fontSize:11,color:C.grisd,marginTop:1} }, svcsArr.map(s=>s.nombre).join(" · ")),
           !compact && cita.empleado && E("div", { style:{fontSize:11,color:emp?.color||C.grisd,fontWeight:600,marginTop:1} }, cita.empleado)
         ),
         E("span", { style:{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:8,background:est.bg,color:est.color,whiteSpace:"nowrap"} }, est.label)
@@ -9452,8 +9501,17 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
         E("button", { onClick:()=>{const d=parseFecha(fechaActual);d.setDate(d.getDate()-1);setFechaActual(formatFecha(d));}, style:btnStyle(false) }, "‹"),
         E("div", { style:{fontWeight:800,fontSize:15,flex:1,textAlign:"center"} }, formatFechaLarga(fechaActual)),
         E("button", { onClick:()=>{const d=parseFecha(fechaActual);d.setDate(d.getDate()+1);setFechaActual(formatFecha(d));}, style:btnStyle(false) }, "›"),
-        E("button", { onClick:()=>setFechaActual(hoy()), style:btnStyle(fechaActual===hoy()) }, "Hoy")
+        E("button", { onClick:()=>setFechaActual(hoy()), style:btnStyle(fechaActual===hoy()) }, "Hoy"),
+        E("button", { onClick:()=>{
+          const cds=getCitasDia(fechaActual);
+          const nom=parseFecha(fechaActual).toLocaleDateString("es-DO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+          const w=window.open("","_blank");
+          const ingTotal=cds.filter(x=>x.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0);
+          w.document.write(`<html><head><title>Agenda ${nom}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{font-size:18px;margin-bottom:16px;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px 10px;font-size:13px;text-align:left;}th{background:#f0f0f0;font-weight:700;}tr:nth-child(even){background:#f9f9f9;}.foot{font-weight:700;margin-top:12px;font-size:14px;}</style></head><body><h1>📅 Agenda PetColinas — ${nom}</h1><p style="color:#666;font-size:12px">Generado: ${new Date().toLocaleString("es-DO")}</p><table><tr><th>Hora</th><th>Mascota</th><th>Dueño</th><th>Servicio</th><th>Empleado</th><th>Estado</th><th>Precio</th></tr>${cds.map(c=>`<tr><td>${c.hora}</td><td>${c.nombreMascota||"—"}</td><td>${c.nombreCliente||"—"}</td><td>${c.servicio||c.tipo||"—"}</td><td>${c.empleado||"—"}</td><td>${(ESTADOS[c.estado||"pendiente"]||{}).label||""}</td><td>RD$ ${Number(c.precio||0).toLocaleString("es-DO")}</td></tr>`).join("")}</table><p class="foot">Total cobrado: RD$ ${ingTotal.toLocaleString("es-DO")} | ${cds.length} cita(s)</p></body></html>`);
+          w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
+        }, style:{...btnStyle(false),fontSize:11,background:"#f8f9fa"} }, "🖨️ Imprimir")
       ),
+      citasDia.length===0&&E("div",{style:{textAlign:"center",padding:"32px",color:C.grisd,fontSize:14}},"Sin citas para este día — haz clic en un horario para agendar"),
       E("div", { style:{background:"#fff",borderRadius:12,border:"1px solid #e0e4e8",overflow:"hidden"} },
         HORAS.map(hora => {
           const citasSlot = citasDia.filter(c=>c.hora===hora);
@@ -9588,13 +9646,31 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
           )
         ),
         E("div", { style:{marginBottom:16} }, E("label",{style:labelStyle},"Notas internas 🔒"), E("textarea",{value:modalCita.notas||"",onChange:e=>setF("notas",e.target.value),placeholder:"Instrucciones especiales, comportamiento del animal...",rows:2,style:{...inputStyle,resize:"vertical"}})),
+        !esNueva && modalCita.clienteId && historialCliente.length>0 && E("div",{style:{marginBottom:14}},
+          E("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
+            E("div",{style:{fontWeight:700,fontSize:13}},"📋 Historial del cliente"),
+            E("button",{onClick:()=>setShowHistCliente(h=>!h),style:{background:"none",border:"1px solid #e0e4e8",borderRadius:6,padding:"3px 8px",fontSize:11,cursor:"pointer"}},showHistCliente?"Ocultar":"Ver historial")
+          ),
+          showHistCliente && E("div",{style:{background:"#f8f9fa",borderRadius:8,padding:"10px"}},
+            historialCliente.map(c=>{
+              const est=ESTADOS[c.estado||"pendiente"];
+              return E("div",{key:c.id,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0f0f0",fontSize:12}},
+                E("div",null,E("span",{style:{fontWeight:700,marginRight:6}},`${c.fecha} ${c.hora}`),E("span",{style:{color:C.grisd}},c.servicio||c.tipo||"—")),
+                E("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                  c.precio&&E("span",{style:{color:C.verde,fontWeight:700}},`RD$ ${Number(c.precio).toLocaleString("es-DO")}`),
+                  E("span",{style:{background:est.bg,color:est.color,padding:"1px 6px",borderRadius:4,fontWeight:700,fontSize:11}},est.label)
+                )
+              );
+            })
+          )
+        ),
         !esNueva && E("div", { style:{marginBottom:16,background:"#f8f9fa",borderRadius:10,padding:"12px 14px"} },
           E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"📲 Acciones de comunicación"),
           E("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}},
-            ...[["confirmacion","✅ Confirmar"],["recordatorio","⏰ Recordatorio"],["lista","🎉 Mascota lista"],["reagendar","🔄 Reagendar"]].map(([tipo,lbl])=>
-              E("button",{key:tipo,onClick:()=>abrirWA(tipo,modalCita),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}},`💬 ${lbl}`)
+            ...[["confirmacion","✅ Confirmar"],["recordatorio","⏰ Mañana"],["recordatorio_hoy","🌞 Hoy"],["recordatorio_2h","⏱️ 2h"],["lista","🎉 Lista"],["reagendar","🔄 Reagendar"]].map(([tipo,lbl])=>
+              E("button",{key:tipo,onClick:()=>abrirWA(tipo,modalCita),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}},`💬 ${lbl}`)
             ),
-            modalCita.telefono && E("a",{href:`tel:${modalCita.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞 Llamar")
+            modalCita.telefono && E("a",{href:`tel:${modalCita.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,textDecoration:"none"}},"📞 Llamar")
           ),
           histMsgs.length>0 && E("div",{style:{fontSize:11,color:C.grisd}},
             E("span",{style:{fontWeight:700}},"Historial: "),
@@ -9602,10 +9678,11 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
           )
         ),
         !esNueva && modalCita.estado !== "cancelada" && E("div",{style:{marginBottom:14,display:"flex",gap:8,flexWrap:"wrap"}},
-          E("button",{onClick:()=>{cambiarEstado(modalCita.id,"completada");cerrarModal();},style:{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Completada"),
+          modalCita.estado!=="confirmada"&&E("button",{onClick:()=>{cambiarEstado(modalCita.id,"confirmada");setModalCita(m=>({...m,estado:"confirmada"}));},style:{background:"#e6f4ec",color:C.verde,border:"1px solid #1a6b3a",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Confirmar"),
+          E("button",{onClick:()=>abrirCobro(modalCita),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"💰 Cobrar"),
+          E("button",{onClick:()=>abrirReagendar(modalCita),style:{background:"#f3e8ff",color:"#7c3aed",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"🔄 Reagendar"),
           E("button",{onClick:()=>{cambiarEstado(modalCita.id,"noshow");cerrarModal();},style:{background:"#f3f4f6",color:"#6b7280",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"👻 No-show"),
-          E("button",{onClick:()=>{setModalCancelar(modalCita.id);cerrarModal();},style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"❌ Cancelar"),
-          modalCita.estado==="completada" && E("button",{onClick:()=>setTab("ventas"),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"💰 Cobrar cita")
+          E("button",{onClick:()=>{setModalCancelar(modalCita.id);cerrarModal();},style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"❌ Cancelar")
         ),
         E("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",borderTop:"1px solid #f0f0f0",paddingTop:16}},
           !esNueva && E("button",{onClick:()=>eliminarCita(modalCita.id),style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"10px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}},"🗑️"),
@@ -9650,27 +9727,220 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     );
   };
 
+  const renderVistaMes = () => {
+    const [y, m] = fechaActual.split("-").map(Number);
+    const primerDia = new Date(y, m-1, 1);
+    const inicioGrid = new Date(primerDia); inicioGrid.setDate(inicioGrid.getDate() - inicioGrid.getDay());
+    const diasGrid = []; for (let i=0;i<42;i++){const d=new Date(inicioGrid);d.setDate(d.getDate()+i);diasGrid.push(formatFecha(d));}
+    const mesActualStr = `${y}-${String(m).padStart(2,"0")}`;
+    return E("div",null,
+      E("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:16}},
+        E("button",{onClick:()=>{const d=new Date(y,m-2,1);setFechaActual(formatFecha(d));},style:btnStyle(false)},"‹"),
+        E("div",{style:{fontWeight:800,fontSize:16,flex:1,textAlign:"center"}},primerDia.toLocaleDateString("es-DO",{month:"long",year:"numeric"}).replace(/^\w/,c=>c.toUpperCase())),
+        E("button",{onClick:()=>{const d=new Date(y,m,1);setFechaActual(formatFecha(d));},style:btnStyle(false)},"›"),
+        E("button",{onClick:()=>setFechaActual(hoy()),style:btnStyle(fechaActual.slice(0,7)===hoy().slice(0,7))},"Hoy")
+      ),
+      E("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e0e4e8",overflow:"hidden"}},
+        E("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"2px solid #e0e4e8"}},
+          ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"].map(d=>E("div",{key:d,style:{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:C.grisd,background:"#f8f9fa"}},d))
+        ),
+        E("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}},
+          diasGrid.map(dia=>{
+            const esMes=dia.slice(0,7)===mesActualStr, esHoy=dia===hoy();
+            const citasDia=citasFiltradas.filter(c=>c.fecha===dia);
+            const porTipo={};citasDia.forEach(c=>{porTipo[c.tipo]=(porTipo[c.tipo]||0)+1;});
+            return E("div",{key:dia,style:{minHeight:76,padding:"6px",border:"1px solid #f0f0f0",background:esHoy?"#e6f4ec":(esMes?"#fff":"#f9fafb"),cursor:"pointer",opacity:esMes?1:0.45},onClick:()=>{setFechaActual(dia);setVista("dia");}},
+              E("div",{style:{fontWeight:esHoy?800:600,fontSize:13,color:esHoy?C.verde:C.negro,marginBottom:3}},parseFecha(dia).getDate()),
+              citasDia.length>0&&E("div",{style:{display:"flex",flexWrap:"wrap",gap:2}},
+                Object.entries(porTipo).map(([tipo,cnt])=>{const tp=TIPOS[tipo]||TIPOS.grooming;return E("span",{key:tipo,style:{fontSize:10,padding:"1px 4px",borderRadius:4,background:tp.bg,color:tp.color,fontWeight:700}},`${tp.icon}${cnt}`);})
+              ),
+              citasDia.length===0&&esMes&&E("div",{style:{fontSize:11,color:"#d1d5db",marginTop:6}},"+")
+            );
+          })
+        )
+      )
+    );
+  };
+
+  const renderVistaLista = () => {
+    const ordenadas = [...citasFiltradas].sort((a,b)=>{
+      let va=a[sortLista]||"", vb=b[sortLista]||"";
+      if (sortLista==="fecha") {va=(a.fecha||"")+(a.hora||"");vb=(b.fecha||"")+(b.hora||"");}
+      if (sortLista==="precio") {va=Number(a.precio)||0;vb=Number(b.precio)||0;}
+      if(va<vb)return sortDir==="asc"?-1:1; if(va>vb)return sortDir==="asc"?1:-1; return 0;
+    });
+    const paginadas=ordenadas.slice(paginaLista*POR_PAGINA,(paginaLista+1)*POR_PAGINA);
+    const totalPags=Math.ceil(ordenadas.length/POR_PAGINA);
+    const thS=(key)=>({padding:"10px 12px",textAlign:"left",fontSize:12,fontWeight:700,color:C.grisd,background:"#f8f9fa",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid #e0e4e8",userSelect:"none"});
+    const tdS={padding:"9px 12px",fontSize:13,borderBottom:"1px solid #f4f5f6",verticalAlign:"middle"};
+    const sortClick=(key)=>{if(sortLista===key)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortLista(key);setSortDir("asc");}setPaginaLista(0);};
+    const arr=(k)=>sortLista===k?(sortDir==="asc"?"▲":"▼"):"";
+    return E("div",null,
+      E("div",{style:{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+        E("div",{style:{fontSize:13,color:C.grisd}},`${ordenadas.length} cita(s)`),
+        E("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+          paginaLista>0&&E("button",{onClick:()=>setPaginaLista(p=>p-1),style:btnStyle(false)},"‹"),
+          E("span",{style:{fontSize:12,padding:"5px 8px",color:C.grisd}},`${paginaLista+1}/${Math.max(1,totalPags)}`),
+          paginaLista<totalPags-1&&E("button",{onClick:()=>setPaginaLista(p=>p+1),style:btnStyle(false)},"›")
+        )
+      ),
+      E("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e0e4e8",overflowX:"auto"}},
+        E("table",{style:{width:"100%",borderCollapse:"collapse",minWidth:800}},
+          E("thead",null,E("tr",null,
+            E("th",{style:thS("fecha"),onClick:()=>sortClick("fecha")},`Fecha/Hora ${arr("fecha")}`),
+            E("th",{style:thS("nombreMascota"),onClick:()=>sortClick("nombreMascota")},`Mascota ${arr("nombreMascota")}`),
+            E("th",{style:thS("nombreCliente"),onClick:()=>sortClick("nombreCliente")},`Dueño ${arr("nombreCliente")}`),
+            E("th",{style:thS("tipo")},"Tipo"),
+            E("th",{style:thS("empleado"),onClick:()=>sortClick("empleado")},`Empleado ${arr("empleado")}`),
+            E("th",{style:thS("estado"),onClick:()=>sortClick("estado")},`Estado ${arr("estado")}`),
+            E("th",{style:{...thS("precio"),textAlign:"right"},onClick:()=>sortClick("precio")},`Precio ${arr("precio")}`),
+            E("th",{style:thS()},"")
+          )),
+          E("tbody",null,
+            paginadas.length===0?E("tr",null,E("td",{colSpan:8,style:{...tdS,textAlign:"center",color:C.grisd,padding:30}},"Sin citas")):
+            paginadas.map(c=>{
+              const tp=TIPOS[c.tipo]||TIPOS.grooming, est=ESTADOS[c.enEspera?"espera":(c.estado||"pendiente")];
+              return E("tr",{key:c.id,style:{cursor:"pointer"},onClick:()=>abrirModal({...c})},
+                E("td",{style:tdS},E("div",{style:{fontWeight:700,fontSize:12}},c.fecha||"—"),E("div",{style:{fontSize:11,color:C.grisd}},c.hora||"—")),
+                E("td",{style:tdS},E("div",{style:{fontWeight:700}},c.nombreMascota||"—"),c.duracion&&E("div",{style:{fontSize:11,color:C.grisd}},`${c.duracion} min`)),
+                E("td",{style:{...tdS,color:C.grisd}},c.nombreCliente||"—"),
+                E("td",{style:tdS},E("span",{style:{background:tp.bg,color:tp.color,padding:"2px 6px",borderRadius:5,fontSize:11,fontWeight:700}},`${tp.icon} ${tp.label}`)),
+                E("td",{style:{...tdS,fontWeight:600,color:EMPLEADOS[c.empleado]?.color||C.grisd}},c.empleado||"—"),
+                E("td",{style:tdS},E("span",{style:{background:est.bg,color:est.color,padding:"2px 6px",borderRadius:5,fontSize:11,fontWeight:700}},est.label)),
+                E("td",{style:{...tdS,textAlign:"right",fontWeight:700,color:C.verde}},c.precio?`RD$ ${Number(c.precio).toLocaleString("es-DO")}`:"—"),
+                E("td",{style:{...tdS,whiteSpace:"nowrap"},onClick:e=>e.stopPropagation()},
+                  c.telefono&&E("button",{onClick:()=>abrirWA("confirmacion",c),title:"WhatsApp",style:{background:"#25D366",color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,marginRight:4}},"💬"),
+                  E("button",{onClick:()=>abrirReagendar(c),title:"Reagendar",style:{background:"#f3e8ff",color:"#7c3aed",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,marginRight:4}},"🔄"),
+                  E("button",{onClick:()=>abrirModal({...c}),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}},"✏️")
+                )
+              );
+            })
+          )
+        )
+      )
+    );
+  };
+
+  const renderVistaEspera = () => E("div",null,
+    E("div",{style:{fontWeight:800,fontSize:16,marginBottom:16,color:"#7c3aed"}},"⏳ Lista de Espera"),
+    citasEspera.length===0
+      ?E("div",{style:{textAlign:"center",padding:"40px",color:C.grisd,background:"#fff",borderRadius:12,border:"1px solid #e0e4e8"}},"No hay citas en lista de espera")
+      :citasEspera.map(c=>{
+        const tp=TIPOS[c.tipo]||TIPOS.grooming;
+        const haySlot=detectarConflictos(c,c.id).length===0;
+        return E("div",{key:c.id,style:{background:"#fff",border:"1px solid #e0e4e8",borderLeft:"4px solid #7c3aed",borderRadius:10,padding:"14px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}},
+          E("div",null,
+            E("div",{style:{fontWeight:800,fontSize:14}},`${tp.icon} ${c.nombreMascota||"?"} — ${c.nombreCliente||"?"}`),
+            E("div",{style:{fontSize:12,color:C.grisd,marginTop:2}},`${c.fecha} · ${c.hora} · ${c.empleado||"—"} · ${c.servicio||c.tipo||"—"}`),
+            haySlot&&E("div",{style:{fontSize:11,color:C.verde,fontWeight:700,marginTop:3}},"✅ Slot disponible ahora")
+          ),
+          E("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+            haySlot&&E("button",{onClick:()=>setCitas(prev=>prev.map(x=>x.id===c.id?{...x,enEspera:false,estado:"confirmada"}:x)),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Confirmar slot"),
+            E("button",{onClick:()=>abrirReagendar(c),style:{background:"#f3e8ff",color:"#7c3aed",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"🔄 Reagendar"),
+            E("button",{onClick:()=>abrirModal({...c}),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✏️ Ver")
+          )
+        );
+      })
+  );
+
+  const renderModalReagendar = () => {
+    if (!modalReagendar) return null;
+    const conflictos=reaFecha&&reaHora?detectarConflictos({...modalReagendar,fecha:reaFecha,hora:reaHora},modalReagendar.id):[];
+    return E("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:4000,padding:16}},
+      E("div",{style:{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}},
+        E("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+          E("h3",{style:{margin:0,fontSize:17,fontWeight:800}},"🔄 Reagendar cita"),
+          E("button",{onClick:()=>setModalReagendar(null),style:{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grisd}},"×")
+        ),
+        E("div",{style:{background:"#f8f9fa",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:13}},
+          E("div",{style:{fontWeight:700}},`${modalReagendar.nombreMascota||"?"} — ${modalReagendar.nombreCliente||"?"}`),
+          E("div",{style:{color:C.grisd,marginTop:2}},`Actual: ${modalReagendar.fecha} · ${modalReagendar.hora} · ${modalReagendar.empleado||"—"}`)
+        ),
+        E("div",{style:{display:"flex",gap:10,marginBottom:14}},
+          E("div",{style:{flex:1}},E("label",{style:labelStyle},"Nueva fecha"),E("input",{type:"date",value:reaFecha,onChange:e=>setReaFecha(e.target.value),style:inputStyle})),
+          E("div",{style:{flex:1}},E("label",{style:labelStyle},"Nueva hora"),E("select",{value:reaHora,onChange:e=>setReaHora(e.target.value),style:inputStyle},HORAS.map(h=>E("option",{key:h,value:h},h))))
+        ),
+        conflictos.length>0&&E("div",{style:{background:"#fff7ed",border:"1px solid #f59e0b",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#92400e"}},`⚠️ Conflicto con ${conflictos.length} cita(s). Se guardará en lista de espera.`),
+        conflictos.length===0&&reaFecha&&reaHora&&E("div",{style:{background:"#e6f4ec",border:"1px solid #1a6b3a",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:C.verde}},"✅ Horario disponible"),
+        modalReagendar.telefono&&E("div",{style:{marginBottom:16}},
+          E("label",{style:{...labelStyle,marginBottom:6}},"Notificar al cliente"),
+          E("div",{style:{display:"flex",gap:8}},
+            E("button",{onClick:()=>abrirWA("reagendar",modalReagendar),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"💬 Avisar por WhatsApp"),
+            E("a",{href:`tel:${modalReagendar.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞 Llamar")
+          )
+        ),
+        E("div",{style:{display:"flex",gap:10,justifyContent:"flex-end"}},
+          E("button",{onClick:()=>setModalReagendar(null),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"10px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}},"Cancelar"),
+          E("button",{onClick:confirmarReagendar,style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:800,fontSize:13,cursor:"pointer"}},"✅ Confirmar reagenda")
+        )
+      )
+    );
+  };
+
+  const renderModalCobro = () => {
+    if (!modalCobro) return null;
+    return E("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:4000,padding:16}},
+      E("div",{style:{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}},
+        E("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+          E("h3",{style:{margin:0,fontSize:17,fontWeight:800}},"💰 Cobrar cita"),
+          E("button",{onClick:()=>setModalCobro(null),style:{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grisd}},"×")
+        ),
+        E("div",{style:{background:"#f8f9fa",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:13}},
+          E("div",{style:{fontWeight:700}},`${modalCobro.cita.nombreMascota||"?"} — ${modalCobro.cita.nombreCliente||"?"}`),
+          E("div",{style:{color:C.grisd,marginTop:2}},`${modalCobro.cita.fecha} · ${modalCobro.cita.hora}`)
+        ),
+        E("div",{style:{marginBottom:12}},E("label",{style:labelStyle},"Servicio"),E("input",{value:modalCobro.desc,onChange:e=>setModalCobro(m=>({...m,desc:e.target.value})),style:inputStyle})),
+        E("div",{style:{marginBottom:12}},E("label",{style:labelStyle},"Monto (RD$)"),E("input",{type:"number",value:modalCobro.monto,onChange:e=>setModalCobro(m=>({...m,monto:e.target.value})),style:inputStyle})),
+        E("div",{style:{marginBottom:20}},E("label",{style:labelStyle},"Forma de pago"),
+          E("select",{value:modalCobro.formaPago,onChange:e=>setModalCobro(m=>({...m,formaPago:e.target.value})),style:inputStyle},
+            [["efectivo","💵 Efectivo"],["tarjeta","💳 Tarjeta"],["transferencia","📲 Transferencia"],["mixto","🔀 Mixto"]].map(([v,l])=>E("option",{key:v,value:v},l))
+          )
+        ),
+        E("div",{style:{background:"#e6f4ec",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:12,color:C.verde,fontWeight:600}},"✅ Se marcará la cita como completada y se abrirá el módulo de Ventas para registrar el cobro."),
+        E("div",{style:{display:"flex",gap:10,justifyContent:"flex-end"}},
+          E("button",{onClick:()=>setModalCobro(null),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"10px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}},"Cancelar"),
+          E("button",{onClick:confirmarCobro,style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:800,fontSize:13,cursor:"pointer"}},"💰 Ir a cobrar")
+        )
+      )
+    );
+  };
+
   const renderEstadisticas = () => E(Card,{style:{marginTop:24}},
     E("div",{style:{fontWeight:800,fontSize:15,marginBottom:16}},"📊 Estadísticas del mes"),
     E("div",{style:{display:"flex",gap:14,flexWrap:"wrap",marginBottom:18}},
       ...[
         [citasMes.length,"Citas totales",C.verde],
         [completadasN,"Completadas","#1d4ed8"],
+        [canceladasN,"Canceladas","#dc2626"],
         [noShowsN>0?`${tasaNS}%`:"0%",`No-shows (${noShowsN})`,noShowsN>0?"#dc2626":C.verde],
+        [`RD$${Math.round(ingresosMes/1000)}k`,"Ingresos mes",C.verde],
         [horaPico?horaPico[0]:"—","Hora pico",C.naranja]
       ].map(([val,lbl,col])=>E("div",{key:lbl,style:{flex:1,minWidth:90,textAlign:"center",background:"#f8f9fa",borderRadius:10,padding:"14px 8px"}},
-        E("div",{style:{fontSize:26,fontWeight:800,color:col}},val),
+        E("div",{style:{fontSize:22,fontWeight:800,color:col}},val),
         E("div",{style:{fontSize:11,color:C.grisd,marginTop:4}},lbl)
       ))
     ),
     E("div",{style:{display:"flex",gap:20,flexWrap:"wrap"}},
-      E("div",{style:{flex:1,minWidth:160}},
+      E("div",{style:{flex:2,minWidth:200}},
         E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"Por empleado"),
-        Object.keys(EMPLEADOS).map(emp=>{ const tot=citasMes.filter(c=>c.empleado===emp).length; const ok=citasMes.filter(c=>c.empleado===emp&&c.estado==="completada").length; return E("div",{key:emp,style:{display:"flex",alignItems:"center",gap:8,marginBottom:7}},E("div",{style:{width:10,height:10,borderRadius:"50%",background:EMPLEADOS[emp].color,flexShrink:0}}),E("span",{style:{fontSize:13,flex:1}}),E("span",{style:{fontSize:13,fontWeight:700,flex:1}}),E("div",{style:{fontSize:13,flex:2}},emp),E("span",{style:{fontWeight:700}}),E("span",{style:{fontWeight:700,fontSize:14}},tot),E("span",{style:{fontSize:11,color:C.grisd,marginLeft:4}},`(${ok} ok)`)); })
+        statsPorEmp.map(({emp,total,completadas,ingresos})=>E("div",{key:emp,style:{display:"flex",alignItems:"center",gap:8,marginBottom:8,background:"#f8f9fa",borderRadius:8,padding:"8px 10px"}},
+          E("div",{style:{width:10,height:10,borderRadius:"50%",background:EMPLEADOS[emp].color,flexShrink:0}}),
+          E("div",{style:{flex:1,fontSize:13,fontWeight:700}},emp),
+          E("div",{style:{fontSize:12,color:C.grisd}},`${total} citas · ${completadas} ok`),
+          E("div",{style:{fontSize:12,fontWeight:700,color:C.verde,marginLeft:8}},`RD$ ${ingresos.toLocaleString("es-DO")}`)
+        ))
       ),
       E("div",{style:{flex:1,minWidth:160}},
         E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"Por tipo"),
-        Object.entries(TIPOS).map(([k,v])=>{ const tot=citasMes.filter(c=>c.tipo===k).length; return E("div",{key:k,style:{display:"flex",alignItems:"center",gap:8,marginBottom:7}},E("span",null,v.icon),E("span",{style:{fontSize:13,flex:1}},v.label),E("span",{style:{fontWeight:700,color:v.border}},tot)); })
+        Object.entries(TIPOS).map(([k,v])=>{
+          const tot=citasMes.filter(c=>c.tipo===k).length;
+          const ing=citasMes.filter(c=>c.tipo===k&&c.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0);
+          return E("div",{key:k,style:{display:"flex",alignItems:"center",gap:8,marginBottom:7,background:"#f8f9fa",borderRadius:8,padding:"7px 10px"}},
+            E("span",null,v.icon),E("span",{style:{fontSize:13,flex:1}},v.label),
+            E("span",{style:{fontWeight:700,color:v.border,marginRight:4}},tot),
+            E("span",{style:{fontSize:11,color:C.grisd}},`· RD$ ${ing.toLocaleString("es-DO")}`)
+          );
+        })
       )
     )
   );
@@ -9679,45 +9949,80 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     renderModalCancelar(),
     renderModalWA(),
     renderModal(),
+    renderModalReagendar(),
+    renderModalCobro(),
     E("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
       E("div",null,
         E("h2",{style:{fontFamily:"Georgia,serif",fontSize:26,margin:0}},"📅 Agenda"),
         E("p",{style:{color:C.grisd,fontSize:13,margin:"4px 0 0"}},"Gestión de citas · PetColinas")
       ),
-      E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:hoy(),hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
+      E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
     ),
-    recordatoriosPendientes.length>0 && E("div",{style:{background:"#fff7ed",border:"1.5px solid #f59e0b",borderRadius:12,padding:"14px 16px",marginBottom:20}},
-      E("div",{style:{fontWeight:800,color:"#d97706",fontSize:13,marginBottom:10}},`⏰ ${recordatoriosPendientes.length} cita(s) mañana sin recordatorio enviado`),
-      recordatoriosPendientes.map(c=>E("div",{key:c.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fefce8",borderRadius:8,padding:"8px 12px",marginBottom:6}},
-        E("div",null, E("div",{style:{fontWeight:700,fontSize:13}},`${c.hora} · ${c.nombreMascota||"?"}`), E("div",{style:{fontSize:11,color:C.grisd}},`${c.nombreCliente||"?"} · ${c.empleado||""}`)),
-        E("div",{style:{display:"flex",gap:8}},
-          c.telefono && E("button",{onClick:()=>abrirWA("recordatorio",c),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}},"💬 WA"),
-          c.telefono && E("a",{href:`tel:${c.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞")
+    recordatoriosHoy.length>0 && E("div",{style:{background:"#e0f2fe",border:"1.5px solid #0284c7",borderRadius:12,padding:"14px 16px",marginBottom:12}},
+      E("div",{style:{fontWeight:800,color:"#0369a1",fontSize:13,marginBottom:8}},`🌞 ${recordatoriosHoy.length} cita(s) HOY sin recordatorio enviado`),
+      recordatoriosHoy.slice(0,3).map(c=>E("div",{key:c.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f0f9ff",borderRadius:8,padding:"8px 12px",marginBottom:4}},
+        E("div",null,E("div",{style:{fontWeight:700,fontSize:13}},`${c.hora} · ${c.nombreMascota||"?"}`),E("div",{style:{fontSize:11,color:C.grisd}},`${c.nombreCliente||"?"} · ${c.empleado||""}`)),
+        c.telefono&&E("button",{onClick:()=>abrirWA("recordatorio_hoy",c),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}},"💬 WA hoy")
+      ))
+    ),
+    recordatoriosPendientes.length>0 && E("div",{style:{background:"#fff7ed",border:"1.5px solid #f59e0b",borderRadius:12,padding:"14px 16px",marginBottom:12}},
+      E("div",{style:{fontWeight:800,color:"#d97706",fontSize:13,marginBottom:8}},`⏰ ${recordatoriosPendientes.length} cita(s) mañana sin recordatorio`),
+      recordatoriosPendientes.map(c=>E("div",{key:c.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fefce8",borderRadius:8,padding:"8px 12px",marginBottom:4}},
+        E("div",null,E("div",{style:{fontWeight:700,fontSize:13}},`${c.hora} · ${c.nombreMascota||"?"}`),E("div",{style:{fontSize:11,color:C.grisd}},`${c.nombreCliente||"?"} · ${c.empleado||""}`)),
+        E("div",{style:{display:"flex",gap:6}},
+          c.telefono&&E("button",{onClick:()=>abrirWA("recordatorio",c),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}},"💬 WA"),
+          c.telefono&&E("a",{href:`tel:${c.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞")
         )
       ))
     ),
+    citasEspera.length>0&&vista!=="espera"&&E("div",{style:{background:"#faf5ff",border:"1.5px solid #7c3aed",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}},
+      E("div",{style:{fontWeight:700,color:"#7c3aed",fontSize:13}},`⏳ ${citasEspera.length} cita(s) en lista de espera`),
+      E("button",{onClick:()=>setVista("espera"),style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"Ver lista")
+    ),
+    citasSinConfirmar.length>0&&E("div",{style:{background:"#fefce8",border:"1.5px solid #ca8a04",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}},
+      E("div",{style:{fontWeight:700,color:"#854d0e",fontSize:13}},`📋 ${citasSinConfirmar.length} cita(s) futuras sin confirmar`),
+      E("button",{onClick:()=>{setFiltroEstado("pendiente");setVista("lista");},style:{background:"#ca8a04",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"Ver pendientes")
+    ),
     E(Card,{style:{marginBottom:16,padding:"12px 16px"}},
-      E("div",{style:{display:"flex",flexWrap:"wrap",gap:10,alignItems:"center"}},
-        E("input",{placeholder:"🔍 Buscar mascota o dueño...",value:busqueda,onChange:e=>setBusqueda(e.target.value),style:{padding:"7px 12px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13,minWidth:190}}),
-        E("select",{value:filtroEmpleado,onChange:e=>setFiltroEmpleado(e.target.value),style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
+      E("div",{style:{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:10}},
+        E("input",{placeholder:"🔍 Buscar mascota, dueño o servicio...",value:busqueda,onChange:e=>{setBusqueda(e.target.value);setPaginaLista(0);},style:{padding:"7px 12px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13,minWidth:190}}),
+        E("select",{value:filtroEmpleado,onChange:e=>{setFiltroEmpleado(e.target.value);setPaginaLista(0);},style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
           E("option",{value:"todos"},"👥 Todos"),
           Object.keys(EMPLEADOS).map(e=>E("option",{key:e,value:e},e))
         ),
-        E("select",{value:filtroTipo,onChange:e=>setFiltroTipo(e.target.value),style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
+        E("select",{value:filtroTipo,onChange:e=>{setFiltroTipo(e.target.value);setPaginaLista(0);},style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
           E("option",{value:"todos"},"🗂️ Todos los tipos"),
           Object.entries(TIPOS).map(([k,v])=>E("option",{key:k,value:k},`${v.icon} ${v.label}`))
         ),
-        E("select",{value:filtroEstado,onChange:e=>setFiltroEstado(e.target.value),style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
+        E("select",{value:filtroEstado,onChange:e=>{setFiltroEstado(e.target.value);setPaginaLista(0);},style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
           E("option",{value:"todos"},"📋 Todos los estados"),
           Object.entries(ESTADOS).filter(([k])=>k!=="espera").map(([k,v])=>E("option",{key:k,value:k},v.label))
         ),
-        E("div",{style:{marginLeft:"auto",display:"flex",gap:8}},
+        E("div",{style:{display:"flex",gap:4,alignItems:"center"}},
+          E("input",{type:"date",value:filtroFechaDesde,onChange:e=>{setFiltroFechaDesde(e.target.value);setPaginaLista(0);},style:{padding:"6px 8px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:12},title:"Desde"}),
+          E("span",{style:{fontSize:11,color:C.grisd}},"—"),
+          E("input",{type:"date",value:filtroFechaHasta,onChange:e=>{setFiltroFechaHasta(e.target.value);setPaginaLista(0);},style:{padding:"6px 8px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:12},title:"Hasta"})
+        ),
+        (filtroEmpleado!=="todos"||filtroTipo!=="todos"||filtroEstado!=="todos"||filtroFechaDesde||filtroFechaHasta||busqueda)&&E("button",{onClick:()=>{setFiltroEmpleado("todos");setFiltroTipo("todos");setFiltroEstado("todos");setFiltroFechaDesde("");setFiltroFechaHasta("");setBusqueda("");setPaginaLista(0);},style:{padding:"6px 10px",border:"none",borderRadius:8,background:"#fee2e2",color:"#dc2626",fontSize:12,fontWeight:700,cursor:"pointer"}},"✕ Limpiar")
+      ),
+      E("div",{style:{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}},
+        E("span",{style:{fontSize:11,color:C.grisd}},"Rápido:"),
+        ...[
+          ["Hoy",()=>{setFiltroFechaDesde(hoy());setFiltroFechaHasta(hoy());setVista("dia");setFechaActual(hoy());setPaginaLista(0);}],
+          ["Esta semana",()=>{const ini=getSemanaInicio(hoy());const dias=getDiasSemana(ini);setFiltroFechaDesde(dias[0]);setFiltroFechaHasta(dias[6]);setVista("lista");setPaginaLista(0);}],
+          ["Este mes",()=>{const m=hoy().slice(0,7);setFiltroFechaDesde(m+"-01");setFiltroFechaHasta(m+"-31");setVista("lista");setPaginaLista(0);}],
+          ["Próx. semana",()=>{const d=parseFecha(hoy());d.setDate(d.getDate()+7);const ini=getSemanaInicio(formatFecha(d));const dias=getDiasSemana(ini);setFiltroFechaDesde(dias[0]);setFiltroFechaHasta(dias[6]);setVista("lista");setPaginaLista(0);}]
+        ].map(([lbl,fn])=>E("button",{key:lbl,onClick:fn,style:{padding:"5px 10px",border:"1px solid #e0e4e8",borderRadius:6,background:"#f8f9fa",fontSize:11,cursor:"pointer",fontWeight:600}},lbl)),
+        E("div",{style:{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}},
           E("button",{onClick:()=>setVista("dia"),style:btnStyle(vista==="dia")},"📆 Día"),
-          E("button",{onClick:()=>setVista("semana"),style:btnStyle(vista==="semana")},"📅 Semana")
+          E("button",{onClick:()=>setVista("semana"),style:btnStyle(vista==="semana")},"📅 Semana"),
+          E("button",{onClick:()=>setVista("mes"),style:btnStyle(vista==="mes")},"🗓️ Mes"),
+          E("button",{onClick:()=>setVista("lista"),style:btnStyle(vista==="lista")},"📋 Lista"),
+          citasEspera.length>0&&E("button",{onClick:()=>setVista("espera"),style:btnStyle(vista==="espera","#7c3aed")},`⏳(${citasEspera.length})`)
         )
       )
     ),
-    vista==="dia" ? renderVistaDia() : renderVistaSemana(),
+    vista==="dia"?renderVistaDia():vista==="semana"?renderVistaSemana():vista==="mes"?renderVistaMes():vista==="lista"?renderVistaLista():renderVistaEspera(),
     renderEstadisticas()
   );
 }
