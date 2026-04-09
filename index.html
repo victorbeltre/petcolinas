@@ -4661,7 +4661,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       const mascota  = cl.nombreMascota || cl.nombremascota || "";
       const dueno    = cl.nombrePropietario || cl.nombrepropietario || "";
       const apellido = dueno.trim().split(" ").pop() || "";
-      const nom = mascota ? (mascota + (apellido ? " " + apellido : "")) : dueno;
+      const yaIncluye = apellido && mascota.toLowerCase().includes(apellido.toLowerCase());
+      const nom = mascota ? (mascota + (!yaIncluye && apellido ? " " + apellido : "")) : dueno;
       setCliente(nom);
     }
     if (clearClienteVentaInicial) clearClienteVentaInicial();
