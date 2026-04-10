@@ -673,7 +673,8 @@ const TARIFAS_GROOMING = [
   { id: "g11", nombre: "Desenrede",                          precio: 690,  comision: 90  },
   { id: "g12", nombre: "Ba\xF1o cachorro c/l\xEDnea",     precio: 899,  comision: 80  },
   { id: "g13", nombre: "Ba\xF1o mediano c/l\xEDnea",      precio: 1149, comision: 110 },
-  { id: "g14", nombre: "Ba\xF1o grande c/l\xEDnea",       precio: 1349, comision: 120 }
+  { id: "g14", nombre: "Ba\xF1o grande c/l\xEDnea",       precio: 1349, comision: 120 },
+  { id: "g15", nombre: "Corte de u\xF1as",               precio: 300,  comision: 50  }
 ];
 const TARIFAS_VET = [
   { id: "v1", nombre: "Consulta", precio: 1500, comision: 0.3 },
@@ -4797,6 +4798,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [items, setItems] = useState([]);
   const [tipoItem, setTipoItem] = useState("grooming");
   const [servId, setServId] = useState(tarifasGrooming[0]?.id || "g1");
+  const [nombreManual, setNombreManual] = useState("");
+  const [precioManual, setPrecioManual] = useState("");
   const [cantidad, setCantidad] = useState(1);
   const [descPct, setDescPct] = useState(0);
   const [prodSelId, setProdSelId] = useState("");
@@ -4806,11 +4809,13 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [descLibre, setDescLibre] = useState("");
   const [modoFarmacia, setModoFarmacia] = useState("catalogo");
   const tarifas = tipoItem === "grooming" ? tarifasGrooming : tarifasVet;
-  const servSel = tarifas.find((t) => t.id === servId) || null;
+  const esManual = servId === "manual";
+  const servSel = esManual ? null : (tarifas.find((t) => t.id === servId) || null);
   const prodSel = inventario.find((p) => String(p.id) === String(prodSelId)) || null;
   const productosInv = inventario.filter((p) => p.pventa > 0);
   const previewPrecio = (() => {
     if (tipoItem === "grooming" || tipoItem === "veterinaria") {
+      if (esManual) return parseFloat(precioManual) || 0;
       return servSel ? servSel.precio * cantidad : 0;
     }
     if (tipoItem === "farmacia") {
@@ -4823,7 +4828,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const previewDescuento = Math.round(previewPrecio * pct / 100);
   const previewNeto = previewPrecio - previewDescuento;
   const previewComision = (() => {
-    if (tipoItem === "grooming") return servSel ? servSel.comision * cantidad : 0;
+    if (tipoItem === "grooming") return esManual ? 0 : (servSel ? servSel.comision * cantidad : 0);
     if (tipoItem === "veterinaria") {
       const pctVet = servicioPor === "e5" ? 0.40 : 0.30;
       return Math.round(previewNeto * pctVet);
@@ -4843,6 +4848,17 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const totalComision = items.reduce((s, i) => s + i.comision, 0);
   const agregarItem = () => {
     if (tipoItem === "grooming" || tipoItem === "veterinaria") {
+      if (esManual) {
+        if (!nombreManual.trim() || previewPrecio <= 0) return alert("Escribe nombre y precio del servicio");
+        setItems([...items, {
+          id: Date.now(), tipo: tipoItem, area: tipoItem,
+          nombre: nombreManual.trim(), precio: previewPrecio,
+          descPct: pct, descuento: previewDescuento, subtotal: previewNeto,
+          comision: 0, qty: 1, prodId: null, desdeInv: false
+        }]);
+        setNombreManual(""); setPrecioManual(""); setDescPct(0);
+        return;
+      }
       if (!servSel || previewPrecio <= 0) return alert("Selecciona un servicio");
       setItems([...items, {
         id: Date.now(),
@@ -5225,9 +5241,12 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         setServId(v);
         setDescPct(0);
       },
-      options: tarifas.map((t) => ({ value: t.id, label: `${t.nombre} \u2014 ${RD(t.precio)}` }))
+      options: [...tarifas.map((t) => ({ value: t.id, label: `${t.nombre} \u2014 ${RD(t.precio)}` })), { value: "manual", label: "\u270F\uFE0F Servicio manual..." }]
     }
-  ), tipoItem === "grooming" && /* @__PURE__ */ React.createElement(
+  ), esManual && /* @__PURE__ */ React.createElement(React.Fragment, null,
+    /* @__PURE__ */ React.createElement(Input, { label: "Nombre del servicio *", value: nombreManual, onChange: setNombreManual, placeholder: "Ej: Spa premium, Tratamiento especial..." }),
+    /* @__PURE__ */ React.createElement(Input, { label: "Precio (RD$) *", type: "number", value: precioManual, onChange: setPrecioManual, placeholder: "0" })
+  ), !esManual && tipoItem === "grooming" && /* @__PURE__ */ React.createElement(
     Input,
     {
       label: "Cantidad",
