@@ -402,7 +402,8 @@ function normalizeRow(table, r) {
     veterinarioExterno: r.veterinarioexterno,
     notas: r.notas,
     fechaRegistro: r.fecharegistro,
-    ultimaVisita2025: r.ultimavisita2025
+    ultimaVisita2025: r.ultimavisita2025,
+    cedula: r.cedula || ""
   };
   if (table === "pc_seguimientos") return {
     id: r.id,
@@ -488,6 +489,27 @@ function normalizeRow(table, r) {
     enEspera: r.enespera || r.enEspera || false,
     mensajesEnviados: (() => { try { return JSON.parse(r.mensajesenviados || r.mensajesEnviados || "[]"); } catch { return []; } })()
   };
+  if (table === "pc_tarifas") return {
+    id: r.id,
+    nombre: r.nombre,
+    precio: Number(r.precio) || 0,
+    comision: Number(r.comision) || 0,
+    area: r.area || ""
+  };
+  if (table === "pc_historias") return {
+    id: r.id,
+    clienteid: r.clienteid,
+    fecha: r.fecha || "",
+    tipo: r.tipo || "",
+    descripcion: r.descripcion || "",
+    veterinario: r.veterinario || "",
+    diagnostico: r.diagnostico || "",
+    tratamiento: r.tratamiento || "",
+    medicamentos: r.medicamentos || "",
+    proximacita: r.proximacita || "",
+    notas: r.notas || "",
+    creadoen: r.creadoen || ""
+  };
   return r;
 }
 function denormalizeRow(table, r) {
@@ -512,7 +534,8 @@ function denormalizeRow(table, r) {
     veterinarioexterno: r.veterinarioExterno,
     notas: r.notas,
     fecharegistro: r.fechaRegistro,
-    ultimavisita2025: r.ultimaVisita2025
+    ultimavisita2025: r.ultimaVisita2025,
+    cedula: r.cedula || null
   };
   if (table === "pc_seguimientos") return {
     id: r.id,
@@ -594,9 +617,31 @@ function denormalizeRow(table, r) {
     enespera: r.enEspera,
     mensajesenviados: JSON.stringify(r.mensajesEnviados || [])
   };
+  if (table === "pc_tarifas") return {
+    id: r.id,
+    nombre: r.nombre,
+    precio: r.precio,
+    comision: r.comision,
+    area: r.area
+  };
+  if (table === "pc_historias") return {
+    id: r.id,
+    clienteid: r.clienteid,
+    fecha: r.fecha,
+    tipo: r.tipo,
+    descripcion: r.descripcion,
+    veterinario: r.veterinario,
+    diagnostico: r.diagnostico,
+    tratamiento: r.tratamiento,
+    medicamentos: r.medicamentos,
+    proximacita: r.proximacita,
+    notas: r.notas,
+    creadoen: r.creadoen
+  };
   return r;
 }
-const LAST_UPDATE = "09 abr 2026 · agenda completa";
+const LAST_UPDATE = "09 abr 2026 · #2 tarifas Supa · #5 fichas · #7 facturas RNC";
+const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -683,6 +728,48 @@ function useLS(key, def) {
     }
   }, [key, val]);
   return [val, setVal];
+}
+function useSupaTarifas() {
+  const SEED_ALL = useMemo(() => [
+    ...TARIFAS_GROOMING.map(t => ({ ...t, area: "grooming" })),
+    ...TARIFAS_VET.map(t => ({ ...t, area: "vet" }))
+  ], []);
+  const [data, _setData] = useState(SEED_ALL);
+  const dataRef = useRef(SEED_ALL);
+  useEffect(() => {
+    (async () => {
+      const rows = await supaFetch("pc_tarifas", "GET", null, "?order=id.asc&limit=500");
+      if (Array.isArray(rows) && rows.length > 0) {
+        const norm = rows.map(r => normalizeRow("pc_tarifas", r));
+        _setData(norm); dataRef.current = norm;
+      } else {
+        await uploadSeed("pc_tarifas", SEED_ALL);
+      }
+    })();
+  }, []);
+  const setTarifasGrooming = useCallback(async (fnOrArr) => {
+    const cur = dataRef.current;
+    const curG = cur.filter(t => t.area === "grooming");
+    const newG = (typeof fnOrArr === "function" ? fnOrArr(curG) : fnOrArr).map(t => ({ ...t, area: "grooming" }));
+    const newAll = [...cur.filter(t => t.area !== "grooming"), ...newG];
+    _setData(newAll); dataRef.current = newAll;
+    const newIds = new Set(newG.map(t => t.id));
+    for (const old of curG) { if (!newIds.has(old.id)) await supaFetch("pc_tarifas", "DELETE", null, `?id=eq.${old.id}`); }
+    for (const row of newG) await supaFetch("pc_tarifas", "POST", denormalizeRow("pc_tarifas", row), "?on_conflict=id");
+  }, []);
+  const setTarifasVet = useCallback(async (fnOrArr) => {
+    const cur = dataRef.current;
+    const curV = cur.filter(t => t.area === "vet");
+    const newV = (typeof fnOrArr === "function" ? fnOrArr(curV) : fnOrArr).map(t => ({ ...t, area: "vet" }));
+    const newAll = [...cur.filter(t => t.area !== "vet"), ...newV];
+    _setData(newAll); dataRef.current = newAll;
+    const newIds = new Set(newV.map(t => t.id));
+    for (const old of curV) { if (!newIds.has(old.id)) await supaFetch("pc_tarifas", "DELETE", null, `?id=eq.${old.id}`); }
+    for (const row of newV) await supaFetch("pc_tarifas", "POST", denormalizeRow("pc_tarifas", row), "?on_conflict=id");
+  }, []);
+  const tarifasGrooming = useMemo(() => data.filter(t => t.area === "grooming"), [data]);
+  const tarifasVet = useMemo(() => data.filter(t => t.area === "vet"), [data]);
+  return [tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet];
 }
 function useVentasConSeed(seed) {
   const seedIds = useMemo(() => new Set(seed.map((v) => String(v.id))), []);
@@ -2260,8 +2347,9 @@ function Facturas({ ventas, clientes }) {
   }
   function imprimirFactura(f) {
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    // Usar la misma función de lealtad para consistencia
     f = { ...f, groomingCount: calcGroomingLealtad(f.mascota) };
+    const clienteData = clientes.find(c => String(c.id) === String(f.clienteId));
+    const cedulaCliente = clienteData?.cedula || "";
     const win = window.open("", "_blank");
     win.document.write(`
       <!DOCTYPE html><html><head>
@@ -2317,10 +2405,15 @@ function Facturas({ ventas, clientes }) {
           <h4>Datos del cliente</h4>
           <p><strong>${f.propietario || "\u2014"}</strong></p>
           <p>${f.telefono || ""}</p>
+          ${cedulaCliente ? `<p style="font-size:12px;color:#5a6472;">C\xE9dula: ${cedulaCliente}</p>` : ""}
         </div>
         <div class="datos-box">
-          <h4>Paciente</h4>
-          <p><strong>\u{1F43E} ${f.mascota || "\u2014"}</strong></p>
+          <h4>Emisor</h4>
+          <p><strong>PetColinas</strong></p>
+          <p style="font-size:12px;color:#5a6472;">Plaza Las Colinas, SDO</p>
+          <p style="font-size:12px;color:#5a6472;">Tel: 809-752-6806</p>
+          ${PETCOLINAS_RNC ? `<p style="font-size:12px;color:#5a6472;">RNC: ${PETCOLINAS_RNC}</p>` : ""}
+          <p style="margin-top:8px;font-weight:700;">\uD83D\uDC3E ${f.mascota || "\u2014"}</p>
         </div>
       </div>
 
@@ -3379,8 +3472,7 @@ function PetColinasApp({ session, onLogout }) {
     } catch {
     }
   }, []);
-  const [tarifasGrooming, setTarifasGrooming] = useLS("pc_tarifas_g", TARIFAS_GROOMING);
-  const [tarifasVet, setTarifasVet] = useLS("pc_tarifas_v", TARIFAS_VET);
+  const [tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet] = useSupaTarifas();
   const [ventas, setVentas, ventasLoaded, , deleteVenta] = useSupabase("pc_ventas", VENTAS_SEED);
   const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
   const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
@@ -3389,6 +3481,7 @@ function PetColinasApp({ session, onLogout }) {
   const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
   const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", EMPLEADOS_INIT);
   const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
+  const [historias, setHistoriasRaw, , , deleteHistoria] = useSupabase("pc_historias", []);
   const [historial, setHistorial] = useState([]);
   const [undoMsg, setUndoMsg] = useState(null);
   const pushHistorial = (desc, snap) => {
@@ -3584,7 +3677,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab, citas }),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
@@ -6230,6 +6323,7 @@ const CRM_EMPTY_FORM = {
   email: "",
   direccion: "",
   instagram: "",
+  cedula: "",
   alergias: "",
   medicamentos: "",
   condiciones: "",
@@ -6243,7 +6337,64 @@ const CRM_EMPTY_FORM = {
   notas: "",
   fechaRegistro: hoy()
 };
-function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInicial, setTab, setCrmClienteInicial }) {
+function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria }) {
+  const TIPOS_H = ["Consulta", "Vacuna", "Diagn\xF3stico", "Cirug\xEDa", "Control", "Desparasitaci\xF3n", "Otro"];
+  const emptyH = { fecha: hoy(), tipo: "Consulta", descripcion: "", veterinario: "", diagnostico: "", tratamiento: "", medicamentos: "", proximacita: "", notas: "" };
+  const [formH, setFormH] = useState(emptyH);
+  const [agregando, setAgregando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const mis = [...historias.filter(h => String(h.clienteid) === String(clienteId))].sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
+  async function guardar() {
+    if (!formH.descripcion.trim()) { alert("Escribe una descripci\xF3n."); return; }
+    setGuardando(true);
+    const nueva = { ...formH, id: String(Date.now()), clienteid: String(clienteId), creadoen: hoy() };
+    setHistorias(prev => [...prev, nueva]);
+    await upsertOne("pc_historias", nueva);
+    setFormH(emptyH); setAgregando(false); setGuardando(false);
+  }
+  async function eliminar(id) {
+    if (!confirm("\xBFEliminar este registro?")) return;
+    deleteHistoria(id);
+  }
+  const tipoColor = { "Consulta": "#1a4fa0", "Vacuna": "#1a6b3a", "Cirug\xEDa": "#b8232a", "Diagn\xF3stico": "#7c3aed", "Control": "#0891b2", "Desparasitaci\xF3n": "#d45f1e", "Otro": "#5a6472" };
+  return React.createElement("div", null,
+    mis.length === 0 && !agregando && React.createElement("div", { style: { color: "#5a6472", fontSize: 13, marginBottom: 10 } }, "Sin registros cl\xEDnicos."),
+    mis.map(h => React.createElement("div", { key: h.id, style: { background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", marginBottom: 10, border: "1px solid #e8ecf0" } },
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
+        React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+          React.createElement("span", { style: { background: tipoColor[h.tipo] || "#5a6472", color: "#fff", borderRadius: 20, fontSize: 11, fontWeight: 700, padding: "2px 10px" } }, h.tipo),
+          React.createElement("span", { style: { color: "#5a6472", fontSize: 12 } }, h.fecha),
+          h.veterinario && React.createElement("span", { style: { color: "#5a6472", fontSize: 12 } }, "\xB7 " + h.veterinario)
+        ),
+        React.createElement("button", { onClick: () => eliminar(h.id), title: "Eliminar", style: { background: "none", border: "none", cursor: "pointer", color: "#b8232a", fontSize: 18, lineHeight: 1, padding: "0 4px" } }, "\xD7")
+      ),
+      h.descripcion && React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#1a1d23", marginBottom: 3 } }, h.descripcion),
+      h.diagnostico && React.createElement("div", { style: { fontSize: 12, color: "#1a1d23" } }, React.createElement("strong", null, "Dx: "), h.diagnostico),
+      h.tratamiento && React.createElement("div", { style: { fontSize: 12, color: "#1a1d23" } }, React.createElement("strong", null, "Tx: "), h.tratamiento),
+      h.medicamentos && React.createElement("div", { style: { fontSize: 12, color: "#d45f1e" } }, "\uD83D\uDC8A ", h.medicamentos),
+      h.proximacita && React.createElement("div", { style: { fontSize: 12, color: "#1a6b3a", fontWeight: 600 } }, "\uD83D\uDCC5 Pr\xF3x. cita: ", h.proximacita),
+      h.notas && React.createElement("div", { style: { fontSize: 12, color: "#5a6472", fontStyle: "italic", marginTop: 2 } }, h.notas)
+    )),
+    agregando ? React.createElement("div", { style: { background: "#f0fdf4", borderRadius: 10, padding: 14, border: "1.5px solid #1a6b3a", marginBottom: 10 } },
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Fecha"), React.createElement("input", { type: "date", value: formH.fecha, onChange: e => setFormH(p => ({...p, fecha: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Tipo"), React.createElement("select", { value: formH.tipo, onChange: e => setFormH(p => ({...p, tipo: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } }, TIPOS_H.map(t => React.createElement("option", { key: t }, t)))),
+        React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Descripci\xF3n *"), React.createElement("input", { value: formH.descripcion, onChange: e => setFormH(p => ({...p, descripcion: e.target.value})), placeholder: "Motivo de consulta, procedimiento realizado...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Veterinario"), React.createElement("input", { value: formH.veterinario, onChange: e => setFormH(p => ({...p, veterinario: e.target.value})), placeholder: "Aylein, Valentina...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Pr\xF3x. cita"), React.createElement("input", { type: "date", value: formH.proximacita, onChange: e => setFormH(p => ({...p, proximacita: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Diagn\xF3stico"), React.createElement("input", { value: formH.diagnostico, onChange: e => setFormH(p => ({...p, diagnostico: e.target.value})), placeholder: "Gastritis, Otitis...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Tratamiento"), React.createElement("input", { value: formH.tratamiento, onChange: e => setFormH(p => ({...p, tratamiento: e.target.value})), placeholder: "Antibioticoterapia...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Medicamentos"), React.createElement("input", { value: formH.medicamentos, onChange: e => setFormH(p => ({...p, medicamentos: e.target.value})), placeholder: "Amoxicilina 250mg c/12h...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Notas"), React.createElement("input", { value: formH.notas, onChange: e => setFormH(p => ({...p, notas: e.target.value})), placeholder: "Observaciones adicionales...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } }))
+      ),
+      React.createElement("div", { style: { display: "flex", gap: 8 } },
+        React.createElement("button", { onClick: guardar, disabled: guardando, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, guardando ? "Guardando..." : "\uD83D\uDCBE Guardar registro"),
+        React.createElement("button", { onClick: () => setAgregando(false), style: { background: "#f1f5f9", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13 } }, "Cancelar")
+      )
+    ) : React.createElement("button", { onClick: () => setAgregando(true), style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13, marginTop: 4 } }, "+ Agregar registro cl\xEDnico")
+  );
+}
+function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInicial, setTab, setCrmClienteInicial, historias = [], setHistorias, deleteHistoria }) {
   const ESPECIE_OPTS = ["Perro", "Gato", "Ave", "Conejo", "Reptil", "Otro"];
   const TAMANO_OPTS = ["Peque\xF1o (< 10 kg)", "Mediano (10\u201325 kg)", "Grande (> 25 kg)"];
   const SEXO_OPTS = ["Macho", "Hembra"];
@@ -6456,7 +6607,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
         onChange: (v) => setF("sexo", v),
         options: SEXO_OPTS.map((e) => ({ value: e, label: e }))
       }
-    ), /* @__PURE__ */ React.createElement(Input, { label: "Color / pelaje", value: form.color, onChange: (v) => setF("color", v), placeholder: "Blanco, negro, tricolor..." }), /* @__PURE__ */ React.createElement(Input, { label: "Fecha de nacimiento", type: "date", value: form.fechaNacimiento, onChange: (v) => setF("fechaNacimiento", v) }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingTop: 24 } }, /* @__PURE__ */ React.createElement(CrmCheck, { label: "\u2702\uFE0F Esterilizado/a", checked: form.esterilizado, onChange: (v) => setF("esterilizado", v) }))), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F464} Datos del propietario" }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre completo *", value: form.nombrePropietario, onChange: (v) => setF("nombrePropietario", v), placeholder: "Juan P\xE9rez" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono principal *", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "809-000-0000" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono alternativo", value: form.telefono2, onChange: (v) => setF("telefono2", v), placeholder: "Opcional" }), /* @__PURE__ */ React.createElement(Input, { label: "Email", value: form.email, onChange: (v) => setF("email", v), placeholder: "correo@email.com" }), /* @__PURE__ */ React.createElement(Input, { label: "Direcci\xF3n / Sector", value: form.direccion, onChange: (v) => setF("direccion", v), placeholder: "Los Alcarrizos, Residencial..." }), /* @__PURE__ */ React.createElement(Input, { label: "Instagram", value: form.instagram, onChange: (v) => setF("instagram", v), placeholder: "@usuario" })), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1FA7A} Historial m\xE9dico" }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Alergias conocidas", value: form.alergias, onChange: (v) => setF("alergias", v), placeholder: "Ninguna, Pollo, Polen..." }), /* @__PURE__ */ React.createElement(Input, { label: "Condiciones cr\xF3nicas", value: form.condiciones, onChange: (v) => setF("condiciones", v), placeholder: "Diabetes, displasia..." }), /* @__PURE__ */ React.createElement(Input, { label: "Medicamentos actuales", value: form.medicamentos, onChange: (v) => setF("medicamentos", v), placeholder: "Ninguno, Apoquel..." }), /* @__PURE__ */ React.createElement(Input, { label: "Veterinario externo", value: form.veterinarioExterno, onChange: (v) => setF("veterinarioExterno", v), placeholder: "Dr. P\xE9rez, Cl\xEDnica..." }), /* @__PURE__ */ React.createElement(Input, { label: "Peso (kg)", value: form.pesoKg, onChange: (v) => setF("pesoKg", v), placeholder: "3.5" }), /* @__PURE__ */ React.createElement(Input, { label: "Microchip #", value: form.microchip, onChange: (v) => setF("microchip", v), placeholder: "900026000..." })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, "\u{1F381} Ba\xF1os realizados en 2025 (antes del sistema)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Input, { label: "Color / pelaje", value: form.color, onChange: (v) => setF("color", v), placeholder: "Blanco, negro, tricolor..." }), /* @__PURE__ */ React.createElement(Input, { label: "Fecha de nacimiento", type: "date", value: form.fechaNacimiento, onChange: (v) => setF("fechaNacimiento", v) }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingTop: 24 } }, /* @__PURE__ */ React.createElement(CrmCheck, { label: "\u2702\uFE0F Esterilizado/a", checked: form.esterilizado, onChange: (v) => setF("esterilizado", v) }))), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F464} Datos del propietario" }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre completo *", value: form.nombrePropietario, onChange: (v) => setF("nombrePropietario", v), placeholder: "Juan P\xE9rez" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono principal *", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "809-000-0000" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono alternativo", value: form.telefono2, onChange: (v) => setF("telefono2", v), placeholder: "Opcional" }), /* @__PURE__ */ React.createElement(Input, { label: "Email", value: form.email, onChange: (v) => setF("email", v), placeholder: "correo@email.com" }), /* @__PURE__ */ React.createElement(Input, { label: "Direcci\xF3n / Sector", value: form.direccion, onChange: (v) => setF("direccion", v), placeholder: "Los Alcarrizos, Residencial..." }), /* @__PURE__ */ React.createElement(Input, { label: "Instagram", value: form.instagram, onChange: (v) => setF("instagram", v), placeholder: "@usuario" }), /* @__PURE__ */ React.createElement(Input, { label: "C\xE9dula / ID", value: form.cedula || "", onChange: (v) => setF("cedula", v), placeholder: "001-0000000-0" })), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1FA7A} Historial m\xE9dico" }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Alergias conocidas", value: form.alergias, onChange: (v) => setF("alergias", v), placeholder: "Ninguna, Pollo, Polen..." }), /* @__PURE__ */ React.createElement(Input, { label: "Condiciones cr\xF3nicas", value: form.condiciones, onChange: (v) => setF("condiciones", v), placeholder: "Diabetes, displasia..." }), /* @__PURE__ */ React.createElement(Input, { label: "Medicamentos actuales", value: form.medicamentos, onChange: (v) => setF("medicamentos", v), placeholder: "Ninguno, Apoquel..." }), /* @__PURE__ */ React.createElement(Input, { label: "Veterinario externo", value: form.veterinarioExterno, onChange: (v) => setF("veterinarioExterno", v), placeholder: "Dr. P\xE9rez, Cl\xEDnica..." }), /* @__PURE__ */ React.createElement(Input, { label: "Peso (kg)", value: form.pesoKg, onChange: (v) => setF("pesoKg", v), placeholder: "3.5" }), /* @__PURE__ */ React.createElement(Input, { label: "Microchip #", value: form.microchip, onChange: (v) => setF("microchip", v), placeholder: "900026000..." })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, "\u{1F381} Ba\xF1os realizados en 2025 (antes del sistema)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -6681,7 +6832,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
         rows: 3,
         style: { border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none", color: C.negro, background: "#fafafa", resize: "vertical", fontFamily: "inherit" }
       }
-    ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: guardar }, editando ? "\u{1F4BE} Guardar cambios" : "\u{1F4BE} Registrar cliente"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
+    ))), clienteSel && React.createElement(CrmSection, { title: "\uD83D\uDCCB Consultas y Tratamientos" }, React.createElement(HistorialMedico, { clienteId: String(clienteSel.id), historias, setHistorias, deleteHistoria })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: guardar }, editando ? "\u{1F4BE} Guardar cambios" : "\u{1F4BE} Registrar cliente"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
       setVista(editando && clienteSel ? "detalle" : "lista");
       setEditando(false);
     }, color: C.grisd, outline: true }, "Cancelar"))));
