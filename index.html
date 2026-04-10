@@ -7,6 +7,7 @@
   <!-- React + Babel (para JSX en el navegador, sin instalación) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: "Segoe UI", sans-serif; background: #f0f2f0; }
@@ -900,7 +901,7 @@ const TABS = [
   { id: "reportes", icon: "\u{1F4C8}", label: "Reportes" },
   { id: "facturas", icon: "\u{1F4C4}", label: "Facturas" },
   { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
-  { id: "importar", icon: "\u{1F4E5}", label: "Importar Excel" },
+  { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
 const VENTAS_SEED = [
@@ -3009,245 +3010,269 @@ Mascota: ${f.mascota}
     );
   }))))));
 }
-function ImportarExcel({ ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }) {
-  const [tipo, setTipo] = useState("ventas");
-  const [preview, setPreview] = useState([]);
-  const [errores, setErrores] = useState([]);
-  const [importando, setImportando] = useState(false);
-  const [resultado, setResultado] = useState(null);
-  const fileRef = useRef();
-  const AREAS_VALIDAS = ["grooming", "farmacia", "veterinaria", "medicamentos"];
-  const CATEGORIAS_GASTO = ["alquiler", "nomina", "insumos", "farmacia", "servicios", "otros"];
-  function parseExcel(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const wb = XLSX.read(data, { type: "array", cellDates: true });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-          resolve(rows);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    });
+function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventario, citas, seguimientos, tarifasGrooming, tarifasVet }) {
+  const [exportando, setExportando] = useState(false);
+  const [exportado, setExportado] = useState(false);
+  function fmt(n) { return typeof n === "number" ? n : (Number(n) || 0); }
+  function exportar() {
+    if (!window.XLSX) return alert("La librer\xEDa de Excel a\xFAn se est\xE1 cargando. Intenta en unos segundos.");
+    setExportando(true);
+    const XLSX = window.XLSX;
+    const wb = XLSX.utils.book_new();
+    const hoy2 = new Date().toLocaleDateString("es-DO");
+
+    // ── HOJA 1: VENTAS ──────────────────────────────────────────────────
+    const ventasData = (ventas || []).map(v => ({
+      "ID": v.id,
+      "Fecha": v.fecha || "",
+      "Cliente / Mascota": v.cliente || "",
+      "Área": v.area || "",
+      "Servicio / Descripción": v.servicio || v.descripcion || "",
+      "Total (RD$)": fmt(v.total),
+      "Descuento (RD$)": fmt(v.descuento),
+      "Comisión (RD$)": fmt(v.comision),
+      "Forma de Pago": v.formaPago || v.formapago || "",
+      "Recibido Por": v.recibidoPor || v.recibidopor || "",
+      "Cobrado Por": v.cobradoPor || v.cobradopor || "",
+      "Notas": v.notas || ""
+    }));
+    const wsVentas = XLSX.utils.json_to_sheet(ventasData.length ? ventasData : [{ "Sin datos": "" }]);
+    wsVentas["!cols"] = [8,12,22,12,35,12,12,12,15,15,15,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsVentas, "Ventas");
+
+    // ── HOJA 2: CLIENTES / CRM ───────────────────────────────────────────
+    const clientesData = (clientes || []).map(c => ({
+      "ID": c.id,
+      "Mascota": c.nombreMascota || "",
+      "Especie": c.especie || "",
+      "Raza": c.raza || "",
+      "Sexo": c.sexo || "",
+      "Tamaño": c.tamano || "",
+      "Fecha Nacimiento": c.fechaNacimiento || "",
+      "Color / Pelaje": c.color || "",
+      "Esterilizado": c.esterilizado ? "Sí" : "No",
+      "Propietario": c.nombrePropietario || "",
+      "Teléfono": c.telefono || "",
+      "Teléfono 2": c.telefono2 || "",
+      "Email": c.email || "",
+      "Dirección": c.direccion || "",
+      "Instagram": c.instagram || "",
+      "Cédula / ID": c.cedula || "",
+      "Alergias": c.alergias || "",
+      "Condiciones": c.condiciones || "",
+      "Medicamentos": c.medicamentos || "",
+      "Veterinario Externo": c.veterinarioExterno || "",
+      "Peso (kg)": c.pesoKg || "",
+      "Microchip #": c.microchip || "",
+      "Baños 2025": fmt(c.banos2025),
+      "Fecha Registro": c.fechaRegistro || "",
+      "Última Visita 2025": c.ultimaVisita2025 || "",
+      "Notas": c.notas || ""
+    }));
+    const wsClientes = XLSX.utils.json_to_sheet(clientesData.length ? clientesData : [{ "Sin datos": "" }]);
+    wsClientes["!cols"] = [8,20,10,14,8,18,14,14,10,22,14,14,22,28,16,16,18,18,18,18,10,14,10,12,14,30].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsClientes, "Clientes CRM");
+
+    // ── HOJA 3: GASTOS ──────────────────────────────────────────────────
+    const gastosData = (gastos || []).map(g => ({
+      "ID": g.id,
+      "Fecha": g.fecha || "",
+      "Categoría": g.categoria || "",
+      "Descripción": g.descripcion || "",
+      "Monto (RD$)": fmt(g.monto),
+      "Forma de Pago": g.formaPago || g.formapago || "",
+      "Proveedor": g.proveedor || "",
+      "Notas": g.notas || ""
+    }));
+    const wsGastos = XLSX.utils.json_to_sheet(gastosData.length ? gastosData : [{ "Sin datos": "" }]);
+    wsGastos["!cols"] = [8,12,14,35,12,15,18,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsGastos, "Gastos");
+
+    // ── HOJA 4: NÓMINA / PAGOS ──────────────────────────────────────────
+    const empMap = {};
+    (empleados || []).forEach(e => { empMap[e.id] = e.nombre; });
+    const nominaData = (pagosNom || []).map(p => ({
+      "ID": p.id,
+      "Mes": p.mes || "",
+      "Empleado": empMap[p.empleadoId] || p.empleadoId || "",
+      "Mensualidad (RD$)": fmt(p.mensualidad),
+      "Comisiones (RD$)": fmt(p.comisiones),
+      "Descuentos (RD$)": fmt(p.descuentos),
+      "Total Neto (RD$)": fmt(p.mensualidad) + fmt(p.comisiones) - fmt(p.descuentos),
+      "Notas": p.notas || ""
+    }));
+    const wsNomina = XLSX.utils.json_to_sheet(nominaData.length ? nominaData : [{ "Sin datos": "" }]);
+    wsNomina["!cols"] = [8,10,22,16,16,16,16,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsNomina, "Nómina");
+
+    // ── HOJA 5: EMPLEADOS ───────────────────────────────────────────────
+    const empData = (empleados || []).map(e => ({
+      "ID": e.id,
+      "Nombre": e.nombre || "",
+      "Cargo": e.cargo || "",
+      "Mensualidad (RD$)": fmt(e.mensualidad),
+      "Comisión %": e.comPct ? (e.comPct * 100) + "%" : "Fija",
+      "Tipo Comisión": e.comTipo || ""
+    }));
+    const wsEmp = XLSX.utils.json_to_sheet(empData.length ? empData : [{ "Sin datos": "" }]);
+    wsEmp["!cols"] = [8,22,28,16,12,14].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsEmp, "Empleados");
+
+    // ── HOJA 6: INVENTARIO ──────────────────────────────────────────────
+    const invData = (inventario || []).filter(p => !p.autoGenerado).map(p => ({
+      "ID": p.id,
+      "Producto": p.nombre || "",
+      "Categoría": p.categoria || "",
+      "Stock Actual": fmt(p.stock),
+      "Stock Mínimo": fmt(p.stockMin),
+      "Precio Compra (RD$)": fmt(p.precioCompra || p.costo),
+      "Precio Venta (RD$)": fmt(p.precioVenta || p.pventa),
+      "Proveedor": p.proveedor || "",
+      "Fecha Entrada": p.fechaEntrada || "",
+      "Notas": p.notas || ""
+    }));
+    const wsInv = XLSX.utils.json_to_sheet(invData.length ? invData : [{ "Sin datos": "" }]);
+    wsInv["!cols"] = [10,25,14,12,12,16,16,18,14,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsInv, "Inventario");
+
+    // ── HOJA 7: CITAS / AGENDA ──────────────────────────────────────────
+    const citasData = (citas || []).map(ci => ({
+      "ID": ci.id,
+      "Fecha": ci.fecha || "",
+      "Hora": ci.hora || "",
+      "Duración (min)": fmt(ci.duracion),
+      "Tipo": ci.tipo || "",
+      "Empleado": ci.empleado || "",
+      "Estado": ci.estado || "",
+      "Cliente": ci.nombreCliente || "",
+      "Mascota": ci.nombreMascota || "",
+      "Teléfono": ci.telefono || "",
+      "Servicio": ci.servicio || "",
+      "Precio (RD$)": fmt(ci.precio),
+      "En Espera": ci.enEspera ? "Sí" : "No",
+      "Notas": ci.notas || ""
+    }));
+    const wsCitas = XLSX.utils.json_to_sheet(citasData.length ? citasData : [{ "Sin datos": "" }]);
+    wsCitas["!cols"] = [10,12,8,12,14,16,12,20,20,14,20,12,10,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsCitas, "Agenda - Citas");
+
+    // ── HOJA 8: SEGUIMIENTOS ────────────────────────────────────────────
+    const segsData = (seguimientos || []).map(s => ({
+      "ID": s.id,
+      "Mascota": s.mascota || "",
+      "Propietario": s.propietario || "",
+      "Teléfono": s.telefono || "",
+      "Tipo": s.tipo || "",
+      "Frecuencia": s.frecuencia || "",
+      "Última Fecha": s.ultimaFecha || "",
+      "Próxima Fecha": s.proximaFecha || "",
+      "Activo": s.activo ? "Sí" : "No",
+      "Completado": s.completado ? "Sí" : "No",
+      "Notas": s.notas || ""
+    }));
+    const wsSegs = XLSX.utils.json_to_sheet(segsData.length ? segsData : [{ "Sin datos": "" }]);
+    wsSegs["!cols"] = [8,20,20,14,14,14,14,14,8,10,25].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsSegs, "Seguimientos");
+
+    // ── HOJA 9: CATÁLOGO DE SERVICIOS ───────────────────────────────────
+    const tarGroomData = (tarifasGrooming || []).map(t => ({
+      "ID": t.id,
+      "Área": "Grooming",
+      "Servicio": t.nombre || "",
+      "Precio (RD$)": fmt(t.precio),
+      "Comisión Alexander (RD$)": fmt(t.comision)
+    }));
+    const tarVetData = (tarifasVet || []).map(t => ({
+      "ID": t.id,
+      "Área": "Veterinaria",
+      "Servicio": t.nombre || "",
+      "Precio (RD$)": fmt(t.precio),
+      "Comisión Aylein (30%)": Math.round(fmt(t.precio) * 0.30),
+      "Comisión Valentina (40%)": Math.round(fmt(t.precio) * 0.40)
+    }));
+    const wsTar = XLSX.utils.json_to_sheet([...tarGroomData, ...tarVetData].length ? [...tarGroomData, ...tarVetData] : [{ "Sin datos": "" }]);
+    wsTar["!cols"] = [8,14,35,14,20,22].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsTar, "Catálogo Servicios");
+
+    // ── HOJA 10: RESUMEN GENERAL ────────────────────────────────────────
+    const totalVentas = (ventas || []).reduce((s, v) => s + fmt(v.total), 0);
+    const totalGastos2 = (gastos || []).reduce((s, g) => s + fmt(g.monto), 0);
+    const totalNomina2 = (pagosNom || []).reduce((s, p) => s + fmt(p.mensualidad) + fmt(p.comisiones) - fmt(p.descuentos), 0);
+    const resumenData = [
+      { "Indicador": "Total Ventas Históricas (RD$)", "Valor": fmt(totalVentas) },
+      { "Indicador": "Total Gastos Históricos (RD$)", "Valor": fmt(totalGastos2) },
+      { "Indicador": "Total Nómina Histórica (RD$)", "Valor": fmt(totalNomina2) },
+      { "Indicador": "Utilidad Estimada (RD$)", "Valor": fmt(totalVentas) - fmt(totalGastos2) - fmt(totalNomina2) },
+      { "Indicador": "", "Valor": "" },
+      { "Indicador": "Total Clientes Registrados", "Valor": (clientes || []).length },
+      { "Indicador": "Total Ventas (registros)", "Valor": (ventas || []).length },
+      { "Indicador": "Total Gastos (registros)", "Valor": (gastos || []).length },
+      { "Indicador": "Total Citas en Agenda", "Valor": (citas || []).length },
+      { "Indicador": "Total Productos Inventario", "Valor": (inventario || []).filter(p => !p.autoGenerado).length },
+      { "Indicador": "Total Empleados", "Valor": (empleados || []).length },
+      { "Indicador": "", "Valor": "" },
+      { "Indicador": "Fecha de exportación", "Valor": hoy2 },
+      { "Indicador": "Exportado desde", "Valor": "PetColinas · Plaza Las Colinas, SDO" }
+    ];
+    const wsRes = XLSX.utils.json_to_sheet(resumenData);
+    wsRes["!cols"] = [35, 20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsRes, "Resumen General");
+
+    // ── GENERAR ARCHIVO ─────────────────────────────────────────────────
+    const fechaHoy = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `PetColinas_Export_${fechaHoy}.xlsx`);
+    setExportando(false);
+    setExportado(true);
+    setTimeout(() => setExportado(false), 5000);
   }
-  function formatFecha(val) {
-    if (!val) return hoy();
-    // Excel serial number (e.g. 45678)
-    if (typeof val === "number" && val > 1000) {
-      const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-      if (!isNaN(d)) return d.toISOString().slice(0, 10);
-      return hoy();
-    }
-    if (val instanceof Date) return val.toISOString().slice(0, 10);
-    const s = String(val).trim();
-    // DD/MM/YYYY o D/M/YYYY
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("/");
-      return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    }
-    // DD-MM-YYYY o D-M-YYYY (guion en lugar de barra)
-    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("-");
-      return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    }
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    // YYYY/MM/DD
-    if (/^\d{4}\/\d{2}\/\d{2}$/.test(s)) return s.replace(/\//g, "-");
-    return hoy();
-  }
-  function mapearVentas(rows) {
-    const errs = [];
-    const mapped = [];
-    rows.forEach((row, i) => {
-      const n = i + 2;
-      const fecha = formatFecha(row["Fecha"] || row["fecha"] || row["FECHA"]);
-      const cliente = String(row["Cliente"] || row["cliente"] || row["CLIENTE"] || "").trim();
-      const area = String(row["Area"] || row["\xC1rea"] || row["area"] || row["AREA"] || "").toLowerCase().trim();
-      const descripcion = String(row["Descripcion"] || row["Descripci\xF3n"] || row["descripcion"] || row["SERVICIO"] || row["Servicio"] || "").trim();
-      const total = parseFloat(String(row["Total"] || row["total"] || row["TOTAL"] || "0").replace(/[^0-9.]/g, "")) || 0;
-      const comision = parseFloat(String(row["Comision"] || row["Comisi\xF3n"] || row["comision"] || "0").replace(/[^0-9.]/g, "")) || 0;
-      const formaPago = String(row["FormaPago"] || row["Forma de Pago"] || row["forma_pago"] || "efectivo").toLowerCase().trim() || "efectivo";
-      if (!cliente) {
-        errs.push(`Fila ${n}: falta Cliente`);
-        return;
-      }
-      if (!AREAS_VALIDAS.includes(area)) {
-        errs.push(`Fila ${n}: \xE1rea "${area}" inv\xE1lida. Usa: ${AREAS_VALIDAS.join(", ")}`);
-        return;
-      }
-      if (total <= 0) {
-        errs.push(`Fila ${n}: total debe ser mayor a 0`);
-        return;
-      }
-      mapped.push({ id: Date.now() + i + Math.random(), fecha, cliente, area, descripcion, total, comision, formaPago, recibidoPor: "Sistema" });
-    });
-    return { mapped, errs };
-  }
-  function mapearGastos(rows) {
-    const errs = [];
-    const mapped = [];
-    rows.forEach((row, i) => {
-      const n = i + 2;
-      const fecha = formatFecha(row["Fecha"] || row["fecha"] || row["FECHA"]);
-      const categoria = String(row["Categoria"] || row["Categor\xEDa"] || row["categoria"] || "otros").toLowerCase().trim();
-      const descripcion = String(row["Descripcion"] || row["Descripci\xF3n"] || row["descripcion"] || "").trim();
-      const monto = parseFloat(String(row["Monto"] || row["monto"] || row["Total"] || row["total"] || "0").replace(/[^0-9.]/g, "")) || 0;
-      const proveedor = String(row["Proveedor"] || row["proveedor"] || "").trim();
-      const formaPago = String(row["FormaPago"] || row["Forma de Pago"] || "efectivo").toLowerCase().trim() || "efectivo";
-      if (!descripcion) {
-        errs.push(`Fila ${n}: falta Descripcion`);
-        return;
-      }
-      if (monto <= 0) {
-        errs.push(`Fila ${n}: monto debe ser mayor a 0`);
-        return;
-      }
-      mapped.push({ id: Date.now() + i + Math.random(), fecha, categoria: CATEGORIAS_GASTO.includes(categoria) ? categoria : "otros", descripcion, monto, formaPago, proveedor });
-    });
-    return { mapped, errs };
-  }
-  function mapearClientes(rows) {
-    const errs = [];
-    const mapped = [];
-    rows.forEach((row, i) => {
-      const n = i + 2;
-      const nombreMascota = String(row["Mascota"] || row["NombreMascota"] || row["mascota"] || "").trim();
-      const nombrePropietario = String(row["Propietario"] || row["propietario"] || row["Due\xF1o"] || "").trim();
-      const telefono = String(row["Telefono"] || row["Tel\xE9fono"] || row["telefono"] || "").trim();
-      const especie = String(row["Especie"] || row["especie"] || "perro").toLowerCase().trim();
-      const raza = String(row["Raza"] || row["raza"] || "").trim();
-      if (!nombreMascota) {
-        errs.push(`Fila ${n}: falta nombre de Mascota`);
-        return;
-      }
-      if (!nombrePropietario) {
-        errs.push(`Fila ${n}: falta Propietario`);
-        return;
-      }
-      mapped.push({
-        id: "imp_" + Date.now() + i,
-        nombreMascota,
-        nombrePropietario,
-        telefono,
-        especie,
-        raza,
-        sexo: String(row["Sexo"] || row["sexo"] || "").toLowerCase(),
-        fechaRegistro: hoy(),
-        notas: String(row["Notas"] || row["notas"] || "").trim(),
-        alergias: String(row["Alergias"] || row["alergias"] || "").trim()
-      });
-    });
-    return { mapped, errs };
-  }
-  async function handleFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setPreview([]);
-    setErrores([]);
-    setResultado(null);
-    try {
-      const rows = await parseExcel(file);
-      if (rows.length === 0) {
-        setErrores(["El archivo est\xE1 vac\xEDo"]);
-        return;
-      }
-      let result;
-      if (tipo === "ventas") result = mapearVentas(rows);
-      else if (tipo === "gastos") result = mapearGastos(rows);
-      else if (tipo === "clientes") result = mapearClientes(rows);
-      setPreview(result.mapped);
-      setErrores(result.errs);
-    } catch (err) {
-      setErrores(["Error leyendo el archivo: " + err.message]);
-    }
-    e.target.value = "";
-  }
-  async function confirmarImportacion() {
-    if (preview.length === 0) return;
-    setImportando(true);
-    try {
-      if (tipo === "ventas") await setVentas((v) => [...v, ...preview]);
-      else if (tipo === "gastos") await setGastos((g) => [...g, ...preview]);
-      else if (tipo === "clientes") await setClientes((c) => [...c, ...preview]);
-      setResultado({ ok: preview.length, tipo });
-      setPreview([]);
-    } catch (err) {
-      setErrores(["Error guardando: " + err.message]);
-    }
-    setImportando(false);
-  }
-  const TIPOS = [
-    { id: "ventas", icon: "\u{1F4B0}", label: "Ventas / Ingresos", cols: ["Fecha", "Cliente", "Area", "Descripcion", "Total", "Comision", "FormaPago"] },
-    { id: "gastos", icon: "\u{1F4B8}", label: "Gastos / Facturas", cols: ["Fecha", "Categoria", "Descripcion", "Monto", "Proveedor", "FormaPago"] },
-    { id: "clientes", icon: "\u{1F43E}", label: "Clientes Nuevos", cols: ["Mascota", "Propietario", "Telefono", "Especie", "Raza", "Sexo", "Alergias", "Notas"] }
+
+  const HOJAS = [
+    { icon: "💰", nombre: "Ventas", desc: "Todas las ventas con cliente, área, servicio, total, comisión, forma de pago", count: (ventas||[]).length },
+    { icon: "🐾", nombre: "Clientes CRM", desc: "Fichas completas: mascota, propietario, contacto, cédula, salud, vacunas", count: (clientes||[]).length },
+    { icon: "📉", nombre: "Gastos", desc: "Todos los gastos con categoría, monto, proveedor y forma de pago", count: (gastos||[]).length },
+    { icon: "💼", nombre: "Nómina", desc: "Pagos a empleados por mes: mensualidad, comisiones y descuentos", count: (pagosNom||[]).length },
+    { icon: "👥", nombre: "Empleados", desc: "Lista de empleados con cargo, mensualidad y estructura de comisiones", count: (empleados||[]).length },
+    { icon: "📦", nombre: "Inventario", desc: "Productos con stock, precios de compra/venta y proveedor", count: (inventario||[]).filter(p=>!p.autoGenerado).length },
+    { icon: "📅", nombre: "Agenda - Citas", desc: "Todas las citas con fecha, hora, estado, cliente y servicio", count: (citas||[]).length },
+    { icon: "🔔", nombre: "Seguimientos", desc: "Seguimientos activos y completados con fechas y frecuencia", count: (seguimientos||[]).length },
+    { icon: "⚙️", nombre: "Catálogo Servicios", desc: "Tarifas de grooming y veterinaria con precios y comisiones", count: ((tarifasGrooming||[]).length + (tarifasVet||[]).length) },
+    { icon: "📊", nombre: "Resumen General", desc: "Totales históricos de ventas, gastos, nómina y utilidad estimada", count: null }
   ];
-  const tipoActual = TIPOS.find((t) => t.id === tipo);
-  return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: C.negro, marginBottom: 4 } }, "\u{1F4E5} Importar desde Excel"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14 } }, "Sube tu archivo Excel diario y los datos se actualizan en todas las PCs autom\xE1ticamente.")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 24 } }, TIPOS.map((t) => /* @__PURE__ */ React.createElement(
-    "div",
-    {
-      key: t.id,
-      onClick: () => {
-        setTipo(t.id);
-        setPreview([]);
-        setErrores([]);
-        setResultado(null);
-      },
-      style: {
-        padding: "16px 12px",
-        borderRadius: 12,
-        border: `2px solid ${tipo === t.id ? C.verde : "#e0e4e8"}`,
-        background: tipo === t.id ? C.verdeL : "#fff",
-        cursor: "pointer",
-        textAlign: "center",
-        transition: "all 0.2s"
-      }
+
+  return React.createElement("div", { style: { maxWidth: 800, margin: "0 auto" } },
+    React.createElement("div", { style: { marginBottom: 24 } },
+      React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, margin: 0 } }, "\uD83D\uDCE4 Exportar a Excel"),
+      React.createElement("div", { style: { fontSize: 13, color: "#5a6472", marginTop: 4 } }, "Genera un archivo Excel completo con todos los datos del sistema, organizados en hojas separadas.")
+    ),
+    exportado && React.createElement("div", { style: { background: "#d4edda", border: "1.5px solid #1a6b3a", borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 700, color: "#1a6b3a" } },
+      "\uD83C\uDF89 \xA1Exportaci\xF3n exitosa! Revisa tu carpeta de descargas."
+    ),
+    React.createElement("div", { style: { background: "#fff", borderRadius: 14, border: "1.5px solid #e0e4e8", marginBottom: 24, overflow: "hidden" } },
+      React.createElement("div", { style: { background: "#1a6b3a", padding: "14px 20px" } },
+        React.createElement("div", { style: { color: "#fff", fontWeight: 700, fontSize: 14 } }, "\uD83D\uDCCB El archivo Excel contiene " + HOJAS.length + " hojas:")
+      ),
+      HOJAS.map((h, i) => React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: i < HOJAS.length - 1 ? "1px solid #f4f5f6" : "none", background: i % 2 === 0 ? "#fff" : "#fafbfc" } },
+        React.createElement("div", { style: { fontSize: 22, width: 32, textAlign: "center", flexShrink: 0 } }, h.icon),
+        React.createElement("div", { style: { flex: 1 } },
+          React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "#1a1d23" } }, h.nombre),
+          React.createElement("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2 } }, h.desc)
+        ),
+        h.count !== null && React.createElement("div", { style: { background: "#e6f4ec", color: "#1a6b3a", borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 700, flexShrink: 0 } }, h.count + " registros")
+      ))
+    ),
+    React.createElement("button", {
+      onClick: exportar,
+      disabled: exportando,
+      style: { width: "100%", background: exportando ? "#94a3b8" : "#1a6b3a", color: "#fff", border: "none", borderRadius: 12, padding: "16px 0", fontSize: 16, fontWeight: 800, cursor: exportando ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "background .2s" }
     },
-    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, marginBottom: 6 } }, t.icon),
-    /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: tipo === t.id ? C.verde : C.negro } }, t.label)
-  ))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 } }, "\u{1F4CB} Columnas requeridas para: ", tipoActual.label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, tipoActual.cols.map((col) => /* @__PURE__ */ React.createElement("span", { key: col, style: { background: C.azulL, color: C.azul, borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600 } }, col))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, fontSize: 12, color: C.grisd } }, "\u{1F4A1} La primera fila del Excel debe tener estos nombres de columnas. Las columnas adicionales se ignoran.")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: ".xlsx,.xls,.csv", onChange: handleFile, style: { display: "none" } }), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: () => fileRef.current.click(),
-      style: {
-        background: C.verde,
-        color: "#fff",
-        border: "none",
-        borderRadius: 10,
-        padding: "14px 28px",
-        fontSize: 15,
-        fontWeight: 700,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: 10
-      }
-    },
-    "\u{1F4C2} Seleccionar archivo Excel / CSV"
-  )), errores.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fdeaea", border: `1px solid ${C.rojo}`, borderRadius: 10, padding: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.rojo, marginBottom: 8 } }, "\u26A0\uFE0F ", errores.length, " error(es) encontrado(s):"), errores.slice(0, 10).map((e, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { fontSize: 13, color: C.rojo, marginBottom: 4 } }, "\u2022 ", e)), errores.length > 10 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "...y ", errores.length - 10, " m\xE1s")), preview.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 12, color: C.verde } }, "\u2705 ", preview.length, " registro(s) listos para importar"), /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, Object.keys(preview[0]).filter((k) => !["id"].includes(k)).slice(0, 6).map((k) => /* @__PURE__ */ React.createElement("th", { key: k, style: { padding: "8px 10px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: "2px solid #e0e4e8" } }, k)))), /* @__PURE__ */ React.createElement("tbody", null, preview.slice(0, 5).map((row, i) => /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: "1px solid #f4f5f6" } }, Object.entries(row).filter(([k]) => !["id"].includes(k)).slice(0, 6).map(([k, v]) => /* @__PURE__ */ React.createElement("td", { key: k, style: { padding: "8px 10px", color: C.negro } }, typeof v === "number" ? RD(v) : String(v).slice(0, 30))))))), preview.length > 5 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 8 } }, "...y ", preview.length - 5, " filas m\xE1s")), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: confirmarImportacion,
-      disabled: importando,
-      style: {
-        background: importando ? C.grisd : C.verde,
-        color: "#fff",
-        border: "none",
-        borderRadius: 10,
-        padding: "12px 24px",
-        fontSize: 14,
-        fontWeight: 700,
-        cursor: importando ? "not-allowed" : "pointer"
-      }
-    },
-    importando ? "\u23F3 Importando..." : `\u{1F680} Confirmar importaci\xF3n (${preview.length} registros)`
-  )), resultado && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, border: `1px solid ${C.verde}`, borderRadius: 10, padding: 20, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 36, marginBottom: 8 } }, "\u{1F389}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, color: C.verde, marginBottom: 4 } }, "\xA1Importaci\xF3n exitosa!"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14 } }, resultado.ok, " registro(s) de ", resultado.tipo, " guardados en la nube. Todas las PCs ya tienen los datos actualizados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4D6} C\xF3mo preparar tu Excel diario"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.negro, lineHeight: 1.7 } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "1. Abre tu Excel de ventas del d\xEDa"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "2. Aseg\xFArate que la primera fila tenga los nombres de columnas correctos"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "3. Para ", /* @__PURE__ */ React.createElement("strong", null, "Area"), " en ventas usa exactamente: ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "grooming"), ", ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "farmacia"), ", ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "veterinaria"), " o ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "medicamentos")), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "4. Para ", /* @__PURE__ */ React.createElement("strong", null, "Fecha"), " usa formato DD/MM/YYYY o YYYY-MM-DD"), /* @__PURE__ */ React.createElement("div", null, "5. Sube el archivo aqu\xED y confirma \u2014 listo \u{1F389}"))));
+      exportando ? "\u23F3 Generando archivo..." : "\uD83D\uDCE5 Descargar Excel completo"
+    ),
+    React.createElement("div", { style: { marginTop: 14, fontSize: 12, color: "#94a3b8", textAlign: "center" } },
+      "El archivo se descarga directamente en tu computadora. No se sube ning\xFAn dato a internet."
+    )
+  );
 }
+
 function PetColinas() {
   const [session, setSession] = useState(() => {
     try {
@@ -3678,7 +3703,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab, citas }),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
