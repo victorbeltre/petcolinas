@@ -641,7 +641,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "09 abr 2026 · #2 tarifas Supa · #5 fichas · #7 facturas RNC";
+const LAST_UPDATE = "12 abr 2026 · Voz IA integrada (HF Spaces + Claude + Telegram)";
 const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
@@ -902,6 +902,7 @@ const TABS = [
   { id: "facturas", icon: "\u{1F4C4}", label: "Facturas" },
   { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
   { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
+  { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
 const VENTAS_SEED = [
@@ -3010,6 +3011,284 @@ Mascota: ${f.mascota}
     );
   }))))));
 }
+// ─────────────────────────────────────────────────────────────
+// VOZ IA — Generador de voz y guiones con IA para PetColinas
+// ─────────────────────────────────────────────────────────────
+function VozIA() {
+  const e = React.createElement;
+  const C = COLORS;
+
+  // Presets de guiones
+  const GUIONES_PRESET = {
+    "\uD83D\uDC3E Viral PetColinas (60s)": "La mayoria de los duenos de mascotas en Santo Domingo estan cometiendo un error sin saberlo.\n\nLlevan a sus perros y gatos a cualquier sitio. Sin veterinario fijo. Sin historial medico. Sin seguimiento.\nY cuando algo pasa... nadie sabe nada.\n\nEn PetColinas, en Plaza Las Colinas, hacemos las cosas diferente.\nCada mascota tiene su ficha medica completa: vacunas, alergias, historial de consultas.\nNuestros veterinarios dan seguimiento real.\nY el grooming no es solo un bano, es un spa de calidad, con manos que saben lo que hacen.\n\nY aqui viene lo mejor: cada diez banos de grooming, el siguiente es completamente gratis.\nPorque los que cuidan de verdad a su mascota merecen que alguien los cuide a ellos tambien.\n\nLas citas se llenan rapido. Escribenos hoy y reserva la tuya.\nTu mascota ya lo esta esperando.\n\nPetColinas. Donde tu mascota es familia.",
+    "\u2702\uFE0F Grooming Express (30s)": "Tu perro necesita un bano y no sabes a donde llevarlo?\n\nEn PetColinas tenemos grooming profesional con los mejores productos.\nBanos, cortes, limpieza de oidos, corte de unas y mas.\n\nY si acumulas diez banos, el siguiente te sale gratis.\n\nEscribenos ahora y agenda tu cita.\nPetColinas, Plaza Las Colinas, Santo Domingo Oeste.",
+    "\uD83C\uDFE5 Veterinaria (30s)": "Tu mascota no puede decirte cuando le duele algo.\nPero nosotros si podemos saberlo.\n\nEn PetColinas contamos con veterinarios especializados.\nConsultas, vacunas, cirugia y seguimiento medico completo.\n\nNo esperes a que sea una emergencia.\nAgenda una consulta hoy en PetColinas, Plaza Las Colinas.",
+    "\uD83C\uDFAF Promo Especial (15s)": "Atencion duenos de mascotas en Las Colinas.\n\nEsta semana tenemos promocion especial en banos de grooming.\nAgenda tu cita hoy.\n\nPetColinas. Donde tu mascota es familia.",
+    "\u270F\uFE0F Guion personalizado": "",
+  };
+
+  // Emociones / estilos de voz
+  const EMOCIONES = {
+    "\uD83D\uDE0A Natural": "",
+    "\uD83D\uDD25 Entusiasta": "energetic, enthusiastic, upbeat, lively pace",
+    "\u2764\uFE0F Calido y cercano": "warm, friendly, conversational, gentle and close",
+    "\uD83D\uDCBC Profesional": "clear, professional, confident, measured pace",
+    "\u26A1 Urgente": "urgent, compelling, slightly faster pace",
+    "\uD83D\uDE04 Alegre": "cheerful, happy, bright and positive tone",
+    "\uD83C\uDFAD Dramatico": "dramatic, expressive, emotional, impactful",
+    "\uD83D\uDE4C Motivacional": "motivational, inspiring, powerful and confident",
+    "\uD83E\uDD1D Cercano dominicano": "warm, natural Dominican Spanish flow, casual and friendly",
+  };
+
+  const TIPOS_GUION = ["Viral gancho fuerte","Grooming y estetica","Veterinaria y salud","Promocion o descuento","Programa de lealtad","Testimonio de cliente","Educativo tips de salud","Fecha especial"];
+
+  // Estado
+  const [preset, setPreset] = React.useState("\uD83D\uDC3E Viral PetColinas (60s)");
+  const [texto, setTexto] = React.useState(GUIONES_PRESET["\uD83D\uDC3E Viral PetColinas (60s)"]);
+  const [emocion, setEmocion] = React.useState("\uD83D\uDE0A Natural");
+  const [intensidad, setIntensidad] = React.useState(2.0);
+  const [instruccionVoz, setInstruccionVoz] = React.useState("");
+  const [nombreArchivo, setNombreArchivo] = React.useState("video-viral");
+  const [vozRefB64, setVozRefB64] = React.useState(() => localStorage.getItem("pc_voz_ref_b64") || "");
+  const [vozRefNombre, setVozRefNombre] = React.useState(() => localStorage.getItem("pc_voz_ref_nombre") || "");
+  const [audioResultado, setAudioResultado] = React.useState("");
+  const [generando, setGenerando] = React.useState(false);
+  const [estado, setEstado] = React.useState("");
+  const [tipoGuion, setTipoGuion] = React.useState("Viral gancho fuerte");
+  const [duracion, setDuracion] = React.useState("60 segundos");
+  const [instruccionIA, setInstruccionIA] = React.useState("");
+  const [generandoGuion, setGenerandoGuion] = React.useState(false);
+  const [anthropicKey, setAnthropicKey] = React.useState(() => localStorage.getItem("pc_anthropic_key") || "");
+  const [tgToken] = React.useState(() => localStorage.getItem("pc_tg_token") || "");
+  const [tgChatId] = React.useState(() => localStorage.getItem("pc_tg_chat_id") || "");
+  const [enviandoTg, setEnviandoTg] = React.useState(false);
+
+  // Guardar API key en localStorage al cambiar
+  React.useEffect(() => { if (anthropicKey) localStorage.setItem("pc_anthropic_key", anthropicKey); }, [anthropicKey]);
+
+  // Cambiar preset → actualizar texto
+  const cambiarPreset = (p) => { setPreset(p); setTexto(GUIONES_PRESET[p] || ""); };
+
+  // Subir audio de referencia
+  const subirVozRef = (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    setEstado("Cargando audio de referencia...");
+    const reader = new FileReader();
+    reader.onload = (e2) => {
+      const b64 = e2.target.result;
+      setVozRefB64(b64);
+      setVozRefNombre(file.name);
+      localStorage.setItem("pc_voz_ref_b64", b64);
+      localStorage.setItem("pc_voz_ref_nombre", file.name);
+      setEstado("Audio de referencia cargado: " + file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Generar guion con Claude API
+  const generarGuionIA = async () => {
+    if (!anthropicKey.trim()) { setEstado("\u274C Necesitas configurar la Claude API Key abajo."); return; }
+    setGenerandoGuion(true);
+    setEstado("Generando guion con IA...");
+    try {
+      const palabras = duracion === "15 segundos" ? 35 : duracion === "30 segundos" ? 70 : 140;
+      const prompt = `Eres un experto en marketing viral para Republica Dominicana.\nEscribe un guion de voz en off de ${duracion} (${palabras} palabras aprox) para PetColinas.\n\nDATOS: Clinica veterinaria + grooming en Plaza Las Colinas, Santo Domingo Oeste, RD.\nServicios: banos, cortes, veterinaria, vacunas, historial medico digital.\nPrograma lealtad: 10 banos = 1 bano gratis. Slogan: "Donde tu mascota es familia".\n\nTIPO: ${tipoGuion}\n${instruccionIA.trim() ? "EXTRA: " + instruccionIA : ""}\n\nREGLAS: Empieza con gancho que PARE el scroll en 3 segundos. Tono calido, dominicano. Termina con llamado a la accion. Solo texto puro para leer en voz alta, sin asteriscos ni emojis. Aproximadamente ${palabras} palabras.`;
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey.trim(),
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-calls": "true",
+        },
+        body: JSON.stringify({ model: "claude-haiku-4-5", max_tokens: 600, messages: [{ role: "user", content: prompt }] }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message);
+      const guion = data.content[0].text.trim();
+      setTexto(guion);
+      setPreset("\u270F\uFE0F Guion personalizado");
+      setEstado("\u2705 Guion generado. Editalo si quieres y luego genera la voz.");
+    } catch (err) {
+      setEstado("\u274C Error: " + err.message);
+    }
+    setGenerandoGuion(false);
+  };
+
+  // Generar voz via HuggingFace Spaces
+  const generarVoz = async () => {
+    if (!vozRefB64) { setEstado("\u274C Sube tu audio de referencia primero."); return; }
+    if (!texto.trim()) { setEstado("\u274C El guion esta vacio."); return; }
+    setGenerando(true);
+    setAudioResultado("");
+    setEstado("Conectando al servidor VoxCPM...");
+    try {
+      const estilo = EMOCIONES[emocion] || "";
+      const control = [estilo, instruccionVoz.trim()].filter(Boolean).join(", ");
+      setEstado("Clonando tu voz" + (emocion !== "\uD83D\uDE0A Natural" ? " [" + emocion + "]" : "") + "... (30-120 segundos)");
+      const resp = await fetch("https://openbmb-voxcpm-demo.hf.space/run/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [ texto, control, { data: vozRefB64, name: "voz_ref.wav" }, false, "", parseFloat(intensidad), false, false ],
+          fn_index: 0,
+        }),
+      });
+      if (!resp.ok) throw new Error("Error del servidor: " + resp.status);
+      const result = await resp.json();
+      const audioData = result.data && result.data[0];
+      if (!audioData) throw new Error("No se recibio audio del servidor.");
+      const src = typeof audioData === "string" ? audioData : (audioData.data || audioData.url || "");
+      if (!src) throw new Error("Formato de respuesta inesperado.");
+      setAudioResultado(src);
+      setEstado("\u2705 Audio generado. Puedes escucharlo, descargarlo o enviarlo por Telegram.");
+    } catch (err) {
+      setEstado("\u274C Error: " + err.message + "\n\nEl servidor puede estar ocupado. Intenta de nuevo en unos minutos.");
+    }
+    setGenerando(false);
+  };
+
+  // Descargar audio
+  const descargar = () => {
+    const a = document.createElement("a");
+    a.href = audioResultado;
+    a.download = (nombreArchivo || "audio-petcolinas") + ".wav";
+    a.click();
+  };
+
+  // Enviar por Telegram
+  const enviarTelegram = async () => {
+    if (!audioResultado) { setEstado("Genera el audio primero."); return; }
+    setEnviandoTg(true);
+    setEstado("Enviando por Telegram...");
+    try {
+      // Convertir base64/URL a Blob
+      const fetchResp = await fetch(audioResultado);
+      const blob = await fetchResp.blob();
+      const formData = new FormData();
+      formData.append("chat_id", tgChatId);
+      formData.append("caption", "\uD83C\uDFA4 Audio PetColinas listo - generado con Voz IA");
+      formData.append("audio", blob, (nombreArchivo || "audio") + ".wav");
+      const tgResp = await fetch(`https://api.telegram.org/bot${tgToken}/sendAudio`, { method: "POST", body: formData });
+      const tgData = await tgResp.json();
+      if (tgData.ok) setEstado("\u2705 Audio enviado a Telegram.");
+      else throw new Error(tgData.description || "Error desconocido");
+    } catch (err) {
+      setEstado("\u274C Telegram: " + err.message);
+    }
+    setEnviandoTg(false);
+  };
+
+  // Estilos reutilizables
+  const card = { background: C.card, border: "1px solid " + C.border, borderRadius: 14, padding: 20, marginBottom: 16 };
+  const label = { display: "block", fontSize: 12, color: C.grisd, marginBottom: 6, fontWeight: 600 };
+  const input = { width: "100%", background: C.fondo, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.texto, fontSize: 13, boxSizing: "border-box" };
+  const btn = (bg, disabled) => ({ background: disabled ? "#333" : bg, color: "white", border: "none", borderRadius: 10, padding: "11px 20px", fontSize: 14, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1, width: "100%" });
+
+  return e("div", { style: { padding: "24px 20px", maxWidth: 1100, margin: "0 auto" } },
+    // Titulo
+    e("div", { style: { textAlign: "center", marginBottom: 24 } },
+      e("h2", { style: { fontSize: 26, fontWeight: 800, background: "linear-gradient(135deg,#a78bfa,#60a5fa,#34d399)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", margin: 0 } }, "\uD83C\uDFA4 Voz IA — PetColinas"),
+      e("p", { style: { color: C.grisd, fontSize: 13, marginTop: 6 } }, "Genera guiones con IA \u00B7 Clona tu voz \u00B7 Env\xEDa por Telegram")
+    ),
+    e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
+
+      // ── COLUMNA IZQUIERDA ──────────────────────────────────
+      e("div", null,
+        // Guion
+        e("div", { style: card },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: C.texto } }, "\uD83D\uDCCB Guion"),
+          e("label", { style: label }, "Preset"),
+          e("select", { style: { ...input, marginBottom: 10 }, value: preset, onChange: ev => cambiarPreset(ev.target.value) },
+            Object.keys(GUIONES_PRESET).map(k => e("option", { key: k, value: k }, k))
+          ),
+          e("label", { style: label }, "Texto (editable)"),
+          e("textarea", { style: { ...input, minHeight: 180, resize: "vertical" }, value: texto, onChange: ev => setTexto(ev.target.value) }),
+          e("label", { style: { ...label, marginTop: 10 } }, "Nombre del archivo"),
+          e("input", { style: input, value: nombreArchivo, onChange: ev => setNombreArchivo(ev.target.value), placeholder: "video-viral" })
+        ),
+
+        // Generar guion con IA
+        e("div", { style: { ...card, border: "1px solid #065f46", background: "#0a1a13" } },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: "#34d399" } }, "\u2728 Generar guion con IA"),
+          e("label", { style: label }, "Tipo de guion"),
+          e("select", { style: { ...input, marginBottom: 10 }, value: tipoGuion, onChange: ev => setTipoGuion(ev.target.value) },
+            TIPOS_GUION.map(t => e("option", { key: t, value: t }, t))
+          ),
+          e("label", { style: label }, "Duracion"),
+          e("div", { style: { display: "flex", gap: 8, marginBottom: 10 } },
+            ["15 segundos", "30 segundos", "60 segundos"].map(d =>
+              e("button", { key: d, onClick: () => setDuracion(d), style: { flex: 1, padding: "7px 4px", borderRadius: 8, border: "1px solid " + (duracion === d ? "#34d399" : C.border), background: duracion === d ? "#065f46" : C.fondo, color: duracion === d ? "#34d399" : C.grisd, fontSize: 12, fontWeight: 600, cursor: "pointer" } }, d)
+            )
+          ),
+          e("label", { style: label }, "Instrucciones extra (opcional)"),
+          e("input", { style: { ...input, marginBottom: 12 }, value: instruccionIA, onChange: ev => setInstruccionIA(ev.target.value), placeholder: 'Ej: "para San Valentin", "mencionar precio RD$500"' }),
+          e("button", { onClick: generarGuionIA, disabled: generandoGuion, style: btn("linear-gradient(135deg,#059669,#0d9488)", generandoGuion) },
+            generandoGuion ? "Generando..." : "\u2728 Crear guion con IA"
+          )
+        )
+      ),
+
+      // ── COLUMNA DERECHA ─────────────────────────────────────
+      e("div", null,
+        // Voz y emocion
+        e("div", { style: card },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: C.texto } }, "\uD83C\uDFA4 Voz y Emocion"),
+
+          // Audio de referencia
+          e("label", { style: label }, "Audio de referencia (tu voz)"),
+          e("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12 } },
+            e("label", { style: { ...btn("linear-gradient(135deg,#7c3aed,#2563eb)", false), display: "inline-block", textAlign: "center", cursor: "pointer", padding: "9px 16px", fontSize: 13 } },
+              vozRefNombre ? "\u2705 " + vozRefNombre.slice(0, 28) + "..." : "\uD83D\uDCC2 Subir audio de voz",
+              e("input", { type: "file", accept: "audio/*", onChange: subirVozRef, style: { display: "none" } })
+            )
+          ),
+          vozRefNombre && e("p", { style: { fontSize: 11, color: "#34d399", margin: "0 0 10px" } }, "Guardado en el navegador. No necesitas subirlo de nuevo."),
+
+          // Emocion
+          e("label", { style: label }, "Emocion de la voz"),
+          e("select", { style: { ...input, marginBottom: 10 }, value: emocion, onChange: ev => setEmocion(ev.target.value) },
+            Object.keys(EMOCIONES).map(k => e("option", { key: k, value: k }, k))
+          ),
+
+          // Intensidad
+          e("label", { style: label }, "Intensidad del estilo: " + parseFloat(intensidad).toFixed(1)),
+          e("input", { type: "range", min: 1, max: 3, step: 0.1, value: intensidad, onChange: ev => setIntensidad(ev.target.value), style: { width: "100%", marginBottom: 10, accentColor: "#a78bfa" } }),
+
+          // Instruccion custom
+          e("label", { style: label }, "Instruccion de voz (opcional)"),
+          e("input", { style: { ...input, marginBottom: 14 }, value: instruccionVoz, onChange: ev => setInstruccionVoz(ev.target.value), placeholder: '"habla mas despacio al final", "con pausa dramatica"' }),
+
+          // Boton generar
+          e("button", { onClick: generarVoz, disabled: generando, style: btn("linear-gradient(135deg,#7c3aed,#2563eb)", generando) },
+            generando ? "\u23F3 Generando voz..." : "\uD83C\uDFA4 Generar con mi voz"
+          )
+        ),
+
+        // Resultado
+        e("div", { style: card },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: C.texto } }, "\uD83D\uDD0A Resultado"),
+          estado && e("div", { style: { background: estado.includes("\u274C") ? "#2a0f0f" : "#0f2a1a", border: "1px solid " + (estado.includes("\u274C") ? "#7f1d1d" : "#065f46"), borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: estado.includes("\u274C") ? "#fca5a5" : "#86efac", whiteSpace: "pre-wrap" } }, estado),
+          audioResultado && e("div", null,
+            e("audio", { controls: true, src: audioResultado, style: { width: "100%", marginBottom: 12 } }),
+            e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+              e("button", { onClick: descargar, style: btn("#1d4ed8", false) }, "\u2B07\uFE0F Descargar .wav"),
+              e("button", { onClick: enviarTelegram, disabled: enviandoTg, style: btn("#0f62fe", enviandoTg) }, enviandoTg ? "Enviando..." : "\u2708\uFE0F Enviar Telegram")
+            )
+          ),
+          !audioResultado && !generando && e("div", { style: { textAlign: "center", padding: "30px 0", color: C.grisd, fontSize: 13 } }, "El audio generado aparecera aqui"),
+
+          // Config API key
+          e("div", { style: { borderTop: "1px solid " + C.border, marginTop: 16, paddingTop: 14 } },
+            e("label", { style: { ...label, marginBottom: 6 } }, "\uD83D\uDD11 Claude API Key"),
+            e("input", { type: "password", style: input, value: anthropicKey, onChange: ev => setAnthropicKey(ev.target.value), placeholder: "sk-ant-..." })
+          )
+        )
+      )
+    )
+  );
+}
 function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventario, citas, seguimientos, tarifasGrooming, tarifasVet }) {
   const [exportando, setExportando] = useState(false);
   const [exportado, setExportado] = useState(false);
@@ -3705,6 +3984,7 @@ function PetColinasApp({ session, onLogout }) {
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab, citas }),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
+    tab === "vozia" && React.createElement(VozIA, null),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
       setTab, setCrmClienteInicial
