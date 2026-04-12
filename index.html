@@ -3059,12 +3059,15 @@ function VozIA() {
   const [instruccionIA, setInstruccionIA] = React.useState("");
   const [generandoGuion, setGenerandoGuion] = React.useState(false);
   const [anthropicKey, setAnthropicKey] = React.useState(() => localStorage.getItem("pc_anthropic_key") || "");
-  const [tgToken] = React.useState(() => localStorage.getItem("pc_tg_token") || "");
-  const [tgChatId] = React.useState(() => localStorage.getItem("pc_tg_chat_id") || "");
+  const [tgToken, setTgToken] = React.useState(() => localStorage.getItem("pc_tg_token") || "");
+  const [tgChatId, setTgChatId] = React.useState(() => localStorage.getItem("pc_tg_chat_id") || "");
   const [enviandoTg, setEnviandoTg] = React.useState(false);
+  const [mostrarConfig, setMostrarConfig] = React.useState(false);
 
-  // Guardar API key en localStorage al cambiar
+  // Guardar credenciales en localStorage al cambiar
   React.useEffect(() => { if (anthropicKey) localStorage.setItem("pc_anthropic_key", anthropicKey); }, [anthropicKey]);
+  React.useEffect(() => { localStorage.setItem("pc_tg_token", tgToken); }, [tgToken]);
+  React.useEffect(() => { localStorage.setItem("pc_tg_chat_id", tgChatId); }, [tgChatId]);
 
   // Cambiar preset → actualizar texto
   const cambiarPreset = (p) => { setPreset(p); setTexto(GUIONES_PRESET[p] || ""); };
@@ -3279,10 +3282,20 @@ function VozIA() {
           ),
           !audioResultado && !generando && e("div", { style: { textAlign: "center", padding: "30px 0", color: C.grisd, fontSize: 13 } }, "El audio generado aparecera aqui"),
 
-          // Config API key
+          // Config credenciales
           e("div", { style: { borderTop: "1px solid " + C.border, marginTop: 16, paddingTop: 14 } },
-            e("label", { style: { ...label, marginBottom: 6 } }, "\uD83D\uDD11 Claude API Key"),
-            e("input", { type: "password", style: input, value: anthropicKey, onChange: ev => setAnthropicKey(ev.target.value), placeholder: "sk-ant-..." })
+            e("button", { onClick: () => setMostrarConfig(!mostrarConfig), style: { background: "none", border: "none", color: C.grisd, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: mostrarConfig ? 12 : 0 } },
+              (mostrarConfig ? "\u25BC " : "\u25B6 ") + "\u2699\uFE0F Configurar credenciales"
+            ),
+            mostrarConfig && e("div", null,
+              e("label", { style: { ...label, marginTop: 10, marginBottom: 6 } }, "\uD83D\uDD11 Claude API Key"),
+              e("input", { type: "password", style: { ...input, marginBottom: 10 }, value: anthropicKey, onChange: ev => setAnthropicKey(ev.target.value), placeholder: "sk-ant-..." }),
+              e("label", { style: { ...label, marginBottom: 6 } }, "\uD83D\uDCF1 Telegram Bot Token"),
+              e("input", { type: "password", style: { ...input, marginBottom: 10 }, value: tgToken, onChange: ev => setTgToken(ev.target.value), placeholder: "8626278401:AAE..." }),
+              e("label", { style: { ...label, marginBottom: 6 } }, "\uD83D\uDCEC Telegram Chat ID"),
+              e("input", { style: input, value: tgChatId, onChange: ev => setTgChatId(ev.target.value), placeholder: "459187427" }),
+              tgToken && tgChatId && e("p", { style: { fontSize: 11, color: "#34d399", marginTop: 8, marginBottom: 0 } }, "\u2705 Telegram configurado — se guardar\xE1 autom\xE1ticamente.")
+            )
           )
         )
       )
