@@ -3149,49 +3149,51 @@ function VozIA() {
       const uploadedPath = Array.isArray(upPaths) ? upPaths[0] : upPaths;
       if (!uploadedPath) throw new Error("El servidor no devolvio ruta del archivo.");
 
-      // 2. Unirse a la cola
+      // 2. Llamar a la API nombrada de Gradio 6 (/call/generate)
       const estilo = EMOCIONES[emocion] || "";
       const control = [estilo, instruccionVoz.trim()].filter(Boolean).join(", ");
       setEstado("Clonando tu voz" + (emocion !== "\uD83D\uDE0A Natural" ? " [" + emocion + "]" : "") + "... (30-120 seg)");
-      const joinResp = await fetch(BASE + "/queue/join", {
+      const callResp = await fetch(BASE + "/call/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fn_index: 2,
-          data: [ texto, control, { path: uploadedPath, orig_name: fileName, mime_type: mimeType }, false, "", parseFloat(intensidad), false, false ],
-          session_hash: sessionHash,
-          event_data: null
+          data: [ texto, control, { path: uploadedPath, orig_name: fileName, mime_type: mimeType }, false, "", parseFloat(intensidad), false, false ]
         })
       });
-      if (!joinResp.ok) throw new Error("Error al unirse a la cola: " + joinResp.status);
+      if (!callResp.ok) {
+        const errTxt = await callResp.text().catch(() => callResp.status);
+        throw new Error("Error al llamar al servidor (" + callResp.status + "): " + errTxt);
+      }
+      const { event_id } = await callResp.json();
+      if (!event_id) throw new Error("El servidor no devolvio event_id.");
 
-      // 3. Escuchar resultado via SSE
+      // 3. Escuchar resultado via SSE (Gradio 6 named API)
       await new Promise((resolve, reject) => {
-        const es = new EventSource(BASE + "/queue/data?session_hash=" + sessionHash);
+        const es = new EventSource(BASE + "/call/generate/" + event_id);
         const timer = setTimeout(() => { es.close(); reject(new Error("Timeout: el servidor tard\xF3 demasiado.")); }, 200000);
         es.onmessage = (ev) => {
           try {
             const msg = JSON.parse(ev.data);
-            if (msg.msg === "process_completed") {
+            if (Array.isArray(msg)) {
+              // Gradio 6 devuelve el resultado como array directamente
               clearTimeout(timer); es.close();
-              const result = msg.output && msg.output.data && msg.output.data[0];
+              const result = msg[0];
               if (!result) { reject(new Error("No se recibi\xF3 audio del servidor.")); return; }
-              const audioUrl = result.url || (BASE + "/file=" + result.path);
+              const audioUrl = (result && result.url) || (result && result.path ? BASE + "/file=" + result.path : null) || (typeof result === "string" ? result : null);
+              if (!audioUrl) { reject(new Error("Formato de respuesta inesperado.")); return; }
               setAudioResultado(audioUrl);
               setEstado("\u2705 Audio generado. Puedes escucharlo, descargarlo o enviarlo por Telegram.");
               resolve();
-            } else if (msg.msg === "queue_full") {
-              clearTimeout(timer); es.close();
-              reject(new Error("Cola llena. Intenta en unos minutos."));
-            } else if (msg.msg === "process_starts") {
-              setEstado("\uD83D\uDD04 Generando voz en el servidor GPU...");
-            } else if (msg.msg === "estimation") {
-              const t = msg.rank_eta ? " (~" + Math.ceil(msg.rank_eta) + "s)" : "";
-              setEstado("En cola, posicion " + (msg.rank || "?") + t + "...");
             }
           } catch(_) {}
         };
-        es.onerror = () => { clearTimeout(timer); es.close(); reject(new Error("Conexi\xF3n SSE interrumpida. El servidor puede estar ocupado.")); };
+        es.addEventListener("error", (ev) => {
+          try {
+            const msg = JSON.parse(ev.data || "{}");
+            clearTimeout(timer); es.close();
+            reject(new Error(msg.message || "Error del servidor GPU."));
+          } catch(_) { clearTimeout(timer); es.close(); reject(new Error("Conexi\xF3n interrumpida.")); }
+        });
       });
     } catch (err) {
       setEstado("\u274C Error: " + err.message);
