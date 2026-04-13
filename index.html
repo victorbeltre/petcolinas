@@ -3128,18 +3128,37 @@ function VozIA() {
     const BASE = "https://openbmb-voxcpm-demo.hf.space/gradio_api";
     const sessionHash = Math.random().toString(36).slice(2, 10);
     try {
-      // 1. Pasar audio en base64 directamente (sin upload previo)
+      // 1. Convertir base64 a Blob y subir al servidor
+      setEstado("Preparando audio de referencia...");
+      const b64Parts = vozRefB64.split(",");
+      const mimeType = (b64Parts[0].match(/:(.*?);/) || [])[1] || "audio/wav";
+      const byteStr = atob(b64Parts[1]);
+      const ab = new ArrayBuffer(byteStr.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
+      const audioBlob = new Blob([ab], { type: mimeType });
+      const origExt = (vozRefNombre || "voz_ref.wav").split(".").pop().toLowerCase();
+      const fileName = "voz_ref." + origExt;
+
+      setEstado("Subiendo audio al servidor...");
+      const fd = new FormData();
+      fd.append("files", audioBlob, fileName);
+      const upResp = await fetch(BASE + "/upload", { method: "POST", body: fd });
+      if (!upResp.ok) throw new Error("Error subiendo audio (" + upResp.status + ")");
+      const upPaths = await upResp.json();
+      const uploadedPath = Array.isArray(upPaths) ? upPaths[0] : upPaths;
+      if (!uploadedPath) throw new Error("El servidor no devolvio ruta del archivo.");
+
+      // 2. Unirse a la cola
       const estilo = EMOCIONES[emocion] || "";
       const control = [estilo, instruccionVoz.trim()].filter(Boolean).join(", ");
       setEstado("Clonando tu voz" + (emocion !== "\uD83D\uDE0A Natural" ? " [" + emocion + "]" : "") + "... (30-120 seg)");
-
-      // 2. Unirse a la cola con base64 directo
       const joinResp = await fetch(BASE + "/queue/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fn_index: 2,
-          data: [ texto, control, { data: vozRefB64, orig_name: "voz_ref.wav", mime_type: "audio/wav" }, false, "", parseFloat(intensidad), false, false ],
+          data: [ texto, control, { path: uploadedPath, orig_name: fileName, mime_type: mimeType }, false, "", parseFloat(intensidad), false, false ],
           session_hash: sessionHash,
           event_data: null
         })
