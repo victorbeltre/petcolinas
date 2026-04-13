@@ -3128,26 +3128,18 @@ function VozIA() {
     const BASE = "https://openbmb-voxcpm-demo.hf.space/gradio_api";
     const sessionHash = Math.random().toString(36).slice(2, 10);
     try {
-      // 1. Subir audio de referencia
-      setEstado("Subiendo audio de referencia al servidor...");
-      const audioBlob = await fetch(vozRefB64).then(r => r.blob());
-      const fd = new FormData();
-      fd.append("files", audioBlob, "voz_ref.wav");
-      const upResp = await fetch(BASE + "/upload", { method: "POST", body: fd });
-      if (!upResp.ok) throw new Error("Error subiendo audio: " + upResp.status);
-      const upPaths = await upResp.json();
-      const uploadedPath = Array.isArray(upPaths) ? upPaths[0] : upPaths;
-
-      // 2. Unirse a la cola
+      // 1. Pasar audio en base64 directamente (sin upload previo)
       const estilo = EMOCIONES[emocion] || "";
       const control = [estilo, instruccionVoz.trim()].filter(Boolean).join(", ");
       setEstado("Clonando tu voz" + (emocion !== "\uD83D\uDE0A Natural" ? " [" + emocion + "]" : "") + "... (30-120 seg)");
+
+      // 2. Unirse a la cola con base64 directo
       const joinResp = await fetch(BASE + "/queue/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fn_index: 2,
-          data: [ texto, control, { path: uploadedPath, orig_name: "voz_ref.wav", mime_type: "audio/wav" }, false, "", parseFloat(intensidad), false, false ],
+          data: [ texto, control, { data: vozRefB64, orig_name: "voz_ref.wav", mime_type: "audio/wav" }, false, "", parseFloat(intensidad), false, false ],
           session_hash: sessionHash,
           event_data: null
         })
