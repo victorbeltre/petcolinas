@@ -3119,35 +3119,71 @@ function VozIA() {
     setGenerandoGuion(false);
   };
 
-  // Generar voz via HuggingFace Spaces
+  // Generar voz via HuggingFace Spaces (Gradio 6 SSE v3)
   const generarVoz = async () => {
     if (!vozRefB64) { setEstado("\u274C Sube tu audio de referencia primero."); return; }
     if (!texto.trim()) { setEstado("\u274C El guion esta vacio."); return; }
     setGenerando(true);
     setAudioResultado("");
-    setEstado("Conectando al servidor VoxCPM...");
+    const BASE = "https://openbmb-voxcpm-demo.hf.space/gradio_api";
+    const sessionHash = Math.random().toString(36).slice(2, 10);
     try {
+      // 1. Subir audio de referencia
+      setEstado("Subiendo audio de referencia al servidor...");
+      const audioBlob = await fetch(vozRefB64).then(r => r.blob());
+      const fd = new FormData();
+      fd.append("files", audioBlob, "voz_ref.wav");
+      const upResp = await fetch(BASE + "/upload", { method: "POST", body: fd });
+      if (!upResp.ok) throw new Error("Error subiendo audio: " + upResp.status);
+      const upPaths = await upResp.json();
+      const uploadedPath = Array.isArray(upPaths) ? upPaths[0] : upPaths;
+
+      // 2. Unirse a la cola
       const estilo = EMOCIONES[emocion] || "";
       const control = [estilo, instruccionVoz.trim()].filter(Boolean).join(", ");
-      setEstado("Clonando tu voz" + (emocion !== "\uD83D\uDE0A Natural" ? " [" + emocion + "]" : "") + "... (30-120 segundos)");
-      const resp = await fetch("https://openbmb-voxcpm-demo.hf.space/run/predict", {
+      setEstado("Clonando tu voz" + (emocion !== "\uD83D\uDE0A Natural" ? " [" + emocion + "]" : "") + "... (30-120 seg)");
+      const joinResp = await fetch(BASE + "/queue/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: [ texto, control, { data: vozRefB64, name: "voz_ref.wav" }, false, "", parseFloat(intensidad), false, false ],
-          fn_index: 0,
-        }),
+          fn_index: 2,
+          data: [ texto, control, { path: uploadedPath, orig_name: "voz_ref.wav", mime_type: "audio/wav" }, false, "", parseFloat(intensidad), false, false ],
+          session_hash: sessionHash,
+          event_data: null
+        })
       });
-      if (!resp.ok) throw new Error("Error del servidor: " + resp.status);
-      const result = await resp.json();
-      const audioData = result.data && result.data[0];
-      if (!audioData) throw new Error("No se recibio audio del servidor.");
-      const src = typeof audioData === "string" ? audioData : (audioData.data || audioData.url || "");
-      if (!src) throw new Error("Formato de respuesta inesperado.");
-      setAudioResultado(src);
-      setEstado("\u2705 Audio generado. Puedes escucharlo, descargarlo o enviarlo por Telegram.");
+      if (!joinResp.ok) throw new Error("Error al unirse a la cola: " + joinResp.status);
+
+      // 3. Escuchar resultado via SSE
+      await new Promise((resolve, reject) => {
+        const es = new EventSource(BASE + "/queue/data?session_hash=" + sessionHash);
+        const timer = setTimeout(() => { es.close(); reject(new Error("Timeout: el servidor tard\xF3 demasiado.")); }, 200000);
+        es.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg.msg === "process_completed") {
+              clearTimeout(timer); es.close();
+              const result = msg.output && msg.output.data && msg.output.data[0];
+              if (!result) { reject(new Error("No se recibi\xF3 audio del servidor.")); return; }
+              const audioUrl = result.url || (BASE + "/file=" + result.path);
+              setAudioResultado(audioUrl);
+              setEstado("\u2705 Audio generado. Puedes escucharlo, descargarlo o enviarlo por Telegram.");
+              resolve();
+            } else if (msg.msg === "queue_full") {
+              clearTimeout(timer); es.close();
+              reject(new Error("Cola llena. Intenta en unos minutos."));
+            } else if (msg.msg === "process_starts") {
+              setEstado("\uD83D\uDD04 Generando voz en el servidor GPU...");
+            } else if (msg.msg === "estimation") {
+              const t = msg.rank_eta ? " (~" + Math.ceil(msg.rank_eta) + "s)" : "";
+              setEstado("En cola, posicion " + (msg.rank || "?") + t + "...");
+            }
+          } catch(_) {}
+        };
+        es.onerror = () => { clearTimeout(timer); es.close(); reject(new Error("Conexi\xF3n SSE interrumpida. El servidor puede estar ocupado.")); };
+      });
     } catch (err) {
-      setEstado("\u274C Error: " + err.message + "\n\nEl servidor puede estar ocupado. Intenta de nuevo en unos minutos.");
+      setEstado("\u274C Error: " + err.message);
     }
     setGenerando(false);
   };
