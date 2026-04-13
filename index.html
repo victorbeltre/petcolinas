@@ -3097,12 +3097,13 @@ function VozIA() {
     try {
       const palabras = duracion === "15 segundos" ? 35 : duracion === "30 segundos" ? 70 : 140;
       const prompt = `Eres un experto en marketing viral para Republica Dominicana.\nEscribe un guion de voz en off de ${duracion} (${palabras} palabras aprox) para PetColinas.\n\nDATOS: Clinica veterinaria + grooming en Plaza Las Colinas, Santo Domingo Oeste, RD.\nServicios: banos, cortes, veterinaria, vacunas, historial medico digital.\nPrograma lealtad: 10 banos = 1 bano gratis. Slogan: "Donde tu mascota es familia".\n\nTIPO: ${tipoGuion}\n${instruccionIA.trim() ? "EXTRA: " + instruccionIA : ""}\n\nREGLAS: Empieza con gancho que PARE el scroll en 3 segundos. Tono calido, dominicano. Termina con llamado a la accion. Solo texto puro para leer en voz alta, sin asteriscos ni emojis. Aproximadamente ${palabras} palabras.`;
-      const resp = await fetch("https://corsproxy.io/?url=https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "x-api-key": anthropicKey.trim(),
           "anthropic-version": "2023-06-01",
           "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({ model: "claude-haiku-4-5", max_tokens: 600, messages: [{ role: "user", content: prompt }] }),
       });
