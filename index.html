@@ -7,6 +7,7 @@
   <!-- React + Babel (para JSX en el navegador, sin instalación) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: "Segoe UI", sans-serif; background: #f0f2f0; }
@@ -402,7 +403,8 @@ function normalizeRow(table, r) {
     veterinarioExterno: r.veterinarioexterno,
     notas: r.notas,
     fechaRegistro: r.fecharegistro,
-    ultimaVisita2025: r.ultimavisita2025
+    ultimaVisita2025: r.ultimavisita2025,
+    cedula: r.cedula || ""
   };
   if (table === "pc_seguimientos") return {
     id: r.id,
@@ -488,6 +490,27 @@ function normalizeRow(table, r) {
     enEspera: r.enespera || r.enEspera || false,
     mensajesEnviados: (() => { try { return JSON.parse(r.mensajesenviados || r.mensajesEnviados || "[]"); } catch { return []; } })()
   };
+  if (table === "pc_tarifas") return {
+    id: r.id,
+    nombre: r.nombre,
+    precio: Number(r.precio) || 0,
+    comision: Number(r.comision) || 0,
+    area: r.area || ""
+  };
+  if (table === "pc_historias") return {
+    id: r.id,
+    clienteid: r.clienteid,
+    fecha: r.fecha || "",
+    tipo: r.tipo || "",
+    descripcion: r.descripcion || "",
+    veterinario: r.veterinario || "",
+    diagnostico: r.diagnostico || "",
+    tratamiento: r.tratamiento || "",
+    medicamentos: r.medicamentos || "",
+    proximacita: r.proximacita || "",
+    notas: r.notas || "",
+    creadoen: r.creadoen || ""
+  };
   return r;
 }
 function denormalizeRow(table, r) {
@@ -512,7 +535,8 @@ function denormalizeRow(table, r) {
     veterinarioexterno: r.veterinarioExterno,
     notas: r.notas,
     fecharegistro: r.fechaRegistro,
-    ultimavisita2025: r.ultimaVisita2025
+    ultimavisita2025: r.ultimaVisita2025,
+    cedula: r.cedula || null
   };
   if (table === "pc_seguimientos") return {
     id: r.id,
@@ -594,9 +618,31 @@ function denormalizeRow(table, r) {
     enespera: r.enEspera,
     mensajesenviados: JSON.stringify(r.mensajesEnviados || [])
   };
+  if (table === "pc_tarifas") return {
+    id: r.id,
+    nombre: r.nombre,
+    precio: r.precio,
+    comision: r.comision,
+    area: r.area
+  };
+  if (table === "pc_historias") return {
+    id: r.id,
+    clienteid: r.clienteid,
+    fecha: r.fecha,
+    tipo: r.tipo,
+    descripcion: r.descripcion,
+    veterinario: r.veterinario,
+    diagnostico: r.diagnostico,
+    tratamiento: r.tratamiento,
+    medicamentos: r.medicamentos,
+    proximacita: r.proximacita,
+    notas: r.notas,
+    creadoen: r.creadoen
+  };
   return r;
 }
-const LAST_UPDATE = "27 mar 2026 · grooming-vet-mejoras";
+const LAST_UPDATE = "25 abr 2026 · grooming-vet-mejoras";
+const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -684,6 +730,48 @@ function useLS(key, def) {
     }
   }, [key, val]);
   return [val, setVal];
+}
+function useSupaTarifas() {
+  const SEED_ALL = useMemo(() => [
+    ...TARIFAS_GROOMING.map(t => ({ ...t, area: "grooming" })),
+    ...TARIFAS_VET.map(t => ({ ...t, area: "vet" }))
+  ], []);
+  const [data, _setData] = useState(SEED_ALL);
+  const dataRef = useRef(SEED_ALL);
+  useEffect(() => {
+    (async () => {
+      const rows = await supaFetch("pc_tarifas", "GET", null, "?order=id.asc&limit=500");
+      if (Array.isArray(rows) && rows.length > 0) {
+        const norm = rows.map(r => normalizeRow("pc_tarifas", r));
+        _setData(norm); dataRef.current = norm;
+      } else {
+        await uploadSeed("pc_tarifas", SEED_ALL);
+      }
+    })();
+  }, []);
+  const setTarifasGrooming = useCallback(async (fnOrArr) => {
+    const cur = dataRef.current;
+    const curG = cur.filter(t => t.area === "grooming");
+    const newG = (typeof fnOrArr === "function" ? fnOrArr(curG) : fnOrArr).map(t => ({ ...t, area: "grooming" }));
+    const newAll = [...cur.filter(t => t.area !== "grooming"), ...newG];
+    _setData(newAll); dataRef.current = newAll;
+    const newIds = new Set(newG.map(t => t.id));
+    for (const old of curG) { if (!newIds.has(old.id)) await supaFetch("pc_tarifas", "DELETE", null, `?id=eq.${old.id}`); }
+    for (const row of newG) await supaFetch("pc_tarifas", "POST", denormalizeRow("pc_tarifas", row), "?on_conflict=id");
+  }, []);
+  const setTarifasVet = useCallback(async (fnOrArr) => {
+    const cur = dataRef.current;
+    const curV = cur.filter(t => t.area === "vet");
+    const newV = (typeof fnOrArr === "function" ? fnOrArr(curV) : fnOrArr).map(t => ({ ...t, area: "vet" }));
+    const newAll = [...cur.filter(t => t.area !== "vet"), ...newV];
+    _setData(newAll); dataRef.current = newAll;
+    const newIds = new Set(newV.map(t => t.id));
+    for (const old of curV) { if (!newIds.has(old.id)) await supaFetch("pc_tarifas", "DELETE", null, `?id=eq.${old.id}`); }
+    for (const row of newV) await supaFetch("pc_tarifas", "POST", denormalizeRow("pc_tarifas", row), "?on_conflict=id");
+  }, []);
+  const tarifasGrooming = useMemo(() => data.filter(t => t.area === "grooming"), [data]);
+  const tarifasVet = useMemo(() => data.filter(t => t.area === "vet"), [data]);
+  return [tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet];
 }
 function useVentasConSeed(seed) {
   const seedIds = useMemo(() => new Set(seed.map((v) => String(v.id))), []);
@@ -813,7 +901,8 @@ const TABS = [
   { id: "reportes", icon: "\u{1F4C8}", label: "Reportes" },
   { id: "facturas", icon: "\u{1F4C4}", label: "Facturas" },
   { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
-  { id: "importar", icon: "\u{1F4E5}", label: "Importar Excel" },
+  { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
+  { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
 const VENTAS_SEED = [
@@ -2261,8 +2350,9 @@ function Facturas({ ventas, clientes }) {
   }
   function imprimirFactura(f) {
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    // Usar la misma función de lealtad para consistencia
     f = { ...f, groomingCount: calcGroomingLealtad(f.mascota) };
+    const clienteData = clientes.find(c => String(c.id) === String(f.clienteId));
+    const cedulaCliente = clienteData?.cedula || "";
     const win = window.open("", "_blank");
     win.document.write(`
       <!DOCTYPE html><html><head>
@@ -2318,10 +2408,15 @@ function Facturas({ ventas, clientes }) {
           <h4>Datos del cliente</h4>
           <p><strong>${f.propietario || "\u2014"}</strong></p>
           <p>${f.telefono || ""}</p>
+          ${cedulaCliente ? `<p style="font-size:12px;color:#5a6472;">C\xE9dula: ${cedulaCliente}</p>` : ""}
         </div>
         <div class="datos-box">
-          <h4>Paciente</h4>
-          <p><strong>\u{1F43E} ${f.mascota || "\u2014"}</strong></p>
+          <h4>Emisor</h4>
+          <p><strong>PetColinas</strong></p>
+          <p style="font-size:12px;color:#5a6472;">Plaza Las Colinas, SDO</p>
+          <p style="font-size:12px;color:#5a6472;">Tel: 809-752-6806</p>
+          ${PETCOLINAS_RNC ? `<p style="font-size:12px;color:#5a6472;">RNC: ${PETCOLINAS_RNC}</p>` : ""}
+          <p style="margin-top:8px;font-weight:700;">\uD83D\uDC3E ${f.mascota || "\u2014"}</p>
         </div>
       </div>
 
@@ -2916,245 +3011,609 @@ Mascota: ${f.mascota}
     );
   }))))));
 }
-function ImportarExcel({ ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }) {
-  const [tipo, setTipo] = useState("ventas");
-  const [preview, setPreview] = useState([]);
-  const [errores, setErrores] = useState([]);
-  const [importando, setImportando] = useState(false);
-  const [resultado, setResultado] = useState(null);
-  const fileRef = useRef();
-  const AREAS_VALIDAS = ["grooming", "farmacia", "veterinaria", "medicamentos"];
-  const CATEGORIAS_GASTO = ["alquiler", "nomina", "insumos", "farmacia", "servicios", "otros"];
-  function parseExcel(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const wb = XLSX.read(data, { type: "array", cellDates: true });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-          resolve(rows);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    });
-  }
-  function formatFecha(val) {
-    if (!val) return hoy();
-    // Excel serial number (e.g. 45678)
-    if (typeof val === "number" && val > 1000) {
-      const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-      if (!isNaN(d)) return d.toISOString().slice(0, 10);
-      return hoy();
-    }
-    if (val instanceof Date) return val.toISOString().slice(0, 10);
-    const s = String(val).trim();
-    // DD/MM/YYYY o D/M/YYYY
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("/");
-      return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    }
-    // DD-MM-YYYY o D-M-YYYY (guion en lugar de barra)
-    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("-");
-      return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    }
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    // YYYY/MM/DD
-    if (/^\d{4}\/\d{2}\/\d{2}$/.test(s)) return s.replace(/\//g, "-");
-    return hoy();
-  }
-  function mapearVentas(rows) {
-    const errs = [];
-    const mapped = [];
-    rows.forEach((row, i) => {
-      const n = i + 2;
-      const fecha = formatFecha(row["Fecha"] || row["fecha"] || row["FECHA"]);
-      const cliente = String(row["Cliente"] || row["cliente"] || row["CLIENTE"] || "").trim();
-      const area = String(row["Area"] || row["\xC1rea"] || row["area"] || row["AREA"] || "").toLowerCase().trim();
-      const descripcion = String(row["Descripcion"] || row["Descripci\xF3n"] || row["descripcion"] || row["SERVICIO"] || row["Servicio"] || "").trim();
-      const total = parseFloat(String(row["Total"] || row["total"] || row["TOTAL"] || "0").replace(/[^0-9.]/g, "")) || 0;
-      const comision = parseFloat(String(row["Comision"] || row["Comisi\xF3n"] || row["comision"] || "0").replace(/[^0-9.]/g, "")) || 0;
-      const formaPago = String(row["FormaPago"] || row["Forma de Pago"] || row["forma_pago"] || "efectivo").toLowerCase().trim() || "efectivo";
-      if (!cliente) {
-        errs.push(`Fila ${n}: falta Cliente`);
-        return;
-      }
-      if (!AREAS_VALIDAS.includes(area)) {
-        errs.push(`Fila ${n}: \xE1rea "${area}" inv\xE1lida. Usa: ${AREAS_VALIDAS.join(", ")}`);
-        return;
-      }
-      if (total <= 0) {
-        errs.push(`Fila ${n}: total debe ser mayor a 0`);
-        return;
-      }
-      mapped.push({ id: Date.now() + i + Math.random(), fecha, cliente, area, descripcion, total, comision, formaPago, recibidoPor: "Sistema" });
-    });
-    return { mapped, errs };
-  }
-  function mapearGastos(rows) {
-    const errs = [];
-    const mapped = [];
-    rows.forEach((row, i) => {
-      const n = i + 2;
-      const fecha = formatFecha(row["Fecha"] || row["fecha"] || row["FECHA"]);
-      const categoria = String(row["Categoria"] || row["Categor\xEDa"] || row["categoria"] || "otros").toLowerCase().trim();
-      const descripcion = String(row["Descripcion"] || row["Descripci\xF3n"] || row["descripcion"] || "").trim();
-      const monto = parseFloat(String(row["Monto"] || row["monto"] || row["Total"] || row["total"] || "0").replace(/[^0-9.]/g, "")) || 0;
-      const proveedor = String(row["Proveedor"] || row["proveedor"] || "").trim();
-      const formaPago = String(row["FormaPago"] || row["Forma de Pago"] || "efectivo").toLowerCase().trim() || "efectivo";
-      if (!descripcion) {
-        errs.push(`Fila ${n}: falta Descripcion`);
-        return;
-      }
-      if (monto <= 0) {
-        errs.push(`Fila ${n}: monto debe ser mayor a 0`);
-        return;
-      }
-      mapped.push({ id: Date.now() + i + Math.random(), fecha, categoria: CATEGORIAS_GASTO.includes(categoria) ? categoria : "otros", descripcion, monto, formaPago, proveedor });
-    });
-    return { mapped, errs };
-  }
-  function mapearClientes(rows) {
-    const errs = [];
-    const mapped = [];
-    rows.forEach((row, i) => {
-      const n = i + 2;
-      const nombreMascota = String(row["Mascota"] || row["NombreMascota"] || row["mascota"] || "").trim();
-      const nombrePropietario = String(row["Propietario"] || row["propietario"] || row["Due\xF1o"] || "").trim();
-      const telefono = String(row["Telefono"] || row["Tel\xE9fono"] || row["telefono"] || "").trim();
-      const especie = String(row["Especie"] || row["especie"] || "perro").toLowerCase().trim();
-      const raza = String(row["Raza"] || row["raza"] || "").trim();
-      if (!nombreMascota) {
-        errs.push(`Fila ${n}: falta nombre de Mascota`);
-        return;
-      }
-      if (!nombrePropietario) {
-        errs.push(`Fila ${n}: falta Propietario`);
-        return;
-      }
-      mapped.push({
-        id: "imp_" + Date.now() + i,
-        nombreMascota,
-        nombrePropietario,
-        telefono,
-        especie,
-        raza,
-        sexo: String(row["Sexo"] || row["sexo"] || "").toLowerCase(),
-        fechaRegistro: hoy(),
-        notas: String(row["Notas"] || row["notas"] || "").trim(),
-        alergias: String(row["Alergias"] || row["alergias"] || "").trim()
-      });
-    });
-    return { mapped, errs };
-  }
-  async function handleFile(e) {
-    const file = e.target.files[0];
+// ─────────────────────────────────────────────────────────────
+// VOZ IA — Generador de voz y guiones con IA para PetColinas
+// ─────────────────────────────────────────────────────────────
+function VozIA() {
+  const e = React.createElement;
+  const C = { fondo:"#0f172a", card:"#1e293b", border:"#334155", texto:"#f1f5f9", grisd:"#94a3b8", verde:"#1a6b3a" };
+
+  // Presets de guiones
+  const GUIONES_PRESET = {
+    "\uD83D\uDC3E Viral PetColinas (60s)": "La mayoria de los duenos de mascotas en Santo Domingo estan cometiendo un error sin saberlo.\n\nLlevan a sus perros y gatos a cualquier sitio. Sin veterinario fijo. Sin historial medico. Sin seguimiento.\nY cuando algo pasa... nadie sabe nada.\n\nEn PetColinas, en Plaza Las Colinas, hacemos las cosas diferente.\nCada mascota tiene su ficha medica completa: vacunas, alergias, historial de consultas.\nNuestros veterinarios dan seguimiento real.\nY el grooming no es solo un bano, es un spa de calidad, con manos que saben lo que hacen.\n\nY aqui viene lo mejor: cada diez banos de grooming, el siguiente es completamente gratis.\nPorque los que cuidan de verdad a su mascota merecen que alguien los cuide a ellos tambien.\n\nLas citas se llenan rapido. Escribenos hoy y reserva la tuya.\nTu mascota ya lo esta esperando.\n\nPetColinas. Donde tu mascota es familia.",
+    "\u2702\uFE0F Grooming Express (30s)": "Tu perro necesita un bano y no sabes a donde llevarlo?\n\nEn PetColinas tenemos grooming profesional con los mejores productos.\nBanos, cortes, limpieza de oidos, corte de unas y mas.\n\nY si acumulas diez banos, el siguiente te sale gratis.\n\nEscribenos ahora y agenda tu cita.\nPetColinas, Plaza Las Colinas, Santo Domingo Oeste.",
+    "\uD83C\uDFE5 Veterinaria (30s)": "Tu mascota no puede decirte cuando le duele algo.\nPero nosotros si podemos saberlo.\n\nEn PetColinas contamos con veterinarios especializados.\nConsultas, vacunas, cirugia y seguimiento medico completo.\n\nNo esperes a que sea una emergencia.\nAgenda una consulta hoy en PetColinas, Plaza Las Colinas.",
+    "\uD83C\uDFAF Promo Especial (15s)": "Atencion duenos de mascotas en Las Colinas.\n\nEsta semana tenemos promocion especial en banos de grooming.\nAgenda tu cita hoy.\n\nPetColinas. Donde tu mascota es familia.",
+    "\u270F\uFE0F Guion personalizado": "",
+  };
+
+  // Emociones / estilos de voz
+  const EMOCIONES = {
+    "\uD83D\uDE0A Natural": "",
+    "\uD83D\uDD25 Entusiasta": "energetic, enthusiastic, upbeat, lively pace",
+    "\u2764\uFE0F Calido y cercano": "warm, friendly, conversational, gentle and close",
+    "\uD83D\uDCBC Profesional": "clear, professional, confident, measured pace",
+    "\u26A1 Urgente": "urgent, compelling, slightly faster pace",
+    "\uD83D\uDE04 Alegre": "cheerful, happy, bright and positive tone",
+    "\uD83C\uDFAD Dramatico": "dramatic, expressive, emotional, impactful",
+    "\uD83D\uDE4C Motivacional": "motivational, inspiring, powerful and confident",
+    "\uD83E\uDD1D Cercano dominicano": "warm, natural Dominican Spanish flow, casual and friendly",
+  };
+
+  const TIPOS_GUION = ["Viral gancho fuerte","Grooming y estetica","Veterinaria y salud","Promocion o descuento","Programa de lealtad","Testimonio de cliente","Educativo tips de salud","Fecha especial"];
+
+  // Estado
+  const [preset, setPreset] = React.useState("\uD83D\uDC3E Viral PetColinas (60s)");
+  const [texto, setTexto] = React.useState(GUIONES_PRESET["\uD83D\uDC3E Viral PetColinas (60s)"]);
+  const [emocion, setEmocion] = React.useState("\uD83D\uDE0A Natural");
+  const [intensidad, setIntensidad] = React.useState(2.0);
+  const [instruccionVoz, setInstruccionVoz] = React.useState("");
+  const [nombreArchivo, setNombreArchivo] = React.useState("video-viral");
+  const [vozRefB64, setVozRefB64] = React.useState(() => localStorage.getItem("pc_voz_ref_b64") || "");
+  const [vozRefNombre, setVozRefNombre] = React.useState(() => localStorage.getItem("pc_voz_ref_nombre") || "");
+  const [audioResultado, setAudioResultado] = React.useState("");
+  const [generando, setGenerando] = React.useState(false);
+  const [estado, setEstado] = React.useState("");
+  const [tipoGuion, setTipoGuion] = React.useState("Viral gancho fuerte");
+  const [duracion, setDuracion] = React.useState("60 segundos");
+  const [instruccionIA, setInstruccionIA] = React.useState("");
+  const [generandoGuion, setGenerandoGuion] = React.useState(false);
+  const [anthropicKey, setAnthropicKey] = React.useState(() => localStorage.getItem("pc_anthropic_key") || "");
+  const [tgToken, setTgToken] = React.useState(() => localStorage.getItem("pc_tg_token") || "");
+  const [tgChatId, setTgChatId] = React.useState(() => localStorage.getItem("pc_tg_chat_id") || "");
+  const [enviandoTg, setEnviandoTg] = React.useState(false);
+  const [mostrarConfig, setMostrarConfig] = React.useState(false);
+
+  // Guardar credenciales en localStorage al cambiar
+  React.useEffect(() => { if (anthropicKey) localStorage.setItem("pc_anthropic_key", anthropicKey); }, [anthropicKey]);
+  React.useEffect(() => { localStorage.setItem("pc_tg_token", tgToken); }, [tgToken]);
+  React.useEffect(() => { localStorage.setItem("pc_tg_chat_id", tgChatId); }, [tgChatId]);
+
+  // Cambiar preset → actualizar texto
+  const cambiarPreset = (p) => { setPreset(p); setTexto(GUIONES_PRESET[p] || ""); };
+
+  // Subir audio de referencia
+  const subirVozRef = (ev) => {
+    const file = ev.target.files[0];
     if (!file) return;
-    setPreview([]);
-    setErrores([]);
-    setResultado(null);
+    setEstado("Cargando audio de referencia...");
+    const reader = new FileReader();
+    reader.onload = (e2) => {
+      const b64 = e2.target.result;
+      setVozRefB64(b64);
+      setVozRefNombre(file.name);
+      localStorage.setItem("pc_voz_ref_b64", b64);
+      localStorage.setItem("pc_voz_ref_nombre", file.name);
+      setEstado("Audio de referencia cargado: " + file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Generar guion con Claude API
+  const generarGuionIA = async () => {
+    if (!anthropicKey.trim()) { setEstado("\u274C Necesitas configurar la Claude API Key abajo."); return; }
+    setGenerandoGuion(true);
+    setEstado("Generando guion con IA...");
     try {
-      const rows = await parseExcel(file);
-      if (rows.length === 0) {
-        setErrores(["El archivo est\xE1 vac\xEDo"]);
-        return;
-      }
-      let result;
-      if (tipo === "ventas") result = mapearVentas(rows);
-      else if (tipo === "gastos") result = mapearGastos(rows);
-      else if (tipo === "clientes") result = mapearClientes(rows);
-      setPreview(result.mapped);
-      setErrores(result.errs);
+      const palabras = duracion === "15 segundos" ? 35 : duracion === "30 segundos" ? 70 : 140;
+      const prompt = `Eres un experto en marketing viral para Republica Dominicana.\nEscribe un guion de voz en off de ${duracion} (${palabras} palabras aprox) para PetColinas.\n\nDATOS: Clinica veterinaria + grooming en Plaza Las Colinas, Santo Domingo Oeste, RD.\nServicios: banos, cortes, veterinaria, vacunas, historial medico digital.\nPrograma lealtad: 10 banos = 1 bano gratis. Slogan: "Donde tu mascota es familia".\n\nTIPO: ${tipoGuion}\n${instruccionIA.trim() ? "EXTRA: " + instruccionIA : ""}\n\nREGLAS: Empieza con gancho que PARE el scroll en 3 segundos. Tono calido, dominicano. Termina con llamado a la accion. Solo texto puro para leer en voz alta, sin asteriscos ni emojis. Aproximadamente ${palabras} palabras.`;
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey.trim(),
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({ model: "claude-haiku-4-5", max_tokens: 600, messages: [{ role: "user", content: prompt }] }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message);
+      const guion = data.content[0].text.trim();
+      setTexto(guion);
+      setPreset("\u270F\uFE0F Guion personalizado");
+      setEstado("\u2705 Guion generado. Editalo si quieres y luego genera la voz.");
     } catch (err) {
-      setErrores(["Error leyendo el archivo: " + err.message]);
+      setEstado("\u274C Error: " + err.message);
     }
-    e.target.value = "";
-  }
-  async function confirmarImportacion() {
-    if (preview.length === 0) return;
-    setImportando(true);
+    setGenerandoGuion(false);
+  };
+
+  // Generar voz via HuggingFace Spaces (Gradio 6 SSE v3)
+  const generarVoz = async () => {
+    if (!vozRefB64) { setEstado("\u274C Sube tu audio de referencia primero."); return; }
+    if (!texto.trim()) { setEstado("\u274C El guion esta vacio."); return; }
+    setGenerando(true);
+    setAudioResultado("");
+    const BASE = "https://openbmb-voxcpm-demo.hf.space/gradio_api";
+    const sessionHash = Math.random().toString(36).slice(2, 10);
     try {
-      if (tipo === "ventas") await setVentas((v) => [...v, ...preview]);
-      else if (tipo === "gastos") await setGastos((g) => [...g, ...preview]);
-      else if (tipo === "clientes") await setClientes((c) => [...c, ...preview]);
-      setResultado({ ok: preview.length, tipo });
-      setPreview([]);
+      // 1. Convertir base64 a Blob y subir al servidor
+      setEstado("Preparando audio de referencia...");
+      const b64Parts = vozRefB64.split(",");
+      const mimeType = (b64Parts[0].match(/:(.*?);/) || [])[1] || "audio/wav";
+      const byteStr = atob(b64Parts[1]);
+      const ab = new ArrayBuffer(byteStr.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
+      const audioBlob = new Blob([ab], { type: mimeType });
+      const origExt = (vozRefNombre || "voz_ref.wav").split(".").pop().toLowerCase();
+      const fileName = "voz_ref." + origExt;
+
+      setEstado("Subiendo audio al servidor...");
+      const fd = new FormData();
+      fd.append("files", audioBlob, fileName);
+      const upResp = await fetch(BASE + "/upload", { method: "POST", body: fd });
+      if (!upResp.ok) throw new Error("Error subiendo audio (" + upResp.status + ")");
+      const upPaths = await upResp.json();
+      const uploadedPath = Array.isArray(upPaths) ? upPaths[0] : upPaths;
+      if (!uploadedPath) throw new Error("El servidor no devolvio ruta del archivo.");
+
+      // 2. Llamar a la API nombrada de Gradio 6 (/call/generate)
+      const estilo = EMOCIONES[emocion] || "";
+      const control = [estilo, instruccionVoz.trim()].filter(Boolean).join(", ");
+      setEstado("Clonando tu voz" + (emocion !== "\uD83D\uDE0A Natural" ? " [" + emocion + "]" : "") + "... (30-120 seg)");
+      const callResp = await fetch(BASE + "/call/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [ texto, control, { path: uploadedPath, orig_name: fileName, mime_type: mimeType }, false, "", parseFloat(intensidad), false, false ]
+        })
+      });
+      if (!callResp.ok) {
+        const errTxt = await callResp.text().catch(() => callResp.status);
+        throw new Error("Error al llamar al servidor (" + callResp.status + "): " + errTxt);
+      }
+      const { event_id } = await callResp.json();
+      if (!event_id) throw new Error("El servidor no devolvio event_id.");
+
+      // 3. Escuchar resultado via SSE (Gradio 6 named API)
+      await new Promise((resolve, reject) => {
+        const es = new EventSource(BASE + "/call/generate/" + event_id);
+        const timer = setTimeout(() => { es.close(); reject(new Error("Timeout: el servidor tard\xF3 demasiado.")); }, 200000);
+        es.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (Array.isArray(msg)) {
+              // Gradio 6 devuelve el resultado como array directamente
+              clearTimeout(timer); es.close();
+              const result = msg[0];
+              if (!result) { reject(new Error("No se recibi\xF3 audio del servidor.")); return; }
+              const audioUrl = (result && result.url) || (result && result.path ? BASE + "/file=" + result.path : null) || (typeof result === "string" ? result : null);
+              if (!audioUrl) { reject(new Error("Formato de respuesta inesperado.")); return; }
+              setAudioResultado(audioUrl);
+              setEstado("\u2705 Audio generado. Puedes escucharlo, descargarlo o enviarlo por Telegram.");
+              resolve();
+            }
+          } catch(_) {}
+        };
+        es.addEventListener("error", (ev) => {
+          try {
+            const msg = JSON.parse(ev.data || "{}");
+            clearTimeout(timer); es.close();
+            reject(new Error(msg.message || "Error del servidor GPU."));
+          } catch(_) { clearTimeout(timer); es.close(); reject(new Error("Conexi\xF3n interrumpida.")); }
+        });
+      });
     } catch (err) {
-      setErrores(["Error guardando: " + err.message]);
+      setEstado("\u274C Error: " + err.message);
     }
-    setImportando(false);
-  }
-  const TIPOS = [
-    { id: "ventas", icon: "\u{1F4B0}", label: "Ventas / Ingresos", cols: ["Fecha", "Cliente", "Area", "Descripcion", "Total", "Comision", "FormaPago"] },
-    { id: "gastos", icon: "\u{1F4B8}", label: "Gastos / Facturas", cols: ["Fecha", "Categoria", "Descripcion", "Monto", "Proveedor", "FormaPago"] },
-    { id: "clientes", icon: "\u{1F43E}", label: "Clientes Nuevos", cols: ["Mascota", "Propietario", "Telefono", "Especie", "Raza", "Sexo", "Alergias", "Notas"] }
-  ];
-  const tipoActual = TIPOS.find((t) => t.id === tipo);
-  return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: C.negro, marginBottom: 4 } }, "\u{1F4E5} Importar desde Excel"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14 } }, "Sube tu archivo Excel diario y los datos se actualizan en todas las PCs autom\xE1ticamente.")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 24 } }, TIPOS.map((t) => /* @__PURE__ */ React.createElement(
-    "div",
-    {
-      key: t.id,
-      onClick: () => {
-        setTipo(t.id);
-        setPreview([]);
-        setErrores([]);
-        setResultado(null);
-      },
-      style: {
-        padding: "16px 12px",
-        borderRadius: 12,
-        border: `2px solid ${tipo === t.id ? C.verde : "#e0e4e8"}`,
-        background: tipo === t.id ? C.verdeL : "#fff",
-        cursor: "pointer",
-        textAlign: "center",
-        transition: "all 0.2s"
-      }
-    },
-    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, marginBottom: 6 } }, t.icon),
-    /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: tipo === t.id ? C.verde : C.negro } }, t.label)
-  ))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 } }, "\u{1F4CB} Columnas requeridas para: ", tipoActual.label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, tipoActual.cols.map((col) => /* @__PURE__ */ React.createElement("span", { key: col, style: { background: C.azulL, color: C.azul, borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600 } }, col))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, fontSize: 12, color: C.grisd } }, "\u{1F4A1} La primera fila del Excel debe tener estos nombres de columnas. Las columnas adicionales se ignoran.")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: ".xlsx,.xls,.csv", onChange: handleFile, style: { display: "none" } }), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: () => fileRef.current.click(),
-      style: {
-        background: C.verde,
-        color: "#fff",
-        border: "none",
-        borderRadius: 10,
-        padding: "14px 28px",
-        fontSize: 15,
-        fontWeight: 700,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: 10
-      }
-    },
-    "\u{1F4C2} Seleccionar archivo Excel / CSV"
-  )), errores.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fdeaea", border: `1px solid ${C.rojo}`, borderRadius: 10, padding: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.rojo, marginBottom: 8 } }, "\u26A0\uFE0F ", errores.length, " error(es) encontrado(s):"), errores.slice(0, 10).map((e, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { fontSize: 13, color: C.rojo, marginBottom: 4 } }, "\u2022 ", e)), errores.length > 10 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "...y ", errores.length - 10, " m\xE1s")), preview.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 12, color: C.verde } }, "\u2705 ", preview.length, " registro(s) listos para importar"), /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, Object.keys(preview[0]).filter((k) => !["id"].includes(k)).slice(0, 6).map((k) => /* @__PURE__ */ React.createElement("th", { key: k, style: { padding: "8px 10px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: "2px solid #e0e4e8" } }, k)))), /* @__PURE__ */ React.createElement("tbody", null, preview.slice(0, 5).map((row, i) => /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: "1px solid #f4f5f6" } }, Object.entries(row).filter(([k]) => !["id"].includes(k)).slice(0, 6).map(([k, v]) => /* @__PURE__ */ React.createElement("td", { key: k, style: { padding: "8px 10px", color: C.negro } }, typeof v === "number" ? RD(v) : String(v).slice(0, 30))))))), preview.length > 5 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 8 } }, "...y ", preview.length - 5, " filas m\xE1s")), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      onClick: confirmarImportacion,
-      disabled: importando,
-      style: {
-        background: importando ? C.grisd : C.verde,
-        color: "#fff",
-        border: "none",
-        borderRadius: 10,
-        padding: "12px 24px",
-        fontSize: 14,
-        fontWeight: 700,
-        cursor: importando ? "not-allowed" : "pointer"
-      }
-    },
-    importando ? "\u23F3 Importando..." : `\u{1F680} Confirmar importaci\xF3n (${preview.length} registros)`
-  )), resultado && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, border: `1px solid ${C.verde}`, borderRadius: 10, padding: 20, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 36, marginBottom: 8 } }, "\u{1F389}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, color: C.verde, marginBottom: 4 } }, "\xA1Importaci\xF3n exitosa!"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14 } }, resultado.ok, " registro(s) de ", resultado.tipo, " guardados en la nube. Todas las PCs ya tienen los datos actualizados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4D6} C\xF3mo preparar tu Excel diario"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.negro, lineHeight: 1.7 } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "1. Abre tu Excel de ventas del d\xEDa"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "2. Aseg\xFArate que la primera fila tenga los nombres de columnas correctos"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "3. Para ", /* @__PURE__ */ React.createElement("strong", null, "Area"), " en ventas usa exactamente: ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "grooming"), ", ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "farmacia"), ", ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "veterinaria"), " o ", /* @__PURE__ */ React.createElement("code", { style: { background: "#f0f0f0", padding: "2px 6px", borderRadius: 4 } }, "medicamentos")), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, "4. Para ", /* @__PURE__ */ React.createElement("strong", null, "Fecha"), " usa formato DD/MM/YYYY o YYYY-MM-DD"), /* @__PURE__ */ React.createElement("div", null, "5. Sube el archivo aqu\xED y confirma \u2014 listo \u{1F389}"))));
+    setGenerando(false);
+  };
+
+  // Descargar audio
+  const descargar = () => {
+    const a = document.createElement("a");
+    a.href = audioResultado;
+    a.download = (nombreArchivo || "audio-petcolinas") + ".wav";
+    a.click();
+  };
+
+  // Enviar por Telegram
+  const enviarTelegram = async () => {
+    if (!audioResultado) { setEstado("Genera el audio primero."); return; }
+    setEnviandoTg(true);
+    setEstado("Enviando por Telegram...");
+    try {
+      // Convertir base64/URL a Blob
+      const fetchResp = await fetch(audioResultado);
+      const blob = await fetchResp.blob();
+      const formData = new FormData();
+      formData.append("chat_id", tgChatId);
+      formData.append("caption", "\uD83C\uDFA4 Audio PetColinas listo - generado con Voz IA");
+      formData.append("audio", blob, (nombreArchivo || "audio") + ".wav");
+      const tgResp = await fetch(`https://api.telegram.org/bot${tgToken}/sendAudio`, { method: "POST", body: formData });
+      const tgData = await tgResp.json();
+      if (tgData.ok) setEstado("\u2705 Audio enviado a Telegram.");
+      else throw new Error(tgData.description || "Error desconocido");
+    } catch (err) {
+      setEstado("\u274C Telegram: " + err.message);
+    }
+    setEnviandoTg(false);
+  };
+
+  // Estilos reutilizables
+  const card = { background: C.card, border: "1px solid " + C.border, borderRadius: 14, padding: 20, marginBottom: 16 };
+  const label = { display: "block", fontSize: 12, color: C.grisd, marginBottom: 6, fontWeight: 600 };
+  const input = { width: "100%", background: C.fondo, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.texto, fontSize: 13, boxSizing: "border-box" };
+  const btn = (bg, disabled) => ({ background: disabled ? "#333" : bg, color: "white", border: "none", borderRadius: 10, padding: "11px 20px", fontSize: 14, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1, width: "100%" });
+
+  return e("div", { style: { padding: "24px 20px", maxWidth: 1100, margin: "0 auto" } },
+    // Titulo
+    e("div", { style: { textAlign: "center", marginBottom: 24 } },
+      e("h2", { style: { fontSize: 26, fontWeight: 800, background: "linear-gradient(135deg,#a78bfa,#60a5fa,#34d399)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", margin: 0 } }, "\uD83C\uDFA4 Voz IA — PetColinas"),
+      e("p", { style: { color: C.grisd, fontSize: 13, marginTop: 6 } }, "Genera guiones con IA \u00B7 Clona tu voz \u00B7 Env\xEDa por Telegram")
+    ),
+    e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
+
+      // ── COLUMNA IZQUIERDA ──────────────────────────────────
+      e("div", null,
+        // Guion
+        e("div", { style: card },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: C.texto } }, "\uD83D\uDCCB Guion"),
+          e("label", { style: label }, "Preset"),
+          e("select", { style: { ...input, marginBottom: 10 }, value: preset, onChange: ev => cambiarPreset(ev.target.value) },
+            Object.keys(GUIONES_PRESET).map(k => e("option", { key: k, value: k }, k))
+          ),
+          e("label", { style: label }, "Texto (editable)"),
+          e("textarea", { style: { ...input, minHeight: 180, resize: "vertical" }, value: texto, onChange: ev => setTexto(ev.target.value) }),
+          e("label", { style: { ...label, marginTop: 10 } }, "Nombre del archivo"),
+          e("input", { style: input, value: nombreArchivo, onChange: ev => setNombreArchivo(ev.target.value), placeholder: "video-viral" })
+        ),
+
+        // Generar guion con IA
+        e("div", { style: { ...card, border: "1px solid #065f46", background: "#0a1a13" } },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: "#34d399" } }, "\u2728 Generar guion con IA"),
+          e("label", { style: label }, "Tipo de guion"),
+          e("select", { style: { ...input, marginBottom: 10 }, value: tipoGuion, onChange: ev => setTipoGuion(ev.target.value) },
+            TIPOS_GUION.map(t => e("option", { key: t, value: t }, t))
+          ),
+          e("label", { style: label }, "Duracion"),
+          e("div", { style: { display: "flex", gap: 8, marginBottom: 10 } },
+            ["15 segundos", "30 segundos", "60 segundos"].map(d =>
+              e("button", { key: d, onClick: () => setDuracion(d), style: { flex: 1, padding: "7px 4px", borderRadius: 8, border: "1px solid " + (duracion === d ? "#34d399" : C.border), background: duracion === d ? "#065f46" : C.fondo, color: duracion === d ? "#34d399" : C.grisd, fontSize: 12, fontWeight: 600, cursor: "pointer" } }, d)
+            )
+          ),
+          e("label", { style: label }, "Instrucciones extra (opcional)"),
+          e("input", { style: { ...input, marginBottom: 12 }, value: instruccionIA, onChange: ev => setInstruccionIA(ev.target.value), placeholder: 'Ej: "para San Valentin", "mencionar precio RD$500"' }),
+          e("button", { onClick: generarGuionIA, disabled: generandoGuion, style: btn("linear-gradient(135deg,#059669,#0d9488)", generandoGuion) },
+            generandoGuion ? "Generando..." : "\u2728 Crear guion con IA"
+          )
+        )
+      ),
+
+      // ── COLUMNA DERECHA ─────────────────────────────────────
+      e("div", null,
+        // Voz y emocion
+        e("div", { style: card },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: C.texto } }, "\uD83C\uDFA4 Voz y Emocion"),
+
+          // Audio de referencia
+          e("label", { style: label }, "Audio de referencia (tu voz)"),
+          e("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12 } },
+            e("label", { style: { ...btn("linear-gradient(135deg,#7c3aed,#2563eb)", false), display: "inline-block", textAlign: "center", cursor: "pointer", padding: "9px 16px", fontSize: 13 } },
+              vozRefNombre ? "\u2705 " + vozRefNombre.slice(0, 28) + "..." : "\uD83D\uDCC2 Subir audio de voz",
+              e("input", { type: "file", accept: "audio/*", onChange: subirVozRef, style: { display: "none" } })
+            )
+          ),
+          vozRefNombre && e("p", { style: { fontSize: 11, color: "#34d399", margin: "0 0 10px" } }, "Guardado en el navegador. No necesitas subirlo de nuevo."),
+
+          // Emocion
+          e("label", { style: label }, "Emocion de la voz"),
+          e("select", { style: { ...input, marginBottom: 10 }, value: emocion, onChange: ev => setEmocion(ev.target.value) },
+            Object.keys(EMOCIONES).map(k => e("option", { key: k, value: k }, k))
+          ),
+
+          // Intensidad
+          e("label", { style: label }, "Intensidad del estilo: " + parseFloat(intensidad).toFixed(1)),
+          e("input", { type: "range", min: 1, max: 3, step: 0.1, value: intensidad, onChange: ev => setIntensidad(ev.target.value), style: { width: "100%", marginBottom: 10, accentColor: "#a78bfa" } }),
+
+          // Instruccion custom
+          e("label", { style: label }, "Instruccion de voz (opcional)"),
+          e("input", { style: { ...input, marginBottom: 14 }, value: instruccionVoz, onChange: ev => setInstruccionVoz(ev.target.value), placeholder: '"habla mas despacio al final", "con pausa dramatica"' }),
+
+          // Boton generar
+          e("button", { onClick: generarVoz, disabled: generando, style: btn("linear-gradient(135deg,#7c3aed,#2563eb)", generando) },
+            generando ? "\u23F3 Generando voz..." : "\uD83C\uDFA4 Generar con mi voz"
+          )
+        ),
+
+        // Resultado
+        e("div", { style: card },
+          e("h3", { style: { margin: "0 0 14px", fontSize: 15, color: C.texto } }, "\uD83D\uDD0A Resultado"),
+          estado && e("div", { style: { background: estado.includes("\u274C") ? "#2a0f0f" : "#0f2a1a", border: "1px solid " + (estado.includes("\u274C") ? "#7f1d1d" : "#065f46"), borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: estado.includes("\u274C") ? "#fca5a5" : "#86efac", whiteSpace: "pre-wrap" } }, estado),
+          audioResultado && e("div", null,
+            e("audio", { controls: true, src: audioResultado, style: { width: "100%", marginBottom: 12 } }),
+            e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+              e("button", { onClick: descargar, style: btn("#1d4ed8", false) }, "\u2B07\uFE0F Descargar .wav"),
+              e("button", { onClick: enviarTelegram, disabled: enviandoTg, style: btn("#0f62fe", enviandoTg) }, enviandoTg ? "Enviando..." : "\u2708\uFE0F Enviar Telegram")
+            )
+          ),
+          !audioResultado && !generando && e("div", { style: { textAlign: "center", padding: "30px 0", color: C.grisd, fontSize: 13 } }, "El audio generado aparecera aqui"),
+
+          // Config credenciales
+          e("div", { style: { borderTop: "1px solid " + C.border, marginTop: 16, paddingTop: 14 } },
+            e("button", { onClick: () => setMostrarConfig(!mostrarConfig), style: { background: "none", border: "none", color: C.grisd, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: mostrarConfig ? 12 : 0 } },
+              (mostrarConfig ? "\u25BC " : "\u25B6 ") + "\u2699\uFE0F Configurar credenciales"
+            ),
+            mostrarConfig && e("div", null,
+              e("label", { style: { ...label, marginTop: 10, marginBottom: 6 } }, "\uD83D\uDD11 Claude API Key"),
+              e("input", { type: "password", style: { ...input, marginBottom: 10 }, value: anthropicKey, onChange: ev => setAnthropicKey(ev.target.value), placeholder: "sk-ant-..." }),
+              e("label", { style: { ...label, marginBottom: 6 } }, "\uD83D\uDCF1 Telegram Bot Token"),
+              e("input", { type: "password", style: { ...input, marginBottom: 10 }, value: tgToken, onChange: ev => setTgToken(ev.target.value), placeholder: "8626278401:AAE..." }),
+              e("label", { style: { ...label, marginBottom: 6 } }, "\uD83D\uDCEC Telegram Chat ID"),
+              e("input", { style: input, value: tgChatId, onChange: ev => setTgChatId(ev.target.value), placeholder: "459187427" }),
+              tgToken && tgChatId && e("p", { style: { fontSize: 11, color: "#34d399", marginTop: 8, marginBottom: 0 } }, "\u2705 Telegram configurado — se guardar\xE1 autom\xE1ticamente.")
+            )
+          )
+        )
+      )
+    )
+  );
 }
+function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventario, citas, seguimientos, tarifasGrooming, tarifasVet }) {
+  const [exportando, setExportando] = useState(false);
+  const [exportado, setExportado] = useState(false);
+  function fmt(n) { return typeof n === "number" ? n : (Number(n) || 0); }
+  function exportar() {
+    if (!window.XLSX) return alert("La librer\xEDa de Excel a\xFAn se est\xE1 cargando. Intenta en unos segundos.");
+    setExportando(true);
+    const XLSX = window.XLSX;
+    const wb = XLSX.utils.book_new();
+    const hoy2 = new Date().toLocaleDateString("es-DO");
+
+    // ── HOJA 1: VENTAS ──────────────────────────────────────────────────
+    const ventasData = (ventas || []).map(v => ({
+      "ID": v.id,
+      "Fecha": v.fecha || "",
+      "Cliente / Mascota": v.cliente || "",
+      "Área": v.area || "",
+      "Servicio / Descripción": v.servicio || v.descripcion || "",
+      "Total (RD$)": fmt(v.total),
+      "Descuento (RD$)": fmt(v.descuento),
+      "Comisión (RD$)": fmt(v.comision),
+      "Forma de Pago": v.formaPago || v.formapago || "",
+      "Recibido Por": v.recibidoPor || v.recibidopor || "",
+      "Cobrado Por": v.cobradoPor || v.cobradopor || "",
+      "Notas": v.notas || ""
+    }));
+    const wsVentas = XLSX.utils.json_to_sheet(ventasData.length ? ventasData : [{ "Sin datos": "" }]);
+    wsVentas["!cols"] = [8,12,22,12,35,12,12,12,15,15,15,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsVentas, "Ventas");
+
+    // ── HOJA 2: CLIENTES / CRM ───────────────────────────────────────────
+    const clientesData = (clientes || []).map(c => ({
+      "ID": c.id,
+      "Mascota": c.nombreMascota || "",
+      "Especie": c.especie || "",
+      "Raza": c.raza || "",
+      "Sexo": c.sexo || "",
+      "Tamaño": c.tamano || "",
+      "Fecha Nacimiento": c.fechaNacimiento || "",
+      "Color / Pelaje": c.color || "",
+      "Esterilizado": c.esterilizado ? "Sí" : "No",
+      "Propietario": c.nombrePropietario || "",
+      "Teléfono": c.telefono || "",
+      "Teléfono 2": c.telefono2 || "",
+      "Email": c.email || "",
+      "Dirección": c.direccion || "",
+      "Instagram": c.instagram || "",
+      "Cédula / ID": c.cedula || "",
+      "Alergias": c.alergias || "",
+      "Condiciones": c.condiciones || "",
+      "Medicamentos": c.medicamentos || "",
+      "Veterinario Externo": c.veterinarioExterno || "",
+      "Peso (kg)": c.pesoKg || "",
+      "Microchip #": c.microchip || "",
+      "Baños 2025": fmt(c.banos2025),
+      "Fecha Registro": c.fechaRegistro || "",
+      "Última Visita 2025": c.ultimaVisita2025 || "",
+      "Notas": c.notas || ""
+    }));
+    const wsClientes = XLSX.utils.json_to_sheet(clientesData.length ? clientesData : [{ "Sin datos": "" }]);
+    wsClientes["!cols"] = [8,20,10,14,8,18,14,14,10,22,14,14,22,28,16,16,18,18,18,18,10,14,10,12,14,30].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsClientes, "Clientes CRM");
+
+    // ── HOJA 3: GASTOS ──────────────────────────────────────────────────
+    const gastosData = (gastos || []).map(g => ({
+      "ID": g.id,
+      "Fecha": g.fecha || "",
+      "Categoría": g.categoria || "",
+      "Descripción": g.descripcion || "",
+      "Monto (RD$)": fmt(g.monto),
+      "Forma de Pago": g.formaPago || g.formapago || "",
+      "Proveedor": g.proveedor || "",
+      "Notas": g.notas || ""
+    }));
+    const wsGastos = XLSX.utils.json_to_sheet(gastosData.length ? gastosData : [{ "Sin datos": "" }]);
+    wsGastos["!cols"] = [8,12,14,35,12,15,18,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsGastos, "Gastos");
+
+    // ── HOJA 4: NÓMINA / PAGOS ──────────────────────────────────────────
+    const empMap = {};
+    (empleados || []).forEach(e => { empMap[e.id] = e.nombre; });
+    const nominaData = (pagosNom || []).map(p => ({
+      "ID": p.id,
+      "Mes": p.mes || "",
+      "Empleado": empMap[p.empleadoId] || p.empleadoId || "",
+      "Mensualidad (RD$)": fmt(p.mensualidad),
+      "Comisiones (RD$)": fmt(p.comisiones),
+      "Descuentos (RD$)": fmt(p.descuentos),
+      "Total Neto (RD$)": fmt(p.mensualidad) + fmt(p.comisiones) - fmt(p.descuentos),
+      "Notas": p.notas || ""
+    }));
+    const wsNomina = XLSX.utils.json_to_sheet(nominaData.length ? nominaData : [{ "Sin datos": "" }]);
+    wsNomina["!cols"] = [8,10,22,16,16,16,16,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsNomina, "Nómina");
+
+    // ── HOJA 5: EMPLEADOS ───────────────────────────────────────────────
+    const empData = (empleados || []).map(e => ({
+      "ID": e.id,
+      "Nombre": e.nombre || "",
+      "Cargo": e.cargo || "",
+      "Mensualidad (RD$)": fmt(e.mensualidad),
+      "Comisión %": e.comPct ? (e.comPct * 100) + "%" : "Fija",
+      "Tipo Comisión": e.comTipo || ""
+    }));
+    const wsEmp = XLSX.utils.json_to_sheet(empData.length ? empData : [{ "Sin datos": "" }]);
+    wsEmp["!cols"] = [8,22,28,16,12,14].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsEmp, "Empleados");
+
+    // ── HOJA 6: INVENTARIO ──────────────────────────────────────────────
+    const invData = (inventario || []).filter(p => !p.autoGenerado).map(p => ({
+      "ID": p.id,
+      "Producto": p.nombre || "",
+      "Categoría": p.categoria || "",
+      "Stock Actual": fmt(p.stock),
+      "Stock Mínimo": fmt(p.stockMin),
+      "Precio Compra (RD$)": fmt(p.precioCompra || p.costo),
+      "Precio Venta (RD$)": fmt(p.precioVenta || p.pventa),
+      "Proveedor": p.proveedor || "",
+      "Fecha Entrada": p.fechaEntrada || "",
+      "Notas": p.notas || ""
+    }));
+    const wsInv = XLSX.utils.json_to_sheet(invData.length ? invData : [{ "Sin datos": "" }]);
+    wsInv["!cols"] = [10,25,14,12,12,16,16,18,14,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsInv, "Inventario");
+
+    // ── HOJA 7: CITAS / AGENDA ──────────────────────────────────────────
+    const citasData = (citas || []).map(ci => ({
+      "ID": ci.id,
+      "Fecha": ci.fecha || "",
+      "Hora": ci.hora || "",
+      "Duración (min)": fmt(ci.duracion),
+      "Tipo": ci.tipo || "",
+      "Empleado": ci.empleado || "",
+      "Estado": ci.estado || "",
+      "Cliente": ci.nombreCliente || "",
+      "Mascota": ci.nombreMascota || "",
+      "Teléfono": ci.telefono || "",
+      "Servicio": ci.servicio || "",
+      "Precio (RD$)": fmt(ci.precio),
+      "En Espera": ci.enEspera ? "Sí" : "No",
+      "Notas": ci.notas || ""
+    }));
+    const wsCitas = XLSX.utils.json_to_sheet(citasData.length ? citasData : [{ "Sin datos": "" }]);
+    wsCitas["!cols"] = [10,12,8,12,14,16,12,20,20,14,20,12,10,20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsCitas, "Agenda - Citas");
+
+    // ── HOJA 8: SEGUIMIENTOS ────────────────────────────────────────────
+    const segsData = (seguimientos || []).map(s => ({
+      "ID": s.id,
+      "Mascota": s.mascota || "",
+      "Propietario": s.propietario || "",
+      "Teléfono": s.telefono || "",
+      "Tipo": s.tipo || "",
+      "Frecuencia": s.frecuencia || "",
+      "Última Fecha": s.ultimaFecha || "",
+      "Próxima Fecha": s.proximaFecha || "",
+      "Activo": s.activo ? "Sí" : "No",
+      "Completado": s.completado ? "Sí" : "No",
+      "Notas": s.notas || ""
+    }));
+    const wsSegs = XLSX.utils.json_to_sheet(segsData.length ? segsData : [{ "Sin datos": "" }]);
+    wsSegs["!cols"] = [8,20,20,14,14,14,14,14,8,10,25].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsSegs, "Seguimientos");
+
+    // ── HOJA 9: CATÁLOGO DE SERVICIOS ───────────────────────────────────
+    const tarGroomData = (tarifasGrooming || []).map(t => ({
+      "ID": t.id,
+      "Área": "Grooming",
+      "Servicio": t.nombre || "",
+      "Precio (RD$)": fmt(t.precio),
+      "Comisión Alexander (RD$)": fmt(t.comision)
+    }));
+    const tarVetData = (tarifasVet || []).map(t => ({
+      "ID": t.id,
+      "Área": "Veterinaria",
+      "Servicio": t.nombre || "",
+      "Precio (RD$)": fmt(t.precio),
+      "Comisión Aylein (30%)": Math.round(fmt(t.precio) * 0.30),
+      "Comisión Valentina (40%)": Math.round(fmt(t.precio) * 0.40)
+    }));
+    const wsTar = XLSX.utils.json_to_sheet([...tarGroomData, ...tarVetData].length ? [...tarGroomData, ...tarVetData] : [{ "Sin datos": "" }]);
+    wsTar["!cols"] = [8,14,35,14,20,22].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsTar, "Catálogo Servicios");
+
+    // ── HOJA 10: RESUMEN GENERAL ────────────────────────────────────────
+    const totalVentas = (ventas || []).reduce((s, v) => s + fmt(v.total), 0);
+    const totalGastos2 = (gastos || []).reduce((s, g) => s + fmt(g.monto), 0);
+    const totalNomina2 = (pagosNom || []).reduce((s, p) => s + fmt(p.mensualidad) + fmt(p.comisiones) - fmt(p.descuentos), 0);
+    const resumenData = [
+      { "Indicador": "Total Ventas Históricas (RD$)", "Valor": fmt(totalVentas) },
+      { "Indicador": "Total Gastos Históricos (RD$)", "Valor": fmt(totalGastos2) },
+      { "Indicador": "Total Nómina Histórica (RD$)", "Valor": fmt(totalNomina2) },
+      { "Indicador": "Utilidad Estimada (RD$)", "Valor": fmt(totalVentas) - fmt(totalGastos2) - fmt(totalNomina2) },
+      { "Indicador": "", "Valor": "" },
+      { "Indicador": "Total Clientes Registrados", "Valor": (clientes || []).length },
+      { "Indicador": "Total Ventas (registros)", "Valor": (ventas || []).length },
+      { "Indicador": "Total Gastos (registros)", "Valor": (gastos || []).length },
+      { "Indicador": "Total Citas en Agenda", "Valor": (citas || []).length },
+      { "Indicador": "Total Productos Inventario", "Valor": (inventario || []).filter(p => !p.autoGenerado).length },
+      { "Indicador": "Total Empleados", "Valor": (empleados || []).length },
+      { "Indicador": "", "Valor": "" },
+      { "Indicador": "Fecha de exportación", "Valor": hoy2 },
+      { "Indicador": "Exportado desde", "Valor": "PetColinas · Plaza Las Colinas, SDO" }
+    ];
+    const wsRes = XLSX.utils.json_to_sheet(resumenData);
+    wsRes["!cols"] = [35, 20].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, wsRes, "Resumen General");
+
+    // ── GENERAR ARCHIVO ─────────────────────────────────────────────────
+    const fechaHoy = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `PetColinas_Export_${fechaHoy}.xlsx`);
+    setExportando(false);
+    setExportado(true);
+    setTimeout(() => setExportado(false), 5000);
+  }
+
+  const HOJAS = [
+    { icon: "💰", nombre: "Ventas", desc: "Todas las ventas con cliente, área, servicio, total, comisión, forma de pago", count: (ventas||[]).length },
+    { icon: "🐾", nombre: "Clientes CRM", desc: "Fichas completas: mascota, propietario, contacto, cédula, salud, vacunas", count: (clientes||[]).length },
+    { icon: "📉", nombre: "Gastos", desc: "Todos los gastos con categoría, monto, proveedor y forma de pago", count: (gastos||[]).length },
+    { icon: "💼", nombre: "Nómina", desc: "Pagos a empleados por mes: mensualidad, comisiones y descuentos", count: (pagosNom||[]).length },
+    { icon: "👥", nombre: "Empleados", desc: "Lista de empleados con cargo, mensualidad y estructura de comisiones", count: (empleados||[]).length },
+    { icon: "📦", nombre: "Inventario", desc: "Productos con stock, precios de compra/venta y proveedor", count: (inventario||[]).filter(p=>!p.autoGenerado).length },
+    { icon: "📅", nombre: "Agenda - Citas", desc: "Todas las citas con fecha, hora, estado, cliente y servicio", count: (citas||[]).length },
+    { icon: "🔔", nombre: "Seguimientos", desc: "Seguimientos activos y completados con fechas y frecuencia", count: (seguimientos||[]).length },
+    { icon: "⚙️", nombre: "Catálogo Servicios", desc: "Tarifas de grooming y veterinaria con precios y comisiones", count: ((tarifasGrooming||[]).length + (tarifasVet||[]).length) },
+    { icon: "📊", nombre: "Resumen General", desc: "Totales históricos de ventas, gastos, nómina y utilidad estimada", count: null }
+  ];
+
+  return React.createElement("div", { style: { maxWidth: 800, margin: "0 auto" } },
+    React.createElement("div", { style: { marginBottom: 24 } },
+      React.createElement("h2", { style: { fontSize: 22, fontWeight: 800, margin: 0 } }, "\uD83D\uDCE4 Exportar a Excel"),
+      React.createElement("div", { style: { fontSize: 13, color: "#5a6472", marginTop: 4 } }, "Genera un archivo Excel completo con todos los datos del sistema, organizados en hojas separadas.")
+    ),
+    exportado && React.createElement("div", { style: { background: "#d4edda", border: "1.5px solid #1a6b3a", borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 700, color: "#1a6b3a" } },
+      "\uD83C\uDF89 \xA1Exportaci\xF3n exitosa! Revisa tu carpeta de descargas."
+    ),
+    React.createElement("div", { style: { background: "#fff", borderRadius: 14, border: "1.5px solid #e0e4e8", marginBottom: 24, overflow: "hidden" } },
+      React.createElement("div", { style: { background: "#1a6b3a", padding: "14px 20px" } },
+        React.createElement("div", { style: { color: "#fff", fontWeight: 700, fontSize: 14 } }, "\uD83D\uDCCB El archivo Excel contiene " + HOJAS.length + " hojas:")
+      ),
+      HOJAS.map((h, i) => React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: i < HOJAS.length - 1 ? "1px solid #f4f5f6" : "none", background: i % 2 === 0 ? "#fff" : "#fafbfc" } },
+        React.createElement("div", { style: { fontSize: 22, width: 32, textAlign: "center", flexShrink: 0 } }, h.icon),
+        React.createElement("div", { style: { flex: 1 } },
+          React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "#1a1d23" } }, h.nombre),
+          React.createElement("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2 } }, h.desc)
+        ),
+        h.count !== null && React.createElement("div", { style: { background: "#e6f4ec", color: "#1a6b3a", borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 700, flexShrink: 0 } }, h.count + " registros")
+      ))
+    ),
+    React.createElement("button", {
+      onClick: exportar,
+      disabled: exportando,
+      style: { width: "100%", background: exportando ? "#94a3b8" : "#1a6b3a", color: "#fff", border: "none", borderRadius: 12, padding: "16px 0", fontSize: 16, fontWeight: 800, cursor: exportando ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "background .2s" }
+    },
+      exportando ? "\u23F3 Generando archivo..." : "\uD83D\uDCE5 Descargar Excel completo"
+    ),
+    React.createElement("div", { style: { marginTop: 14, fontSize: 12, color: "#94a3b8", textAlign: "center" } },
+      "El archivo se descarga directamente en tu computadora. No se sube ning\xFAn dato a internet."
+    )
+  );
+}
+
 function PetColinas() {
   const [session, setSession] = useState(() => {
     try {
@@ -3380,8 +3839,7 @@ function PetColinasApp({ session, onLogout }) {
     } catch {
     }
   }, []);
-  const [tarifasGrooming, setTarifasGrooming] = useLS("pc_tarifas_g", TARIFAS_GROOMING);
-  const [tarifasVet, setTarifasVet] = useLS("pc_tarifas_v", TARIFAS_VET);
+  const [tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet] = useSupaTarifas();
   const [ventas, setVentas, ventasLoaded, , deleteVenta] = useSupabase("pc_ventas", VENTAS_SEED);
   const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
   const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
@@ -3390,6 +3848,7 @@ function PetColinasApp({ session, onLogout }) {
   const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
   const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", EMPLEADOS_INIT);
   const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
+  const [historias, setHistoriasRaw, , , deleteHistoria] = useSupabase("pc_historias", []);
   const [historial, setHistorial] = useState([]);
   const [undoMsg, setUndoMsg] = useState(null);
   const pushHistorial = (desc, snap) => {
@@ -3585,8 +4044,9 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setTab, citas }),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && /* @__PURE__ */ React.createElement(ImportarExcel, { ventas, setVentas, gastos, setGastos, clientes, setClientes, pagosNom, setPagosNom }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), tab === "ventas" && /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet }), tab === "clientes" && /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, ventas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria }), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
+    tab === "vozia" && React.createElement(VozIA, null),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
       setTab, setCrmClienteInicial
@@ -4284,8 +4744,7 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
     const totales = [0, 0, 0, 0];
     ventasMes.forEach((v) => {
       if (!v.fecha) return;
-      const [anio, mes, dia] = v.fecha.split("-").map(Number);
-      if (mes !== 3) return;
+      const dia = Number(v.fecha.split("-")[2]);
       if (dia <= 7) totales[0] += v.total;
       else if (dia <= 14) totales[1] += v.total;
       else if (dia <= 21) totales[2] += v.total;
@@ -4295,6 +4754,9 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
   })();
   const sem1Base = 0;
   const semConBase = semReales;
+  const diaHoy = new Date().getDate();
+  const semanaActualIdx = diaHoy <= 7 ? 0 : diaHoy <= 14 ? 1 : diaHoy <= 21 ? 2 : 3;
+  const mesNombreActual = new Date().toLocaleDateString("es-DO", { month: "long", year: "numeric" }).replace(/^\w/, c => c.toUpperCase());
   const mesActualKey = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const hist = HISTORICO[mesActualKey];
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Dashboard del Mes"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 16 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { month: "long", year: "numeric" }), " \xB7 Actualizaci\xF3n en tiempo real"), /* @__PURE__ */ React.createElement(AlertaStockBajo, { inventario, onIr: () => setTab("inventario") }), /* @__PURE__ */ React.createElement(AlertaVacunas, { ventas, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaSeguimientos, { seguimientos, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaClientesInactivos, { clientes, ventas, onIr: () => setTab("seguimientos") }), (() => {
@@ -4326,11 +4788,11 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
     background: `linear-gradient(90deg,${C.naranja},${C.verde2})`,
     borderRadius: 8,
     transition: "width 1s ease"
-  } }))), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 20, borderTop: `4px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, "\u{1F4C5} Tracker Semanal \u2014 Marzo 2026"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 18 } }, "Meta: ", /* @__PURE__ */ React.createElement("strong", null, RD(PDE)), " \xB7 Necesitas promediar ", /* @__PURE__ */ React.createElement("strong", null, RD(Math.round(PDE/26))+"/d\xEDa"), " (26 d\xEDas h\xE1biles)"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 } }, MARZO_SEMANAS.map((s, i) => {
+  } }))), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 20, borderTop: `4px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, "\u{1F4C5} Tracker Semanal \u2014 " + mesNombreActual), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 18 } }, "Meta: ", /* @__PURE__ */ React.createElement("strong", null, RD(PDE)), " \xB7 Necesitas promediar ", /* @__PURE__ */ React.createElement("strong", null, RD(Math.round(PDE/26))+"/d\xEDa"), " (26 d\xEDas h\xE1biles)"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 } }, MARZO_SEMANAS.map((s, i) => {
     const real = semConBase[i];
     const pctS = Math.min(100, Math.round(real / s.meta * 100));
     const ok = real >= s.meta;
-    const enCurso = i === 0;
+    const enCurso = i === semanaActualIdx;
     const ventasSem = ventasMes.filter((v) => {
       if (!v.fecha) return false;
       const [, , dd] = v.fecha.split("-").map(Number);
@@ -4361,7 +4823,7 @@ function Dashboard({ totalVentas, totalEgresos, utilidad, totalNomina, totalGast
       /* @__PURE__ */ React.createElement("div", { style: { background: "#e8eaed", borderRadius: 4, height: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${pctS}%`, height: "100%", background: ok ? C.verde : s.color, borderRadius: 4, transition: "width .8s ease" } })),
       /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", fontSize: 11, marginTop: 4, color: ok ? C.verde : C.grisd, fontWeight: 700 } }, pctS, "% ", !ok && real > 0 && `\xB7 Faltan ${RD(s.meta - real)}`)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: totalVentas < (PDE * 0.25) ? C.rojoL : C.verdeL, borderRadius: 10, padding: "10px 14px", fontSize: 13 } }, semConBase[0] < MARZO_SEMANAS[0].meta ? /* @__PURE__ */ React.createElement("span", null, "\u26A0\uFE0F ", /* @__PURE__ */ React.createElement("strong", null, "Semana 1 en riesgo:"), " Llevas ", RD(semConBase[0]), " de ", RD(MARZO_SEMANAS[0].meta), " meta. Necesitas activar veterinaria y farmacia esta semana.") : /* @__PURE__ */ React.createElement("span", null, "\u2705 ", /* @__PURE__ */ React.createElement("strong", null, "Semana 1 bien encaminada."), " Mant\xE9n el ritmo para la semana 2."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CA} Ingresos por \xC1rea \u2014 Mes actual"), /* @__PURE__ */ React.createElement("button", { onClick: () => setAreaModal("todas"), style: { background: "none", border: `1.5px solid ${C.verde}`, color: C.verde, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Ver \u2192")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic en un \xE1rea para ver sus ventas"), [
+  })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: totalVentas < (PDE * 0.25) ? C.rojoL : C.verdeL, borderRadius: 10, padding: "10px 14px", fontSize: 13 } }, semConBase[semanaActualIdx] < MARZO_SEMANAS[semanaActualIdx].meta ? /* @__PURE__ */ React.createElement("span", null, "\u26A0\uFE0F ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " en riesgo:"), " Llevas ", RD(semConBase[semanaActualIdx]), " de ", RD(MARZO_SEMANAS[semanaActualIdx].meta), " meta. Necesitas activar veterinaria y farmacia esta semana.") : /* @__PURE__ */ React.createElement("span", null, "\u2705 ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " bien encaminada."), " Mant\xE9n el ritmo para la semana " + Math.min(4, semanaActualIdx+2) + "."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CA} Ingresos por \xC1rea \u2014 Mes actual"), /* @__PURE__ */ React.createElement("button", { onClick: () => setAreaModal("todas"), style: { background: "none", border: `1.5px solid ${C.verde}`, color: C.verde, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Ver \u2192")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic en un \xE1rea para ver sus ventas"), [
     { label: "\u{1F415} Grooming", val: grm, color: C.verde, area: "grooming" },
     { label: "\u{1FA7A} Veterinaria", val: vet, color: C.azul, area: "veterinaria" },
     { label: "\u{1F48A} Farmacia/Tienda", val: far, color: C.gold, area: "farmacia" }
@@ -4660,7 +5122,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       const mascota  = cl.nombreMascota || cl.nombremascota || "";
       const dueno    = cl.nombrePropietario || cl.nombrepropietario || "";
       const apellido = dueno.trim().split(" ").pop() || "";
-      const nom = mascota ? (mascota + (apellido ? " " + apellido : "")) : dueno;
+      const yaIncluye = apellido && mascota.toLowerCase().includes(apellido.toLowerCase());
+      const nom = mascota ? (mascota + (!yaIncluye && apellido ? " " + apellido : "")) : dueno;
       setCliente(nom);
     }
     if (clearClienteVentaInicial) clearClienteVentaInicial();
@@ -4702,6 +5165,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [items, setItems] = useState([]);
   const [tipoItem, setTipoItem] = useState("grooming");
   const [servId, setServId] = useState(tarifasGrooming[0]?.id || "g1");
+  const [nombreManual, setNombreManual] = useState("");
+  const [precioManual, setPrecioManual] = useState("");
   const [cantidad, setCantidad] = useState(1);
   const [descPct, setDescPct] = useState(0);
   const [prodSelId, setProdSelId] = useState("");
@@ -4711,11 +5176,13 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [descLibre, setDescLibre] = useState("");
   const [modoFarmacia, setModoFarmacia] = useState("catalogo");
   const tarifas = tipoItem === "grooming" ? tarifasGrooming : tarifasVet;
-  const servSel = tarifas.find((t) => t.id === servId) || null;
+  const esManual = servId === "manual";
+  const servSel = esManual ? null : (tarifas.find((t) => t.id === servId) || null);
   const prodSel = inventario.find((p) => String(p.id) === String(prodSelId)) || null;
   const productosInv = inventario.filter((p) => p.pventa > 0);
   const previewPrecio = (() => {
     if (tipoItem === "grooming" || tipoItem === "veterinaria") {
+      if (esManual) return parseFloat(precioManual) || 0;
       return servSel ? servSel.precio * cantidad : 0;
     }
     if (tipoItem === "farmacia") {
@@ -4728,7 +5195,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const previewDescuento = Math.round(previewPrecio * pct / 100);
   const previewNeto = previewPrecio - previewDescuento;
   const previewComision = (() => {
-    if (tipoItem === "grooming") return servSel ? servSel.comision * cantidad : 0;
+    if (tipoItem === "grooming") return esManual ? 0 : (servSel ? servSel.comision * cantidad : 0);
     if (tipoItem === "veterinaria") {
       const pctVet = servicioPor === "e5" ? 0.40 : 0.30;
       return Math.round(previewNeto * pctVet);
@@ -4748,6 +5215,17 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const totalComision = items.reduce((s, i) => s + i.comision, 0);
   const agregarItem = () => {
     if (tipoItem === "grooming" || tipoItem === "veterinaria") {
+      if (esManual) {
+        if (!nombreManual.trim() || previewPrecio <= 0) return alert("Escribe nombre y precio del servicio");
+        setItems([...items, {
+          id: Date.now(), tipo: tipoItem, area: tipoItem,
+          nombre: nombreManual.trim(), precio: previewPrecio,
+          descPct: pct, descuento: previewDescuento, subtotal: previewNeto,
+          comision: 0, qty: 1, prodId: null, desdeInv: false
+        }]);
+        setNombreManual(""); setPrecioManual(""); setDescPct(0);
+        return;
+      }
       if (!servSel || previewPrecio <= 0) return alert("Selecciona un servicio");
       setItems([...items, {
         id: Date.now(),
@@ -5130,9 +5608,12 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         setServId(v);
         setDescPct(0);
       },
-      options: tarifas.map((t) => ({ value: t.id, label: `${t.nombre} \u2014 ${RD(t.precio)}` }))
+      options: [...tarifas.map((t) => ({ value: t.id, label: `${t.nombre} \u2014 ${RD(t.precio)}` })), { value: "manual", label: "\u270F\uFE0F Servicio manual..." }]
     }
-  ), (tipoItem === "grooming" || tipoItem === "veterinaria") && /* @__PURE__ */ React.createElement(
+  ), esManual && /* @__PURE__ */ React.createElement(React.Fragment, null,
+    /* @__PURE__ */ React.createElement(Input, { label: "Nombre del servicio *", value: nombreManual, onChange: setNombreManual, placeholder: "Ej: Spa premium, Tratamiento especial..." }),
+    /* @__PURE__ */ React.createElement(Input, { label: "Precio (RD$) *", type: "number", value: precioManual, onChange: setPrecioManual, placeholder: "0" })
+  ), !esManual && (tipoItem === "grooming" || tipoItem === "veterinaria") && /* @__PURE__ */ React.createElement(
     Input,
     {
       label: "Cantidad",
@@ -6228,6 +6709,7 @@ const CRM_EMPTY_FORM = {
   email: "",
   direccion: "",
   instagram: "",
+  cedula: "",
   alergias: "",
   medicamentos: "",
   condiciones: "",
@@ -6241,7 +6723,64 @@ const CRM_EMPTY_FORM = {
   notas: "",
   fechaRegistro: hoy()
 };
-function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInicial, setTab, setCrmClienteInicial }) {
+function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria }) {
+  const TIPOS_H = ["Consulta", "Vacuna", "Diagn\xF3stico", "Cirug\xEDa", "Control", "Desparasitaci\xF3n", "Otro"];
+  const emptyH = { fecha: hoy(), tipo: "Consulta", descripcion: "", veterinario: "", diagnostico: "", tratamiento: "", medicamentos: "", proximacita: "", notas: "" };
+  const [formH, setFormH] = useState(emptyH);
+  const [agregando, setAgregando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const mis = [...historias.filter(h => String(h.clienteid) === String(clienteId))].sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
+  async function guardar() {
+    if (!formH.descripcion.trim()) { alert("Escribe una descripci\xF3n."); return; }
+    setGuardando(true);
+    const nueva = { ...formH, id: String(Date.now()), clienteid: String(clienteId), creadoen: hoy() };
+    setHistorias(prev => [...prev, nueva]);
+    await upsertOne("pc_historias", nueva);
+    setFormH(emptyH); setAgregando(false); setGuardando(false);
+  }
+  async function eliminar(id) {
+    if (!confirm("\xBFEliminar este registro?")) return;
+    deleteHistoria(id);
+  }
+  const tipoColor = { "Consulta": "#1a4fa0", "Vacuna": "#1a6b3a", "Cirug\xEDa": "#b8232a", "Diagn\xF3stico": "#7c3aed", "Control": "#0891b2", "Desparasitaci\xF3n": "#d45f1e", "Otro": "#5a6472" };
+  return React.createElement("div", null,
+    mis.length === 0 && !agregando && React.createElement("div", { style: { color: "#5a6472", fontSize: 13, marginBottom: 10 } }, "Sin registros cl\xEDnicos."),
+    mis.map(h => React.createElement("div", { key: h.id, style: { background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", marginBottom: 10, border: "1px solid #e8ecf0" } },
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
+        React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+          React.createElement("span", { style: { background: tipoColor[h.tipo] || "#5a6472", color: "#fff", borderRadius: 20, fontSize: 11, fontWeight: 700, padding: "2px 10px" } }, h.tipo),
+          React.createElement("span", { style: { color: "#5a6472", fontSize: 12 } }, h.fecha),
+          h.veterinario && React.createElement("span", { style: { color: "#5a6472", fontSize: 12 } }, "\xB7 " + h.veterinario)
+        ),
+        React.createElement("button", { onClick: () => eliminar(h.id), title: "Eliminar", style: { background: "none", border: "none", cursor: "pointer", color: "#b8232a", fontSize: 18, lineHeight: 1, padding: "0 4px" } }, "\xD7")
+      ),
+      h.descripcion && React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#1a1d23", marginBottom: 3 } }, h.descripcion),
+      h.diagnostico && React.createElement("div", { style: { fontSize: 12, color: "#1a1d23" } }, React.createElement("strong", null, "Dx: "), h.diagnostico),
+      h.tratamiento && React.createElement("div", { style: { fontSize: 12, color: "#1a1d23" } }, React.createElement("strong", null, "Tx: "), h.tratamiento),
+      h.medicamentos && React.createElement("div", { style: { fontSize: 12, color: "#d45f1e" } }, "\uD83D\uDC8A ", h.medicamentos),
+      h.proximacita && React.createElement("div", { style: { fontSize: 12, color: "#1a6b3a", fontWeight: 600 } }, "\uD83D\uDCC5 Pr\xF3x. cita: ", h.proximacita),
+      h.notas && React.createElement("div", { style: { fontSize: 12, color: "#5a6472", fontStyle: "italic", marginTop: 2 } }, h.notas)
+    )),
+    agregando ? React.createElement("div", { style: { background: "#f0fdf4", borderRadius: 10, padding: 14, border: "1.5px solid #1a6b3a", marginBottom: 10 } },
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Fecha"), React.createElement("input", { type: "date", value: formH.fecha, onChange: e => setFormH(p => ({...p, fecha: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Tipo"), React.createElement("select", { value: formH.tipo, onChange: e => setFormH(p => ({...p, tipo: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } }, TIPOS_H.map(t => React.createElement("option", { key: t }, t)))),
+        React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Descripci\xF3n *"), React.createElement("input", { value: formH.descripcion, onChange: e => setFormH(p => ({...p, descripcion: e.target.value})), placeholder: "Motivo de consulta, procedimiento realizado...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Veterinario"), React.createElement("input", { value: formH.veterinario, onChange: e => setFormH(p => ({...p, veterinario: e.target.value})), placeholder: "Aylein, Valentina...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Pr\xF3x. cita"), React.createElement("input", { type: "date", value: formH.proximacita, onChange: e => setFormH(p => ({...p, proximacita: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Diagn\xF3stico"), React.createElement("input", { value: formH.diagnostico, onChange: e => setFormH(p => ({...p, diagnostico: e.target.value})), placeholder: "Gastritis, Otitis...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Tratamiento"), React.createElement("input", { value: formH.tratamiento, onChange: e => setFormH(p => ({...p, tratamiento: e.target.value})), placeholder: "Antibioticoterapia...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Medicamentos"), React.createElement("input", { value: formH.medicamentos, onChange: e => setFormH(p => ({...p, medicamentos: e.target.value})), placeholder: "Amoxicilina 250mg c/12h...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Notas"), React.createElement("input", { value: formH.notas, onChange: e => setFormH(p => ({...p, notas: e.target.value})), placeholder: "Observaciones adicionales...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } }))
+      ),
+      React.createElement("div", { style: { display: "flex", gap: 8 } },
+        React.createElement("button", { onClick: guardar, disabled: guardando, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, guardando ? "Guardando..." : "\uD83D\uDCBE Guardar registro"),
+        React.createElement("button", { onClick: () => setAgregando(false), style: { background: "#f1f5f9", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13 } }, "Cancelar")
+      )
+    ) : React.createElement("button", { onClick: () => setAgregando(true), style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13, marginTop: 4 } }, "+ Agregar registro cl\xEDnico")
+  );
+}
+function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInicial, setTab, setCrmClienteInicial, historias = [], setHistorias, deleteHistoria }) {
   const ESPECIE_OPTS = ["Perro", "Gato", "Ave", "Conejo", "Reptil", "Otro"];
   const TAMANO_OPTS = ["Peque\xF1o (< 10 kg)", "Mediano (10\u201325 kg)", "Grande (> 25 kg)"];
   const SEXO_OPTS = ["Macho", "Hembra"];
@@ -6454,7 +6993,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
         onChange: (v) => setF("sexo", v),
         options: SEXO_OPTS.map((e) => ({ value: e, label: e }))
       }
-    ), /* @__PURE__ */ React.createElement(Input, { label: "Color / pelaje", value: form.color, onChange: (v) => setF("color", v), placeholder: "Blanco, negro, tricolor..." }), /* @__PURE__ */ React.createElement(Input, { label: "Fecha de nacimiento", type: "date", value: form.fechaNacimiento, onChange: (v) => setF("fechaNacimiento", v) }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingTop: 24 } }, /* @__PURE__ */ React.createElement(CrmCheck, { label: "\u2702\uFE0F Esterilizado/a", checked: form.esterilizado, onChange: (v) => setF("esterilizado", v) }))), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F464} Datos del propietario" }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre completo *", value: form.nombrePropietario, onChange: (v) => setF("nombrePropietario", v), placeholder: "Juan P\xE9rez" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono principal *", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "809-000-0000" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono alternativo", value: form.telefono2, onChange: (v) => setF("telefono2", v), placeholder: "Opcional" }), /* @__PURE__ */ React.createElement(Input, { label: "Email", value: form.email, onChange: (v) => setF("email", v), placeholder: "correo@email.com" }), /* @__PURE__ */ React.createElement(Input, { label: "Direcci\xF3n / Sector", value: form.direccion, onChange: (v) => setF("direccion", v), placeholder: "Los Alcarrizos, Residencial..." }), /* @__PURE__ */ React.createElement(Input, { label: "Instagram", value: form.instagram, onChange: (v) => setF("instagram", v), placeholder: "@usuario" })), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1FA7A} Historial m\xE9dico" }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Alergias conocidas", value: form.alergias, onChange: (v) => setF("alergias", v), placeholder: "Ninguna, Pollo, Polen..." }), /* @__PURE__ */ React.createElement(Input, { label: "Condiciones cr\xF3nicas", value: form.condiciones, onChange: (v) => setF("condiciones", v), placeholder: "Diabetes, displasia..." }), /* @__PURE__ */ React.createElement(Input, { label: "Medicamentos actuales", value: form.medicamentos, onChange: (v) => setF("medicamentos", v), placeholder: "Ninguno, Apoquel..." }), /* @__PURE__ */ React.createElement(Input, { label: "Veterinario externo", value: form.veterinarioExterno, onChange: (v) => setF("veterinarioExterno", v), placeholder: "Dr. P\xE9rez, Cl\xEDnica..." }), /* @__PURE__ */ React.createElement(Input, { label: "Peso (kg)", value: form.pesoKg, onChange: (v) => setF("pesoKg", v), placeholder: "3.5" }), /* @__PURE__ */ React.createElement(Input, { label: "Microchip #", value: form.microchip, onChange: (v) => setF("microchip", v), placeholder: "900026000..." })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, "\u{1F381} Ba\xF1os realizados en 2025 (antes del sistema)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Input, { label: "Color / pelaje", value: form.color, onChange: (v) => setF("color", v), placeholder: "Blanco, negro, tricolor..." }), /* @__PURE__ */ React.createElement(Input, { label: "Fecha de nacimiento", type: "date", value: form.fechaNacimiento, onChange: (v) => setF("fechaNacimiento", v) }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingTop: 24 } }, /* @__PURE__ */ React.createElement(CrmCheck, { label: "\u2702\uFE0F Esterilizado/a", checked: form.esterilizado, onChange: (v) => setF("esterilizado", v) }))), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F464} Datos del propietario" }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre completo *", value: form.nombrePropietario, onChange: (v) => setF("nombrePropietario", v), placeholder: "Juan P\xE9rez" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono principal *", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "809-000-0000" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono alternativo", value: form.telefono2, onChange: (v) => setF("telefono2", v), placeholder: "Opcional" }), /* @__PURE__ */ React.createElement(Input, { label: "Email", value: form.email, onChange: (v) => setF("email", v), placeholder: "correo@email.com" }), /* @__PURE__ */ React.createElement(Input, { label: "Direcci\xF3n / Sector", value: form.direccion, onChange: (v) => setF("direccion", v), placeholder: "Los Alcarrizos, Residencial..." }), /* @__PURE__ */ React.createElement(Input, { label: "Instagram", value: form.instagram, onChange: (v) => setF("instagram", v), placeholder: "@usuario" }), /* @__PURE__ */ React.createElement(Input, { label: "C\xE9dula / ID", value: form.cedula || "", onChange: (v) => setF("cedula", v), placeholder: "001-0000000-0" })), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1FA7A} Historial m\xE9dico" }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Alergias conocidas", value: form.alergias, onChange: (v) => setF("alergias", v), placeholder: "Ninguna, Pollo, Polen..." }), /* @__PURE__ */ React.createElement(Input, { label: "Condiciones cr\xF3nicas", value: form.condiciones, onChange: (v) => setF("condiciones", v), placeholder: "Diabetes, displasia..." }), /* @__PURE__ */ React.createElement(Input, { label: "Medicamentos actuales", value: form.medicamentos, onChange: (v) => setF("medicamentos", v), placeholder: "Ninguno, Apoquel..." }), /* @__PURE__ */ React.createElement(Input, { label: "Veterinario externo", value: form.veterinarioExterno, onChange: (v) => setF("veterinarioExterno", v), placeholder: "Dr. P\xE9rez, Cl\xEDnica..." }), /* @__PURE__ */ React.createElement(Input, { label: "Peso (kg)", value: form.pesoKg, onChange: (v) => setF("pesoKg", v), placeholder: "3.5" }), /* @__PURE__ */ React.createElement(Input, { label: "Microchip #", value: form.microchip, onChange: (v) => setF("microchip", v), placeholder: "900026000..." })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, "\u{1F381} Ba\xF1os realizados en 2025 (antes del sistema)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -6679,7 +7218,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
         rows: 3,
         style: { border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none", color: C.negro, background: "#fafafa", resize: "vertical", fontFamily: "inherit" }
       }
-    ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: guardar }, editando ? "\u{1F4BE} Guardar cambios" : "\u{1F4BE} Registrar cliente"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
+    ))), clienteSel && React.createElement(CrmSection, { title: "\uD83D\uDCCB Consultas y Tratamientos" }, React.createElement(HistorialMedico, { clienteId: String(clienteSel.id), historias, setHistorias, deleteHistoria })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: guardar }, editando ? "\u{1F4BE} Guardar cambios" : "\u{1F4BE} Registrar cliente"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
       setVista(editando && clienteSel ? "detalle" : "lista");
       setEditando(false);
     }, color: C.grisd, outline: true }, "Cancelar"))));
@@ -9308,9 +9847,15 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const [modalWA, setModalWA] = React.useState(null);
   const [modalCancelar, setModalCancelar] = React.useState(null);
   const [motivoCancelar, setMotivoCancelar] = React.useState("");
+  const [modalReagendar, setModalReagendar] = React.useState(null);
+  const [reaFecha, setReaFecha] = React.useState("");
+  const [reaHora, setReaHora] = React.useState("");
+  const [modalCobro, setModalCobro] = React.useState(null);
   const [filtroEmpleado, setFiltroEmpleado] = React.useState("todos");
   const [filtroTipo, setFiltroTipo] = React.useState("todos");
   const [filtroEstado, setFiltroEstado] = React.useState("todos");
+  const [filtroFechaDesde, setFiltroFechaDesde] = React.useState("");
+  const [filtroFechaHasta, setFiltroFechaHasta] = React.useState("");
   const [busqueda, setBusqueda] = React.useState("");
   const [conflictoMsg, setConflictoMsg] = React.useState(null);
   const [crmQuery, setCrmQuery] = React.useState("");
@@ -9318,6 +9863,11 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const [svcSel, setSvcSel] = React.useState("");
   const [svcPrecio, setSvcPrecio] = React.useState("");
   const [svcEmp, setSvcEmp] = React.useState("Alexander");
+  const [showHistCliente, setShowHistCliente] = React.useState(false);
+  const [paginaLista, setPaginaLista] = React.useState(0);
+  const [sortLista, setSortLista] = React.useState("fecha");
+  const [sortDir, setSortDir] = React.useState("asc");
+  const POR_PAGINA = 20;
 
   const HORAS = [];
   for (let h = 8; h <= 20; h++) { HORAS.push(`${String(h).padStart(2,"0")}:00`); if (h < 20) HORAS.push(`${String(h).padStart(2,"0")}:30`); }
@@ -9346,14 +9896,37 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const getDiasSemana = (ini) => { const dias=[]; const d=parseFecha(ini); for(let i=0;i<7;i++){const x=new Date(d);x.setDate(x.getDate()+i);dias.push(formatFecha(x));} return dias; };
   const horaToMin = (h) => { const [hh,mm]=(h||"0:0").split(":").map(Number); return hh*60+mm; };
 
+  const manana = () => { const d=new Date(); d.setDate(d.getDate()+1); return formatFecha(d); };
+
   const citasFiltradas = citas.filter(c => {
     if (filtroEmpleado !== "todos" && c.empleado !== filtroEmpleado) return false;
     if (filtroTipo !== "todos" && c.tipo !== filtroTipo) return false;
     if (filtroEstado !== "todos" && c.estado !== filtroEstado) return false;
-    if (busqueda) { const q=busqueda.toLowerCase(); if (!(c.nombreCliente||"").toLowerCase().includes(q) && !(c.nombreMascota||"").toLowerCase().includes(q)) return false; }
+    if (filtroFechaDesde && c.fecha < filtroFechaDesde) return false;
+    if (filtroFechaHasta && c.fecha > filtroFechaHasta) return false;
+    if (busqueda) { const q=busqueda.toLowerCase(); if (!(c.nombreCliente||"").toLowerCase().includes(q) && !(c.nombreMascota||"").toLowerCase().includes(q) && !(c.servicio||"").toLowerCase().includes(q)) return false; }
     return true;
   });
   const getCitasDia = (f) => citasFiltradas.filter(c => c.fecha === f).sort((a,b) => a.hora.localeCompare(b.hora));
+
+  // Alertas
+  const recordatoriosHoy = citas.filter(c => c.fecha === hoy() && c.estado !== "cancelada" && c.estado !== "noshow" && c.estado !== "completada" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio_hoy"));
+  const citasEspera = citas.filter(c => c.enEspera && c.estado !== "cancelada" && c.estado !== "completada");
+  const citasSinConfirmar = citas.filter(c => c.fecha >= hoy() && c.estado === "pendiente" && !c.enEspera);
+
+  // Stats mes
+  const citasMes = citas.filter(c => (c.fecha||"").slice(0,7) === hoy().slice(0,7));
+  const completadasN = citasMes.filter(c => c.estado === "completada").length;
+  const canceladasN = citasMes.filter(c => c.estado === "cancelada").length;
+  const noShowsN = citasMes.filter(c => c.estado === "noshow").length;
+  const tasaNS = citasMes.length > 0 ? Math.round(noShowsN/citasMes.length*100) : 0;
+  const ingresosMes = citasMes.filter(c=>c.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0);
+  const horaCounts = {}; citasMes.forEach(c => { horaCounts[c.hora] = (horaCounts[c.hora]||0)+1; });
+  const horaPico = Object.entries(horaCounts).sort((a,b)=>b[1]-a[1])[0];
+  const statsPorEmp = Object.keys(EMPLEADOS).map(emp => {
+    const arr = citasMes.filter(c=>c.empleado===emp);
+    return { emp, total: arr.length, completadas: arr.filter(c=>c.estado==="completada").length, ingresos: arr.filter(c=>c.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0) };
+  });
 
   const detectarConflictos = (cita, excId) => citas.filter(c => {
     if (c.id === excId || c.estado === "cancelada" || c.estado === "noshow") return false;
@@ -9362,8 +9935,24 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     return aS < bE && bS < aE;
   });
 
-  const abrirModal = (data) => { setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(data.empleado||"Alexander"); setConflictoMsg(null); setModalCita(data); };
-  const cerrarModal = () => { setModalCita(null); setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); };
+  const abrirModal = (data) => { setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(data.empleado||"Alexander"); setConflictoMsg(null); setShowHistCliente(false); setModalCita(data); };
+  const cerrarModal = () => { setModalCita(null); setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setShowHistCliente(false); };
+
+  const abrirReagendar = (cita) => { setModalReagendar(cita); setReaFecha(cita.fecha||hoy()); setReaHora(cita.hora||"08:00"); cerrarModal(); };
+  const confirmarReagendar = () => {
+    if (!reaFecha || !reaHora) return;
+    const conflictos = detectarConflictos({...modalReagendar, fecha:reaFecha, hora:reaHora}, modalReagendar.id);
+    setCitas(prev => prev.map(c => c.id === modalReagendar.id ? { ...c, fecha:reaFecha, hora:reaHora, estado:"pendiente", enEspera: conflictos.length > 0 } : c));
+    setModalReagendar(null);
+  };
+
+  const abrirCobro = (cita) => { setModalCobro({ cita, formaPago:"efectivo", desc: cita.servicio||(cita.servicios&&cita.servicios[0]?.nombre)||"Servicio", monto: cita.precio||0 }); cerrarModal(); };
+  const confirmarCobro = () => {
+    if (!modalCobro) return;
+    cambiarEstado(modalCobro.cita.id, "completada");
+    setModalCobro(null);
+    setTab("ventas");
+  };
 
   const guardarCita = (data) => {
     const esNueva = !data.id || data.id === "nuevo";
@@ -9411,16 +10000,10 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const abrirWA = (tipo, cita) => setModalWA({ tipo, mensaje: generarMensajeWA(tipo, cita), telefono: cita.telefono||"", citaId: cita.id });
   const enviarWA = (tel, msg, citaId, tipo) => { window.open(`https://wa.me/${(tel).replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`, "_blank"); registrarMensaje(citaId, tipo); setModalWA(null); };
 
-  const manana = () => { const d=new Date(); d.setDate(d.getDate()+1); return formatFecha(d); };
   const recordatoriosPendientes = citas.filter(c => c.fecha === manana() && c.estado !== "cancelada" && c.estado !== "noshow" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio"));
 
-  const citasMes = citas.filter(c => (c.fecha||"").slice(0,7) === hoy().slice(0,7));
-  const noShowsN = citasMes.filter(c => c.estado === "noshow").length;
-  const completadasN = citasMes.filter(c => c.estado === "completada").length;
-  const tasaNS = citasMes.length > 0 ? Math.round(noShowsN/citasMes.length*100) : 0;
-  const horaCounts = {}; citasMes.forEach(c => { horaCounts[c.hora] = (horaCounts[c.hora]||0)+1; });
-  const horaPico = Object.entries(horaCounts).sort((a,b)=>b[1]-a[1])[0];
   const todasTarifas = [...(tarifasGrooming||[]).map(t=>({...t,area:"grooming"})),...(tarifasVet||[]).map(t=>({...t,area:"consulta"}))];
+  const historialCliente = modalCita?.clienteId ? citas.filter(c => String(c.clienteId) === String(modalCita.clienteId) && c.id !== modalCita.id).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,6) : [];
 
   const E = React.createElement;
   const btnStyle = (active, color="#1a6b3a") => ({ padding:"7px 14px", borderRadius:8, border:"none", background: active ? color : "#f0f0f0", color: active ? "#fff" : "#5a6472", fontWeight:700, cursor:"pointer", fontSize:13 });
@@ -9432,11 +10015,14 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     const emp = EMPLEADOS[cita.empleado];
     const est = ESTADOS[cita.enEspera ? "espera" : (cita.estado||"pendiente")];
     const ultimoMsg = (cita.mensajesEnviados||[]).slice(-1)[0];
-    return E("div", { key: cita.id, style: { background:tp.bg, borderLeft:`4px solid ${tp.border}`, borderRight: emp?`3px solid ${emp.color}`:undefined, borderRadius:8, padding: compact?"5px 8px":"10px 12px", marginBottom:5, cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,0.07)" }, onClick:()=>abrirModal({...cita}) },
+    const svcsArr = cita.servicios && cita.servicios.length > 0 ? cita.servicios : (cita.servicio ? [{nombre:cita.servicio}] : []);
+    const svcsLabel = svcsArr.length === 0 ? (cita.tipo) : svcsArr.length === 1 ? svcsArr[0].nombre : `${svcsArr[0].nombre} +${svcsArr.length-1} más`;
+    return E("div", { key: cita.id, style: { background:tp.bg, borderLeft:`4px solid ${tp.border}`, borderRight: emp?`3px solid ${emp.color}`:undefined, borderRadius:8, padding: compact?"5px 8px":"10px 12px", marginBottom:5, cursor:"pointer", boxShadow:"0 1px 3px rgba(0,0,0,0.07)" }, onClick:(e)=>{e.stopPropagation();abrirModal({...cita});} },
       E("div", { style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6} },
         E("div", null,
           E("div", { style:{fontWeight:700,fontSize:compact?11:13,color:tp.color} }, `${tp.icon} ${cita.hora} · ${cita.nombreMascota||"Sin nombre"}`),
-          !compact && E("div", { style:{fontSize:12,color:"#374151",marginTop:2} }, `👤 ${cita.nombreCliente||"—"} · ${cita.servicio||cita.tipo}`),
+          !compact && E("div", { style:{fontSize:12,color:"#374151",marginTop:2} }, `👤 ${cita.nombreCliente||"—"} · ${svcsLabel}`),
+          !compact && svcsArr.length > 1 && E("div", { style:{fontSize:11,color:C.grisd,marginTop:1} }, svcsArr.map(s=>s.nombre).join(" · ")),
           !compact && cita.empleado && E("div", { style:{fontSize:11,color:emp?.color||C.grisd,fontWeight:600,marginTop:1} }, cita.empleado)
         ),
         E("span", { style:{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:8,background:est.bg,color:est.color,whiteSpace:"nowrap"} }, est.label)
@@ -9453,8 +10039,17 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
         E("button", { onClick:()=>{const d=parseFecha(fechaActual);d.setDate(d.getDate()-1);setFechaActual(formatFecha(d));}, style:btnStyle(false) }, "‹"),
         E("div", { style:{fontWeight:800,fontSize:15,flex:1,textAlign:"center"} }, formatFechaLarga(fechaActual)),
         E("button", { onClick:()=>{const d=parseFecha(fechaActual);d.setDate(d.getDate()+1);setFechaActual(formatFecha(d));}, style:btnStyle(false) }, "›"),
-        E("button", { onClick:()=>setFechaActual(hoy()), style:btnStyle(fechaActual===hoy()) }, "Hoy")
+        E("button", { onClick:()=>setFechaActual(hoy()), style:btnStyle(fechaActual===hoy()) }, "Hoy"),
+        E("button", { onClick:()=>{
+          const cds=getCitasDia(fechaActual);
+          const nom=parseFecha(fechaActual).toLocaleDateString("es-DO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+          const w=window.open("","_blank");
+          const ingTotal=cds.filter(x=>x.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0);
+          w.document.write(`<html><head><title>Agenda ${nom}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{font-size:18px;margin-bottom:16px;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px 10px;font-size:13px;text-align:left;}th{background:#f0f0f0;font-weight:700;}tr:nth-child(even){background:#f9f9f9;}.foot{font-weight:700;margin-top:12px;font-size:14px;}</style></head><body><h1>📅 Agenda PetColinas — ${nom}</h1><p style="color:#666;font-size:12px">Generado: ${new Date().toLocaleString("es-DO")}</p><table><tr><th>Hora</th><th>Mascota</th><th>Dueño</th><th>Servicio</th><th>Empleado</th><th>Estado</th><th>Precio</th></tr>${cds.map(c=>`<tr><td>${c.hora}</td><td>${c.nombreMascota||"—"}</td><td>${c.nombreCliente||"—"}</td><td>${c.servicio||c.tipo||"—"}</td><td>${c.empleado||"—"}</td><td>${(ESTADOS[c.estado||"pendiente"]||{}).label||""}</td><td>RD$ ${Number(c.precio||0).toLocaleString("es-DO")}</td></tr>`).join("")}</table><p class="foot">Total cobrado: RD$ ${ingTotal.toLocaleString("es-DO")} | ${cds.length} cita(s)</p></body></html>`);
+          w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
+        }, style:{...btnStyle(false),fontSize:11,background:"#f8f9fa"} }, "🖨️ Imprimir")
       ),
+      citasDia.length===0&&E("div",{style:{textAlign:"center",padding:"32px",color:C.grisd,fontSize:14}},"Sin citas para este día — haz clic en un horario para agendar"),
       E("div", { style:{background:"#fff",borderRadius:12,border:"1px solid #e0e4e8",overflow:"hidden"} },
         HORAS.map(hora => {
           const citasSlot = citasDia.filter(c=>c.hora===hora);
@@ -9589,13 +10184,31 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
           )
         ),
         E("div", { style:{marginBottom:16} }, E("label",{style:labelStyle},"Notas internas 🔒"), E("textarea",{value:modalCita.notas||"",onChange:e=>setF("notas",e.target.value),placeholder:"Instrucciones especiales, comportamiento del animal...",rows:2,style:{...inputStyle,resize:"vertical"}})),
+        !esNueva && modalCita.clienteId && historialCliente.length>0 && E("div",{style:{marginBottom:14}},
+          E("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
+            E("div",{style:{fontWeight:700,fontSize:13}},"📋 Historial del cliente"),
+            E("button",{onClick:()=>setShowHistCliente(h=>!h),style:{background:"none",border:"1px solid #e0e4e8",borderRadius:6,padding:"3px 8px",fontSize:11,cursor:"pointer"}},showHistCliente?"Ocultar":"Ver historial")
+          ),
+          showHistCliente && E("div",{style:{background:"#f8f9fa",borderRadius:8,padding:"10px"}},
+            historialCliente.map(c=>{
+              const est=ESTADOS[c.estado||"pendiente"];
+              return E("div",{key:c.id,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0f0f0",fontSize:12}},
+                E("div",null,E("span",{style:{fontWeight:700,marginRight:6}},`${c.fecha} ${c.hora}`),E("span",{style:{color:C.grisd}},c.servicio||c.tipo||"—")),
+                E("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                  c.precio&&E("span",{style:{color:C.verde,fontWeight:700}},`RD$ ${Number(c.precio).toLocaleString("es-DO")}`),
+                  E("span",{style:{background:est.bg,color:est.color,padding:"1px 6px",borderRadius:4,fontWeight:700,fontSize:11}},est.label)
+                )
+              );
+            })
+          )
+        ),
         !esNueva && E("div", { style:{marginBottom:16,background:"#f8f9fa",borderRadius:10,padding:"12px 14px"} },
           E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"📲 Acciones de comunicación"),
           E("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}},
-            ...[["confirmacion","✅ Confirmar"],["recordatorio","⏰ Recordatorio"],["lista","🎉 Mascota lista"],["reagendar","🔄 Reagendar"]].map(([tipo,lbl])=>
-              E("button",{key:tipo,onClick:()=>abrirWA(tipo,modalCita),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}},`💬 ${lbl}`)
+            ...[["confirmacion","✅ Confirmar"],["recordatorio","⏰ Mañana"],["recordatorio_hoy","🌞 Hoy"],["recordatorio_2h","⏱️ 2h"],["lista","🎉 Lista"],["reagendar","🔄 Reagendar"]].map(([tipo,lbl])=>
+              E("button",{key:tipo,onClick:()=>abrirWA(tipo,modalCita),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}},`💬 ${lbl}`)
             ),
-            modalCita.telefono && E("a",{href:`tel:${modalCita.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞 Llamar")
+            modalCita.telefono && E("a",{href:`tel:${modalCita.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,textDecoration:"none"}},"📞 Llamar")
           ),
           histMsgs.length>0 && E("div",{style:{fontSize:11,color:C.grisd}},
             E("span",{style:{fontWeight:700}},"Historial: "),
@@ -9603,10 +10216,11 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
           )
         ),
         !esNueva && modalCita.estado !== "cancelada" && E("div",{style:{marginBottom:14,display:"flex",gap:8,flexWrap:"wrap"}},
-          E("button",{onClick:()=>{cambiarEstado(modalCita.id,"completada");cerrarModal();},style:{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Completada"),
+          modalCita.estado!=="confirmada"&&E("button",{onClick:()=>{cambiarEstado(modalCita.id,"confirmada");setModalCita(m=>({...m,estado:"confirmada"}));},style:{background:"#e6f4ec",color:C.verde,border:"1px solid #1a6b3a",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Confirmar"),
+          E("button",{onClick:()=>abrirCobro(modalCita),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"💰 Cobrar"),
+          E("button",{onClick:()=>abrirReagendar(modalCita),style:{background:"#f3e8ff",color:"#7c3aed",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"🔄 Reagendar"),
           E("button",{onClick:()=>{cambiarEstado(modalCita.id,"noshow");cerrarModal();},style:{background:"#f3f4f6",color:"#6b7280",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"👻 No-show"),
-          E("button",{onClick:()=>{setModalCancelar(modalCita.id);cerrarModal();},style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"❌ Cancelar"),
-          modalCita.estado==="completada" && E("button",{onClick:()=>setTab("ventas"),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"💰 Cobrar cita")
+          E("button",{onClick:()=>{setModalCancelar(modalCita.id);cerrarModal();},style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"❌ Cancelar")
         ),
         E("div",{style:{display:"flex",gap:10,justifyContent:"flex-end",borderTop:"1px solid #f0f0f0",paddingTop:16}},
           !esNueva && E("button",{onClick:()=>eliminarCita(modalCita.id),style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"10px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}},"🗑️"),
@@ -9651,27 +10265,220 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     );
   };
 
+  const renderVistaMes = () => {
+    const [y, m] = fechaActual.split("-").map(Number);
+    const primerDia = new Date(y, m-1, 1);
+    const inicioGrid = new Date(primerDia); inicioGrid.setDate(inicioGrid.getDate() - inicioGrid.getDay());
+    const diasGrid = []; for (let i=0;i<42;i++){const d=new Date(inicioGrid);d.setDate(d.getDate()+i);diasGrid.push(formatFecha(d));}
+    const mesActualStr = `${y}-${String(m).padStart(2,"0")}`;
+    return E("div",null,
+      E("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:16}},
+        E("button",{onClick:()=>{const d=new Date(y,m-2,1);setFechaActual(formatFecha(d));},style:btnStyle(false)},"‹"),
+        E("div",{style:{fontWeight:800,fontSize:16,flex:1,textAlign:"center"}},primerDia.toLocaleDateString("es-DO",{month:"long",year:"numeric"}).replace(/^\w/,c=>c.toUpperCase())),
+        E("button",{onClick:()=>{const d=new Date(y,m,1);setFechaActual(formatFecha(d));},style:btnStyle(false)},"›"),
+        E("button",{onClick:()=>setFechaActual(hoy()),style:btnStyle(fechaActual.slice(0,7)===hoy().slice(0,7))},"Hoy")
+      ),
+      E("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e0e4e8",overflow:"hidden"}},
+        E("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"2px solid #e0e4e8"}},
+          ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"].map(d=>E("div",{key:d,style:{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:C.grisd,background:"#f8f9fa"}},d))
+        ),
+        E("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}},
+          diasGrid.map(dia=>{
+            const esMes=dia.slice(0,7)===mesActualStr, esHoy=dia===hoy();
+            const citasDia=citasFiltradas.filter(c=>c.fecha===dia);
+            const porTipo={};citasDia.forEach(c=>{porTipo[c.tipo]=(porTipo[c.tipo]||0)+1;});
+            return E("div",{key:dia,style:{minHeight:76,padding:"6px",border:"1px solid #f0f0f0",background:esHoy?"#e6f4ec":(esMes?"#fff":"#f9fafb"),cursor:"pointer",opacity:esMes?1:0.45},onClick:()=>{setFechaActual(dia);setVista("dia");}},
+              E("div",{style:{fontWeight:esHoy?800:600,fontSize:13,color:esHoy?C.verde:C.negro,marginBottom:3}},parseFecha(dia).getDate()),
+              citasDia.length>0&&E("div",{style:{display:"flex",flexWrap:"wrap",gap:2}},
+                Object.entries(porTipo).map(([tipo,cnt])=>{const tp=TIPOS[tipo]||TIPOS.grooming;return E("span",{key:tipo,style:{fontSize:10,padding:"1px 4px",borderRadius:4,background:tp.bg,color:tp.color,fontWeight:700}},`${tp.icon}${cnt}`);})
+              ),
+              citasDia.length===0&&esMes&&E("div",{style:{fontSize:11,color:"#d1d5db",marginTop:6}},"+")
+            );
+          })
+        )
+      )
+    );
+  };
+
+  const renderVistaLista = () => {
+    const ordenadas = [...citasFiltradas].sort((a,b)=>{
+      let va=a[sortLista]||"", vb=b[sortLista]||"";
+      if (sortLista==="fecha") {va=(a.fecha||"")+(a.hora||"");vb=(b.fecha||"")+(b.hora||"");}
+      if (sortLista==="precio") {va=Number(a.precio)||0;vb=Number(b.precio)||0;}
+      if(va<vb)return sortDir==="asc"?-1:1; if(va>vb)return sortDir==="asc"?1:-1; return 0;
+    });
+    const paginadas=ordenadas.slice(paginaLista*POR_PAGINA,(paginaLista+1)*POR_PAGINA);
+    const totalPags=Math.ceil(ordenadas.length/POR_PAGINA);
+    const thS=(key)=>({padding:"10px 12px",textAlign:"left",fontSize:12,fontWeight:700,color:C.grisd,background:"#f8f9fa",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid #e0e4e8",userSelect:"none"});
+    const tdS={padding:"9px 12px",fontSize:13,borderBottom:"1px solid #f4f5f6",verticalAlign:"middle"};
+    const sortClick=(key)=>{if(sortLista===key)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortLista(key);setSortDir("asc");}setPaginaLista(0);};
+    const arr=(k)=>sortLista===k?(sortDir==="asc"?"▲":"▼"):"";
+    return E("div",null,
+      E("div",{style:{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+        E("div",{style:{fontSize:13,color:C.grisd}},`${ordenadas.length} cita(s)`),
+        E("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+          paginaLista>0&&E("button",{onClick:()=>setPaginaLista(p=>p-1),style:btnStyle(false)},"‹"),
+          E("span",{style:{fontSize:12,padding:"5px 8px",color:C.grisd}},`${paginaLista+1}/${Math.max(1,totalPags)}`),
+          paginaLista<totalPags-1&&E("button",{onClick:()=>setPaginaLista(p=>p+1),style:btnStyle(false)},"›")
+        )
+      ),
+      E("div",{style:{background:"#fff",borderRadius:12,border:"1px solid #e0e4e8",overflowX:"auto"}},
+        E("table",{style:{width:"100%",borderCollapse:"collapse",minWidth:800}},
+          E("thead",null,E("tr",null,
+            E("th",{style:thS("fecha"),onClick:()=>sortClick("fecha")},`Fecha/Hora ${arr("fecha")}`),
+            E("th",{style:thS("nombreMascota"),onClick:()=>sortClick("nombreMascota")},`Mascota ${arr("nombreMascota")}`),
+            E("th",{style:thS("nombreCliente"),onClick:()=>sortClick("nombreCliente")},`Dueño ${arr("nombreCliente")}`),
+            E("th",{style:thS("tipo")},"Tipo"),
+            E("th",{style:thS("empleado"),onClick:()=>sortClick("empleado")},`Empleado ${arr("empleado")}`),
+            E("th",{style:thS("estado"),onClick:()=>sortClick("estado")},`Estado ${arr("estado")}`),
+            E("th",{style:{...thS("precio"),textAlign:"right"},onClick:()=>sortClick("precio")},`Precio ${arr("precio")}`),
+            E("th",{style:thS()},"")
+          )),
+          E("tbody",null,
+            paginadas.length===0?E("tr",null,E("td",{colSpan:8,style:{...tdS,textAlign:"center",color:C.grisd,padding:30}},"Sin citas")):
+            paginadas.map(c=>{
+              const tp=TIPOS[c.tipo]||TIPOS.grooming, est=ESTADOS[c.enEspera?"espera":(c.estado||"pendiente")];
+              return E("tr",{key:c.id,style:{cursor:"pointer"},onClick:()=>abrirModal({...c})},
+                E("td",{style:tdS},E("div",{style:{fontWeight:700,fontSize:12}},c.fecha||"—"),E("div",{style:{fontSize:11,color:C.grisd}},c.hora||"—")),
+                E("td",{style:tdS},E("div",{style:{fontWeight:700}},c.nombreMascota||"—"),c.duracion&&E("div",{style:{fontSize:11,color:C.grisd}},`${c.duracion} min`)),
+                E("td",{style:{...tdS,color:C.grisd}},c.nombreCliente||"—"),
+                E("td",{style:tdS},E("span",{style:{background:tp.bg,color:tp.color,padding:"2px 6px",borderRadius:5,fontSize:11,fontWeight:700}},`${tp.icon} ${tp.label}`)),
+                E("td",{style:{...tdS,fontWeight:600,color:EMPLEADOS[c.empleado]?.color||C.grisd}},c.empleado||"—"),
+                E("td",{style:tdS},E("span",{style:{background:est.bg,color:est.color,padding:"2px 6px",borderRadius:5,fontSize:11,fontWeight:700}},est.label)),
+                E("td",{style:{...tdS,textAlign:"right",fontWeight:700,color:C.verde}},c.precio?`RD$ ${Number(c.precio).toLocaleString("es-DO")}`:"—"),
+                E("td",{style:{...tdS,whiteSpace:"nowrap"},onClick:e=>e.stopPropagation()},
+                  c.telefono&&E("button",{onClick:()=>abrirWA("confirmacion",c),title:"WhatsApp",style:{background:"#25D366",color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,marginRight:4}},"💬"),
+                  E("button",{onClick:()=>abrirReagendar(c),title:"Reagendar",style:{background:"#f3e8ff",color:"#7c3aed",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,marginRight:4}},"🔄"),
+                  E("button",{onClick:()=>abrirModal({...c}),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}},"✏️")
+                )
+              );
+            })
+          )
+        )
+      )
+    );
+  };
+
+  const renderVistaEspera = () => E("div",null,
+    E("div",{style:{fontWeight:800,fontSize:16,marginBottom:16,color:"#7c3aed"}},"⏳ Lista de Espera"),
+    citasEspera.length===0
+      ?E("div",{style:{textAlign:"center",padding:"40px",color:C.grisd,background:"#fff",borderRadius:12,border:"1px solid #e0e4e8"}},"No hay citas en lista de espera")
+      :citasEspera.map(c=>{
+        const tp=TIPOS[c.tipo]||TIPOS.grooming;
+        const haySlot=detectarConflictos(c,c.id).length===0;
+        return E("div",{key:c.id,style:{background:"#fff",border:"1px solid #e0e4e8",borderLeft:"4px solid #7c3aed",borderRadius:10,padding:"14px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}},
+          E("div",null,
+            E("div",{style:{fontWeight:800,fontSize:14}},`${tp.icon} ${c.nombreMascota||"?"} — ${c.nombreCliente||"?"}`),
+            E("div",{style:{fontSize:12,color:C.grisd,marginTop:2}},`${c.fecha} · ${c.hora} · ${c.empleado||"—"} · ${c.servicio||c.tipo||"—"}`),
+            haySlot&&E("div",{style:{fontSize:11,color:C.verde,fontWeight:700,marginTop:3}},"✅ Slot disponible ahora")
+          ),
+          E("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+            haySlot&&E("button",{onClick:()=>setCitas(prev=>prev.map(x=>x.id===c.id?{...x,enEspera:false,estado:"confirmada"}:x)),style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✅ Confirmar slot"),
+            E("button",{onClick:()=>abrirReagendar(c),style:{background:"#f3e8ff",color:"#7c3aed",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"🔄 Reagendar"),
+            E("button",{onClick:()=>abrirModal({...c}),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}},"✏️ Ver")
+          )
+        );
+      })
+  );
+
+  const renderModalReagendar = () => {
+    if (!modalReagendar) return null;
+    const conflictos=reaFecha&&reaHora?detectarConflictos({...modalReagendar,fecha:reaFecha,hora:reaHora},modalReagendar.id):[];
+    return E("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:4000,padding:16}},
+      E("div",{style:{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}},
+        E("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+          E("h3",{style:{margin:0,fontSize:17,fontWeight:800}},"🔄 Reagendar cita"),
+          E("button",{onClick:()=>setModalReagendar(null),style:{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grisd}},"×")
+        ),
+        E("div",{style:{background:"#f8f9fa",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:13}},
+          E("div",{style:{fontWeight:700}},`${modalReagendar.nombreMascota||"?"} — ${modalReagendar.nombreCliente||"?"}`),
+          E("div",{style:{color:C.grisd,marginTop:2}},`Actual: ${modalReagendar.fecha} · ${modalReagendar.hora} · ${modalReagendar.empleado||"—"}`)
+        ),
+        E("div",{style:{display:"flex",gap:10,marginBottom:14}},
+          E("div",{style:{flex:1}},E("label",{style:labelStyle},"Nueva fecha"),E("input",{type:"date",value:reaFecha,onChange:e=>setReaFecha(e.target.value),style:inputStyle})),
+          E("div",{style:{flex:1}},E("label",{style:labelStyle},"Nueva hora"),E("select",{value:reaHora,onChange:e=>setReaHora(e.target.value),style:inputStyle},HORAS.map(h=>E("option",{key:h,value:h},h))))
+        ),
+        conflictos.length>0&&E("div",{style:{background:"#fff7ed",border:"1px solid #f59e0b",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#92400e"}},`⚠️ Conflicto con ${conflictos.length} cita(s). Se guardará en lista de espera.`),
+        conflictos.length===0&&reaFecha&&reaHora&&E("div",{style:{background:"#e6f4ec",border:"1px solid #1a6b3a",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:C.verde}},"✅ Horario disponible"),
+        modalReagendar.telefono&&E("div",{style:{marginBottom:16}},
+          E("label",{style:{...labelStyle,marginBottom:6}},"Notificar al cliente"),
+          E("div",{style:{display:"flex",gap:8}},
+            E("button",{onClick:()=>abrirWA("reagendar",modalReagendar),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"💬 Avisar por WhatsApp"),
+            E("a",{href:`tel:${modalReagendar.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞 Llamar")
+          )
+        ),
+        E("div",{style:{display:"flex",gap:10,justifyContent:"flex-end"}},
+          E("button",{onClick:()=>setModalReagendar(null),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"10px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}},"Cancelar"),
+          E("button",{onClick:confirmarReagendar,style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:800,fontSize:13,cursor:"pointer"}},"✅ Confirmar reagenda")
+        )
+      )
+    );
+  };
+
+  const renderModalCobro = () => {
+    if (!modalCobro) return null;
+    return E("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:4000,padding:16}},
+      E("div",{style:{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}},
+        E("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+          E("h3",{style:{margin:0,fontSize:17,fontWeight:800}},"💰 Cobrar cita"),
+          E("button",{onClick:()=>setModalCobro(null),style:{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grisd}},"×")
+        ),
+        E("div",{style:{background:"#f8f9fa",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:13}},
+          E("div",{style:{fontWeight:700}},`${modalCobro.cita.nombreMascota||"?"} — ${modalCobro.cita.nombreCliente||"?"}`),
+          E("div",{style:{color:C.grisd,marginTop:2}},`${modalCobro.cita.fecha} · ${modalCobro.cita.hora}`)
+        ),
+        E("div",{style:{marginBottom:12}},E("label",{style:labelStyle},"Servicio"),E("input",{value:modalCobro.desc,onChange:e=>setModalCobro(m=>({...m,desc:e.target.value})),style:inputStyle})),
+        E("div",{style:{marginBottom:12}},E("label",{style:labelStyle},"Monto (RD$)"),E("input",{type:"number",value:modalCobro.monto,onChange:e=>setModalCobro(m=>({...m,monto:e.target.value})),style:inputStyle})),
+        E("div",{style:{marginBottom:20}},E("label",{style:labelStyle},"Forma de pago"),
+          E("select",{value:modalCobro.formaPago,onChange:e=>setModalCobro(m=>({...m,formaPago:e.target.value})),style:inputStyle},
+            [["efectivo","💵 Efectivo"],["tarjeta","💳 Tarjeta"],["transferencia","📲 Transferencia"],["mixto","🔀 Mixto"]].map(([v,l])=>E("option",{key:v,value:v},l))
+          )
+        ),
+        E("div",{style:{background:"#e6f4ec",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:12,color:C.verde,fontWeight:600}},"✅ Se marcará la cita como completada y se abrirá el módulo de Ventas para registrar el cobro."),
+        E("div",{style:{display:"flex",gap:10,justifyContent:"flex-end"}},
+          E("button",{onClick:()=>setModalCobro(null),style:{background:"#f0f0f0",color:C.grisd,border:"none",borderRadius:8,padding:"10px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}},"Cancelar"),
+          E("button",{onClick:confirmarCobro,style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:800,fontSize:13,cursor:"pointer"}},"💰 Ir a cobrar")
+        )
+      )
+    );
+  };
+
   const renderEstadisticas = () => E(Card,{style:{marginTop:24}},
     E("div",{style:{fontWeight:800,fontSize:15,marginBottom:16}},"📊 Estadísticas del mes"),
     E("div",{style:{display:"flex",gap:14,flexWrap:"wrap",marginBottom:18}},
       ...[
         [citasMes.length,"Citas totales",C.verde],
         [completadasN,"Completadas","#1d4ed8"],
+        [canceladasN,"Canceladas","#dc2626"],
         [noShowsN>0?`${tasaNS}%`:"0%",`No-shows (${noShowsN})`,noShowsN>0?"#dc2626":C.verde],
+        [`RD$${Math.round(ingresosMes/1000)}k`,"Ingresos mes",C.verde],
         [horaPico?horaPico[0]:"—","Hora pico",C.naranja]
       ].map(([val,lbl,col])=>E("div",{key:lbl,style:{flex:1,minWidth:90,textAlign:"center",background:"#f8f9fa",borderRadius:10,padding:"14px 8px"}},
-        E("div",{style:{fontSize:26,fontWeight:800,color:col}},val),
+        E("div",{style:{fontSize:22,fontWeight:800,color:col}},val),
         E("div",{style:{fontSize:11,color:C.grisd,marginTop:4}},lbl)
       ))
     ),
     E("div",{style:{display:"flex",gap:20,flexWrap:"wrap"}},
-      E("div",{style:{flex:1,minWidth:160}},
+      E("div",{style:{flex:2,minWidth:200}},
         E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"Por empleado"),
-        Object.keys(EMPLEADOS).map(emp=>{ const tot=citasMes.filter(c=>c.empleado===emp).length; const ok=citasMes.filter(c=>c.empleado===emp&&c.estado==="completada").length; return E("div",{key:emp,style:{display:"flex",alignItems:"center",gap:8,marginBottom:7}},E("div",{style:{width:10,height:10,borderRadius:"50%",background:EMPLEADOS[emp].color,flexShrink:0}}),E("span",{style:{fontSize:13,flex:1}}),E("span",{style:{fontSize:13,fontWeight:700,flex:1}}),E("div",{style:{fontSize:13,flex:2}},emp),E("span",{style:{fontWeight:700}}),E("span",{style:{fontWeight:700,fontSize:14}},tot),E("span",{style:{fontSize:11,color:C.grisd,marginLeft:4}},`(${ok} ok)`)); })
+        statsPorEmp.map(({emp,total,completadas,ingresos})=>E("div",{key:emp,style:{display:"flex",alignItems:"center",gap:8,marginBottom:8,background:"#f8f9fa",borderRadius:8,padding:"8px 10px"}},
+          E("div",{style:{width:10,height:10,borderRadius:"50%",background:EMPLEADOS[emp].color,flexShrink:0}}),
+          E("div",{style:{flex:1,fontSize:13,fontWeight:700}},emp),
+          E("div",{style:{fontSize:12,color:C.grisd}},`${total} citas · ${completadas} ok`),
+          E("div",{style:{fontSize:12,fontWeight:700,color:C.verde,marginLeft:8}},`RD$ ${ingresos.toLocaleString("es-DO")}`)
+        ))
       ),
       E("div",{style:{flex:1,minWidth:160}},
         E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"Por tipo"),
-        Object.entries(TIPOS).map(([k,v])=>{ const tot=citasMes.filter(c=>c.tipo===k).length; return E("div",{key:k,style:{display:"flex",alignItems:"center",gap:8,marginBottom:7}},E("span",null,v.icon),E("span",{style:{fontSize:13,flex:1}},v.label),E("span",{style:{fontWeight:700,color:v.border}},tot)); })
+        Object.entries(TIPOS).map(([k,v])=>{
+          const tot=citasMes.filter(c=>c.tipo===k).length;
+          const ing=citasMes.filter(c=>c.tipo===k&&c.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0);
+          return E("div",{key:k,style:{display:"flex",alignItems:"center",gap:8,marginBottom:7,background:"#f8f9fa",borderRadius:8,padding:"7px 10px"}},
+            E("span",null,v.icon),E("span",{style:{fontSize:13,flex:1}},v.label),
+            E("span",{style:{fontWeight:700,color:v.border,marginRight:4}},tot),
+            E("span",{style:{fontSize:11,color:C.grisd}},`· RD$ ${ing.toLocaleString("es-DO")}`)
+          );
+        })
       )
     )
   );
@@ -9680,45 +10487,80 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     renderModalCancelar(),
     renderModalWA(),
     renderModal(),
+    renderModalReagendar(),
+    renderModalCobro(),
     E("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
       E("div",null,
         E("h2",{style:{fontFamily:"Georgia,serif",fontSize:26,margin:0}},"📅 Agenda"),
         E("p",{style:{color:C.grisd,fontSize:13,margin:"4px 0 0"}},"Gestión de citas · PetColinas")
       ),
-      E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:hoy(),hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
+      E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
     ),
-    recordatoriosPendientes.length>0 && E("div",{style:{background:"#fff7ed",border:"1.5px solid #f59e0b",borderRadius:12,padding:"14px 16px",marginBottom:20}},
-      E("div",{style:{fontWeight:800,color:"#d97706",fontSize:13,marginBottom:10}},`⏰ ${recordatoriosPendientes.length} cita(s) mañana sin recordatorio enviado`),
-      recordatoriosPendientes.map(c=>E("div",{key:c.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fefce8",borderRadius:8,padding:"8px 12px",marginBottom:6}},
-        E("div",null, E("div",{style:{fontWeight:700,fontSize:13}},`${c.hora} · ${c.nombreMascota||"?"}`), E("div",{style:{fontSize:11,color:C.grisd}},`${c.nombreCliente||"?"} · ${c.empleado||""}`)),
-        E("div",{style:{display:"flex",gap:8}},
-          c.telefono && E("button",{onClick:()=>abrirWA("recordatorio",c),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}},"💬 WA"),
-          c.telefono && E("a",{href:`tel:${c.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞")
+    recordatoriosHoy.length>0 && E("div",{style:{background:"#e0f2fe",border:"1.5px solid #0284c7",borderRadius:12,padding:"14px 16px",marginBottom:12}},
+      E("div",{style:{fontWeight:800,color:"#0369a1",fontSize:13,marginBottom:8}},`🌞 ${recordatoriosHoy.length} cita(s) HOY sin recordatorio enviado`),
+      recordatoriosHoy.slice(0,3).map(c=>E("div",{key:c.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f0f9ff",borderRadius:8,padding:"8px 12px",marginBottom:4}},
+        E("div",null,E("div",{style:{fontWeight:700,fontSize:13}},`${c.hora} · ${c.nombreMascota||"?"}`),E("div",{style:{fontSize:11,color:C.grisd}},`${c.nombreCliente||"?"} · ${c.empleado||""}`)),
+        c.telefono&&E("button",{onClick:()=>abrirWA("recordatorio_hoy",c),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}},"💬 WA hoy")
+      ))
+    ),
+    recordatoriosPendientes.length>0 && E("div",{style:{background:"#fff7ed",border:"1.5px solid #f59e0b",borderRadius:12,padding:"14px 16px",marginBottom:12}},
+      E("div",{style:{fontWeight:800,color:"#d97706",fontSize:13,marginBottom:8}},`⏰ ${recordatoriosPendientes.length} cita(s) mañana sin recordatorio`),
+      recordatoriosPendientes.map(c=>E("div",{key:c.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fefce8",borderRadius:8,padding:"8px 12px",marginBottom:4}},
+        E("div",null,E("div",{style:{fontWeight:700,fontSize:13}},`${c.hora} · ${c.nombreMascota||"?"}`),E("div",{style:{fontSize:11,color:C.grisd}},`${c.nombreCliente||"?"} · ${c.empleado||""}`)),
+        E("div",{style:{display:"flex",gap:6}},
+          c.telefono&&E("button",{onClick:()=>abrirWA("recordatorio",c),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}},"💬 WA"),
+          c.telefono&&E("a",{href:`tel:${c.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,textDecoration:"none"}},"📞")
         )
       ))
     ),
+    citasEspera.length>0&&vista!=="espera"&&E("div",{style:{background:"#faf5ff",border:"1.5px solid #7c3aed",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}},
+      E("div",{style:{fontWeight:700,color:"#7c3aed",fontSize:13}},`⏳ ${citasEspera.length} cita(s) en lista de espera`),
+      E("button",{onClick:()=>setVista("espera"),style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"Ver lista")
+    ),
+    citasSinConfirmar.length>0&&E("div",{style:{background:"#fefce8",border:"1.5px solid #ca8a04",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}},
+      E("div",{style:{fontWeight:700,color:"#854d0e",fontSize:13}},`📋 ${citasSinConfirmar.length} cita(s) futuras sin confirmar`),
+      E("button",{onClick:()=>{setFiltroEstado("pendiente");setVista("lista");},style:{background:"#ca8a04",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}},"Ver pendientes")
+    ),
     E(Card,{style:{marginBottom:16,padding:"12px 16px"}},
-      E("div",{style:{display:"flex",flexWrap:"wrap",gap:10,alignItems:"center"}},
-        E("input",{placeholder:"🔍 Buscar mascota o dueño...",value:busqueda,onChange:e=>setBusqueda(e.target.value),style:{padding:"7px 12px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13,minWidth:190}}),
-        E("select",{value:filtroEmpleado,onChange:e=>setFiltroEmpleado(e.target.value),style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
+      E("div",{style:{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:10}},
+        E("input",{placeholder:"🔍 Buscar mascota, dueño o servicio...",value:busqueda,onChange:e=>{setBusqueda(e.target.value);setPaginaLista(0);},style:{padding:"7px 12px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13,minWidth:190}}),
+        E("select",{value:filtroEmpleado,onChange:e=>{setFiltroEmpleado(e.target.value);setPaginaLista(0);},style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
           E("option",{value:"todos"},"👥 Todos"),
           Object.keys(EMPLEADOS).map(e=>E("option",{key:e,value:e},e))
         ),
-        E("select",{value:filtroTipo,onChange:e=>setFiltroTipo(e.target.value),style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
+        E("select",{value:filtroTipo,onChange:e=>{setFiltroTipo(e.target.value);setPaginaLista(0);},style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
           E("option",{value:"todos"},"🗂️ Todos los tipos"),
           Object.entries(TIPOS).map(([k,v])=>E("option",{key:k,value:k},`${v.icon} ${v.label}`))
         ),
-        E("select",{value:filtroEstado,onChange:e=>setFiltroEstado(e.target.value),style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
+        E("select",{value:filtroEstado,onChange:e=>{setFiltroEstado(e.target.value);setPaginaLista(0);},style:{padding:"7px 10px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:13}},
           E("option",{value:"todos"},"📋 Todos los estados"),
           Object.entries(ESTADOS).filter(([k])=>k!=="espera").map(([k,v])=>E("option",{key:k,value:k},v.label))
         ),
-        E("div",{style:{marginLeft:"auto",display:"flex",gap:8}},
+        E("div",{style:{display:"flex",gap:4,alignItems:"center"}},
+          E("input",{type:"date",value:filtroFechaDesde,onChange:e=>{setFiltroFechaDesde(e.target.value);setPaginaLista(0);},style:{padding:"6px 8px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:12},title:"Desde"}),
+          E("span",{style:{fontSize:11,color:C.grisd}},"—"),
+          E("input",{type:"date",value:filtroFechaHasta,onChange:e=>{setFiltroFechaHasta(e.target.value);setPaginaLista(0);},style:{padding:"6px 8px",border:"1px solid #e0e4e8",borderRadius:8,fontSize:12},title:"Hasta"})
+        ),
+        (filtroEmpleado!=="todos"||filtroTipo!=="todos"||filtroEstado!=="todos"||filtroFechaDesde||filtroFechaHasta||busqueda)&&E("button",{onClick:()=>{setFiltroEmpleado("todos");setFiltroTipo("todos");setFiltroEstado("todos");setFiltroFechaDesde("");setFiltroFechaHasta("");setBusqueda("");setPaginaLista(0);},style:{padding:"6px 10px",border:"none",borderRadius:8,background:"#fee2e2",color:"#dc2626",fontSize:12,fontWeight:700,cursor:"pointer"}},"✕ Limpiar")
+      ),
+      E("div",{style:{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}},
+        E("span",{style:{fontSize:11,color:C.grisd}},"Rápido:"),
+        ...[
+          ["Hoy",()=>{setFiltroFechaDesde(hoy());setFiltroFechaHasta(hoy());setVista("dia");setFechaActual(hoy());setPaginaLista(0);}],
+          ["Esta semana",()=>{const ini=getSemanaInicio(hoy());const dias=getDiasSemana(ini);setFiltroFechaDesde(dias[0]);setFiltroFechaHasta(dias[6]);setVista("lista");setPaginaLista(0);}],
+          ["Este mes",()=>{const m=hoy().slice(0,7);setFiltroFechaDesde(m+"-01");setFiltroFechaHasta(m+"-31");setVista("lista");setPaginaLista(0);}],
+          ["Próx. semana",()=>{const d=parseFecha(hoy());d.setDate(d.getDate()+7);const ini=getSemanaInicio(formatFecha(d));const dias=getDiasSemana(ini);setFiltroFechaDesde(dias[0]);setFiltroFechaHasta(dias[6]);setVista("lista");setPaginaLista(0);}]
+        ].map(([lbl,fn])=>E("button",{key:lbl,onClick:fn,style:{padding:"5px 10px",border:"1px solid #e0e4e8",borderRadius:6,background:"#f8f9fa",fontSize:11,cursor:"pointer",fontWeight:600}},lbl)),
+        E("div",{style:{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap"}},
           E("button",{onClick:()=>setVista("dia"),style:btnStyle(vista==="dia")},"📆 Día"),
-          E("button",{onClick:()=>setVista("semana"),style:btnStyle(vista==="semana")},"📅 Semana")
+          E("button",{onClick:()=>setVista("semana"),style:btnStyle(vista==="semana")},"📅 Semana"),
+          E("button",{onClick:()=>setVista("mes"),style:btnStyle(vista==="mes")},"🗓️ Mes"),
+          E("button",{onClick:()=>setVista("lista"),style:btnStyle(vista==="lista")},"📋 Lista"),
+          citasEspera.length>0&&E("button",{onClick:()=>setVista("espera"),style:btnStyle(vista==="espera","#7c3aed")},`⏳(${citasEspera.length})`)
         )
       )
     ),
-    vista==="dia" ? renderVistaDia() : renderVistaSemana(),
+    vista==="dia"?renderVistaDia():vista==="semana"?renderVistaSemana():vista==="mes"?renderVistaMes():vista==="lista"?renderVistaLista():renderVistaEspera(),
     renderEstadisticas()
   );
 }
