@@ -48,10 +48,20 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
 2. Admin: agrega datos dueno (nombre/tel/dir/email) + forma de pago -> aprueba
 3. Al aprobar: venta registrada + CRM actualizado automaticamente
 
+## LOGIN - NOTA IMPORTANTE
+petcolinasrd@gmail.com funciona en telefono pero NO en PC de la oficina.
+Error: ERR_NAME_NOT_RESOLVED (DNS no resuelve supabase.co).
+Fix PC: ejecutar `ipconfig /flushdns` en cmd, o cambiar DNS a 8.8.8.8 / 8.8.4.4.
+Login correcto Admin: admin@petcolinas.com / Nickyjose00
+
+## PLUGINS INSTALADOS (25 Abr 2026)
+- superpowers@claude-plugins-official -> en .claude/settings.json
+- ruflo MCP server -> npx ruflo@latest mcp start (orquestacion de agentes)
+
 ## PENDIENTES (20 Mar 2026)
 1. Boton rojo ventas pendientes en header admin
 2. Verificar Top Servicios visible en Dashboard Aylein
 3. Confirmar Vacunas muestra todos los registros de Aylein
 4. Crear usuarios Supabase Auth para Alexander y Valentina
 
-Generado 20 Mar 2026
+Actualizado 25 Abr 2026
