@@ -596,7 +596,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "27 mar 2026 · facturas-comisiones";
+const LAST_UPDATE = "27 mar 2026 · grooming-vet-mejoras";
 const C = {
   verde: "#1a6b3a",
   verde2: "#2d8f52",
@@ -628,7 +628,8 @@ const TARIFAS_GROOMING = [
   { id: "g11", nombre: "Desenrede",                          precio: 690,  comision: 90  },
   { id: "g12", nombre: "Ba\xF1o cachorro c/l\xEDnea",     precio: 899,  comision: 80  },
   { id: "g13", nombre: "Ba\xF1o mediano c/l\xEDnea",      precio: 1149, comision: 110 },
-  { id: "g14", nombre: "Ba\xF1o grande c/l\xEDnea",       precio: 1349, comision: 120 }
+  { id: "g14", nombre: "Ba\xF1o grande c/l\xEDnea",       precio: 1349, comision: 120 },
+  { id: "g15", nombre: "Corte de u\xF1as",                precio: 300,  comision: 50  }
 ];
 const TARIFAS_VET = [
   { id: "v1", nombre: "Consulta", precio: 1500, comision: 0.3 },
@@ -5131,7 +5132,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       },
       options: tarifas.map((t) => ({ value: t.id, label: `${t.nombre} \u2014 ${RD(t.precio)}` }))
     }
-  ), tipoItem === "grooming" && /* @__PURE__ */ React.createElement(
+  ), (tipoItem === "grooming" || tipoItem === "veterinaria") && /* @__PURE__ */ React.createElement(
     Input,
     {
       label: "Cantidad",
