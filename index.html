@@ -641,7 +641,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "12 abr 2026 · Voz IA integrada (HF Spaces + Claude + Telegram)";
+const LAST_UPDATE = "25 abr 2026 · grooming-vet-mejoras";
 const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
@@ -675,7 +675,7 @@ const TARIFAS_GROOMING = [
   { id: "g12", nombre: "Ba\xF1o cachorro c/l\xEDnea",     precio: 899,  comision: 80  },
   { id: "g13", nombre: "Ba\xF1o mediano c/l\xEDnea",      precio: 1149, comision: 110 },
   { id: "g14", nombre: "Ba\xF1o grande c/l\xEDnea",       precio: 1349, comision: 120 },
-  { id: "g15", nombre: "Corte de u\xF1as",               precio: 300,  comision: 50  }
+  { id: "g15", nombre: "Corte de u\xF1as",                precio: 300,  comision: 50  }
 ];
 const TARIFAS_VET = [
   { id: "v1", nombre: "Consulta", precio: 1500, comision: 0.3 },
@@ -5613,7 +5613,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   ), esManual && /* @__PURE__ */ React.createElement(React.Fragment, null,
     /* @__PURE__ */ React.createElement(Input, { label: "Nombre del servicio *", value: nombreManual, onChange: setNombreManual, placeholder: "Ej: Spa premium, Tratamiento especial..." }),
     /* @__PURE__ */ React.createElement(Input, { label: "Precio (RD$) *", type: "number", value: precioManual, onChange: setPrecioManual, placeholder: "0" })
-  ), !esManual && tipoItem === "grooming" && /* @__PURE__ */ React.createElement(
+  ), !esManual && (tipoItem === "grooming" || tipoItem === "veterinaria") && /* @__PURE__ */ React.createElement(
     Input,
     {
       label: "Cantidad",
