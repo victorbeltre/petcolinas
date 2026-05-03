@@ -425,6 +425,7 @@ function normalizeRow(table, r) {
     cliente: r.cliente,
     area: r.area,
     servicio: r.servicio || r.descripcion || null,
+    descripcion: r.descripcion || r.servicio || null,
     total: r.total,
     comision: r.comision,
     formaPago: r.formapago,
@@ -557,10 +558,12 @@ function denormalizeRow(table, r) {
     cliente: r.cliente,
     area: r.area,
     servicio: r.servicio || r.descripcion || null,
+    descripcion: r.descripcion || r.servicio || null,
     total: r.total,
     comision: r.comision,
-    formapago: r.formaPago,
-    recibidopor: r.recibidoPor,
+    formapago: r.formaPago || r.formapago || null,
+    recibidopor: r.recibidoPor || r.recibidopor || null,
+    cobradopor: r.cobradoPor || r.cobradopor || null,
     notas: r.notas
   };
   if (table === "pc_gastos") return {
@@ -641,7 +644,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "3 may 2026 · dashboard-selector-mes + facturas-detalladas";
+const LAST_UPDATE = "3 may 2026 · dashboard-mes + facturas + inventario + deslanado + WA-preview + descripciones";
 const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
@@ -5969,7 +5972,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       },
       v.cliente
     ) : "\u2014"),
-    /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", maxWidth: 280, color: C.grisd, fontSize: 12 } }, v.servicio || v.descripcion || "\u2014"),
+    /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", maxWidth: 280, color: C.grisd, fontSize: 12 } }, v.servicio || v.descripcion || (v.items && v.items.length > 0 ? v.items.map(i => i.nombre || "").join(" + ") : null) || "\u2014"),
     /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: colorArea(v.area) }, v.area)),
     /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.azul, fontWeight: 600, cursor: v.comision > 0 ? "pointer" : "default" },
       onClick: v.comision > 0 ? (e) => { e.stopPropagation(); setVentaDetalle(v); } : undefined,
