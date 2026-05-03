@@ -675,7 +675,8 @@ const TARIFAS_GROOMING = [
   { id: "g12", nombre: "Ba\xF1o cachorro c/l\xEDnea",     precio: 899,  comision: 80  },
   { id: "g13", nombre: "Ba\xF1o mediano c/l\xEDnea",      precio: 1149, comision: 110 },
   { id: "g14", nombre: "Ba\xF1o grande c/l\xEDnea",       precio: 1349, comision: 120 },
-  { id: "g15", nombre: "Corte de u\xF1as",                precio: 300,  comision: 50  }
+  { id: "g15", nombre: "Corte de u\xF1as",                precio: 300,  comision: 50  },
+  { id: "g16", nombre: "Deslanado",                           precio: 890,  comision: 100 }
 ];
 const TARIFAS_VET = [
   { id: "v1", nombre: "Consulta", precio: 1500, comision: 0.3 },
@@ -2526,8 +2527,7 @@ Mascota: ${f.mascota}
     const telRaw = (f.telefono || "").replace(/\D/g, "");
     const tel = telRaw.length >= 11 ? telRaw : (telRaw ? "1" + telRaw : "");
     if (!tel) { alert("Esta factura no tiene número de teléfono registrado."); return; }
-    const url = `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
-    window.open(url, "_blank");
+    abrirWA(tel, texto);
   }
   const [busqueda, setBusqueda] = useState("");
   const [orden, setOrden] = useState("fecha_desc");
@@ -3621,6 +3621,51 @@ function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventar
   );
 }
 
+function WAPreviewModal() {
+  const [modal, setModal] = React.useState(null);
+  const [texto, setTexto] = React.useState("");
+  React.useEffect(() => {
+    const h = (e) => { setModal(e.detail); setTexto(e.detail.msg); };
+    window.addEventListener("pc-wa", h);
+    return () => window.removeEventListener("pc-wa", h);
+  }, []);
+  if (!modal) return null;
+  const enviar = () => {
+    const tel = (modal.tel || "").replace(/\D/g, "");
+    const telFinal = tel.length >= 11 ? tel : (tel ? "1" + tel : "");
+    if (!telFinal) { alert("Sin teléfono registrado."); return; }
+    window.open("https://wa.me/" + telFinal + "?text=" + encodeURIComponent(texto), "_blank");
+    setModal(null);
+  };
+  return /* @__PURE__ */ React.createElement("div", { style: { position:"fixed", inset:0, background:"rgba(0,0,0,0.52)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }, onClick: () => setModal(null) },
+    /* @__PURE__ */ React.createElement("div", { style: { background:"#fff", borderRadius:16, padding:28, maxWidth:540, width:"100%", boxShadow:"0 20px 60px rgba(0,0,0,0.25)", maxHeight:"85vh", overflowY:"auto" }, onClick: (e) => e.stopPropagation() },
+      /* @__PURE__ */ React.createElement("div", { style: { display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 } },
+        /* @__PURE__ */ React.createElement("div", null,
+          /* @__PURE__ */ React.createElement("div", { style: { fontWeight:800, fontSize:16 } }, "\u{1F4AC} Editar mensaje WhatsApp"),
+          /* @__PURE__ */ React.createElement("div", { style: { fontSize:12, color:"#5a6472", marginTop:3 } }, "Puedes modificar el mensaje antes de enviarlo")
+        ),
+        /* @__PURE__ */ React.createElement("button", { onClick: () => setModal(null), style: { background:"none", border:"none", cursor:"pointer", fontSize:22, color:"#5a6472" } }, "×")
+      ),
+      /* @__PURE__ */ React.createElement("textarea", { value: texto, onChange: (e) => setTexto(e.target.value), rows: 9, style: { width:"100%", padding:"12px 14px", border:"1.5px solid #e0e4e8", borderRadius:10, fontSize:13, fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.6 } }),
+      /* @__PURE__ */ React.createElement("div", { style: { display:"flex", gap:10, marginTop:16, justifyContent:"flex-end" } },
+        /* @__PURE__ */ React.createElement("button", { onClick: () => setModal(null), style: { background:"#f4f5f6", border:"none", borderRadius:8, padding:"10px 20px", cursor:"pointer", fontWeight:600, fontSize:14, color:"#1a1d23" } }, "Cancelar"),
+        /* @__PURE__ */ React.createElement("button", { onClick: enviar, style: { background:"#25d366", border:"none", borderRadius:8, padding:"10px 20px", cursor:"pointer", fontWeight:700, fontSize:14, color:"#fff" } }, "\u{1F4AC} Enviar por WhatsApp")
+      )
+    )
+  );
+}
+function abrirWA(tel, msg) { window.dispatchEvent(new CustomEvent("pc-wa", { detail: { tel, msg } })); }
+document.addEventListener("click", function(ev) {
+  const a = ev.target.closest("a[href]");
+  if (!a || !a.href.includes("wa.me")) return;
+  ev.preventDefault();
+  try {
+    const u = new URL(a.href);
+    const tel = u.pathname.replace("/","");
+    const msg = decodeURIComponent(u.searchParams.get("text") || "");
+    abrirWA(tel, msg);
+  } catch(e) {}
+}, true);
 function PetColinas() {
   const [session, setSession] = useState(() => {
     try {
@@ -3676,7 +3721,7 @@ function PetColinas() {
   }
 
   if (!authChecked) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, color: "#5a6472" } }, "Verificando sesi\xF3n...")));
-  if (!session) return /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin });
+  if (!session) return /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin });
 
   const VET_EMAILS_LIST = ["aylein@petcolinas.com", "valentina@petcolinas.com"];
   const GRM_EMAILS_LIST = ["alexander@petcolinas.com"];
@@ -6218,6 +6263,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     const sid = String(actualizado.id);
     setPendientes((prev) => ({ ...prev, [sid]: actualizado }));
     setInventario(inventario.map((p) => String(p.id) === sid ? actualizado : p));
+    upsertOne("pc_inventario", actualizado);
     setEditId(null);
     setEditData({});
   };
@@ -7377,7 +7423,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       "*Total:* RD$" + serviciosFactura.reduce((a,s) => a + (s.precio||0), 0).toLocaleString("es-DO") + "\n\n" +
       "Le avisaremos por este mismo medio cuando su mascota est\xe9 lista. \u{1F4AC}\n\n_Plaza Las Colinas \u2022 809-752-6806_"
     );
-    window.open("https://wa.me/" + (tel.length >= 11 ? tel : "1" + tel) + "?text=" + msg, "_blank");
+    abrirWA(tel, decodeURIComponent(msg));
   }
 }, "\u{1F4AC} WhatsApp Bienvenida"),
 /* Botón Mascota Lista */
@@ -7396,7 +7442,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       "\u26A0\uFE0F *Nota Importante:* Una vez pasadas las dos primeras horas de haber culminado el servicio y enviado este mensaje, se proceder\xe1 a cobrar un monto de *RD$400 adicionales por cada hora transcurrida* por servicios de Day Care.\n\n" +
       "\u00A1Gracias por confiar en PetColinas! \u{1F496}"
     );
-    window.open("https://wa.me/" + (tel.length >= 11 ? tel : "1" + tel) + "?text=" + msg, "_blank");
+    abrirWA(tel, decodeURIComponent(msg));
   }
 }, "\u2705 Mascota Lista"),
 /* Botón Facturación */
@@ -7538,7 +7584,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
         "\n\nTotal: RD$" + total.toLocaleString("es-DO") +
         "\n\nLe avisaremos cuando este lista.\nPlaza Las Colinas - 809-752-6806"
       );
-      window.open("https://wa.me/" + telNum + "?text=" + msg, "_blank");
+      abrirWA(telNum, decodeURIComponent(msg));
     };
 
     return React.createElement("div", { style: { position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000, padding:20 } },
@@ -10139,7 +10185,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   };
 
   const abrirWA = (tipo, cita) => setModalWA({ tipo, mensaje: generarMensajeWA(tipo, cita), telefono: cita.telefono||"", citaId: cita.id });
-  const enviarWA = (tel, msg, citaId, tipo) => { window.open(`https://wa.me/${(tel).replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`, "_blank"); registrarMensaje(citaId, tipo); if (tipo === "confirmacion") cambiarEstado(citaId, "confirmada"); setModalWA(null); };
+  const enviarWA = (tel, msg, citaId, tipo) => { abrirWA(tel, msg); registrarMensaje(citaId, tipo); if (tipo === "confirmacion") cambiarEstado(citaId, "confirmada"); setModalWA(null); };
 
   const recordatoriosPendientes = citas.filter(c => c.fecha === manana() && c.estado !== "cancelada" && c.estado !== "noshow" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio"));
 
