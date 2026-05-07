@@ -136,7 +136,18 @@ function useSupabase(table, seed = []) {
           if (table === "pc_ventas") {
             const supaIds = new Set(normalized.map((r) => String(r.id)));
             const seedRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
-            const merged = [...seedRows, ...normalized];
+            let merged = [...seedRows, ...normalized];
+            // Aplicar descripciones del localStorage a filas sin descripción
+            try {
+              const descMap = JSON.parse(localStorage.getItem("pc_venta_serv") || "{}");
+              if (Object.keys(descMap).length > 0) {
+                merged = merged.map(v => {
+                  if (v.servicio || v.descripcion) return v;
+                  const d = descMap[String(v.id)];
+                  return d ? { ...v, servicio: d, descripcion: d } : v;
+                });
+              }
+            } catch {}
             console.log("[Merge] pc_ventas: " + seedRows.length + " seed + " + normalized.length + " Supa = " + merged.length);
             setData(merged);
           } else {
@@ -156,6 +167,17 @@ function useSupabase(table, seed = []) {
   const setDataSync = useCallback(async (newDataOrFn) => {
     const newData = typeof newDataOrFn === "function" ? newDataOrFn(data) : newDataOrFn;
     setData(newData);
+    // Guardar descripciones en localStorage como respaldo (para pc_ventas)
+    if (table === "pc_ventas") {
+      try {
+        const descMap = JSON.parse(localStorage.getItem("pc_venta_serv") || "{}");
+        newData.forEach(v => {
+          const s = v.servicio || v.descripcion;
+          if (s) descMap[String(v.id)] = s;
+        });
+        localStorage.setItem("pc_venta_serv", JSON.stringify(descMap));
+      } catch {}
+    }
     setSyncing(true);
     try {
       // Solo guardar filas NUEVAS (no del seed) para no reescribir todo
@@ -558,12 +580,10 @@ function denormalizeRow(table, r) {
     cliente: r.cliente,
     area: r.area,
     servicio: r.servicio || r.descripcion || null,
-    descripcion: r.descripcion || r.servicio || null,
     total: r.total,
     comision: r.comision,
     formapago: r.formaPago || r.formapago || null,
     recibidopor: r.recibidoPor || r.recibidopor || null,
-    cobradopor: r.cobradoPor || r.cobradopor || null,
     notas: r.notas
   };
   if (table === "pc_gastos") return {
