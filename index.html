@@ -5972,10 +5972,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
           if (!setTab || !setCrmClienteInicial) return;
           const vNombre = (v.cliente || "").toLowerCase().trim();
           const match = clientes.find(c => (c.nombreMascota || "").toLowerCase().trim() === vNombre)
-            || clientes.find(c => { const cn = (c.nombreMascota || "").toLowerCase().trim(); return cn && vNombre && (cn.includes(vNombre) || vNombre.includes(cn)); })
-            || clientes.find(c => { const cp = (c.nombrePropietario || "").toLowerCase().trim(); return cp && vNombre && cp.split(" ").some(w => w.length > 3 && vNombre.includes(w)); });
+            || clientes.find(c => (c.nombrePropietario || "").toLowerCase().trim() === vNombre);
           setCrmClienteInicial(
-            match ? { cliente: { ...match, _ventaCliente: v.cliente }, modo: "detalle" } : { cliente: { nombreMascota: v.cliente, _ventaCliente: v.cliente }, modo: "nuevo", nombreInicial: v.cliente }
+            match ? { cliente: { ...match, _ventaCliente: v.cliente }, modo: "detalle" } : { cliente: { nombreMascota: v.cliente, _ventaCliente: v.cliente }, modo: "buscar", nombreInicial: v.cliente }
           );
           setTab("clientes");
         },
@@ -6977,6 +6976,11 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     if (clienteInicial.modo === "detalle" && clienteInicial.cliente) {
       setClienteSel(clienteInicial.cliente);
       setForm({ ...CRM_EMPTY_FORM, ...clienteInicial.cliente });
+      setEditando(false);
+      setVista("detalle");
+    } else if (clienteInicial.modo === "buscar") {
+      setClienteSel(clienteInicial.cliente);
+      setForm({ ...CRM_EMPTY_FORM, nombreMascota: clienteInicial.nombreInicial || "" });
       setEditando(false);
       setVista("detalle");
     } else if (clienteInicial.modo === "nuevo") {
