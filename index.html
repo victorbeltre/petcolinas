@@ -6997,7 +6997,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
   });
   const clienteInicialRef = useRef(null);
   useEffect(() => {
-    if (!clienteInicial) return;
+    if (!clienteInicial) { clienteInicialRef.current = null; return; }
     const key = clienteInicial.modo + "|" + (clienteInicial.cliente?.id || clienteInicial.nombreInicial || "nuevo");
     if (clienteInicialRef.current === key) return;
     clienteInicialRef.current = key;
