@@ -5975,7 +5975,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
             || clientes.find(c => { const cn = (c.nombreMascota || "").toLowerCase().trim(); return cn && vNombre && (cn.includes(vNombre) || vNombre.includes(cn)); })
             || clientes.find(c => { const cp = (c.nombrePropietario || "").toLowerCase().trim(); return cp && vNombre && cp.split(" ").some(w => w.length > 3 && vNombre.includes(w)); });
           setCrmClienteInicial(
-            match ? { cliente: match, modo: "detalle" } : { cliente: null, modo: "nuevo", nombreInicial: v.cliente }
+            match ? { cliente: { ...match, _ventaCliente: v.cliente }, modo: "detalle" } : { cliente: { nombreMascota: v.cliente, _ventaCliente: v.cliente }, modo: "nuevo", nombreInicial: v.cliente }
           );
           setTab("clientes");
         },
@@ -7048,7 +7048,13 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     }
     return lista;
   }, [clientes, busqueda, filtroEspecie, filtroRaza, ordenCRM, ventas]);
-  const ventasCliente = clienteSel ? ventas.filter((v) => v.cliente?.toLowerCase().trim() === clienteSel.nombreMascota?.toLowerCase().trim()) : [];
+  const _vcKey = (clienteSel?._ventaCliente || "").toLowerCase().trim();
+  const ventasCliente = clienteSel ? ventas.filter((v) => {
+    const vc = (v.cliente || "").toLowerCase().trim();
+    const cn = (clienteSel.nombreMascota || "").toLowerCase().trim();
+    const cp = (clienteSel.nombrePropietario || "").toLowerCase().trim();
+    return vc === cn || (cp && vc === cp) || (_vcKey && vc === _vcKey);
+  }) : [];
   const totalGastado = ventasCliente.reduce((s, v) => s + v.total, 0);
   const ultimaVisita = ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : null;
   if (vista === "lista") return /* @__PURE__ */ React.createElement("div", null,
