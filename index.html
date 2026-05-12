@@ -6942,6 +6942,45 @@ function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria })
     ) : React.createElement("button", { onClick: () => setAgregando(true), style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13, marginTop: 4 } }, "+ Agregar registro cl\xEDnico")
   );
 }
+function GrupoDupCard({ grupo, onFusionarSel, onIgnorar }) {
+  const score = c => (c.telefono&&c.telefono.length>4?2:0)+(c.nombrePropietario&&!c.nombrePropietario.startsWith('Fam.')?2:0)+(c.raza?1:0);
+  const winner = [...grupo.items].sort((a,b)=>score(b)-score(a))[0];
+  const [selIds, setSelIds] = useState(grupo.items.map(c=>c.id));
+  const toggleId = id => setSelIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
+  const canFuse = selIds.length >= 2;
+  const confLabel = {alta:"\uD83D\uDD34 Alta",media:"\uD83D\uDFE1 Media",baja:"\u26AA Baja"}[grupo.conf]||"";
+  return /* @__PURE__ */ React.createElement("div", { style: { border:"1.5px solid #e5e7eb",borderRadius:12,padding:14,background:C.gris } },
+    /* @__PURE__ */ React.createElement("div", { style: { display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8 } },
+      /* @__PURE__ */ React.createElement("div", { style: { display:"flex",alignItems:"center",gap:10 } },
+        /* @__PURE__ */ React.createElement("div", { style: { fontWeight:700,fontSize:14 } }, "🐾 ", grupo.items.map(c=>c.nombreMascota).join(" / ")),
+        /* @__PURE__ */ React.createElement("span", { style: { fontSize:11,fontWeight:600,color:C.grisd } }, confLabel)
+      ),
+      /* @__PURE__ */ React.createElement("div", { style: { display:"flex",gap:8 } },
+        /* @__PURE__ */ React.createElement("button", { onClick:()=>onFusionarSel(grupo,selIds), disabled:!canFuse, style: { background:canFuse?C.verde:"#9ca3af",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:13,cursor:canFuse?"pointer":"not-allowed",fontWeight:700,opacity:canFuse?1:0.7 } }, "🔧 Fusionar ("+selIds.length+")"),
+        /* @__PURE__ */ React.createElement("button", { onClick:()=>onIgnorar(grupo), style: { background:"none",border:"1px solid "+C.grisd,color:C.grisd,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer" } }, "Ignorar")
+      )
+    ),
+    /* @__PURE__ */ React.createElement("p", { style: { fontSize:11,color:C.grisd,margin:"0 0 10px" } }, "Selecciona las fichas a fusionar (la mejor queda como principal):"),
+    /* @__PURE__ */ React.createElement("div", { style: { display:"flex",gap:10,flexWrap:"wrap" } },
+      grupo.items.map(c => {
+        const isSel = selIds.includes(c.id);
+        const isW = isSel && c.id===winner.id;
+        return /* @__PURE__ */ React.createElement("div", { key:c.id, onClick:()=>toggleId(c.id), style: { flex:"1 1 160px",background:isSel?(isW?C.verdeL:C.azulL):"#fff",border:isSel?(isW?"2px solid "+C.verde:"2px solid "+C.azul):"1.5px dashed #d1d5db",borderRadius:8,padding:10,cursor:"pointer",opacity:isSel?1:0.45,transition:"opacity 0.15s,border 0.15s" } },
+          /* @__PURE__ */ React.createElement("div", { style: { display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center" } },
+            /* @__PURE__ */ React.createElement("div", { style: { fontWeight:700,fontSize:13 } }, c.nombreMascota),
+            /* @__PURE__ */ React.createElement("input", { type:"checkbox",checked:isSel,onChange:e=>{e.stopPropagation();toggleId(c.id);},onClick:e=>e.stopPropagation(),style:{cursor:"pointer",width:16,height:16,accentColor:isW?C.verde:C.azul} })
+          ),
+          isW&&/* @__PURE__ */ React.createElement("span", { style: { background:C.verde,color:"#fff",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,display:"inline-block",marginBottom:4 } }, "✓ conservar"),
+          /* @__PURE__ */ React.createElement("div", { style: { fontSize:11,color:C.grisd,lineHeight:1.7 } },
+            /* @__PURE__ */ React.createElement("div", null, "👤 ", c.nombrePropietario||/* @__PURE__ */ React.createElement("em", null, "sin propietario")),
+            /* @__PURE__ */ React.createElement("div", null, "📞 ", c.telefono||/* @__PURE__ */ React.createElement("em", null, "sin teléfono")),
+            c.raza&&/* @__PURE__ */ React.createElement("div", null, "🐾 ", c.raza)
+          )
+        );
+      })
+    )
+  );
+}
 function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInicial, setTab, setCrmClienteInicial, historias = [], setHistorias, deleteHistoria }) {
   const ESPECIE_OPTS = ["Perro", "Gato", "Ave", "Conejo", "Reptil", "Otro"];
   const TAMANO_OPTS = ["Peque\xF1o (< 10 kg)", "Mediano (10\u201325 kg)", "Grande (> 25 kg)"];
@@ -6963,25 +7002,43 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
   const normn = s => s ? s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ') : '';
   const dupGrupos = useMemo(() => {
     const gs = []; const used = new Set();
+    const normTel = t => t ? t.replace(/\D/g,'').slice(-8) : '';
     const sorted = [...clientes].sort((a,b)=>(a.nombreMascota||'').localeCompare(b.nombreMascota||''));
     for (let i=0;i<sorted.length;i++) {
       if (used.has(i)) continue;
       const g=[sorted[i]]; const na=normn(sorted[i].nombreMascota); const fa=na.split(' ')[0];
       if (!fa||fa.length<2) continue;
+      const ta=normTel(sorted[i].telefono);
       for (let j=i+1;j<sorted.length;j++) {
         if (used.has(j)) continue;
         const nb=normn(sorted[j].nombreMascota); const fb=nb.split(' ')[0];
-        if (fa!==fb) continue;
-        if (na===nb||na.startsWith(nb+' ')||nb.startsWith(na+' ')) { g.push(sorted[j]); used.add(j); }
+        const tb=normTel(sorted[j].telefono);
+        const sameTel = ta&&tb&&ta===tb;
+        if (fa===fb||sameTel) { g.push(sorted[j]); used.add(j); }
       }
-      if (g.length>1) { const key=g.map(c=>c.id).sort((a,b)=>a-b).join(','); if (!dedupIgnorados.includes(key)) { used.add(i); gs.push({key,items:g}); } }
+      if (g.length>1) {
+        const key=g.map(c=>c.id).sort((a,b)=>a-b).join(',');
+        if (!dedupIgnorados.includes(key)) {
+          let conf='baja';
+          for (let x=0;x<g.length&&conf!=='alta';x++) for (let y=x+1;y<g.length&&conf!=='alta';y++) {
+            const tx=normTel(g[x].telefono); const ty=normTel(g[y].telefono);
+            if (tx&&ty&&tx===ty) { conf='alta'; break; }
+            const nx=normn(g[x].nombreMascota); const ny=normn(g[y].nombreMascota);
+            if (nx===ny) conf='alta';
+            else if ((nx.startsWith(ny+' ')||ny.startsWith(nx+' '))&&conf!=='alta') conf='media';
+          }
+          used.add(i); gs.push({key,items:g,conf});
+        }
+      }
     }
-    return gs;
+    return gs.sort((a,b)=>({alta:0,media:1,baja:2}[a.conf]-{alta:0,media:1,baja:2}[b.conf]));
   }, [clientes, dedupIgnorados]);
-  const fusionarGrupo = grupo => {
+  const fusionarSeleccionados = (grupo, selIds) => {
+    if (!selIds||selIds.length<2) return;
     const score = c => (c.telefono&&c.telefono.length>4?2:0)+(c.nombrePropietario&&!c.nombrePropietario.startsWith('Fam.')?2:0)+(c.raza?1:0);
-    const winner = [...grupo.items].sort((a,b)=>score(b)-score(a))[0];
-    const losers = grupo.items.filter(c=>c.id!==winner.id);
+    const selected = grupo.items.filter(c=>selIds.includes(c.id));
+    const winner = [...selected].sort((a,b)=>score(b)-score(a))[0];
+    const losers = selected.filter(c=>c.id!==winner.id);
     setClientes(prev=>prev.filter(c=>!losers.some(l=>l.id===c.id)));
     setDedupIgnorados(prev=>[...prev,grupo.key]);
   };
@@ -7158,7 +7215,7 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, display: "flex", flexDirection: "column", gap: 4 } }, /* @__PURE__ */ React.createElement("div", null, "\u{1F464} ", /* @__PURE__ */ React.createElement("strong", { style: { color: C.negro } }, c.nombrePropietario)), /* @__PURE__ */ React.createElement("div", null, "\u{1F4DE} ", c.telefono), ultima && /* @__PURE__ */ React.createElement("div", null, "\u{1F4C5} \xDAltima visita: ", /* @__PURE__ */ React.createElement("strong", null, ultima)), total > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.verde, fontWeight: 700, marginTop: 4 } }, "\u{1F4B0} Total hist\xF3rico: ", RD(total))),
       c.alergias && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.rojoL, borderRadius: 6, padding: "5px 10px", fontSize: 11, color: C.rojo, fontWeight: 600 } }, "\u26A0\uFE0F Alergias: ", c.alergias)
     );
-  })), showDedup && /* @__PURE__ */ React.createElement("div", { style: { position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,overflowY:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:24 } }, /* @__PURE__ */ React.createElement("div", { style: { background:"#fff",borderRadius:16,maxWidth:920,width:"100%",padding:28,marginTop:40,marginBottom:40 } }, /* @__PURE__ */ React.createElement("div", { style: { display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 } }, /* @__PURE__ */ React.createElement("h3", { style: { fontFamily:"Georgia,serif",fontSize:22,margin:0 } }, "\uD83D\uDD0D Revisar Duplicados"), /* @__PURE__ */ React.createElement("button", { onClick:()=>setShowDedup(false), style: { background:"none",border:"none",fontSize:24,cursor:"pointer",color:C.grisd } }, "\xD7")), dupGrupos.length === 0 ? /* @__PURE__ */ React.createElement("p", { style: { color:C.grisd,textAlign:"center",padding:40 } }, "\u2714\uFE0F No se detectaron duplicados") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { style: { color:C.grisd,fontSize:13,marginBottom:16 } }, dupGrupos.length+" grupos detectados. Fusionar conserva la ficha con m\xE1s datos."), /* @__PURE__ */ React.createElement("div", { style: { display:"flex",flexDirection:"column",gap:14 } }, dupGrupos.map(grupo => { const score = c => (c.telefono&&c.telefono.length>4?2:0)+(c.nombrePropietario&&!c.nombrePropietario.startsWith("Fam.")?2:0)+(c.raza?1:0); const winner=[...grupo.items].sort((a,b)=>score(b)-score(a))[0]; return /* @__PURE__ */ React.createElement("div", { key:grupo.key, style: { border:"1.5px solid #e5e7eb",borderRadius:12,padding:14,background:C.gris } }, /* @__PURE__ */ React.createElement("div", { style: { display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight:700,fontSize:14 } }, "\uD83D\uDC3E ", grupo.items.map(c=>c.nombreMascota).join(" / ")), /* @__PURE__ */ React.createElement("div", { style: { display:"flex",gap:8 } }, /* @__PURE__ */ React.createElement("button", { onClick:()=>fusionarGrupo(grupo), style: { background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:13,cursor:"pointer",fontWeight:700 } }, "\uD83D\uDD27 Fusionar"), /* @__PURE__ */ React.createElement("button", { onClick:()=>ignorarGrupo(grupo), style: { background:"none",border:"1px solid "+C.grisd,color:C.grisd,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer" } }, "Ignorar"))), /* @__PURE__ */ React.createElement("div", { style: { display:"flex",gap:10,flexWrap:"wrap" } }, grupo.items.map(c => { const isW=c.id===winner.id; return /* @__PURE__ */ React.createElement("div", { key:c.id, style: { flex:"1 1 160px",background:isW?C.verdeL:"#fff",border:isW?"2px solid "+C.verde:"1.5px solid #e5e7eb",borderRadius:8,padding:10 } }, /* @__PURE__ */ React.createElement("div", { style: { display:"flex",justifyContent:"space-between",marginBottom:4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight:700,fontSize:13 } }, c.nombreMascota), isW&&/* @__PURE__ */ React.createElement("span", { style: { background:C.verde,color:"#fff",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700 } }, "\u2713 conservar")), /* @__PURE__ */ React.createElement("div", { style: { fontSize:11,color:C.grisd,lineHeight:1.7 } }, /* @__PURE__ */ React.createElement("div", null, "\uD83D\uDC64 ", c.nombrePropietario||/* @__PURE__ */ React.createElement("em", null, "sin propietario")), /* @__PURE__ */ React.createElement("div", null, "\uD83D\uDCDE ", c.telefono||/* @__PURE__ */ React.createElement("em", null, "sin tel\xE9fono")), c.raza&&/* @__PURE__ */ React.createElement("div", null, "\uD83D\uDC3E ", c.raza)));})));}))))))
+  })), showDedup && /* @__PURE__ */ React.createElement("div", { style: { position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,overflowY:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:24 } }, /* @__PURE__ */ React.createElement("div", { style: { background:"#fff",borderRadius:16,maxWidth:920,width:"100%",padding:28,marginTop:40,marginBottom:40 } }, /* @__PURE__ */ React.createElement("div", { style: { display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 } }, /* @__PURE__ */ React.createElement("h3", { style: { fontFamily:"Georgia,serif",fontSize:22,margin:0 } }, "\uD83D\uDD0D Revisar Duplicados"), /* @__PURE__ */ React.createElement("button", { onClick:()=>setShowDedup(false), style: { background:"none",border:"none",fontSize:24,cursor:"pointer",color:C.grisd } }, "\xD7")), dupGrupos.length === 0 ? /* @__PURE__ */ React.createElement("p", { style: { color:C.grisd,textAlign:"center",padding:40 } }, "\u2714\uFE0F No se detectaron duplicados") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { style: { color:C.grisd,fontSize:13,marginBottom:16 } }, dupGrupos.length+" grupos detectados \u2014 haz clic en las fichas para seleccionar cu\xE1les fusionar."), /* @__PURE__ */ React.createElement("div", { style: { display:"flex",flexDirection:"column",gap:14 } }, dupGrupos.map(g => /* @__PURE__ */ React.createElement(GrupoDupCard, { key:g.key, grupo:g, onFusionarSel:fusionarSeleccionados, onIgnorar:ignorarGrupo })))))))
   if (vista === "nuevo") {
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, marginBottom: 24 } }, /* @__PURE__ */ React.createElement(
       "button",
