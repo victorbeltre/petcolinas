@@ -580,6 +580,7 @@ function denormalizeRow(table, r) {
     cliente: r.cliente,
     area: r.area,
     servicio: r.servicio || r.descripcion || null,
+    descripcion: r.servicio || r.descripcion || null,
     total: r.total,
     comision: r.comision,
     formapago: r.formaPago || r.formapago || null,
