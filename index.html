@@ -148,6 +148,19 @@ function useSupabase(table, seed = []) {
                 });
               }
             } catch {}
+            // Aplicar pagos confirmados del localStorage (persiste aunque Supabase no guarde el UPDATE)
+            try {
+              const pagosConf = JSON.parse(localStorage.getItem("pc_pagos_conf") || "{}");
+              if (Object.keys(pagosConf).length > 0) {
+                merged = merged.map(v => {
+                  const forma = pagosConf[String(v.id)];
+                  if (forma && (v.formaPago === "Pago pendiente" || (v.formapago || "") === "Pago pendiente")) {
+                    return Object.assign({}, v, { formaPago: forma, formapago: forma });
+                  }
+                  return v;
+                });
+              }
+            } catch {}
             console.log("[Merge] pc_ventas: " + seedRows.length + " seed + " + normalized.length + " Supa = " + merged.length);
             setData(merged);
           } else {
@@ -3887,6 +3900,12 @@ function ModalPagosPendientes({ ventas, setVentas, clientes, onClose }) {
   function marcarPagada(v) {
     var forma = metodoPago === "transferencia" ? "Transferencia" : metodoPago === "tarjeta" ? "Tarjeta" : "Efectivo";
     var updated = Object.assign({}, v, { formaPago: forma, formapago: forma });
+    // Guardar en localStorage como fuente de verdad local (resiliente a errores de RLS en Supabase)
+    try {
+      var pagosConf = JSON.parse(localStorage.getItem("pc_pagos_conf") || "{}");
+      pagosConf[String(v.id)] = forma;
+      localStorage.setItem("pc_pagos_conf", JSON.stringify(pagosConf));
+    } catch (e) {}
     setVentas(function(prev) { return prev.map(function(x) { return x.id === v.id ? updated : x; }); });
     upsertOne("pc_ventas", updated);
     setPagandoId(null);
