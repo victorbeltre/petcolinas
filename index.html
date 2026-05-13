@@ -3880,6 +3880,108 @@ const INVENTARIO_SEED = [
   { id: "inv_110", nombre: "LEONARDO DRINK DUCK 40G (GATO)", categoria: "alimento", stock: 23, stockInicial: 23, stockMin: 1, costo: 1242, pventa: 1553, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" },
   { id: "inv_111", nombre: "LEONARDO DRINK SALMON 40G (GATO)", categoria: "alimento", stock: 22, stockInicial: 22, stockMin: 1, costo: 1389, pventa: 1736, margen: 20, proveedor: "SANUT", fechaEntrada: "2025-08-01" }
 ];
+function ModalPagosPendientes({ ventas, setVentas, clientes, onClose }) {
+  const pendientes = (ventas || []).filter(function(v) { return (v.formaPago || v.formapago || "") === "Pago pendiente"; });
+  const [pagandoId, setPagandoId] = useState(null);
+  const [metodoPago, setMetodoPago] = useState("efectivo");
+  function marcarPagada(v) {
+    var forma = metodoPago === "transferencia" ? "Transferencia" : metodoPago === "tarjeta" ? "Tarjeta" : "Efectivo";
+    setVentas(function(prev) { return prev.map(function(x) { return x.id === v.id ? Object.assign({}, x, { formaPago: forma, formapago: forma }) : x; }); });
+    setPagandoId(null);
+  }
+  function abrirWhatsApp(v) {
+    var cli = (clientes || []).find(function(c) {
+      var nm = (c.nombreMascota || "").toLowerCase();
+      var nc = (v.cliente || "").toLowerCase();
+      return nm === nc || (c.nombrePropietario || "").toLowerCase() === nc;
+    });
+    var tel = cli && cli.telefono ? cli.telefono.replace(/\D/g, "") : "";
+    var monto = "RD$ " + (v.total || 0).toLocaleString("es-DO");
+    var serv = v.descripcion || v.servicio || v.area || "servicio";
+    var msg = encodeURIComponent("Hola " + (v.cliente || "cliente") + "! 😊 Le recordamos que tiene un pago pendiente de " + monto + " por " + serv + " del " + (v.fecha || "") + ". Puede pagarlo en efectivo, tarjeta o transferencia. 🐾 PetColinas");
+    var url = tel ? "https://wa.me/1" + tel + "?text=" + msg : "https://wa.me/?text=" + msg;
+    window.open(url, "_blank");
+  }
+  return /* @__PURE__ */ React.createElement(
+    "div",
+    { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, overflowY: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 24 } },
+    /* @__PURE__ */ React.createElement(
+      "div",
+      { style: { background: "#fff", borderRadius: 16, maxWidth: 780, width: "100%", padding: 28, marginTop: 40, marginBottom: 40, boxShadow: "0 20px 60px rgba(0,0,0,0.25)" } },
+      /* @__PURE__ */ React.createElement(
+        "div",
+        { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } },
+        /* @__PURE__ */ React.createElement("div", null,
+          /* @__PURE__ */ React.createElement("h3", { style: { fontFamily: "Georgia,serif", fontSize: 22, margin: 0, color: C.negro } }, "🔴 Pagos Pendientes"),
+          /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: C.grisd, margin: "4px 0 0" } }, pendientes.length + " pago" + (pendientes.length !== 1 ? "s" : "") + " sin confirmar")
+        ),
+        /* @__PURE__ */ React.createElement("button", { onClick: onClose, style: { background: "none", border: "none", fontSize: 26, cursor: "pointer", color: C.grisd, lineHeight: 1 } }, "×")
+      ),
+      pendientes.length === 0
+        ? /* @__PURE__ */ React.createElement("p", { style: { textAlign: "center", color: C.grisd, padding: 40 } }, "✔️ Sin pagos pendientes")
+        : /* @__PURE__ */ React.createElement(
+            "div",
+            { style: { display: "flex", flexDirection: "column", gap: 12 } },
+            pendientes.map(function(v) {
+              var esPagando = pagandoId === v.id;
+              return /* @__PURE__ */ React.createElement(
+                "div",
+                { key: v.id, style: { border: "1.5px solid #fca5a5", borderRadius: 12, padding: 14, background: esPagando ? "#fff7ed" : "#fff5f5" } },
+                /* @__PURE__ */ React.createElement(
+                  "div",
+                  { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" } },
+                  /* @__PURE__ */ React.createElement(
+                    "div",
+                    { style: { flex: 1, minWidth: 160 } },
+                    /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 15, color: C.negro } }, v.cliente || "—"),
+                    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 3, lineHeight: 1.6 } },
+                      /* @__PURE__ */ React.createElement("span", null, "📅 " + (v.fecha || "—")),
+                      /* @__PURE__ */ React.createElement("span", { style: { margin: "0 8px" } }, "·"),
+                      /* @__PURE__ */ React.createElement("span", null, (v.area || "—").charAt(0).toUpperCase() + (v.area || "").slice(1)),
+                      (v.descripcion || v.servicio) && /* @__PURE__ */ React.createElement("span", null, " · ", v.descripcion || v.servicio)
+                    )
+                  ),
+                  /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 900, fontSize: 18, color: C.rojo, whiteSpace: "nowrap" } }, "RD$ " + (v.total || 0).toLocaleString("es-DO")),
+                  /* @__PURE__ */ React.createElement(
+                    "div",
+                    { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+                    /* @__PURE__ */ React.createElement("button", {
+                      onClick: function() { setPagandoId(esPagando ? null : v.id); setMetodoPago("efectivo"); },
+                      style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 }
+                    }, "✅ Marcar pagada"),
+                    /* @__PURE__ */ React.createElement("button", {
+                      onClick: function() { abrirWhatsApp(v); },
+                      style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 }
+                    }, "📱 WhatsApp")
+                  )
+                ),
+                esPagando && /* @__PURE__ */ React.createElement(
+                  "div",
+                  { style: { marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid #fde8e8", paddingTop: 12 } },
+                  /* @__PURE__ */ React.createElement("select", {
+                    value: metodoPago,
+                    onChange: function(e) { setMetodoPago(e.target.value); },
+                    style: { padding: "7px 12px", borderRadius: 8, border: "1.5px solid #d1d5db", fontSize: 13, background: "#fff", flex: 1, minWidth: 140 }
+                  },
+                    /* @__PURE__ */ React.createElement("option", { value: "efectivo" }, "💵 Efectivo"),
+                    /* @__PURE__ */ React.createElement("option", { value: "tarjeta" }, "💳 Tarjeta"),
+                    /* @__PURE__ */ React.createElement("option", { value: "transferencia" }, "🏦 Transferencia")
+                  ),
+                  /* @__PURE__ */ React.createElement("button", {
+                    onClick: function() { marcarPagada(v); },
+                    style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, cursor: "pointer", fontWeight: 800 }
+                  }, "✔ Confirmar pago"),
+                  /* @__PURE__ */ React.createElement("button", {
+                    onClick: function() { setPagandoId(null); },
+                    style: { background: "none", border: "1px solid " + C.grisd, color: C.grisd, borderRadius: 8, padding: "8px 12px", fontSize: 12, cursor: "pointer" }
+                  }, "Cancelar")
+                )
+              );
+            })
+          )
+    )
+  );
+}
 function PetColinasApp({ session, onLogout }) {
   const [tab, setTab] = useState("dashboard");
   const [dbReady, setDbReady] = useState(false);
@@ -4050,6 +4152,7 @@ function PetColinasApp({ session, onLogout }) {
   const comisionesGrm = comGrmSistema;
   const comisionesVet = comAyleinSistema;
   const comisionesValen = comValenSistema;
+  const [showPendModal, setShowPendModal] = useState(false);
   const ventasPendientesCount = (ventas || []).filter(v => (v.formaPago || v.formapago || "") === "Pago pendiente").length;
   return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: {
     background: `linear-gradient(135deg, ${C.verde} 0%, ${C.verde2} 100%)`,
@@ -4058,7 +4161,7 @@ function PetColinasApp({ session, onLogout }) {
     alignItems: "center",
     justifyContent: "space-between",
     boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
-  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("ventas"), style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 " + ventasPendientesCount + " pago" + (ventasPendientesCount !== 1 ? "s" : "") + " pendiente" + (ventasPendientesCount !== 1 ? "s" : "")), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowPendModal(true), style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 " + ventasPendientesCount + " pago" + (ventasPendientesCount !== 1 ? "s" : "") + " pendiente" + (ventasPendientesCount !== 1 ? "s" : "")), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
     background: "rgba(255,255,255,0.15)",
     border: "1px solid rgba(255,255,255,0.3)",
     color: "#fff",
@@ -4184,7 +4287,7 @@ function PetColinasApp({ session, onLogout }) {
     fontWeight: 700,
     boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
     animation: "fadeIn 0.2s ease"
-  } }, undoMsg));
+  } }, undoMsg), showPendModal && /* @__PURE__ */ React.createElement(ModalPagosPendientes, { ventas: ventas, setVentas: setVentas, clientes: todosClientes, onClose: function() { setShowPendModal(false); } }));
 }
 const HISTORICO = {
   "2026-01": { grm: 62201, far: 17128, vet: 30410, med: 1740, total: 111479, servicios: 84, gastos: 20289, nomina: 60354 },
