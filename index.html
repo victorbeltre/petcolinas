@@ -3886,7 +3886,9 @@ function ModalPagosPendientes({ ventas, setVentas, clientes, onClose }) {
   var metodoPago = useState("efectivo"); var setMetodoPago = metodoPago[1]; metodoPago = metodoPago[0];
   function marcarPagada(v) {
     var forma = metodoPago === "transferencia" ? "Transferencia" : metodoPago === "tarjeta" ? "Tarjeta" : "Efectivo";
-    setVentas(function(prev) { return prev.map(function(x) { return x.id === v.id ? Object.assign({}, x, { formaPago: forma, formapago: forma }) : x; }); });
+    var updated = Object.assign({}, v, { formaPago: forma, formapago: forma });
+    setVentas(function(prev) { return prev.map(function(x) { return x.id === v.id ? updated : x; }); });
+    upsertOne("pc_ventas", updated);
     setPagandoId(null);
   }
   function abrirWhatsApp(v) {
