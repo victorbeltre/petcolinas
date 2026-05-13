@@ -49,9 +49,16 @@ async function enviarASheet(venta) {
 }
 async function supaFetch(table, method = "GET", body = null, params = "") {
   const url = `${SUPA_URL}/rest/v1/${table}${params}`;
+  let authToken = SUPA_KEY;
+  try {
+    const sess = JSON.parse(localStorage.getItem("pc_session") || "null");
+    if (sess && sess.access_token && sess.expires_at && Date.now() / 1e3 < sess.expires_at) {
+      authToken = sess.access_token;
+    }
+  } catch {}
   const headers = {
     "apikey": SUPA_KEY,
-    "Authorization": `Bearer ${SUPA_KEY}`,
+    "Authorization": `Bearer ${authToken}`,
     "Content-Type": "application/json",
     "Prefer": method === "POST" ? "return=minimal,resolution=merge-duplicates" : "return=minimal"
   };
@@ -3907,7 +3914,7 @@ function ModalPagosPendientes({ ventas, setVentas, clientes, onClose }) {
       localStorage.setItem("pc_pagos_conf", JSON.stringify(pagosConf));
     } catch (e) {}
     setVentas(function(prev) { return prev.map(function(x) { return x.id === v.id ? updated : x; }); });
-    upsertOne("pc_ventas", updated);
+    supaFetch("pc_ventas", "PATCH", { formapago: forma }, "?id=eq." + encodeURIComponent(v.id));
     setPagandoId(null);
   }
   function abrirWhatsApp(v) {
