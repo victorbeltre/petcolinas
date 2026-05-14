@@ -2607,7 +2607,10 @@ Mascota: ${f.mascota}
           if (v.items && v.items.length > 0) {
             return v.items.map(it => ({ descripcion: it.nombre || it.descripcion || "", cantidad: it.qty || 1, precio: it.precio || it.subtotal || 0, descuento: it.descPct || 0 }));
           }
-          return [{ descripcion: v.descripcion || v.servicio || v.area || "", cantidad: 1, precio: v.total || 0, descuento: 0 }];
+          const _desc = v.descripcion || v.servicio || v.area || "";
+          const _parts = _desc.split(",").map(s => s.trim()).filter(Boolean);
+          if (_parts.length <= 1) return [{ descripcion: _desc, cantidad: 1, precio: v.total || 0, descuento: 0 }];
+          return _parts.map((s, i) => ({ descripcion: s, cantidad: 1, precio: i === 0 ? (v.total || 0) : 0, descuento: 0 }));
         }),
         metodoPago: g.items[0]?.formapago && g.items[0].formapago !== "Pago pendiente" ? g.items[0].formapago : "Efectivo",
         estado: g.items.some(v => (v.formapago || "") === "Pago pendiente") ? "pendiente" : "pagada",
@@ -3710,6 +3713,47 @@ document.addEventListener("click", function(ev) {
     abrirWA(tel, msg);
   } catch(e) {}
 }, true);
+function CatalogoPublico() {
+  const grm = typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [];
+  const vet = typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [];
+  const verde = "#1a6b3a";
+  const azul = "#1e40af";
+  const gris = "#5a6472";
+  const Card2 = ({ children, style }) => React.createElement("div", { style: Object.assign({ background: "#fff", borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.07)" }, style) }, children);
+  return React.createElement("div", { style: { minHeight: "100vh", background: "#f4f5f6", fontFamily: "system-ui,sans-serif" } },
+    React.createElement("div", { style: { background: verde, color: "#fff", padding: "24px 20px 20px", textAlign: "center" } },
+      React.createElement("div", { style: { fontSize: 40, marginBottom: 6 } }, "🐾"),
+      React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 28, fontWeight: 700 } }, "PetColinas"),
+      React.createElement("div", { style: { fontSize: 14, opacity: 0.85, marginTop: 4 } }, "Plaza Las Colinas · Santo Domingo Oeste · 809-752-6806")
+    ),
+    React.createElement("div", { style: { maxWidth: 640, margin: "0 auto", padding: "20px 16px 80px" } },
+      React.createElement(Card2, null,
+        React.createElement("div", { style: { fontWeight: 800, fontSize: 16, color: verde, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 } }, "✂️ Grooming"),
+        grm.map(t => React.createElement("div", { key: t.id, style: { display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f4f5f6", fontSize: 14 } },
+          React.createElement("span", null, t.nombre),
+          React.createElement("span", { style: { fontWeight: 700, color: verde } }, "RD$ " + (t.precio || 0).toLocaleString("es-DO"))
+        ))
+      ),
+      React.createElement(Card2, null,
+        React.createElement("div", { style: { fontWeight: 800, fontSize: 16, color: azul, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 } }, "🩺 Veterinaria"),
+        vet.map(t => React.createElement("div", { key: t.id, style: { display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f4f5f6", fontSize: 14 } },
+          React.createElement("span", null, t.nombre),
+          React.createElement("span", { style: { fontWeight: 700, color: azul } }, "RD$ " + (t.precio || 0).toLocaleString("es-DO"))
+        ))
+      ),
+      React.createElement(Card2, { style: { background: "#e8f5ee", border: "1.5px solid " + verde } },
+        React.createElement("div", { style: { fontWeight: 700, fontSize: 14, color: verde, marginBottom: 6 } }, "🎁 Programa de lealtad Grooming"),
+        React.createElement("div", { style: { fontSize: 13, color: gris } }, "¡Cada 10 baños, el 11ro es completamente gratis! Acumula visitas con nosotros.")
+      ),
+      React.createElement("div", { style: { textAlign: "center", color: gris, fontSize: 12, marginTop: 8 } }, "Precios pueden variar según el tamaño de la mascota. Consulta en tienda.")
+    ),
+    React.createElement("a", {
+      href: "https://wa.me/18097526806?text=" + encodeURIComponent("Hola PetColinas! Quisiera información sobre sus servicios."),
+      target: "_blank",
+      style: { position: "fixed", bottom: 24, right: 20, background: "#25D366", color: "#fff", borderRadius: "50%", width: 60, height: 60, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", textDecoration: "none", zIndex: 999 }
+    }, "💬")
+  );
+}
 function PetColinas() {
   const [session, setSession] = useState(() => {
     try {
@@ -3764,6 +3808,7 @@ function PetColinas() {
     setSession(null);
   }
 
+  if (window.location.search.includes("catalogo")) return React.createElement(CatalogoPublico, null);
   if (!authChecked) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, color: "#5a6472" } }, "Verificando sesi\xF3n...")));
   if (!session) return /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin });
 
@@ -5829,7 +5874,16 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     fontSize: 12,
     fontWeight: 700,
     cursor: "pointer"
-  } }, l))), (tipoItem === "grooming" || tipoItem === "veterinaria") && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement(
+  } }, l))),
+  /* @__PURE__ */ React.createElement("button", { onClick: () => {
+    const ts = Date.now();
+    setItems(function(prev) { return [...prev,
+      { id: ts+1, tipo: "veterinaria", area: "veterinaria", nombre: "Consulta veterinaria", precio: 1500, descPct: 0, subtotal: 1500 },
+      { id: ts+2, tipo: "veterinaria", area: "veterinaria", nombre: "Vacuna qu\xEDntuple", precio: 1200, descPct: 0, subtotal: 1200 },
+      { id: ts+3, tipo: "grooming", area: "grooming", nombre: "Ba\xF1o cachorro", precio: 699, descPct: 0, subtotal: 699 }
+    ]; });
+  }, style: { padding: "7px 16px", borderRadius: 20, border: "2px solid #7c3aed", background: "#f5f3ff", color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "📦 1ra consulta cachorro")),
+  (tipoItem === "grooming" || tipoItem === "veterinaria") && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement(
     Select,
     {
       label: "Servicio",
@@ -6046,7 +6100,18 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         outline: "none"
       }
     }
-  ), /* @__PURE__ */ React.createElement("span", { style: { color: "#d97706", fontWeight: 700 } }, "%"))), /* @__PURE__ */ React.createElement(Btn, { onClick: agregarItem, color: C.gold, small: true }, "\u2795 Agregar")))), items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAdd }, "\u{1F4BE} Registrar venta \u2014 ", RD(totalNeto), totalDescuento > 0 && ` (ahorro ${RD(totalDescuento)})`), items.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: C.grisd, fontSize: 13, padding: "8px 0" } }, "Selecciona el tipo de servicio y haz clic en \u2795 Agregar para comenzar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CB} Historial de ventas"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, alignItems: "center" } }, /* @__PURE__ */ React.createElement(Input, { label: "", type: "month", value: filtromes, onChange: setFiltroMes }), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde, whiteSpace: "nowrap", fontSize: 16 } }, RD(totalFiltrado)))), ventasFiltradas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "Sin ventas registradas en este mes.") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Cliente", "Descripci\xF3n", "\xC1rea", "Comisi\xF3n", "Total", ""].map(
+  ), /* @__PURE__ */ React.createElement("span", { style: { color: "#d97706", fontWeight: 700 } }, "%"))), /* @__PURE__ */ React.createElement(Btn, { onClick: agregarItem, color: C.gold, small: true }, "\u2795 Agregar")))), items.length > 0 && React.createElement("div", { style: { background: C.gris, borderRadius: 10, padding: "12px 16px", marginBottom: 10 } },
+  React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: C.grisd, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 } }, "Forma de pago"),
+  React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+    ["efectivo","transferencia","tarjeta","pendiente"].map(function(fp) {
+      return React.createElement("button", { key: fp, onClick: function() { setFormaPago(fp); }, style: { padding: "6px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer", fontWeight: 600, background: formaPago === fp ? C.verde : "white", color: formaPago === fp ? "white" : C.grisd, border: "1.5px solid " + (formaPago === fp ? C.verde : "#ddd") } }, fp === "efectivo" ? "\ud83d\udcb5 Efectivo" : fp === "transferencia" ? "\ud83c\udfe6 Transferencia" : fp === "tarjeta" ? "\ud83d\udcb3 Tarjeta" : "\u23f3 Pendiente");
+    })
+  ),
+  formaPago === "transferencia" && React.createElement("select", { value: banco, onChange: function(e) { setBanco(e.target.value); }, style: { marginTop: 8, padding: "6px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13 } },
+    ["Reservas","Popular","BHD","Bremer","Otro"].map(function(b) { return React.createElement("option", { key: b, value: b }, b); })
+  )
+),
+items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAdd }, "\u{1F4BE} Registrar venta \u2014 ", RD(totalNeto), totalDescuento > 0 && ` (ahorro ${RD(totalDescuento)})`), items.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: C.grisd, fontSize: 13, padding: "8px 0" } }, "Selecciona el tipo de servicio y haz clic en \u2795 Agregar para comenzar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CB} Historial de ventas"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, alignItems: "center" } }, /* @__PURE__ */ React.createElement(Input, { label: "", type: "month", value: filtromes, onChange: setFiltroMes }), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde, whiteSpace: "nowrap", fontSize: 16 } }, RD(totalFiltrado)))), ventasFiltradas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "Sin ventas registradas en este mes.") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Cliente", "Descripci\xF3n", "\xC1rea", "Comisi\xF3n", "Total", ""].map(
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, whiteSpace: "nowrap" } }, h)
   ))), /* @__PURE__ */ React.createElement("tbody", null, [...ventasFiltradas].reverse().map((v) => /* @__PURE__ */ React.createElement(
     "tr",
@@ -7575,6 +7640,18 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
       setEditando(false);
     }, color: C.grisd, outline: true }, "Cancelar"))));
   }
+  if (vista === "evolucion" && clienteSel) {
+    return React.createElement("div", null,
+      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 } },
+        React.createElement("button", { onClick: () => setVista("detalle"), style: { background: "none", border: "none", cursor: "pointer", fontSize: 22, color: C.grisd } }, "←"),
+        React.createElement("div", null,
+          React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 22, margin: 0 } }, "📋 Evolución — " + clienteSel.nombreMascota),
+          React.createElement("p", { style: { color: C.grisd, fontSize: 13, margin: "2px 0 0" } }, "Registra procedimientos, diagnósticos y evolución diaria")
+        )
+      ),
+      React.createElement(HistorialMedico, { clienteId: String(clienteSel.id), historias, setHistorias, deleteHistoria })
+    );
+  }
   if (vista === "detalle" && clienteSel) {
     const c = clienteSel;
     const espIcon = { Perro: "\u{1F415}", Gato: "\u{1F408}", Ave: "\u{1F99C}", Conejo: "\u{1F407}", Reptil: "\u{1F98E}" }[c.especie] || "\u{1F43E}";
@@ -7671,7 +7748,13 @@ function CRM({ clientes, setClientes, ventas, clienteInicial, onClearClienteInic
     if (setCrmClienteInicial) setCrmClienteInicial({ modo: "ventaCliente", cliente: clienteSel });
     if (setTab) setTab("ventas");
   }
-}, "\u{1F4B0} Registrar Venta"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F43E} Mascota"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombreMascota }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Especie", val: c.especie }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Raza", val: c.raza }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tama\xF1o", val: c.tamano }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Sexo", val: c.sexo }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Color / pelaje", val: c.color }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Fecha de nacimiento", val: c.fechaNacimiento }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Edad", val: edad() }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Esterilizado/a", val: c.esterilizado ? "\u2705 S\xED" : "\u274C No" })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.azul, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F464} Propietario"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombrePropietario }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono", val: c.telefono }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono alternativo", val: c.telefono2 }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Email", val: c.email }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Direcci\xF3n", val: c.direccion }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Instagram", val: c.instagram }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Registrado el", val: c.fechaRegistro }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.rojo, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1FA7A} Datos m\xE9dicos"), c.alergias && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alergias:"), " ", c.alergias), /* @__PURE__ */ React.createElement(InfoRow, { label: "Medicamentos", val: c.medicamentos }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Condiciones cr\xF3nicas", val: c.condiciones }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Vet. externo", val: c.veterinarioExterno }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Peso", val: c.pesoKg ? c.pesoKg + " kg" : null }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Microchip", val: c.microchip }), !c.alergias && !c.medicamentos && !c.condiciones && !c.veterinarioExterno && !c.pesoKg && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, "Sin antecedentes m\xE9dicos registrados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.gold, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4CA} Resumen de visitas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total visitas"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.verde, fontWeight: 700 } }, ventasCliente.length)), /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total gastado"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.gold, fontWeight: 700 } }, RD(ventasCliente.reduce((s, v) => s + (v.total || 0), 0))))), /* @__PURE__ */ React.createElement(InfoRow, { label: "\xDAltima visita", val: ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : c.ultimaVisita2025 || "Sin visitas" }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Ticket promedio", val: ventasCliente.length > 0 ? RD(Math.round(ventasCliente.reduce((s, v) => s + (v.total || 0), 0) / ventasCliente.length)) : null }), c.notas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.gris, borderRadius: 8, padding: "10px 12px", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 4, fontSize: 11, color: C.grisd, textTransform: "uppercase" } }, "Notas"), c.notas))), (() => {
+}, "\u{1F4B0} Registrar Venta"),
+/* Botón Evolución */
+/* @__PURE__ */ React.createElement(Btn, {
+  small: true,
+  color: C.azul,
+  onClick: () => { setVista("evolucion"); }
+}, "📋 Evolución"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F43E} Mascota"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombreMascota }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Especie", val: c.especie }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Raza", val: c.raza }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tama\xF1o", val: c.tamano }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Sexo", val: c.sexo }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Color / pelaje", val: c.color }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Fecha de nacimiento", val: c.fechaNacimiento }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Edad", val: edad() }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Esterilizado/a", val: c.esterilizado ? "\u2705 S\xED" : "\u274C No" })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.azul, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F464} Propietario"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombrePropietario }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono", val: c.telefono }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono alternativo", val: c.telefono2 }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Email", val: c.email }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Direcci\xF3n", val: c.direccion }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Instagram", val: c.instagram }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Registrado el", val: c.fechaRegistro }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.rojo, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1FA7A} Datos m\xE9dicos"), c.alergias && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alergias:"), " ", c.alergias), /* @__PURE__ */ React.createElement(InfoRow, { label: "Medicamentos", val: c.medicamentos }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Condiciones cr\xF3nicas", val: c.condiciones }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Vet. externo", val: c.veterinarioExterno }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Peso", val: c.pesoKg ? c.pesoKg + " kg" : null }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Microchip", val: c.microchip }), !c.alergias && !c.medicamentos && !c.condiciones && !c.veterinarioExterno && !c.pesoKg && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, "Sin antecedentes m\xE9dicos registrados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.gold, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4CA} Resumen de visitas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total visitas"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.verde, fontWeight: 700 } }, ventasCliente.length)), /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total gastado"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.gold, fontWeight: 700 } }, RD(ventasCliente.reduce((s, v) => s + (v.total || 0), 0))))), /* @__PURE__ */ React.createElement(InfoRow, { label: "\xDAltima visita", val: ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : c.ultimaVisita2025 || "Sin visitas" }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Ticket promedio", val: ventasCliente.length > 0 ? RD(Math.round(ventasCliente.reduce((s, v) => s + (v.total || 0), 0) / ventasCliente.length)) : null }), c.notas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.gris, borderRadius: 8, padding: "10px 12px", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 4, fontSize: 11, color: C.grisd, textTransform: "uppercase" } }, "Notas"), c.notas))), (() => {
       let fotos = [];
       try {
         fotos = JSON.parse(c.fotosMascota || "[]");
