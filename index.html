@@ -2586,8 +2586,10 @@ Mascota: ${f.mascota}
     });
     return Object.values(grupos).map((g, i) => {
       const subtotal = g.items.reduce((s, v) => s + (v.total || 0), 0);
+      // ID estable: sin índice posicional (_i) para que no cambie al agregar ventas
+      const idEstable = "venta_" + (g.fecha || "") + "_" + (g.cliente || "sin_cliente").toLowerCase().trim().replace(/\s/g, "_");
       return {
-        id: "venta_" + (g.fecha || "") + "_" + (g.cliente || "").toLowerCase().trim().replace(/\s/g, "_") + "_" + i,
+        id: idEstable,
         numero: String(FACTURAS_SEED.length + i + 1).padStart(4, "0"),
         fecha: g.fecha,
         mascota: g.cliente || "",
@@ -2623,9 +2625,22 @@ Mascota: ${f.mascota}
     });
   }, [ventas, clientes]);
   const todasFacturas = useMemo(() => {
-    const manualesIds = new Set(facturas.map((f) => String(f.id)));
-    const auto = facturasDeVentas.filter((f) => !manualesIds.has(String(f.id)));
-    const todas = [...facturas, ...auto];
+    // Mapa de auto-generadas frescas (desde ventas actuales), por ID estable
+    const autoMap = new Map(facturasDeVentas.map((f) => [String(f.id), f]));
+    // Para las facturas guardadas: usar la versión fresca si existe
+    // (garantiza que nuevas ventas del mismo cliente/día aparezcan actualizadas)
+    const savedIds = new Set(facturas.map((f) => String(f.id)));
+    const manualesActualizadas = facturas.map((f) => {
+      const fresh = autoMap.get(String(f.id));
+      // Para auto-generadas: usar datos frescos pero conservar el numero guardado
+      if (fresh) return { ...fresh, numero: f.numero };
+      return f;
+    });
+    // Agregar grupos completamente nuevos (cliente+fecha que no existían antes)
+    const maxNumero = Math.max(0, ...facturas.map(f => parseInt(f.numero || "0", 10)).filter(n => !isNaN(n)));
+    const nuevasAuto = facturasDeVentas.filter((f) => !savedIds.has(String(f.id)));
+    const nuevasConNumero = nuevasAuto.map((f, i) => ({ ...f, numero: String(maxNumero + i + 1).padStart(4, "0") }));
+    const todas = [...manualesActualizadas, ...nuevasConNumero];
     return todas.sort((a, b) => {
       const fa = (a.fecha || "1900-01-01").replace(/[^0-9]/g, "");
       const fb = (b.fecha || "1900-01-01").replace(/[^0-9]/g, "");
@@ -2633,6 +2648,15 @@ Mascota: ${f.mascota}
       return String(b.numero || "0").localeCompare(String(a.numero || "0"));
     });
   }, [facturas, facturasDeVentas]);
+  // Auto-guardar TODAS las facturas (manuales + auto-generadas) en localStorage
+  // Esto garantiza persistencia entre sesiones sin depender solo de ventas en Supabase
+  useEffect(() => {
+    if (todasFacturas.length > 0) {
+      try {
+        localStorage.setItem("pc_facturas", JSON.stringify(todasFacturas));
+      } catch(e) { console.warn("Error guardando facturas:", e); }
+    }
+  }, [todasFacturas]);
   const facturas_contains = (q, btn) => false;
   facturasFiltradas = useMemo(() => {
     let fs = [...todasFacturas];
