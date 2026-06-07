@@ -758,7 +758,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "3 may 2026 · dashboard-mes + facturas + inventario + deslanado + WA-preview + descripciones";
+const LAST_UPDATE = "7 jun 2026 · corrección fechas futuras + sincronización directa Supabase";
 const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
@@ -6148,6 +6148,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       items: items.map((i) => ({ nombre: i.nombre, precio: i.precio, descPct: i.descPct, subtotal: i.subtotal, area: i.area }))
     };
     setVentas([...ventas, nueva]);
+    upsertOne("pc_ventas", nueva).catch(e => console.error("[handleAdd] upsertOne error:", e));
     setItems([]);
     setCliente("");
     setDescPct(0);
@@ -7367,6 +7368,7 @@ function Gastos({ gastos, setGastos }) {
       metodo
     };
     setGastos([...gastos, nuevo]);
+    upsertOne("pc_gastos", nuevo).catch(e => console.error("[addGasto] upsertOne error:", e));
     setProv("");
     setDesc("");
     setMonto("");
@@ -7386,7 +7388,12 @@ function Gastos({ gastos, setGastos }) {
   };
   const saveEdit = () => {
     if (!editDesc || !editMonto) return alert("Completa descripci\xF3n y monto");
-    setGastos(gastos.map((g) => g.id === editingId ? { ...g, fecha: editFecha, proveedor: editProv, descripcion: editDesc, monto: parseFloat(editMonto) || 0, categoria: editCat, pagadoPor: editPagPor, metodo: editMetodo } : g));
+    const updated = gastos.find(g => g.id === editingId);
+    if (updated) {
+      const updatedGasto = { ...updated, fecha: editFecha, proveedor: editProv, descripcion: editDesc, monto: parseFloat(editMonto) || 0, categoria: editCat, pagadoPor: editPagPor, metodo: editMetodo };
+      setGastos(gastos.map((g) => g.id === editingId ? updatedGasto : g));
+      upsertOne("pc_gastos", updatedGasto).catch(e => console.error("[saveEdit gasto] upsertOne error:", e));
+    }
     setEditingId(null);
   };
   const gastosFiltrados = gastos.filter((g) => g.fecha?.slice(0, 7) === filtromes);
@@ -7792,6 +7799,7 @@ function CRM({ clientes, setClientes, ventas, setVentas, clienteInicial, onClear
       } else {
         setClientes(prev => prev.map((c) => c.id === clienteSel.id ? { ...form, id: c.id } : c));
       }
+      upsertOne("pc_clientes", { ...form, id: newId }).catch(e => console.error("[CRM guardar] upsertOne error:", e));
       if (oldName !== newName && setVentas) {
         setVentas(prev => prev.map(v => (v.cliente || "").toLowerCase().trim() === oldName ? { ...v, cliente: form.nombreMascota } : v));
       }
@@ -7800,6 +7808,7 @@ function CRM({ clientes, setClientes, ventas, setVentas, clienteInicial, onClear
     } else {
       const nuevo = { ...form, id: Date.now() };
       setClientes([...clientes, nuevo]);
+      upsertOne("pc_clientes", nuevo).catch(e => console.error("[CRM nuevo] upsertOne error:", e));
       setClienteSel(nuevo);
     }
     setVista("detalle");
