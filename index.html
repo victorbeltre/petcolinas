@@ -247,10 +247,20 @@ function useSupabase(table, seed = []) {
     }
     setSyncing(false);
   }, [data, table]);
+  const dataRef = useRef(null);
+  dataRef.current = data;
   const deleteRow = useCallback(async (id) => {
     const sid = String(id);
+    const row = dataRef.current ? dataRef.current.find((r) => String(r.id) === sid) : null;
     setData((prev) => prev.filter((r) => String(r.id) !== sid));
     deletedIds.current.add(sid);
+    if (table === "pc_ventas" && row) {
+      const lk = (row.fecha || "") + "|" + (row.cliente || "").toLowerCase().trim() + "|" + (row.total || 0) + "|" + (row.area || "");
+      for (const sr of seed) {
+        const srLk = (sr.fecha || "") + "|" + (sr.cliente || "").toLowerCase().trim() + "|" + (sr.total || 0) + "|" + (sr.area || "");
+        if (srLk === lk) deletedIds.current.add(String(sr.id));
+      }
+    }
     savDeleted(deletedIds.current);
     if (table === "pc_ventas") {
       try {
@@ -6086,8 +6096,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       const seg = { id: Date.now()+1, mascota: cliente, propietario: "", telefono: "", tipo: "control_post_consulta", frecuencia: 30, ultimaFecha: fecha, proximaFecha: sigFecha, notas: "Control post-consulta generado automáticamente", completado: false, activo: true };
       setSeguimientos(prev => [...prev, seg]);
     }
-    setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area });
-    setTimeout(() => setNotifExito(null), 4e3);
+    const notifTel = clientes ? ((clientes.find(c => (c.nombreMascota||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || clientes.find(c => (c.nombrePropietario||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || {}).telefono || "") : "";
+    setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area, items: nueva.items, servicio: descripcion, fecha, telefono: notifTel });
+    setTimeout(() => setNotifExito(null), 6e3);
   };
   const handleDelete = (id) => {
     if (!confirm("\xBFEliminar esta venta? Esta acci\xF3n no se puede deshacer.")) return;
@@ -6098,8 +6109,12 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     }
   };
   const ventasFiltradas = ventas.filter((v) => v.fecha?.slice(0, 7) === filtromes).sort((a, b) => {
-    if (b.fecha !== a.fecha) return b.fecha > a.fecha ? 1 : -1;
-    return b.id > a.id ? 1 : -1;
+    const fa = a.fecha || "";
+    const fb = b.fecha || "";
+    if (fb !== fa) return fb > fa ? 1 : -1;
+    const ai = Number(a.id) || 0;
+    const bi = Number(b.id) || 0;
+    return bi > ai ? 1 : bi < ai ? -1 : 0;
   });
   const totalFiltrado = ventasFiltradas.reduce((s, v) => s + v.total, 0);
   const colorArea = (a) => a === "grooming" ? C.verde : a === "veterinaria" ? C.azul : a === "farmacia" ? C.gold : C.naranja;
@@ -6129,7 +6144,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     display: "flex",
     gap: 12,
     alignItems: "center"
-  } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\u2705"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13, color: "#065f46" } }, /* @__PURE__ */ React.createElement("strong", null, "Venta registrada"), " \u2014 ", notifExito.cliente, " \xB7 ", notifExito.area, " \xB7 RD$ ", notifExito.total.toLocaleString("es-DO")), /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\u2705"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13, color: "#065f46" } }, /* @__PURE__ */ React.createElement("strong", null, "Venta registrada"), " \u2014 ", notifExito.cliente, " \xB7 ", notifExito.area, " \xB7 RD$ ", notifExito.total.toLocaleString("es-DO")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const iLst = (notifExito.items || []).map(i => { const dto = i.descPct > 0 ? " (-" + i.descPct + "%)" : ""; return "\u2022 " + i.nombre + dto + ": RD$" + (i.subtotal || i.precio || 0).toLocaleString("es-DO"); }).join("\n"); const msg = "\ud83d\udc3e *\xA1Bienvenido/a a PetColinas!* \ud83d\udc3e\n\nHola *" + notifExito.cliente + "*, te confirmamos tu servicio de hoy:\n\n" + (iLst || ("\u2022 " + (notifExito.servicio || notifExito.area) + ": RD$" + notifExito.total.toLocaleString("es-DO"))) + "\n\n*Total: RD$" + notifExito.total.toLocaleString("es-DO") + "*\n\n\xA1Gracias por confiar en PetColinas! \ud83d\udc36\ud83d\udc31"; abrirWA(notifExito.telefono || "", msg); }, style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, "\ud83d\udcac WhatsApp"), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => setNotifExito(null),
