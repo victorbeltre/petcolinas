@@ -4222,19 +4222,19 @@ function PetColinas() {
   const isVet = session?.user?.email && VET_EMAILS_LIST.includes(session.user.email);
   const isGrm = session?.user?.email && GRM_EMAILS_LIST.includes(session.user.email);
 
-  if (isVet) return /* @__PURE__ */ React.createElement(PortalVeterinaria, {
+  if (isVet) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalVeterinaria, {
     session, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     clientes: clientesVet, setClientes: setClientesVet
-  });
+  }));
 
-  if (isGrm) return /* @__PURE__ */ React.createElement(PortalGroomer, {
+  if (isGrm) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalGroomer, {
     session, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     pagosNom: pagosNomVet || []
-  });
+  }));
 
-  return /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout });
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout }));
 }
 const INVENTARIO_SEED = [
   { id: "inv_1", nombre: "NG Spectra S 3.6 - 7.5 kg", categoria: "farmaco", stock: 8, stockInicial: 8, stockMin: 1, costo: 962, pventa: 1924, margen: 50, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
