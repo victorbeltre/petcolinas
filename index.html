@@ -142,7 +142,9 @@ function useSupabase(table, seed = []) {
           // Merge: seed rows + Supabase rows nuevas (que no están en seed)
           if (table === "pc_ventas") {
             const supaIds = new Set(normalized.map((r) => String(r.id)));
-            const seedRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
+            // Dedup lógico: evitar que seed muestre ventas ya registradas en Supabase con diferente ID
+            const supaLogicalKeys = new Set(normalized.map(r => `${r.fecha||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`));
+            const seedRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)) && !supaLogicalKeys.has(`${r.fecha||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`));
             let merged = [...seedRows, ...normalized];
             // Aplicar descripciones del localStorage a filas sin descripción
             try {
@@ -4579,7 +4581,9 @@ function PetColinasApp({ session, onLogout }) {
   const totalNomina = pagosMes.reduce((s, p) => s + (p.mensualidad + p.comisiones - p.descuentos), 0);
   const totalEgresos = totalGastos + totalNomina;
   const utilidad = totalVentas - totalEgresos;
-  const comGrmSistema = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + (v.comision || 0), 0);
+  // Para grooming: si comision === 0, calcular ~12% del total (promedio real de la tarifa de Alexander)
+  const calcComGrm = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.12);
+  const comGrmSistema = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + calcComGrm(v), 0);
   // Para vet: si comision === 0 en el registro historico, calculamos 30% Aylein / 40% Valentina sobre el total
   const calcComVetAylein = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.30);
   const calcComVetValen  = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.40);
@@ -5366,8 +5370,11 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
   const grm = ventasMes.filter((v) => v.area==="grooming").reduce((s,v)=>s+v.total,0);
   const vet = ventasMes.filter((v) => v.area==="veterinaria").reduce((s,v)=>s+v.total,0);
   const far = ventasMes.filter((v) => v.area==="farmacia").reduce((s,v)=>s+v.total,0);
-  const comGrmSistema = ventasMes.filter((v)=>v.area==="grooming").reduce((s,v)=>s+(v.comision||0),0);
-  const comVetSistema = ventasMes.filter((v)=>v.area==="veterinaria").reduce((s,v)=>s+(v.comision||0),0);
+  // Usar los valores ya calculados con fallback desde PetColinasApp (props _cgs y comAyleinSistema)
+  const calcComGrmD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.12);
+  const calcComVetD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.30);
+  const comGrmSistema = _cgs > 0 ? _cgs : ventasMes.filter((v)=>v.area==="grooming").reduce((s,v)=>s+calcComGrmD(v),0);
+  const comVetSistema = comAyleinSistema > 0 ? comAyleinSistema : ventasMes.filter((v)=>v.area==="veterinaria").reduce((s,v)=>s+calcComVetD(v),0);
   const comisionesGrm = comGrmSistema;
   const comisionesVet = comVetSistema;
   const pct = Math.min(100, Math.round(totalVentas / PDE * 100));
