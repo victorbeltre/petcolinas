@@ -52,8 +52,30 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
   let authToken = SUPA_KEY;
   try {
     const sess = JSON.parse(localStorage.getItem("pc_session") || "null");
-    if (sess && sess.access_token && sess.expires_at && Date.now() / 1e3 < sess.expires_at) {
-      authToken = sess.access_token;
+    if (sess && sess.access_token) {
+      const expired = !sess.expires_at || Date.now() / 1e3 >= sess.expires_at;
+      if (!expired) {
+        authToken = sess.access_token;
+      } else if (sess.refresh_token) {
+        try {
+          const rr = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "apikey": SUPA_KEY },
+            body: JSON.stringify({ refresh_token: sess.refresh_token })
+          });
+          if (rr.ok) {
+            const newSess = await rr.json();
+            localStorage.setItem("pc_session", JSON.stringify(newSess));
+            authToken = newSess.access_token;
+            console.log("[Auth] Sesi\xF3n renovada autom\xE1ticamente");
+          } else {
+            console.warn("[Auth] No se pudo renovar la sesi\xF3n (" + rr.status + ")");
+            if (typeof window.__notifSyncError === "function") window.__notifSyncError("sesi\xF3n expirada");
+          }
+        } catch (re) {
+          console.warn("[Auth] Error renovando sesi\xF3n:", re.message);
+        }
+      }
     }
   } catch {}
   const headers = {
@@ -316,12 +338,15 @@ async function upsertOne(table, row) {
     const result = await supaFetch(table, "POST", dbRow, "?on_conflict=id");
     if (result && result.error) {
       console.error(`[upsertOne] ${table} id=${row.id} ERROR:`, result.error, result.message);
+      if (typeof window.__notifSyncError === "function") window.__notifSyncError(table + " " + row.id);
       return false;
     }
     console.log(`[upsertOne] ${table} id=${row.id} OK`);
+    if (typeof window.__notifSyncOk === "function") window.__notifSyncOk();
     return true;
   } catch (e) {
     console.error(`[upsertOne] ${table} EXCEPCI\xD3N:`, e);
+    if (typeof window.__notifSyncError === "function") window.__notifSyncError(table + " error");
     return false;
   }
 }
@@ -4577,6 +4602,14 @@ function PetColinasApp({ session, onLogout }) {
       setSyncStatus("ok");
     }
   }, [ventasLoaded, clientesLoaded, segsLoaded, invLoaded, gastosLoaded, empLoaded, pagosLoaded]);
+  useEffect(() => {
+    window.__notifSyncError = (ctx) => {
+      setSyncStatus("error");
+      console.error("[Sync] Error al guardar en Supabase:", ctx);
+    };
+    window.__notifSyncOk = () => setSyncStatus("ok");
+    return () => { window.__notifSyncError = null; window.__notifSyncOk = null; };
+  }, []);
   const clientesDeVentas = useMemo(() => {
     if (!ventasLoaded || !clientesLoaded) return [];
     const nombresEnCRM = new Set(clientes.map((c) => (c.nombreMascota || "").toLowerCase().trim()));
@@ -4709,7 +4742,7 @@ function PetColinasApp({ session, onLogout }) {
     borderRadius: "50%",
     background: syncStatus === "ok" ? "#4ade80" : syncStatus === "error" ? "#f87171" : "#fbbf24",
     animation: syncStatus === "ok" ? "pulse 2s infinite" : "none"
-  } }), /* @__PURE__ */ React.createElement("span", { style: { color: "rgba(255,255,255,0.85)" } }, syncStatus === "ok" ? "\u2601\uFE0F En la nube" : syncStatus === "error" ? "Sin conexi\xF3n" : "Conectando...")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2, letterSpacing: 0.3 } }, "\u{1F504} \xDAlt. actualizaci\xF3n: ", LAST_UPDATE)), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
+  } }), /* @__PURE__ */ React.createElement("span", { style: { color: "rgba(255,255,255,0.85)" } }, syncStatus === "ok" ? "\u2601\uFE0F En la nube" : syncStatus === "error" ? React.createElement("span", { onClick: () => window.location.reload(), style: { cursor: "pointer", textDecoration: "underline", color: "#fca5a5" }, title: "Clic para recargar y reconectar" }, "\u26A0\uFE0F Error de sincronizaci\xF3n \u2014 toca para recargar") : "Conectando...")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2, letterSpacing: 0.3 } }, "\u{1F504} \xDAlt. actualizaci\xF3n: ", LAST_UPDATE)), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
     background: "#fff",
     borderBottom: "2px solid #eef0f2",
     display: "flex",
