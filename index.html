@@ -98,7 +98,7 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
 function useSupabase(table, seed = []) {
   const deletedKey = "pc_deleted_" + table;
   const deletedIdsInit = new Set(
-    JSON.parse(sessionStorage.getItem(deletedKey) || "[]")
+    JSON.parse(localStorage.getItem(deletedKey) || "[]")
   );
   const [data, setData] = useState(
     () => seed.filter((r) => !deletedIdsInit.has(String(r.id)))
@@ -108,7 +108,7 @@ function useSupabase(table, seed = []) {
   const seedIds = useRef(new Set(seed.map((r) => String(r.id))));
   const deletedIds = useRef(deletedIdsInit);
   const savDeleted = (set) => {
-    sessionStorage.setItem(deletedKey, JSON.stringify([...set]));
+    localStorage.setItem(deletedKey, JSON.stringify([...set]));
   };
   useEffect(() => {
     (async () => {
@@ -170,8 +170,28 @@ function useSupabase(table, seed = []) {
                 });
               }
             } catch {}
+            // Aplicar respaldo local de ventas nuevas (pc_ventas_local)
+            try {
+              const localVentas = JSON.parse(localStorage.getItem("pc_ventas_local") || "[]");
+              if (localVentas.length > 0) {
+                const mergedIds = new Set(merged.map((r) => String(r.id)));
+                const localNuevas = localVentas.filter((r) => !mergedIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
+                if (localNuevas.length > 0) {
+                  merged = [...merged, ...localNuevas];
+                  console.log("[LocalBackup] pc_ventas_local: " + localNuevas.length + " venta(s) recuperada(s)");
+                }
+              }
+            } catch {}
             console.log("[Merge] pc_ventas: " + seedRows.length + " seed + " + normalized.length + " Supa = " + merged.length);
             setData(merged);
+          } else if (table === "pc_seguimientos") {
+            try {
+              const overrides = JSON.parse(localStorage.getItem("pc_seg_overrides") || "{}");
+              const keys = Object.keys(overrides);
+              setData(keys.length ? normalized.map((r) => { const ov = overrides[String(r.id)]; return ov ? { ...r, ...ov } : r; }) : normalized);
+            } catch {
+              setData(normalized);
+            }
           } else {
             setData(normalized);
           }
@@ -200,6 +220,18 @@ function useSupabase(table, seed = []) {
         localStorage.setItem("pc_venta_serv", JSON.stringify(descMap));
       } catch {}
     }
+    if (table === "pc_ventas") {
+      try {
+        const localKey = "pc_ventas_local";
+        const existing = JSON.parse(localStorage.getItem(localKey) || "[]");
+        const existingIds = new Set(existing.map((r) => String(r.id)));
+        const currentSeedIds2 = seedIds.current;
+        const soloNuevasLocal = newData.filter((r) => !currentSeedIds2.has(String(r.id)) && !existingIds.has(String(r.id)));
+        if (soloNuevasLocal.length > 0) {
+          localStorage.setItem(localKey, JSON.stringify([...existing, ...soloNuevasLocal]));
+        }
+      } catch {}
+    }
     setSyncing(true);
     try {
       // Solo guardar filas NUEVAS (no del seed) para no reescribir todo
@@ -220,6 +252,13 @@ function useSupabase(table, seed = []) {
     setData((prev) => prev.filter((r) => String(r.id) !== sid));
     deletedIds.current.add(sid);
     savDeleted(deletedIds.current);
+    if (table === "pc_ventas") {
+      try {
+        const localVentas = JSON.parse(localStorage.getItem("pc_ventas_local") || "[]");
+        const filtered = localVentas.filter((r) => String(r.id) !== sid);
+        localStorage.setItem("pc_ventas_local", JSON.stringify(filtered));
+      } catch {}
+    }
     try {
       await supaFetch(table, "DELETE", null, `?id=eq.${encodeURIComponent(id)}`);
     } catch (e) {
@@ -3072,7 +3111,7 @@ Mascota: ${f.mascota}
       default:
         return fs;
     }
-  }, [facturas, busqueda, orden]);
+  }, [todasFacturas, busqueda, orden]);
   const groomingPorCliente = useMemo(() => {
     const mapa = {};
     ventas.forEach((v) => {
@@ -4832,6 +4871,13 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     setSel(null);
     setBusq("");
   };
+  const saveSegLocal = (updated) => {
+    try {
+      const overrides = JSON.parse(localStorage.getItem("pc_seg_overrides") || "{}");
+      overrides[String(updated.id)] = { completado: updated.completado, activo: updated.activo, ultimaFecha: updated.ultimaFecha, proximaFecha: updated.proximaFecha };
+      localStorage.setItem("pc_seg_overrides", JSON.stringify(overrides));
+    } catch {}
+  };
   const marcarHecho = async (id) => {
     const seg = seguimientos.find((s) => s.id === id);
     if (!seg) return;
@@ -4839,6 +4885,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     const nueva = sumarDias(hoy(), seg.frecuencia);
     const updated = { ...seg, ultimaFecha: hoy(), proximaFecha: nueva, completado: false };
     setSeguimientos(seguimientos.map((s) => s.id === id ? updated : s));
+    saveSegLocal(updated);
     await upsertOne("pc_seguimientos", updated);
   };
   const marcarCompletado = async (id) => {
@@ -4847,6 +4894,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     if (pushHistorial) pushHistorial(`Completado: ${seg.mascota}`, { seguimientos: [...seguimientos] });
     const updated = { ...seg, completado: true, activo: false };
     setSeguimientos(seguimientos.map((s) => s.id === id ? updated : s));
+    saveSegLocal(updated);
     await upsertOne("pc_seguimientos", updated);
   };
   const reabrirSeguimiento = async (id) => {
@@ -4854,6 +4902,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     if (!seg) return;
     const updated = { ...seg, completado: false, activo: true };
     setSeguimientos(seguimientos.map((s) => s.id === id ? updated : s));
+    saveSegLocal(updated);
     await upsertOne("pc_seguimientos", updated);
   };
   const toggleActivo = async (id) => {
@@ -4861,6 +4910,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     if (!seg) return;
     const updated = { ...seg, activo: !seg.activo };
     setSeguimientos(seguimientos.map((s) => s.id === id ? updated : s));
+    saveSegLocal(updated);
     await upsertOne("pc_seguimientos", updated);
   };
   const eliminar = async (id) => {
@@ -6048,8 +6098,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     }
   };
   const ventasFiltradas = ventas.filter((v) => v.fecha?.slice(0, 7) === filtromes).sort((a, b) => {
-    if (b.fecha !== a.fecha) return b.fecha > a.fecha ? -1 : 1;
-    return b.id > a.id ? -1 : 1;
+    if (b.fecha !== a.fecha) return b.fecha > a.fecha ? 1 : -1;
+    return b.id > a.id ? 1 : -1;
   });
   const totalFiltrado = ventasFiltradas.reduce((s, v) => s + v.total, 0);
   const colorArea = (a) => a === "grooming" ? C.verde : a === "veterinaria" ? C.azul : a === "farmacia" ? C.gold : C.naranja;
