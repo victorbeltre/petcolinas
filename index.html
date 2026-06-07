@@ -201,6 +201,15 @@ function useSupabase(table, seed = []) {
                 if (localNuevas.length > 0) {
                   merged = [...merged, ...localNuevas];
                   console.log("[LocalBackup] pc_ventas_local: " + localNuevas.length + " venta(s) recuperada(s)");
+                  // Push to Supabase so other devices see them (async, delay to let auth settle)
+                  setTimeout(() => {
+                    localNuevas.forEach(lv => {
+                      upsertOne("pc_ventas", lv).then(ok => {
+                        if (ok) console.log("[LocalBackup→Supa] id=" + lv.id + " sincronizada");
+                        else console.warn("[LocalBackup→Supa] id=" + lv.id + " no se pudo sincronizar");
+                      }).catch(() => {});
+                    });
+                  }, 3000);
                 }
               }
             } catch {}
@@ -256,13 +265,15 @@ function useSupabase(table, seed = []) {
     }
     setSyncing(true);
     try {
-      // Solo guardar filas NUEVAS (no del seed) para no reescribir todo
       const currentSeedIds = seedIds.current;
-      const soloNuevas = newData.filter((r) => !currentSeedIds.has(String(r.id)));
-      console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " filas nuevas");
-      for (const row of soloNuevas) {
-        const dbRow = denormalizeRow(table, row);
-        await supaFetch(table, "POST", dbRow, `?on_conflict=id`);
+      const currentDataIds = new Set(data.map((r) => String(r.id)));
+      const soloNuevas = newData.filter((r) => !currentSeedIds.has(String(r.id)) && !currentDataIds.has(String(r.id)));
+      if (soloNuevas.length > 0) {
+        console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " fila(s) nueva(s)");
+        for (const row of soloNuevas) {
+          const dbRow = denormalizeRow(table, row);
+          await supaFetch(table, "POST", dbRow, `?on_conflict=id`);
+        }
       }
     } catch (e) {
       console.error("Supabase sync error:", e);
@@ -6125,6 +6136,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       return p;
     });
     setInventario(invActualizado);
+    invActualizado.filter(p => { const o = inventario.find(x => x.id === p.id); return o && o.stock !== p.stock; }).forEach(p => upsertOne("pc_inventario", p).catch(() => {}));
     const areas = [...new Set(items.map((i) => i.area))];
     const area = areas.length === 1 ? areas[0] : "mixta";
     const descripcion = items.map((i) => {
