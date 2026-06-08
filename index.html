@@ -8,6 +8,7 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: "Segoe UI", sans-serif; background: #f0f2f0; }
@@ -2731,6 +2732,113 @@ const FACTURAS_SEED = [
   { id: "hist_130", numero: "0130", fecha: "2026-03-05", mascota: "Lucky Sanchez", propietario: "Lucky Sanchez", telefono: "", items: [{ "descripcion": "Ba\xF1o peque\xF1o + corte completo", "cantidad": 1, "precio": 1548 }], itbis: false, subtotal: 1548, itbisAmt: 0, total: 1548, notas: "Historial 2026", estado: "emitida" },
   { id: "hist_131", numero: "0131", fecha: "2026-03-05", mascota: "Shadow Felipe", propietario: "Shadow Felipe", telefono: "", items: [{ "descripcion": "Ba\xF1o grande", "cantidad": 1, "precio": 1080 }], itbis: false, subtotal: 1080, itbisAmt: 0, total: 1080, notas: "Historial 2026", estado: "emitida" }
 ];
+function generarFacturaPDFDoc(f) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const verde = [26, 107, 58], gr = [90, 100, 114], ng = [26, 29, 35];
+  const W = 210, M = 15;
+  // Header verde
+  doc.setFillColor(...verde); doc.rect(0, 0, W, 34, "F");
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(18);
+  doc.text("PetColinas", M, 13);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8);
+  doc.text("Plaza Las Colinas, Santo Domingo Oeste", M, 20);
+  doc.text("Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com", M, 27);
+  doc.setFont("helvetica","bold"); doc.setFontSize(14);
+  doc.text("FACTURA #" + f.numero, W-M, 13, {align:"right"});
+  doc.setFont("helvetica","normal"); doc.setFontSize(9);
+  doc.text("Fecha: " + (f.fecha||""), W-M, 20, {align:"right"});
+  doc.text(f.estado==="pendiente" ? "PENDIENTE" : "✓ EMITIDA", W-M, 27, {align:"right"});
+  // Cajas cliente / emisor
+  let y = 44;
+  doc.setFillColor(248,249,250);
+  doc.rect(M, y-5, 85, 30, "F"); doc.rect(W/2+2, y-5, 85, 30, "F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...gr);
+  doc.text("DATOS DEL CLIENTE", M+3, y); doc.text("EMITIDO POR", W/2+5, y);
+  doc.setTextColor(...ng); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+  doc.text((f.propietario||"—").slice(0,32), M+3, y+8); doc.text("PetColinas", W/2+5, y+8);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+  if(f.mascota) doc.text("🐾 " + f.mascota, M+3, y+15);
+  if(f.telefono) doc.text("Tel: " + f.telefono, M+3, y+21);
+  doc.setTextColor(...gr); doc.setFontSize(8);
+  doc.text("Plaza Las Colinas, SDO", W/2+5, y+15);
+  doc.text("Tel: 809-752-6806", W/2+5, y+21);
+  if(f.metodoPago) doc.text("Pago: " + f.metodoPago, W/2+5, y+27);
+  // Tabla items
+  y += 40;
+  doc.setFillColor(...verde); doc.rect(M, y-4, W-2*M, 8, "F");
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+  doc.text("Descripci\xF3n del servicio", M+2, y+0.5);
+  doc.text("Cant.", 121, y+0.5); doc.text("Precio unit.", 139, y+0.5);
+  doc.text("Desc.", 160, y+0.5); doc.text("Subtotal", W-M-2, y+0.5, {align:"right"});
+  y += 10; doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+  let subtotal=0;
+  (f.items||[]).forEach((it,i) => {
+    const precio=parseFloat(it.precio)||0, cant=parseInt(it.cantidad)||1;
+    const desc=Math.min(100,Math.max(0,parseFloat(it.descuento)||0));
+    const sub=Math.round(precio*cant*(1-desc/100)); subtotal+=sub;
+    if(i%2===0){doc.setFillColor(248,249,250);doc.rect(M,y-4,W-2*M,7,"F");}
+    doc.setTextColor(...ng);
+    const dl=(it.descripcion||"—"); doc.text(dl.length>55?dl.slice(0,52)+"...":dl, M+2, y);
+    doc.text(String(cant), 123, y, {align:"center"});
+    doc.text("RD$ "+precio.toLocaleString("es-DO"), 139, y);
+    doc.text(desc>0?"-"+desc+"%":"—", 162, y, {align:"center"});
+    doc.text("RD$ "+sub.toLocaleString("es-DO"), W-M-2, y, {align:"right"});
+    y+=7;
+  });
+  const itbisAmt=f.itbis?Math.round(subtotal*0.18):0, total=subtotal+itbisAmt;
+  y+=4; doc.setDrawColor(...verde); doc.setLineWidth(0.3); doc.line(130,y,W-M,y); y+=5;
+  doc.setTextColor(...ng); doc.setFont("helvetica","normal"); doc.setFontSize(9);
+  doc.text("Subtotal:", 141, y); doc.text("RD$ "+subtotal.toLocaleString("es-DO"), W-M-2, y, {align:"right"});
+  if(f.itbis){y+=6;doc.text("ITBIS (18%):", 141, y);doc.text("RD$ "+itbisAmt.toLocaleString("es-DO"), W-M-2, y, {align:"right"});}
+  y+=6; doc.setFillColor(...verde); doc.rect(130,y-4,W-M-130,9,"F");
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(11);
+  doc.text("TOTAL", 134, y+1.5); doc.text("RD$ "+total.toLocaleString("es-DO"), W-M-2, y+1.5, {align:"right"});
+  // Lealtad grooming
+  const grm=f.groomingCount||0;
+  if(grm>0){y+=16;doc.setFillColor(255,251,234);doc.rect(M,y-4,W-2*M,16,"F");
+    doc.setDrawColor(240,192,48);doc.rect(M,y-4,W-2*M,16,"S");
+    doc.setTextColor(184,134,11);doc.setFont("helvetica","bold");doc.setFontSize(9);
+    doc.text("🐾 Programa de Lealtad: "+grm+"/10 servicios de grooming", M+4, y+2);
+    doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...gr);
+    doc.text(grm>=10?"¡BA\xD1O GRATIS DISPONIBLE! 🎉":"Faltan "+(10-grm)+" servicios para ganar un ba\xF1o gratis 🎁", M+4, y+9);}
+  // Notas
+  if(f.notas){y+=20;doc.setFillColor(248,249,250);doc.rect(M,y-4,W-2*M,12,"F");
+    doc.setTextColor(...ng);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("Notas:", M+3, y);
+    doc.setFont("helvetica","normal");doc.text(f.notas.slice(0,120), M+3, y+6);}
+  // Footer
+  doc.setTextColor(...gr);doc.setFont("helvetica","normal");doc.setFontSize(8);
+  doc.text("Gracias por confiar en PetColinas 🐾", W/2, 284, {align:"center"});
+  doc.text("Plaza Las Colinas, Santo Domingo Oeste \xB7 Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com", W/2, 290, {align:"center"});
+  return doc;
+}
+async function enviarPDFWhatsApp(f) {
+  const telRaw = (f.telefono||"").replace(/\D/g,"");
+  const tel = telRaw.length>=11 ? telRaw : (telRaw ? "1"+telRaw : "");
+  if(!tel){alert("Esta factura no tiene n\xFAmero de tel\xE9fono registrado.");return;}
+  const msgText = "Anexamos su factura. Gracias por la visita 🐾\n\nPetColinas — Factura #"+f.numero+" \xB7 "+f.fecha+"\nTotal: RD$ "+(f.total||0).toLocaleString("es-DO");
+  const waUrl = "https://wa.me/"+tel+"?text="+encodeURIComponent(msgText);
+  if(!window.jspdf){window.open(waUrl,"_blank");return;}
+  try {
+    const doc = generarFacturaPDFDoc(f);
+    const fileName = "Factura_PetColinas_"+f.numero+".pdf";
+    // Móvil: intentar Web Share API con archivo
+    if(navigator.share && navigator.canShare){
+      const blob=doc.output("blob");
+      const file=new File([blob],fileName,{type:"application/pdf"});
+      if(navigator.canShare({files:[file]})){
+        try{await navigator.share({files:[file],text:"Anexamos su factura. Gracias por la visita 🐾"});return;}
+        catch(se){if(se.name!=="AbortError")console.warn("Share:",se);}
+      }
+    }
+    // Escritorio / fallback: descargar PDF + abrir WhatsApp
+    doc.save(fileName);
+    setTimeout(()=>window.open(waUrl,"_blank"),800);
+  } catch(e){
+    console.error("PDF error:",e);
+    window.open(waUrl,"_blank");
+  }
+}
 function Facturas({ ventas, clientes }) {
   const [facturas, setFacturas] = useLS("pc_facturas", FACTURAS_SEED);
   const [vista, setVista] = useState("lista");
@@ -3039,27 +3147,7 @@ function Facturas({ ventas, clientes }) {
     win.document.close();
     setTimeout(() => win.print(), 500);
   }
-  function compartirWhatsApp(f) {
-    const { total } = calcTotales(f.items, f.itbis);
-    const texto = `\u{1F43E} *PetColinas \u2014 Factura #${f.numero}*
-
-Fecha: ${f.fecha}
-Cliente: ${f.propietario}
-Mascota: ${f.mascota}
-
-*Servicios:*
-    const itemsTexto = f.items.map(function(it) { return "\u2022 " + it.descripcion + ": RD$ " + ((parseFloat(it.precio)||0)*(parseInt(it.cantidad)||1)).toLocaleString("es-DO"); }).join("
-");
-")}
-
-*Total: RD$ ${total.toLocaleString("es-DO")}*
-
-\xA1Gracias por visitarnos! \u{1F43E}`;
-    const telRaw = (f.telefono || "").replace(/\D/g, "");
-    const tel = telRaw.length >= 11 ? telRaw : (telRaw ? "1" + telRaw : "");
-    if (!tel) { alert("Esta factura no tiene número de teléfono registrado."); return; }
-    abrirWA(tel, texto);
-  }
+  function compartirWhatsApp(f) { enviarPDFWhatsApp(f); }
   const [busqueda, setBusqueda] = useState("");
   const [orden, setOrden] = useState("fecha_desc");
   const [vistaMode, setVistaMode] = useState("facturas");
