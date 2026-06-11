@@ -136,6 +136,8 @@ function useSupabase(table, seed = []) {
   );
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const refetch = useCallback(() => setRefetchTrigger(n => n + 1), []);
   const seedIds = useRef(new Set(seed.map((r) => String(r.id))));
   const deletedIds = useRef(deletedIdsInit);
   const savDeleted = (set) => {
@@ -281,7 +283,7 @@ function useSupabase(table, seed = []) {
       }
       setLoaded(true);
     })();
-  }, []);
+  }, [refetchTrigger]);
   const dataRef = useRef(null);
   dataRef.current = data;
   const setDataSync = useCallback(async (newDataOrFn) => {
@@ -370,7 +372,7 @@ function useSupabase(table, seed = []) {
       console.error("Supabase delete error:", e);
     }
   }, [table]);
-  return [data, setDataSync, loaded, syncing, deleteRow];
+  return [data, setDataSync, loaded, syncing, deleteRow, refetch];
 }
 async function upsertOne(table, row) {
   try {
@@ -4820,11 +4822,31 @@ function PetColinasApp({ session, onLogout }) {
     }
   }, []);
   const [tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet] = useSupaTarifas();
-  const [ventas, setVentas, ventasLoaded, , deleteVenta] = useSupabase("pc_ventas", VENTAS_SEED);
+  const [ventas, setVentas, ventasLoaded, , deleteVenta, refetchVentas] = useSupabase("pc_ventas", VENTAS_SEED);
   const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
   const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
   const [inventario, setInventario, invLoaded, , deleteInv] = useSupabase("pc_inventario", INVENTARIO_SEED);
-  const [citas, setCitas] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
+  const [citas, setCitas, , , , refetchCitas] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
+  const [lastSync, setLastSync] = useState(null);
+  const [pollingSync, setPollingSync] = useState(false);
+  // Polling: re-fetch ventas y citas cada 30 segundos para ver cambios de otros usuarios
+  useEffect(() => {
+    const poll = setInterval(async () => {
+      setPollingSync(true);
+      refetchVentas();
+      refetchCitas();
+      setLastSync(new Date());
+      setTimeout(() => setPollingSync(false), 2000);
+    }, 30000);
+    return () => clearInterval(poll);
+  }, []);
+  async function sincronizarAhora() {
+    setPollingSync(true);
+    refetchVentas();
+    refetchCitas();
+    setLastSync(new Date());
+    setTimeout(() => setPollingSync(false), 2000);
+  }
   const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
   const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", EMPLEADOS_INIT);
   const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
@@ -4996,7 +5018,16 @@ function PetColinasApp({ session, onLogout }) {
     borderRadius: "50%",
     background: syncStatus === "ok" ? "#4ade80" : syncStatus === "error" ? "#f87171" : "#fbbf24",
     animation: syncStatus === "ok" ? "pulse 2s infinite" : "none"
-  } }), /* @__PURE__ */ React.createElement("span", { style: { color: "rgba(255,255,255,0.85)" } }, syncStatus === "ok" ? "\u2601\uFE0F En la nube" : syncStatus === "error" ? React.createElement("span", { onClick: () => window.location.reload(), style: { cursor: "pointer", textDecoration: "underline", color: "#fca5a5" }, title: "Clic para recargar y reconectar" }, "\u26A0\uFE0F Error de sincronizaci\xF3n \u2014 toca para recargar") : "Conectando...")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2, letterSpacing: 0.3 } }, "\u{1F504} \xDAlt. actualizaci\xF3n: ", LAST_UPDATE)), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
+  } }), /* @__PURE__ */ React.createElement("span", { style: { color: "rgba(255,255,255,0.85)" } }, syncStatus === "ok" ? "\u2601\uFE0F En la nube" : syncStatus === "error" ? React.createElement("span", { onClick: () => window.location.reload(), style: { cursor: "pointer", textDecoration: "underline", color: "#fca5a5" }, title: "Clic para recargar y reconectar" }, "\u26A0\uFE0F Error de sincronizaci\xF3n \u2014 toca para recargar") : "Conectando...")), /* @__PURE__ */ React.createElement("div", { style: { display:"flex", alignItems:"center", gap:6, marginTop:2 } },
+  /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: 0.3 } },
+    lastSync ? ("🕐 Sincronizado: " + lastSync.toLocaleTimeString("es-DO", { hour:"2-digit", minute:"2-digit", second:"2-digit" })) : "🕐 Sin sincronizar aún"
+  ),
+  /* @__PURE__ */ React.createElement("button", {
+    onClick: sincronizarAhora,
+    disabled: pollingSync,
+    style: { background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"#fff", borderRadius:6, padding:"2px 8px", fontSize:10, cursor:"pointer", fontWeight:700, opacity: pollingSync ? 0.6 : 1 }
+  }, pollingSync ? "⏳ Sincronizando..." : "🔄 Sincronizar ahora")
+)), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
     background: "#fff",
     borderBottom: "2px solid #eef0f2",
     display: "flex",
@@ -10829,6 +10860,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       ...(nota ? { notas: nota } : {})
     };
     setVentas(prev => [...(prev||[]), v]);
+    // Push inmediato a Supabase para que el admin lo vea al sincronizar
+    upsertOne("pc_ventas", v).catch(e => console.warn("[FacturarEmpleado] sync error", e));
     setOk({ ...v, clienteNombre: cliente.trim() });
     setCarrito([]); setCliente(""); setDescGlobal(""); setNota("");
     setTimeout(() => setOk(null), 8000);
