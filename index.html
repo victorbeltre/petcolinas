@@ -10754,6 +10754,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [descGlobal, setDescGlobal] = React.useState("");
   const [descTipo, setDescTipo] = React.useState("pct");
   const [pago, setPago] = React.useState("efectivo");
+  const [atendidoPor, setAtendidoPor] = React.useState(usuario.nombre);
   const [ok, setOk] = React.useState(null);
 
   const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
@@ -10823,7 +10824,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       total: totalFinal,
       comision: 0,
       formapago: pago,
-      recibidopor: usuario.nombre,
+      recibidopor: atendidoPor,
       cobradopor: usuario.nombre,
       ...(nota ? { notas: nota } : {})
     };
@@ -10960,6 +10961,16 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
               React.createElement("option", { value:"monto" }, "RD$ Monto fijo")
             ),
             React.createElement("input", { type:"number", min:0, value:descGlobal, onChange:e=>setDescGlobal(e.target.value), placeholder:"0", style:{ flex:1, padding:"8px 10px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13 } })
+          )
+        ),
+
+        // Atendido por
+        React.createElement("div", { style:{ marginBottom:16 }},
+          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "👩‍⚕️ Atendido por"),
+          React.createElement("select", { value:atendidoPor, onChange:e=>setAtendidoPor(e.target.value), style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13 }},
+            React.createElement("option", { value:"Alexander Ramírez" }, "✂️ Alexander Ramírez"),
+            React.createElement("option", { value:"Aylein Santiago" }, "🩺 Aylein Santiago"),
+            React.createElement("option", { value:"Dra. Valentina" }, "🩺 Dra. Valentina")
           )
         ),
 
