@@ -246,15 +246,17 @@ function useSupabase(table, seed = []) {
             } catch {}
             console.log("[Merge] pc_ventas: " + seedRows.length + " seed + " + normalized.length + " Supa = " + merged.length);
             setData(merged);
-          } else if (table === "pc_citas") {
-            // Merge: filas de Supabase + citas locales (seed) que aun no estan en la nube
+          } else if (table === "pc_citas" || table === "pc_facturas") {
+            // Merge: filas de Supabase + filas locales (seed) que aun no estan en la nube
             const supaIds = new Set(normalized.map((r) => String(r.id)));
-            const localCitas = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
-            const merged = [...normalized, ...localCitas];
-            if (localCitas.length > 0) {
-              console.log("[Citas] " + localCitas.length + " cita(s) local(es) por sincronizar");
+            const localRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
+            const merged = [...normalized, ...localRows];
+            // Solo subir filas locales que NO sean auto-generadas (las auto se derivan de ventas)
+            const porSubir = localRows.filter((r) => !r.autoGenerada);
+            if (porSubir.length > 0) {
+              console.log("[" + table + "] " + porSubir.length + " fila(s) local(es) por sincronizar");
               setTimeout(() => {
-                localCitas.forEach((c) => upsertOne("pc_citas", c).catch(() => {}));
+                porSubir.forEach((c) => upsertOne(table, c).catch(() => {}));
               }, 3000);
             }
             setData(merged);
@@ -311,20 +313,25 @@ function useSupabase(table, seed = []) {
     if (table === "pc_citas") {
       try { localStorage.setItem("pc_citas_agenda", JSON.stringify(newData)); } catch {}
     }
+    if (table === "pc_facturas") {
+      try { localStorage.setItem("pc_facturas", JSON.stringify(newData)); } catch (e) { if (e && e.name === "QuotaExceededError") console.error("[localStorage] Cuota llena: pc_facturas"); }
+    }
     setSyncing(true);
     try {
       const currentSeedIds = seedIds.current;
       const currentDataIds = new Set((dataRef.current || data).map((r) => String(r.id)));
       let soloNuevas = newData.filter((r) => !currentSeedIds.has(String(r.id)) && !currentDataIds.has(String(r.id)));
-      if (table === "pc_citas") {
-        // Las citas cambian de estado (pendiente/confirmada/completada): sincronizar tambien las editadas
+      if (table === "pc_citas" || table === "pc_facturas") {
+        // Citas y facturas cambian de estado: sincronizar tambien las editadas (no auto-generadas)
         const prevById = new Map((dataRef.current || []).map((r) => [String(r.id), r]));
         const editadas = newData.filter((r) => {
+          if (table === "pc_facturas" && r.autoGenerada) return false;
           const prev = prevById.get(String(r.id));
           return prev && JSON.stringify(prev) !== JSON.stringify(r);
         });
         soloNuevas = [...soloNuevas, ...editadas];
       }
+      if (table === "pc_facturas") soloNuevas = soloNuevas.filter((r) => !r.autoGenerada);
       if (soloNuevas.length > 0) {
         console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " fila(s)");
         for (const row of soloNuevas) {
@@ -566,6 +573,52 @@ function LoginScreen({ onLogin }) {
     loading ? "\u23F3 Verificando..." : "\u{1F510} Entrar al sistema"
   ), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: 20, fontSize: 11, color: "#aaa" } }, "Acceso restringido \xB7 Solo personal autorizado")));
 }
+function imprimirCarnetVacunas(mascota, cliente, ventas) {
+  const nombre = (mascota || "").trim();
+  const vacunas = (ventas || []).filter(v => {
+    const d = (v.descripcion || v.servicio || "").toLowerCase();
+    return d.includes("vacuna") && (v.cliente || "").toLowerCase().trim() === nombre.toLowerCase();
+  }).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+  const despar = (ventas || []).filter(v => {
+    const d = (v.descripcion || v.servicio || "").toLowerCase();
+    return (d.includes("albendazol") || d.includes("desparasit") || d.includes("nexgard") || d.includes("bravecto") || d.includes("simparica")) && (v.cliente || "").toLowerCase().trim() === nombre.toLowerCase();
+  }).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+  const proxAnno = (f) => { try { const d = new Date(f + "T00:00:00"); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); } catch { return ""; } };
+  const filas = vacunas.map(v => "<tr><td>" + (v.fecha || "") + "</td><td>" + ((v.descripcion || v.servicio || "")) + "</td><td>" + proxAnno(v.fecha) + "</td></tr>").join("");
+  const filasD = despar.map(v => "<tr><td>" + (v.fecha || "") + "</td><td>" + ((v.descripcion || v.servicio || "")) + "</td></tr>").join("");
+  const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Carnet de Vacunaci\xF3n \u2014 " + nombre + "</title><style>" +
+    "body{font-family:Georgia,serif;margin:0;padding:30px;color:#1a1d23}" +
+    ".cab{background:#1a6b3a;color:#fff;padding:22px 28px;border-radius:14px;display:flex;justify-content:space-between;align-items:center}" +
+    ".cab h1{margin:0;font-size:22px}.cab p{margin:4px 0 0;font-size:12px;opacity:.85}" +
+    ".fich{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin:24px 0;padding:18px 22px;background:#e8f5ee;border-radius:12px;font-size:13px}" +
+    "h2{font-size:15px;color:#1a6b3a;border-bottom:2px solid #1a6b3a;padding-bottom:6px;margin-top:28px}" +
+    "table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}" +
+    "th{text-align:left;background:#f4f5f6;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#5a6472}" +
+    "td{padding:8px 10px;border-bottom:1px solid #eee}" +
+    ".pie{margin-top:36px;font-size:11px;color:#5a6472;text-align:center}" +
+    "@media print{body{padding:10px}}" +
+    "</style></head><body>" +
+    "<div class='cab'><div><h1>\uD83D\uDC3E PetColinas \u2014 Carnet de Vacunaci\xF3n</h1><p>Plaza Las Colinas, Santo Domingo Oeste \xB7 petcolinasrd@gmail.com</p></div><div style='font-size:34px'>\uD83D\uDC89</div></div>" +
+    "<div class='fich'>" +
+    "<div><strong>Mascota:</strong> " + nombre + "</div>" +
+    "<div><strong>Especie:</strong> " + (cliente?.especie || "\u2014") + "</div>" +
+    "<div><strong>Raza:</strong> " + (cliente?.raza || "\u2014") + "</div>" +
+    "<div><strong>Sexo:</strong> " + (cliente?.sexo || "\u2014") + "</div>" +
+    "<div><strong>Propietario:</strong> " + (cliente?.nombrePropietario || "\u2014") + "</div>" +
+    "<div><strong>Tel\xE9fono:</strong> " + (cliente?.telefono || "\u2014") + "</div>" +
+    "</div>" +
+    "<h2>\uD83D\uDC89 Vacunas aplicadas</h2>" +
+    (filas ? "<table><thead><tr><th>Fecha</th><th>Vacuna</th><th>Pr\xF3xima dosis</th></tr></thead><tbody>" + filas + "</tbody></table>" : "<p style='font-size:13px;color:#888'>Sin vacunas registradas en el sistema.</p>") +
+    "<h2>\uD83D\uDC8A Desparasitaci\xF3n y antiparasitarios</h2>" +
+    (filasD ? "<table><thead><tr><th>Fecha</th><th>Producto / Tratamiento</th></tr></thead><tbody>" + filasD + "</tbody></table>" : "<p style='font-size:13px;color:#888'>Sin registros.</p>") +
+    "<div class='pie'>Generado el " + new Date().toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) + " \xB7 PetColinas Sistema de Gesti\xF3n</div>" +
+    "</body></html>";
+  const win = window.open("", "_blank");
+  if (!win) { alert("Activa las ventanas emergentes para imprimir el carnet."); return; }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 600);
+}
 function normalizeRow(table, r) {
   if (table === "pc_clientes") return {
     id: r.id,
@@ -675,6 +728,24 @@ function normalizeRow(table, r) {
     motivoCancelacion: r.motivocancelacion || r.motivoCancelacion || "",
     enEspera: r.enespera || r.enEspera || false,
     mensajesEnviados: (() => { try { return JSON.parse(r.mensajesenviados || r.mensajesEnviados || "[]"); } catch { return []; } })()
+  };
+  if (table === "pc_facturas") return {
+    id: r.id,
+    numero: r.numero || "",
+    fecha: r.fecha || "",
+    mascota: r.mascota || "",
+    propietario: r.propietario || "",
+    telefono: r.telefono || "",
+    items: (() => { try { return typeof r.items === "string" ? JSON.parse(r.items || "[]") : (r.items || []); } catch { return []; } })(),
+    metodoPago: r.metodopago || r.metodoPago || "Efectivo",
+    estado: r.estado || "pagada",
+    itbis: r.itbis === true || r.itbis === "true",
+    subtotal: Number(r.subtotal) || 0,
+    itbisAmt: Number(r.itbisamt || r.itbisAmt) || 0,
+    total: Number(r.total) || 0,
+    notas: r.notas || "",
+    clienteId: r.clienteid || r.clienteId || "",
+    autoGenerada: r.autogenerada === true || r.autogenerada === "true" || false
   };
   if (table === "pc_tarifas") return {
     id: r.id,
@@ -805,6 +876,24 @@ function denormalizeRow(table, r) {
     enespera: r.enEspera,
     mensajesenviados: JSON.stringify(r.mensajesEnviados || [])
   };
+  if (table === "pc_facturas") return {
+    id: String(r.id),
+    numero: r.numero || "",
+    fecha: r.fecha || "",
+    mascota: r.mascota || "",
+    propietario: r.propietario || "",
+    telefono: r.telefono || "",
+    items: JSON.stringify(r.items || []),
+    metodopago: r.metodoPago || "Efectivo",
+    estado: r.estado || "pagada",
+    itbis: !!r.itbis,
+    subtotal: r.subtotal || 0,
+    itbisamt: r.itbisAmt || 0,
+    total: r.total || 0,
+    notas: r.notas || "",
+    clienteid: r.clienteId ? String(r.clienteId) : null,
+    autogenerada: !!r.autoGenerada
+  };
   if (table === "pc_tarifas") return {
     id: r.id,
     nombre: r.nombre,
@@ -828,7 +917,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "11 jun 2026 \u00b7 correcci\u00f3n masiva: sesi\u00f3n, citas en la nube, persistencia de ediciones y eliminaciones";
+const LAST_UPDATE = "11 jun 2026 \u00b7 facturas en la nube, carnet de vacunas, citas en portales, PDE din\u00e1mico";
 const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
@@ -2873,7 +2962,13 @@ async function enviarPDFWhatsApp(f) {
   }
 }
 function Facturas({ ventas, clientes }) {
-  const [facturas, setFacturas] = useLS("pc_facturas", FACTURAS_SEED);
+  const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("pc_facturas") || "null");
+      if (Array.isArray(stored) && stored.length > 0) return stored;
+    } catch {}
+    return FACTURAS_SEED;
+  })());
   const [vista, setVista] = useState("lista");
   const [facturaActual, setFacturaActual] = useState(null);
   const [editandoId, setEditandoId] = useState(null);
@@ -2919,8 +3014,9 @@ function Facturas({ ventas, clientes }) {
   }
   const nextNumero = () => {
     const allNums = facturas.filter((f) => !f.id.toString().startsWith("hist_")).map((f) => parseInt(f.numero) || 0);
-    if (allNums.length === 0) return String(facturas_hist_count + 1).padStart(4, "0");
-    const max = Math.max(...allNums, facturas_hist_count);
+    let regMax = 0;
+    try { const reg = JSON.parse(localStorage.getItem("pc_fact_nums") || "{}"); regMax = Math.max(0, ...Object.values(reg).map(Number).filter(n => !isNaN(n))); } catch {}
+    const max = Math.max(...allNums.length ? allNums : [0], facturas_hist_count, regMax);
     return String(max + 1).padStart(4, "0");
   };
   const facturas_hist_count = FACTURAS_SEED.length;
@@ -3183,6 +3279,8 @@ function Facturas({ ventas, clientes }) {
   function compartirWhatsApp(f) { enviarPDFWhatsApp(f); }
   const [busqueda, setBusqueda] = useState("");
   const [busqFact, setBusqFact] = useState("");
+  const [pagFact, setPagFact] = useState(1);
+  const FACT_POR_PAG = 25;
   const [showSugFact, setShowSugFact] = useState(false);
   const [orden, setOrden] = useState("fecha_desc");
   const [vistaMode, setVistaMode] = useState("facturas");
@@ -3194,13 +3292,21 @@ function Facturas({ ventas, clientes }) {
       if (!grupos[key]) grupos[key] = { fecha: v.fecha, cliente: v.cliente, items: [] };
       grupos[key].items.push(v);
     });
-    return Object.values(grupos).map((g, i) => {
+    // Registro persistente de numeros: cada factura auto-generada conserva su numero para siempre
+    let numReg = {};
+    try { numReg = JSON.parse(localStorage.getItem("pc_fact_nums") || "{}"); } catch {}
+    let maxNum = Math.max(FACTURAS_SEED.length, ...Object.values(numReg).map(Number).filter(n => !isNaN(n)), 0);
+    let regCambio = false;
+    const gruposOrdenados = Object.values(grupos).sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
+    const resultado = gruposOrdenados.map((g, i) => {
       const subtotal = g.items.reduce((s, v) => s + (v.total || 0), 0);
       // ID estable: sin índice posicional (_i) para que no cambie al agregar ventas
       const idEstable = "venta_" + (g.fecha || "") + "_" + (g.cliente || "sin_cliente").toLowerCase().trim().replace(/\s/g, "_");
+      let numAsignado = numReg[idEstable];
+      if (!numAsignado) { maxNum += 1; numAsignado = maxNum; numReg[idEstable] = numAsignado; regCambio = true; }
       return {
         id: idEstable,
-        numero: String(FACTURAS_SEED.length + i + 1).padStart(4, "0"),
+        numero: String(numAsignado).padStart(4, "0"),
         fecha: g.fecha,
         mascota: g.cliente || "",
         propietario: (() => {
@@ -3233,6 +3339,8 @@ function Facturas({ ventas, clientes }) {
         autoGenerada: true
       };
     });
+    if (regCambio) { try { localStorage.setItem("pc_fact_nums", JSON.stringify(numReg)); } catch {} }
+    return resultado;
   }, [ventas, clientes]);
   const todasFacturas = useMemo(() => {
     // Mapa de auto-generadas frescas (desde ventas actuales), por ID estable
@@ -3463,7 +3571,7 @@ function Facturas({ ventas, clientes }) {
     const f = facturaActual;
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
     const gLealtad = calcGroomingLealtad(f.mascota);
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), React.createElement("button", { onClick: () => compartirWhatsApp(f), style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4F1} WhatsApp"), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); setVista("lista"); } }, style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), React.createElement("button", { onClick: () => compartirWhatsApp(f), style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4F1} WhatsApp"), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); deleteOne("pc_facturas", f.id).catch(() => {}); setVista("lista"); } }, style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
       marginTop: 6,
       background: gLealtad >= 10 ? "#d4edda" : "#fff3cd",
       color: gLealtad >= 10 ? "#155724" : "#856404",
@@ -3539,7 +3647,7 @@ function Facturas({ ventas, clientes }) {
       title: "Editar",
       style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }
     }, "\u270F\uFE0F"), React.createElement("button", {
-      onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); } },
+      onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); deleteOne("pc_facturas", f.id).catch(() => {}); } },
       title: "Borrar",
       style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }
     }, "\u{1F5D1}\uFE0F"))))))));
@@ -3577,7 +3685,7 @@ function Facturas({ ventas, clientes }) {
     "input",
     {
       value: busqueda,
-      onChange: (e) => setBusqueda(e.target.value),
+      onChange: (e) => { setBusqueda(e.target.value); setPagFact(1); },
       placeholder: "Buscar por nombre del cliente, mascota, fecha (ej: 2026-03), # factura...",
       style: {
         width: "100%",
@@ -3651,7 +3759,7 @@ function Facturas({ ventas, clientes }) {
     /* @__PURE__ */ React.createElement("option", { value: "monto_desc" }, "\u{1F4B0} Mayor monto"),
     /* @__PURE__ */ React.createElement("option", { value: "monto_asc" }, "\u{1F4B0} Menor monto"),
     /* @__PURE__ */ React.createElement("option", { value: "cliente_az" }, "\u{1F524} Cliente A\u2192Z")
-  )))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: busqueda ? C.verde : C.grisd, marginBottom: 10, fontWeight: busqueda ? 600 : 400 } }, busqueda ? `${facturasFiltradas.length} factura(s) encontrada(s) para "${busqueda}"${facturasFiltradas.length === 0 ? " \u2014 prueba otro t\xE9rmino" : ""}` : `${facturasFiltradas.length} factura(s) en total`), facturas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay facturas a\xFAn"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14 } }, 'Crea tu primera factura con el bot\xF3n "+ Nueva Factura"')) : /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: `1px solid #e0e4e8`, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["#", "Fecha", "Mascota / Cliente", "Servicios", "Total", "Grooming", "Acciones"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "12px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: `2px solid #e0e4e8`, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, facturasFiltradas.map((f) => /* @__PURE__ */ React.createElement("tr", { key: f.id, style: { borderBottom: `1px solid #f4f5f6` } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", color: C.grisd, whiteSpace: "nowrap" } }, f.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, f.mascota), f.propietario && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.propietario)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, f.items?.slice(0, 2).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i }, "\u2022 ", it.descripcion?.slice(0, 30))), f.items?.length > 2 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "+", f.items.length - 2, " m\xE1s"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde, whiteSpace: "nowrap" } }, RD(f.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, (() => { const gL = calcGroomingLealtad(f.mascota); return gL > 0 ? /* @__PURE__ */ React.createElement("div", { style: {
+  )))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: busqueda ? C.verde : C.grisd, marginBottom: 10, fontWeight: busqueda ? 600 : 400, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", null, busqueda ? `${facturasFiltradas.length} factura(s) encontrada(s) para "${busqueda}"${facturasFiltradas.length === 0 ? " \u2014 prueba otro t\xE9rmino" : ""}` : `${facturasFiltradas.length} factura(s) en total`), facturasFiltradas.length > FACT_POR_PAG && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.max(1, p - 1)), disabled: pagFact <= 1, style: { background: pagFact <= 1 ? "#f0f0f0" : "#e8f5ee", color: pagFact <= 1 ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: pagFact <= 1 ? "default" : "pointer", fontWeight: 700, fontSize: 13 } }, "\u2190"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: C.grisd } }, "P\xE1g. " + pagFact + " de " + Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))), /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.min(Math.ceil(facturasFiltradas.length / FACT_POR_PAG), p + 1)), disabled: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG), style: { background: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#f0f0f0" : "#e8f5ee", color: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "\u2192"))), facturas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay facturas a\xFAn"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14 } }, 'Crea tu primera factura con el bot\xF3n "+ Nueva Factura"')) : /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: `1px solid #e0e4e8`, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["#", "Fecha", "Mascota / Cliente", "Servicios", "Total", "Grooming", "Acciones"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "12px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: `2px solid #e0e4e8`, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, facturasFiltradas.slice((Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) - 1) * FACT_POR_PAG, Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) * FACT_POR_PAG).map((f) => /* @__PURE__ */ React.createElement("tr", { key: f.id, style: { borderBottom: `1px solid #f4f5f6` } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", color: C.grisd, whiteSpace: "nowrap" } }, f.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, f.mascota), f.propietario && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.propietario)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, f.items?.slice(0, 2).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i }, "\u2022 ", it.descripcion?.slice(0, 30))), f.items?.length > 2 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "+", f.items.length - 2, " m\xE1s"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde, whiteSpace: "nowrap" } }, RD(f.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, (() => { const gL = calcGroomingLealtad(f.mascota); return gL > 0 ? /* @__PURE__ */ React.createElement("div", { style: {
     background: gL >= 10 ? "#d4edda" : "#fff3cd",
     color: gL >= 10 ? "#155724" : "#856404",
     borderRadius: 20,
@@ -5514,43 +5622,70 @@ function ClientesInactivos({ clientes, ventas }) {
     )));
   })));
 }
-function AlertaVacunas({ ventas = [], onIr }) {
+function AlertaVacunas({ ventas = [], clientes = [], onIr }) {
+  const [expandida, setExpandida] = React.useState(false);
   const hoyDate = new Date();
+  // Detecta cada TIPO de vacuna por separado (rabia, quintuple, etc.) por paciente
+  const TIPOS_VAC = ["rabia", "quintuple", "qu\xEDntuple", "triple", "sextuple", "s\xE9xtuple", "bordetella", "giardia", "leucocell", "leucemia"];
   const vacMap = {};
   ventas.forEach(v => {
     const desc = (v.descripcion || v.servicio || "").toLowerCase();
     if (!desc.includes("vacuna")) return;
     const pac = (v.cliente || "").trim();
-    if (!pac || pac === "—") return;
-    if (!vacMap[pac] || v.fecha > vacMap[pac].fecha) vacMap[pac] = { fecha: v.fecha, desc: v.descripcion || v.servicio };
+    if (!pac || pac === "\u2014") return;
+    let tipo = TIPOS_VAC.find(t => desc.includes(t)) || "general";
+    if (tipo === "qu\xEDntuple") tipo = "quintuple";
+    if (tipo === "s\xE9xtuple") tipo = "sextuple";
+    if (tipo === "leucemia") tipo = "leucocell";
+    const key = pac + "::" + tipo;
+    if (!vacMap[key] || v.fecha > vacMap[key].fecha) vacMap[key] = { pac, tipo, fecha: v.fecha, desc: v.descripcion || v.servicio };
   });
-  const proximas = Object.entries(vacMap).map(([pac, { fecha, desc }]) => {
+  const telDe = (pac) => {
+    const c = clientes.find(x => (x.nombreMascota || "").toLowerCase().trim() === pac.toLowerCase().trim());
+    return c?.telefono || "";
+  };
+  const proximas = Object.values(vacMap).map(({ pac, tipo, fecha, desc }) => {
     const prox = new Date(fecha + "T00:00:00");
     prox.setFullYear(prox.getFullYear() + 1);
     const dias = Math.round((prox - hoyDate) / (1000 * 60 * 60 * 24));
-    return { pac, dias, desc, fecha };
+    return { pac, tipo, dias, desc, fecha, tel: telDe(pac), proxFecha: prox.toISOString().slice(0, 10) };
   }).filter(x => x.dias <= 45).sort((a, b) => a.dias - b.dias);
   if (proximas.length === 0) return null;
   const vencidas = proximas.filter(x => x.dias < 0);
-  return React.createElement("div", { onClick: onIr, style: {
+  const waMsg = (x) => encodeURIComponent("Hola! Le saludamos de PetColinas \uD83D\uDC3E. Le recordamos que a " + x.pac + " le toca renovar su vacuna" + (x.tipo !== "general" ? " de " + x.tipo : "") + (x.dias < 0 ? " (venci\xF3 el " + x.proxFecha + ")" : " (vence el " + x.proxFecha + ")") + ". \xBFLe agendamos una cita?");
+  return React.createElement("div", { style: {
     background: vencidas.length > 0 ? "#fdf2f8" : "#f0fdf4",
     border: `2px solid ${vencidas.length > 0 ? "#db2777" : "#16a34a"}`,
-    borderRadius: 12, padding: "14px 18px", cursor: "pointer",
-    display: "flex", alignItems: "center", gap: 14, marginBottom: 16
+    borderRadius: 12, padding: "14px 18px", marginBottom: 16
   } },
-    React.createElement("div", { style: { fontSize: 28 } }, "\uD83D\uDC89"),
-    React.createElement("div", { style: { flex: 1 } },
-      React.createElement("div", { style: { fontWeight: 800, color: vencidas.length > 0 ? "#db2777" : "#15803d", fontSize: 14 } },
-        vencidas.length > 0
-          ? `${vencidas.length} paciente(s) con vacuna VENCIDA \u2014 contactar due\xF1o`
-          : `${proximas.length} paciente(s) con vacuna pr\xF3xima (45 d\xEDas)`
+    React.createElement("div", { onClick: () => setExpandida(e => !e), style: { display: "flex", alignItems: "center", gap: 14, cursor: "pointer" } },
+      React.createElement("div", { style: { fontSize: 28 } }, "\uD83D\uDC89"),
+      React.createElement("div", { style: { flex: 1 } },
+        React.createElement("div", { style: { fontWeight: 800, color: vencidas.length > 0 ? "#db2777" : "#15803d", fontSize: 14 } },
+          vencidas.length > 0
+            ? `${vencidas.length} vacuna(s) VENCIDA(s) \u2014 contactar due\xF1o`
+            : `${proximas.length} vacuna(s) por renovar (pr\xF3x. 45 d\xEDas)`
+        ),
+        React.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 3 } },
+          expandida ? "Clic para contraer" : proximas.slice(0, 4).map(x => x.pac + (x.tipo !== "general" ? " (" + x.tipo + ")" : "")).join(" \xB7 ") + (proximas.length > 4 ? ` \xB7 +${proximas.length - 4} m\xE1s` : "")
+        )
       ),
-      React.createElement("div", { style: { fontSize: 12, color: "#666", marginTop: 3 } },
-        proximas.slice(0, 4).map(x => x.pac + (x.dias < 0 ? " (vencida " + Math.abs(x.dias) + "d)" : " (en " + x.dias + "d)")).join(" \xB7 "),
-        proximas.length > 4 ? ` \xB7 +${proximas.length - 4} m\xE1s` : ""
-      )
+      React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: vencidas.length > 0 ? "#db2777" : "#15803d" } }, expandida ? "\u25B2" : "\u25BC Ver")
     ),
-    React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: vencidas.length > 0 ? "#db2777" : "#15803d" } }, "Ver \u2192")
+    expandida && React.createElement("div", { style: { marginTop: 12, borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 } },
+      proximas.map((x, i) => React.createElement("div", { key: x.pac + x.tipo, style: { display: "flex", alignItems: "center", gap: 10, fontSize: 13, padding: "6px 4px", borderBottom: i < proximas.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none", flexWrap: "wrap" } },
+        React.createElement("div", { style: { flex: 1, minWidth: 180 } },
+          React.createElement("strong", null, x.pac),
+          x.tipo !== "general" ? " \u2014 " + x.tipo : "",
+          React.createElement("div", { style: { fontSize: 11, color: "#888" } }, "\xDAltima: " + x.fecha + " \xB7 " + (x.dias < 0 ? "VENCIDA hace " + Math.abs(x.dias) + " d\xEDa(s)" : "vence en " + x.dias + " d\xEDa(s)"))
+        ),
+        x.tel ? React.createElement("a", {
+          href: "https://wa.me/" + (x.tel.replace(/\D/g, "").length >= 11 ? x.tel.replace(/\D/g, "") : "1" + x.tel.replace(/\D/g, "")) + "?text=" + waMsg(x),
+          target: "_blank", rel: "noreferrer",
+          style: { background: "#25d366", color: "#fff", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }
+        }, "\uD83D\uDCAC WhatsApp") : React.createElement("span", { style: { fontSize: 11, color: "#aaa" } }, "sin tel\xE9fono")
+      ))
+    )
   );
 }
 function AlertaStockBajo({ inventario = [], onIr }) {
@@ -5623,7 +5758,7 @@ function AlertaClientesInactivos({ clientes = [], ventas = [], onIr }) {
 function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNomina: _tn, totalGastos: _tg, ventasMes: _vm, comisionesGrm: _cg, comisionesVet: _cv, comisionesValen = 0, comGrmSistema: _cgs, comVetSistema: _cvs, comAyleinSistema = 0, comValenSistema = 0, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos = [], clientes = [], ventas = [], inventario = [], setVentas, setTab, citas = [], gastos = [], pagosNom = [] }) {
   const mesHoy = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const [mesSel, setMesSel] = React.useState(mesHoy);
-  const PDE = 203739;
+  const PDE_BASE = 203739;
   const prevMes = () => { const [y,m] = mesSel.split("-").map(Number); setMesSel(new Date(y,m-2,1).toISOString().slice(0,7)); };
   const nextMes = () => { const [y,m] = mesSel.split("-").map(Number); const nk = new Date(y,m,1).toISOString().slice(0,7); if(nk <= mesHoy) setMesSel(nk); };
   const mesNombreActual = new Date(mesSel + "-15").toLocaleDateString("es-DO", { month: "long", year: "numeric" }).replace(/^\w/, c => c.toUpperCase());
@@ -5634,6 +5769,16 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
   const totalGastos = gastosMesSel.reduce((s,g) => s+g.monto, 0);
   const totalNomina = pagosMesSel.reduce((s,p) => s+(p.mensualidad+p.comisiones-p.descuentos), 0);
   const totalEgresos = totalGastos + totalNomina;
+  // Punto de equilibrio dinamico: egresos reales del mes seleccionado (o del anterior si el actual va empezando)
+  const PDE = (() => {
+    const [py, pm] = mesSel.split("-").map(Number);
+    const mesAntKey = new Date(py, pm - 2, 15).toISOString().slice(0, 7);
+    const gastosAnt = gastos.filter((g) => g.fecha?.slice(0, 7) === mesAntKey).reduce((s, g) => s + g.monto, 0);
+    const nominaAnt = pagosNom.filter((p) => p.mes === mesAntKey).reduce((s, p) => s + (p.mensualidad + p.comisiones - p.descuentos), 0);
+    const egresosAnt = gastosAnt + nominaAnt;
+    const dinamico = Math.max(totalEgresos, egresosAnt);
+    return dinamico > 10000 ? Math.round(dinamico) : PDE_BASE;
+  })();
   const utilidad = totalVentas - totalEgresos;
   const grm = ventasMes.filter((v) => v.area==="grooming").reduce((s,v)=>s+v.total,0);
   const vet = ventasMes.filter((v) => v.area==="veterinaria").reduce((s,v)=>s+v.total,0);
@@ -5733,7 +5878,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
     return result;
   })();
   const hist = HISTORICO[mesActualKey];
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Dashboard del Mes"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 16 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { month: "long", year: "numeric" }), " \xB7 \xDAlt. actualiz.: " + new Date().toLocaleTimeString("es-DO", {hour:"2-digit",minute:"2-digit"})), /* @__PURE__ */ React.createElement(AlertaStockBajo, { inventario, onIr: () => setTab("inventario") }), /* @__PURE__ */ React.createElement(AlertaVacunas, { ventas, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaSeguimientos, { seguimientos, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaClientesInactivos, { clientes, ventas, onIr: () => setTab("seguimientos") }), ventasFuturas.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fef2f2", border: "2px solid #dc2626", borderRadius: 12, padding: "16px 18px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 4, color: "#b91c1c" } }, "🚨 Ventas con fecha incorrecta (", ventasFuturas.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#7f1d1d", marginBottom: 12 } }, "Las siguientes ventas tienen fecha en el futuro. Corr\xEDgelas para que los reportes sean exactos."), ventasFuturas.map(v => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { background: "#fff", borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: "1px solid #fecaca", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement("strong", null, v.cliente || "Sin nombre"), " \xB7 ", v.area, " \xB7 RD$", (v.total || 0).toLocaleString("es-DO"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 2, fontWeight: 600 } }, "📅 Fecha registrada: ", v.fecha, " → hoy es: ", HOY_D)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexShrink: 0 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => corregirFechaVenta(v, HOY_D), disabled: corrigiendoId === v.id, style: { background: corrigiendoId === v.id ? "#9ca3af" : "#059669", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: corrigiendoId === v.id ? "not-allowed" : "pointer" } }, corrigiendoId === v.id ? "Guardando..." : "✅ Corregir a hoy"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditFechaModal({ venta: v, fecha: HOY_D }), disabled: !!corrigiendoId, style: { background: "#6b7280", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "✏️ Editar fecha"))))), editFechaModal && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, minWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } }, /* @__PURE__ */ React.createElement("h3", { style: { fontFamily: "Georgia,serif", fontSize: 18, marginBottom: 4 } }, "✏️ Editar fecha de venta"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: C.grisd, marginBottom: 16 } }, editFechaModal.venta.cliente || "Venta", " \xB7 ", editFechaModal.venta.area, " \xB7 RD$", (editFechaModal.venta.total || 0).toLocaleString("es-DO")), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 13, fontWeight: 700, display: "block", marginBottom: 6 } }, "Fecha correcta:"), /* @__PURE__ */ React.createElement("input", { type: "date", value: editFechaModal.fecha, max: HOY_D, onChange: (e) => setEditFechaModal(prev => ({ ...prev, fecha: e.target.value })), style: { width: "100%", padding: "8px 12px", fontSize: 15, borderRadius: 8, border: "1.5px solid #d1d5db", marginBottom: 20, boxSizing: "border-box" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => corregirFechaVenta(editFechaModal.venta, editFechaModal.fecha), disabled: !!corrigiendoId, style: { flex: 1, background: !!corrigiendoId ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontSize: 14, fontWeight: 700, cursor: !!corrigiendoId ? "not-allowed" : "pointer" } }, !!corrigiendoId ? "Guardando..." : "Guardar"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditFechaModal(null), style: { flex: 1, background: "#f3f4f6", color: C.negro, border: "none", borderRadius: 8, padding: "10px", fontSize: 14, fontWeight: 700, cursor: "pointer" } }, "Cancelar")))), dateAlerts.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fef9c3", border: "2px solid #f59e0b", borderRadius: 12, padding: "16px 18px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 8, color: "#92400e" } }, "⚠️ Fechas corregidas automáticamente"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#78350f", marginBottom: 12 } }, "El sistema detectó fechas futuras y las corrigió. Confirma para aceptar la corrección o edita manualmente."), dateAlerts.map(a => /* @__PURE__ */ React.createElement("div", { key: a.key, style: { background: "#fff", borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: "1px solid #fde68a", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement("strong", null, a.cliente || "Venta"), " · ", a.area, " · RD$", (a.total || 0).toLocaleString("es-DO"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#92400e", marginTop: 2 } }, "Fecha original: ", a.originalFecha, " → corregida a: ", a.correctedFecha)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexShrink: 0 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => confirmDateAlert(a), style: { background: "#059669", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "✅ Confirmar"), /* @__PURE__ */ React.createElement("button", { onClick: () => editDateAlert(a), style: { background: "#6b7280", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "✏️ Editar"))))), (() => {
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Dashboard del Mes"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 16 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { month: "long", year: "numeric" }), " \xB7 \xDAlt. actualiz.: " + new Date().toLocaleTimeString("es-DO", {hour:"2-digit",minute:"2-digit"})), /* @__PURE__ */ React.createElement(AlertaStockBajo, { inventario, onIr: () => setTab("inventario") }), /* @__PURE__ */ React.createElement(AlertaVacunas, { ventas, clientes, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaSeguimientos, { seguimientos, onIr: () => setTab("seguimientos") }), /* @__PURE__ */ React.createElement(AlertaClientesInactivos, { clientes, ventas, onIr: () => setTab("seguimientos") }), ventasFuturas.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fef2f2", border: "2px solid #dc2626", borderRadius: 12, padding: "16px 18px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 4, color: "#b91c1c" } }, "🚨 Ventas con fecha incorrecta (", ventasFuturas.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#7f1d1d", marginBottom: 12 } }, "Las siguientes ventas tienen fecha en el futuro. Corr\xEDgelas para que los reportes sean exactos."), ventasFuturas.map(v => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { background: "#fff", borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: "1px solid #fecaca", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement("strong", null, v.cliente || "Sin nombre"), " \xB7 ", v.area, " \xB7 RD$", (v.total || 0).toLocaleString("es-DO"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 2, fontWeight: 600 } }, "📅 Fecha registrada: ", v.fecha, " → hoy es: ", HOY_D)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexShrink: 0 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => corregirFechaVenta(v, HOY_D), disabled: corrigiendoId === v.id, style: { background: corrigiendoId === v.id ? "#9ca3af" : "#059669", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: corrigiendoId === v.id ? "not-allowed" : "pointer" } }, corrigiendoId === v.id ? "Guardando..." : "✅ Corregir a hoy"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditFechaModal({ venta: v, fecha: HOY_D }), disabled: !!corrigiendoId, style: { background: "#6b7280", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "✏️ Editar fecha"))))), editFechaModal && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, minWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } }, /* @__PURE__ */ React.createElement("h3", { style: { fontFamily: "Georgia,serif", fontSize: 18, marginBottom: 4 } }, "✏️ Editar fecha de venta"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: C.grisd, marginBottom: 16 } }, editFechaModal.venta.cliente || "Venta", " \xB7 ", editFechaModal.venta.area, " \xB7 RD$", (editFechaModal.venta.total || 0).toLocaleString("es-DO")), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 13, fontWeight: 700, display: "block", marginBottom: 6 } }, "Fecha correcta:"), /* @__PURE__ */ React.createElement("input", { type: "date", value: editFechaModal.fecha, max: HOY_D, onChange: (e) => setEditFechaModal(prev => ({ ...prev, fecha: e.target.value })), style: { width: "100%", padding: "8px 12px", fontSize: 15, borderRadius: 8, border: "1.5px solid #d1d5db", marginBottom: 20, boxSizing: "border-box" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => corregirFechaVenta(editFechaModal.venta, editFechaModal.fecha), disabled: !!corrigiendoId, style: { flex: 1, background: !!corrigiendoId ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontSize: 14, fontWeight: 700, cursor: !!corrigiendoId ? "not-allowed" : "pointer" } }, !!corrigiendoId ? "Guardando..." : "Guardar"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditFechaModal(null), style: { flex: 1, background: "#f3f4f6", color: C.negro, border: "none", borderRadius: 8, padding: "10px", fontSize: 14, fontWeight: 700, cursor: "pointer" } }, "Cancelar")))), dateAlerts.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fef9c3", border: "2px solid #f59e0b", borderRadius: 12, padding: "16px 18px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 8, color: "#92400e" } }, "⚠️ Fechas corregidas automáticamente"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#78350f", marginBottom: 12 } }, "El sistema detectó fechas futuras y las corrigió. Confirma para aceptar la corrección o edita manualmente."), dateAlerts.map(a => /* @__PURE__ */ React.createElement("div", { key: a.key, style: { background: "#fff", borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: "1px solid #fde68a", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement("strong", null, a.cliente || "Venta"), " · ", a.area, " · RD$", (a.total || 0).toLocaleString("es-DO"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#92400e", marginTop: 2 } }, "Fecha original: ", a.originalFecha, " → corregida a: ", a.correctedFecha)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexShrink: 0 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => confirmDateAlert(a), style: { background: "#059669", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "✅ Confirmar"), /* @__PURE__ */ React.createElement("button", { onClick: () => editDateAlert(a), style: { background: "#6b7280", color: "#fff", border: "none", borderRadius: 7, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "✏️ Editar"))))), (() => {
   const citasHoyD = citas.filter(c => c.fecha === hoy() && c.estado !== "cancelada").sort((a,b)=>a.hora.localeCompare(b.hora));
   const pendConf = citas.filter(c => c.fecha === hoy() && c.estado === "pendiente").length;
   const proxima = citasHoyD[0];
@@ -8471,7 +8616,7 @@ function CRM({ clientes, setClientes, ventas, setVentas, clienteInicial, onClear
       alignItems: "center",
       justifyContent: "center",
       fontSize: 28
-    } }, espIcon), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 2 } }, c.nombreMascota), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, c.especie, " \xB7 ", c.raza || "Sin raza", " \xB7 ", c.tamano)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => abrirEditar(c), color: C.azul, small: true }, "\u270F\uFE0F Editar"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => eliminar(c.id), color: C.rojo, small: true, outline: true }, "\u{1F5D1} Eliminar"),
+    } }, espIcon), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 2 } }, c.nombreMascota), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, c.especie, " \xB7 ", c.raza || "Sin raza", " \xB7 ", c.tamano)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => imprimirCarnetVacunas(c.nombreMascota, c, ventas), color: C.verde, small: true }, "\u{1F489} Carnet"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => abrirEditar(c), color: C.azul, small: true }, "\u270F\uFE0F Editar"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => eliminar(c.id), color: C.rojo, small: true, outline: true }, "\u{1F5D1} Eliminar"),
 /* Botón agregar mascota del mismo propietario */
 /* @__PURE__ */ React.createElement(Btn, {
   small: true,
@@ -10552,6 +10697,41 @@ function MisComisionesVet({ usuario, ventas, pagosNom }) {
 // ═══════════════════════════════════════════════════════════
 // PORTAL GROOMER — Alexander
 // ═══════════════════════════════════════════════════════════
+function MisCitasHoy({ empleadoNombre, acento = "#1a6b3a" }) {
+  const [citasHoy, setCitasHoy] = React.useState(null);
+  React.useEffect(() => {
+    let activo = true;
+    (async () => {
+      try {
+        const rows = await supaFetch("pc_citas", "GET", null, "?fecha=eq." + hoy() + "&order=hora.asc");
+        if (!activo) return;
+        if (Array.isArray(rows)) setCitasHoy(rows.map(r => normalizeRow("pc_citas", r)));
+        else setCitasHoy([]);
+      } catch { if (activo) setCitasHoy([]); }
+    })();
+    return () => { activo = false; };
+  }, []);
+  if (citasHoy === null) return null;
+  const primerNombre = (empleadoNombre || "").split(" ")[0].toLowerCase();
+  const mias = citasHoy.filter(c => (c.empleado || "").toLowerCase().includes(primerNombre) && c.estado !== "cancelada");
+  const otras = citasHoy.filter(c => !(c.empleado || "").toLowerCase().includes(primerNombre) && c.estado !== "cancelada");
+  const lista = mias.length > 0 ? mias : otras;
+  const titulo = mias.length > 0 ? "\uD83D\uDCC5 Mis citas de hoy (" + mias.length + ")" : (otras.length > 0 ? "\uD83D\uDCC5 Citas de hoy en la cl\xEDnica (" + otras.length + ")" : "");
+  if (lista.length === 0) return React.createElement("div", { style: { background: "#fff", borderRadius: 12, padding: "14px 18px", marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", fontSize: 13, color: "#888" } }, "\uD83D\uDCC5 No hay citas agendadas para hoy.");
+  const ESTADO_COLOR = { pendiente: "#d97706", confirmada: "#1a6b3a", completada: "#6b7280", "en espera": "#7c3aed" };
+  return React.createElement("div", { style: { background: "#fff", borderRadius: 12, padding: "16px 18px", marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", borderTop: "4px solid " + acento } },
+    React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, titulo),
+    lista.map((c, i) => React.createElement("div", { key: c.id || i, style: { display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < lista.length - 1 ? "1px solid #f4f5f6" : "none", fontSize: 13, flexWrap: "wrap" } },
+      React.createElement("div", { style: { fontWeight: 800, color: acento, minWidth: 48 } }, c.hora || "--:--"),
+      React.createElement("div", { style: { flex: 1, minWidth: 160 } },
+        React.createElement("strong", null, c.nombreMascota || c.nombreCliente || "Sin nombre"),
+        c.servicio ? " \u2014 " + c.servicio : "",
+        c.empleado && mias.length === 0 ? React.createElement("span", { style: { fontSize: 11, color: "#888" } }, " (" + c.empleado + ")") : null
+      ),
+      React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: ESTADO_COLOR[c.estado] || "#888", background: (ESTADO_COLOR[c.estado] || "#888") + "18", borderRadius: 12, padding: "3px 10px", whiteSpace: "nowrap" } }, (c.estado || "pendiente").toUpperCase())
+    ))
+  );
+}
 function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom }) {
   const [tabGrm, setTabGrm] = React.useState("dashboard_grm");
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
@@ -10622,6 +10802,7 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom }) {
       // DASHBOARD
       tabGrm === "dashboard_grm" && React.createElement("div", null,
         React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:16 }}, "\uD83D\uDCCA Mi Dashboard \u2014 " + new Date().toLocaleDateString("es-DO", { month: "long", year: "numeric" })),
+        React.createElement(MisCitasHoy, { empleadoNombre: usuario.nombre, acento: CC.verde }),
         React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
           [
             { label:"Baños este mes", val:banosMes, color:CC.verde, icon:"🛁" },
@@ -10775,11 +10956,14 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
 
     // ── Contenido ────────────────────────────────────────────
     React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "24px 20px" } },
-      tabVet === "dashboard_vet" && React.createElement(DashboardVet, {
-        usuario, ventas,
-        onVerHistorias: () => setTabVet("historias"),
-        onVerServicios: () => setTabVet("mis_servicios")
-      }),
+      tabVet === "dashboard_vet" && React.createElement(React.Fragment, null,
+        React.createElement(MisCitasHoy, { empleadoNombre: usuario.nombre, acento: "#1a4fa0" }),
+        React.createElement(DashboardVet, {
+          usuario, ventas,
+          onVerHistorias: () => setTabVet("historias"),
+          onVerServicios: () => setTabVet("mis_servicios")
+        })
+      ),
       tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
