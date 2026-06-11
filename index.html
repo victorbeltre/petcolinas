@@ -66,6 +66,8 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
           });
           if (rr.ok) {
             const newSess = await rr.json();
+            if (!newSess.expires_at && newSess.expires_in) newSess.expires_at = Math.floor(Date.now() / 1e3) + newSess.expires_in;
+            if (!newSess.user && sess.user) newSess.user = sess.user;
             localStorage.setItem("pc_session", JSON.stringify(newSess));
             authToken = newSess.access_token;
             console.log("[Auth] Sesi\xF3n renovada autom\xE1ticamente");
@@ -115,7 +117,13 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
     }
     return { ok: true };
   }
-  if (!res.ok) console.error(`[supaFetch] ${method} ${table} ${res.status}`);
+  if (!res.ok) {
+    let errBody = null;
+    try { errBody = await res.json(); } catch {}
+    console.error(`[supaFetch] ${method} ${table} ${res.status}`, errBody || "");
+    if (typeof window.__notifSyncError === "function" && (method === "PATCH" || method === "DELETE")) window.__notifSyncError(table + " " + method + " " + res.status);
+    return { error: errBody || res.status };
+  }
   return res.ok;
 }
 function useSupabase(table, seed = []) {
@@ -174,7 +182,7 @@ function useSupabase(table, seed = []) {
           if (table === "pc_ventas") {
             const seen = /* @__PURE__ */ new Map();
             for (const v of normalized) {
-              const key = `${(v.cliente || "").toLowerCase().trim()}|${v.fecha}|${v.total}`;
+              const key = `${(v.cliente || "").toLowerCase().trim()}|${v.fecha}|${v.total}|${(v.servicio || v.descripcion || "").toLowerCase().trim()}`;
               const prev = seen.get(key);
               if (!prev || v.id > prev.id) seen.set(key, v);
             }
@@ -238,6 +246,18 @@ function useSupabase(table, seed = []) {
             } catch {}
             console.log("[Merge] pc_ventas: " + seedRows.length + " seed + " + normalized.length + " Supa = " + merged.length);
             setData(merged);
+          } else if (table === "pc_citas") {
+            // Merge: filas de Supabase + citas locales (seed) que aun no estan en la nube
+            const supaIds = new Set(normalized.map((r) => String(r.id)));
+            const localCitas = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
+            const merged = [...normalized, ...localCitas];
+            if (localCitas.length > 0) {
+              console.log("[Citas] " + localCitas.length + " cita(s) local(es) por sincronizar");
+              setTimeout(() => {
+                localCitas.forEach((c) => upsertOne("pc_citas", c).catch(() => {}));
+              }, 3000);
+            }
+            setData(merged);
           } else if (table === "pc_seguimientos") {
             try {
               const overrides = JSON.parse(localStorage.getItem("pc_seg_overrides") || "{}");
@@ -260,8 +280,10 @@ function useSupabase(table, seed = []) {
       setLoaded(true);
     })();
   }, []);
+  const dataRef = useRef(null);
+  dataRef.current = data;
   const setDataSync = useCallback(async (newDataOrFn) => {
-    const newData = typeof newDataOrFn === "function" ? newDataOrFn(data) : newDataOrFn;
+    const newData = typeof newDataOrFn === "function" ? newDataOrFn(dataRef.current || data) : newDataOrFn;
     setData(newData);
     // Guardar descripciones en localStorage como respaldo (para pc_ventas)
     if (table === "pc_ventas") {
@@ -286,13 +308,25 @@ function useSupabase(table, seed = []) {
         }
       } catch {}
     }
+    if (table === "pc_citas") {
+      try { localStorage.setItem("pc_citas_agenda", JSON.stringify(newData)); } catch {}
+    }
     setSyncing(true);
     try {
       const currentSeedIds = seedIds.current;
-      const currentDataIds = new Set(data.map((r) => String(r.id)));
-      const soloNuevas = newData.filter((r) => !currentSeedIds.has(String(r.id)) && !currentDataIds.has(String(r.id)));
+      const currentDataIds = new Set((dataRef.current || data).map((r) => String(r.id)));
+      let soloNuevas = newData.filter((r) => !currentSeedIds.has(String(r.id)) && !currentDataIds.has(String(r.id)));
+      if (table === "pc_citas") {
+        // Las citas cambian de estado (pendiente/confirmada/completada): sincronizar tambien las editadas
+        const prevById = new Map((dataRef.current || []).map((r) => [String(r.id), r]));
+        const editadas = newData.filter((r) => {
+          const prev = prevById.get(String(r.id));
+          return prev && JSON.stringify(prev) !== JSON.stringify(r);
+        });
+        soloNuevas = [...soloNuevas, ...editadas];
+      }
       if (soloNuevas.length > 0) {
-        console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " fila(s) nueva(s)");
+        console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " fila(s)");
         for (const row of soloNuevas) {
           const dbRow = denormalizeRow(table, row);
           await supaFetch(table, "POST", dbRow, `?on_conflict=id`);
@@ -303,8 +337,6 @@ function useSupabase(table, seed = []) {
     }
     setSyncing(false);
   }, [data, table]);
-  const dataRef = useRef(null);
-  dataRef.current = data;
   const deleteRow = useCallback(async (id) => {
     const sid = String(id);
     const row = dataRef.current ? dataRef.current.find((r) => String(r.id) === sid) : null;
@@ -423,6 +455,7 @@ function LoginScreen({ onLogin }) {
       const data = await supaSignIn(email, password);
       const session = {
         access_token: data.access_token,
+        refresh_token: data.refresh_token,
         user: data.user,
         expires_at: data.expires_at || Math.floor(Date.now() / 1e3) + (data.expires_in || 3600)
       };
@@ -795,7 +828,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "7 jun 2026 · corrección fechas futuras + sincronización directa Supabase";
+const LAST_UPDATE = "11 jun 2026 \u00b7 correcci\u00f3n masiva: sesi\u00f3n, citas en la nube, persistencia de ediciones y eliminaciones";
 const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
@@ -3235,7 +3268,7 @@ function Facturas({ ventas, clientes }) {
     }
   }, [todasFacturas]);
   const facturas_contains = (q, btn) => false;
-  facturasFiltradas = useMemo(() => {
+  const facturasFiltradas = useMemo(() => {
     let fs = [...todasFacturas];
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
@@ -3282,14 +3315,14 @@ function Facturas({ ventas, clientes }) {
       const b25 = parseInt(c.banos2025) || 0;
       if (b25 > 0) {
         const key = (c.nombreMascota || "").toLowerCase().trim();
-        mapa[key] = (mapa[key] || 0) + b25;
+        mapa[key] = Math.max(mapa[key] || 0, b25);
       }
     });
     return mapa;
   }, [ventas, clientes]);
   const resumenClientes = useMemo(() => {
     const mapa = {};
-    facturas.forEach((f) => {
+    todasFacturas.forEach((f) => {
       const key = f.mascota || "Sin nombre";
       if (!mapa[key]) mapa[key] = { mascota: key, propietario: f.propietario || "", telefono: f.telefono || "", facturas: 0, totalPagado: 0, ultimaFactura: "", grooming: 0, todasFacturas: [] };
       mapa[key].facturas++;
@@ -3302,7 +3335,7 @@ function Facturas({ ventas, clientes }) {
       mapa[key].grooming = groomingPorCliente[keyLower] || 0;
     });
     return Object.values(mapa).sort((a, b) => b.totalPagado - a.totalPagado);
-  }, [facturas, groomingPorCliente]);
+  }, [todasFacturas, groomingPorCliente]);
   const [ordenClientes, setOrdenClientes] = useState("monto_desc");
   const clientesOrdenados = useMemo(() => {
     const cs = [...resumenClientes];
@@ -4662,7 +4695,7 @@ function PetColinasApp({ session, onLogout }) {
     setNotifLeidas(new Set());
     localStorage.setItem("pc_notif_leidas", "[]");
   };
-  useMemo(() => {
+  useEffect(() => {
     try {
       const f = localStorage.getItem("pc_facturas");
       if (f) {
@@ -4679,7 +4712,7 @@ function PetColinasApp({ session, onLogout }) {
   const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
   const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
   const [inventario, setInventario, invLoaded, , deleteInv] = useSupabase("pc_inventario", INVENTARIO_SEED);
-  const [citas, setCitas] = useLS("pc_citas_agenda", []);
+  const [citas, setCitas] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
   const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
   const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", EMPLEADOS_INIT);
   const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
@@ -4862,7 +4895,7 @@ function PetColinasApp({ session, onLogout }) {
     const pendientes = t.id === "notificaciones"
       ? (todosClientes || []).filter(c => c.notas && c.notas.includes("Nos conocio") && !(notifLeidas instanceof Set ? notifLeidas : new Set()).has(String(c.id))).length
       : t.id === "ventas"
-      ? (ventas || []).filter(v => v.formaPago === "Pago pendiente").length
+      ? (ventas || []).filter(v => (v.formaPago || v.formapago || "") === "Pago pendiente").length
       : 0;
     return /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTab(t.id), style: {
       background: "none",
@@ -5521,8 +5554,8 @@ function AlertaVacunas({ ventas = [], onIr }) {
   );
 }
 function AlertaStockBajo({ inventario = [], onIr }) {
-  const bajos = inventario.filter(p => p.stockMin > 0 && p.stock <= p.stockMin && p.stock > 0);
-  const agotados = inventario.filter(p => p.stock === 0);
+  const bajos = inventario.filter(p => !p.autoGenerado && p.stockMin > 0 && p.stock <= p.stockMin && p.stock > 0);
+  const agotados = inventario.filter(p => !p.autoGenerado && p.stock === 0);
   const total = bajos.length + agotados.length;
   if (total === 0) return null;
   return React.createElement("div", { onClick: onIr, style: {
@@ -5764,7 +5797,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
       /* @__PURE__ */ React.createElement("div", { style: { background: "#e8eaed", borderRadius: 4, height: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${pctS}%`, height: "100%", background: ok ? C.verde : s.color, borderRadius: 4, transition: "width .8s ease" } })),
       /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", fontSize: 11, marginTop: 4, color: ok ? C.verde : C.grisd, fontWeight: 700 } }, pctS, "% ", !ok && real > 0 && `\xB7 Faltan ${RD(s.meta - real)}`)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: totalVentas < (PDE * 0.25) ? C.rojoL : C.verdeL, borderRadius: 10, padding: "10px 14px", fontSize: 13 } }, semConBase[semanaActualIdx] < MARZO_SEMANAS[semanaActualIdx].meta ? /* @__PURE__ */ React.createElement("span", null, "\u26A0\uFE0F ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " en riesgo:"), " Llevas ", RD(semConBase[semanaActualIdx]), " de ", RD(MARZO_SEMANAS[semanaActualIdx].meta), " meta. Necesitas activar veterinaria y farmacia esta semana.") : /* @__PURE__ */ React.createElement("span", null, "\u2705 ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " bien encaminada."), " Mant\xE9n el ritmo para la semana " + Math.min(4, semanaActualIdx+2) + "."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CA} Ingresos por \xC1rea \u2014 Mes actual"), /* @__PURE__ */ React.createElement("button", { onClick: () => setAreaModal("todas"), style: { background: "none", border: `1.5px solid ${C.verde}`, color: C.verde, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Ver \u2192")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic en un \xE1rea para ver sus ventas"), [
+  })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: totalVentas < (PDE * 0.25) ? C.rojoL : C.verdeL, borderRadius: 10, padding: "10px 14px", fontSize: 13 } }, semConBase[semanaActualIdx] < SEMANAS_SEL[semanaActualIdx].meta ? /* @__PURE__ */ React.createElement("span", null, "\u26A0\uFE0F ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " en riesgo:"), " Llevas ", RD(semConBase[semanaActualIdx]), " de ", RD(SEMANAS_SEL[semanaActualIdx].meta), " meta. Necesitas activar veterinaria y farmacia esta semana.") : /* @__PURE__ */ React.createElement("span", null, "\u2705 ", /* @__PURE__ */ React.createElement("strong", null, "Semana " + (semanaActualIdx+1) + " bien encaminada."), " Mant\xE9n el ritmo para la semana " + Math.min(4, semanaActualIdx+2) + "."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CA} Ingresos por \xC1rea \u2014 Mes actual"), /* @__PURE__ */ React.createElement("button", { onClick: () => setAreaModal("todas"), style: { background: "none", border: `1.5px solid ${C.verde}`, color: C.verde, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "Ver \u2192")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 14 } }, "Clic en un \xE1rea para ver sus ventas"), [
     { label: "\u{1F415} Grooming", val: grm, color: C.verde, area: "grooming" },
     { label: "\u{1FA7A} Veterinaria", val: vet, color: C.azul, area: "veterinaria" },
     { label: "\u{1F48A} Farmacia/Tienda", val: far, color: C.gold, area: "farmacia" }
@@ -6210,7 +6243,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
           descPct: pct,
           descuento: dto,
           subtotal: precio - dto,
-          comision: 0,
+          comision: previewComision,
           qty,
           prodId: prodSel.id,
           desdeInv: true
@@ -6391,8 +6424,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         /* @__PURE__ */ React.createElement("option", { value:"Popular"}, "Banco Popular"),
         /* @__PURE__ */ React.createElement("option", { value:"BHD"}, "Banco BHD"),
         /* @__PURE__ */ React.createElement("option", { value:"Bremer"}, "Bremer"),
-        /* @__PURE__ */ React.createElement("option", { value:"Otro"}, "✏️ Otro (escribir)"),
-        /* @__PURE__ */ React.createElement("option", { value:"Otro"}, "\u270F\uFE0F Otro (escribir)")
+        /* @__PURE__ */ React.createElement("option", { value:"Otro"}, "✏️ Otro (escribir)")
       )
     ),
     banco === "Otro" && /* @__PURE__ */ React.createElement("div", { style:{ display:"flex", flexDirection:"column", gap:4 }},
@@ -6929,7 +6961,7 @@ items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAd
             )
           )
         )
-      ), editandoVenta ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Cliente"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.cliente || "", onChange: e => setVentaEditForm({...ventaEditForm, cliente: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Fecha"), /* @__PURE__ */ React.createElement("input", { type: "date", value: ventaEditForm.fecha || "", onChange: e => setVentaEditForm({...ventaEditForm, fecha: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "\xC1rea"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.area || "grooming", onChange: e => setVentaEditForm({...ventaEditForm, area: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "grooming" }, "Grooming"), /* @__PURE__ */ React.createElement("option", { value: "veterinaria" }, "Veterinaria"), /* @__PURE__ */ React.createElement("option", { value: "farmacia" }, "Farmacia"), /* @__PURE__ */ React.createElement("option", { value: "tienda" }, "Tienda"), /* @__PURE__ */ React.createElement("option", { value: "mixta" }, "Mixta"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Descripci\xF3n / Servicio"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.descripcion || "", onChange: e => setVentaEditForm({...ventaEditForm, descripcion: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Forma de pago"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.formapago || "", onChange: e => setVentaEditForm({...ventaEditForm, formapago: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "Pago pendiente" }, "\u23F3 Pago pendiente"), /* @__PURE__ */ React.createElement("option", { value: "efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Total (RD$)"), /* @__PURE__ */ React.createElement("input", { type: "number", value: ventaEditForm.total || 0, onChange: e => setVentaEditForm({...ventaEditForm, total: parseFloat(e.target.value) || 0}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => { const updated = { ...ventaDetalle, ...ventaEditForm, servicio: ventaEditForm.descripcion, descripcion: ventaEditForm.descripcion }; setVentas(prev => prev.map(v => v.id === ventaDetalle.id ? updated : v)); setVentaDetalle(updated); setEditandoVenta(false); }, style: { flex: 1, background: C.verde, color: "#fff", border: "none", cursor: "pointer", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700 } }, "\u2714 Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditandoVenta(false), style: { background: "#f1f5f9", color: C.grisd, border: "none", cursor: "pointer", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 } }, "Cancelar"))) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: C.verde } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(ventaDetalle.total)))))));
+      ), editandoVenta ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Cliente"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.cliente || "", onChange: e => setVentaEditForm({...ventaEditForm, cliente: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Fecha"), /* @__PURE__ */ React.createElement("input", { type: "date", value: ventaEditForm.fecha || "", onChange: e => setVentaEditForm({...ventaEditForm, fecha: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "\xC1rea"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.area || "grooming", onChange: e => setVentaEditForm({...ventaEditForm, area: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "grooming" }, "Grooming"), /* @__PURE__ */ React.createElement("option", { value: "veterinaria" }, "Veterinaria"), /* @__PURE__ */ React.createElement("option", { value: "farmacia" }, "Farmacia"), /* @__PURE__ */ React.createElement("option", { value: "tienda" }, "Tienda"), /* @__PURE__ */ React.createElement("option", { value: "mixta" }, "Mixta"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Descripci\xF3n / Servicio"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.descripcion || "", onChange: e => setVentaEditForm({...ventaEditForm, descripcion: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Forma de pago"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.formapago || "", onChange: e => setVentaEditForm({...ventaEditForm, formapago: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "Pago pendiente" }, "\u23F3 Pago pendiente"), /* @__PURE__ */ React.createElement("option", { value: "efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Total (RD$)"), /* @__PURE__ */ React.createElement("input", { type: "number", value: ventaEditForm.total || 0, onChange: e => setVentaEditForm({...ventaEditForm, total: parseFloat(e.target.value) || 0}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => { const updated = { ...ventaDetalle, ...ventaEditForm, servicio: ventaEditForm.descripcion, descripcion: ventaEditForm.descripcion }; setVentas(prev => prev.map(v => v.id === ventaDetalle.id ? updated : v)); upsertOne("pc_ventas", updated).catch(e => console.error("[editVenta]", e)); setVentaDetalle(updated); setEditandoVenta(false); }, style: { flex: 1, background: C.verde, color: "#fff", border: "none", cursor: "pointer", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700 } }, "\u2714 Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditandoVenta(false), style: { background: "#f1f5f9", color: C.grisd, border: "none", cursor: "pointer", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 } }, "Cancelar"))) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: C.verde } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(ventaDetalle.total)))))));
 }
 function InventarioAnalytics({ inventario, ventas }) {
   const [seccion, setSeccion] = React.useState("resumen");
@@ -7163,9 +7195,9 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     const sid = String(id);
     setInventario(inventario.map((p) => String(p.id) === sid ? { ...p, stock: Math.max(0, p.stock + delta) } : p));
     setPendientes((prev) => {
-      const p = inventario.find((x) => String(x.id) === sid);
-      if (!p) return prev;
-      return { ...prev, [sid]: { ...p, stock: Math.max(0, p.stock + delta) } };
+      const base = prev[sid] || inventario.find((x) => String(x.id) === sid);
+      if (!base) return prev;
+      return { ...prev, [sid]: { ...base, stock: Math.max(0, base.stock + delta) } };
     });
   };
   const deleteProd = (id) => {
@@ -7528,7 +7560,9 @@ function Gastos({ gastos, setGastos }) {
     setMonto("");
   };
   const deleteGasto = (id) => {
-    if (confirm("\xBFEliminar este gasto?")) setGastos(gastos.filter((g) => g.id !== id));
+    if (!confirm("\xBFEliminar este gasto?")) return;
+    setGastos(gastos.filter((g) => g.id !== id));
+    deleteOne("pc_gastos", id).catch(e => console.error("[deleteGasto]", e));
   };
   const startEdit = (g) => {
     setEditingId(g.id);
@@ -7903,6 +7937,7 @@ function CRM({ clientes, setClientes, ventas, setVentas, clienteInicial, onClear
     const winner = [...selected].sort((a,b)=>score(b)-score(a))[0];
     const losers = selected.filter(c=>c.id!==winner.id);
     setClientes(prev=>prev.filter(c=>!losers.some(l=>l.id===c.id)));
+    losers.forEach(l => deleteOne("pc_clientes", l.id).catch(e => console.error("[fusionar]", e)));
     setDedupIgnorados(prev=>[...prev,grupo.key]);
   };
   const ignorarGrupo = g => setDedupIgnorados(prev=>[...prev,g.key]);
@@ -7970,6 +8005,7 @@ function CRM({ clientes, setClientes, ventas, setVentas, clienteInicial, onClear
   const eliminar = (id) => {
     if (!confirm("\xBFEliminar este cliente permanentemente?")) return;
     setClientes(clientes.filter((c) => c.id !== id));
+    deleteOne("pc_clientes", id).catch(e => console.error("[CRM eliminar]", e));
     setVista("lista");
   };
   const abrirEditar = (c) => {
@@ -8947,15 +8983,18 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
     if (tipoHistoria === "derma" && !historiaForm.motivoDescripcion.trim()) return alert("La descripción del problema es obligatoria.");
     const nombre = historiaForm.mascota || pacienteVer;
     setClientes(prev => {
-      const idx = prev.findIndex(c => (c.nombre || c.nombreMascota || "") === nombre);
+      const idx = clienteObj && clienteObj.id ? prev.findIndex(c => c.id === clienteObj.id) : prev.findIndex(c => (c.nombre || c.nombreMascota || "") === nombre);
       const nuevaHist = { ...historiaForm, id: Date.now() };
       if (idx >= 0) {
         const copy = [...prev];
         const hists = Array.isArray(copy[idx].historias_clinicas) ? copy[idx].historias_clinicas : [];
         copy[idx] = { ...copy[idx], historias_clinicas: [nuevaHist, ...hists] };
+        upsertOne("pc_clientes", copy[idx]).catch(e => console.error("[guardarHistoria]", e));
         return copy;
       }
-      return [...prev, { id: Date.now(), nombre, historias_clinicas: [nuevaHist] }];
+      const nuevoCli = { id: Date.now(), nombre, historias_clinicas: [nuevaHist] };
+      upsertOne("pc_clientes", nuevoCli).catch(e => console.error("[guardarHistoria]", e));
+      return [...prev, nuevoCli];
     });
     setModalHistoria(false);
   }
@@ -9032,13 +9071,15 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
   }
   function guardarFicha() {
     setClientes((prev) => {
-      const idx = prev.findIndex((c) => (c.nombre || c.nombreMascota || "") === pacienteVer);
+      const idx = clienteObj && clienteObj.id ? prev.findIndex(c => c.id === clienteObj.id) : prev.findIndex((c) => (c.nombre || c.nombreMascota || "") === pacienteVer);
       const nuevo = { id: Date.now(), nombre: pacienteVer, ...fichaTemp };
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = { ...copy[idx], ...fichaTemp };
+        upsertOne("pc_clientes", copy[idx]).catch(e => console.error("[guardarFicha]", e));
         return copy;
       }
+      upsertOne("pc_clientes", nuevo).catch(e => console.error("[guardarFicha]", e));
       return [...prev, nuevo];
     });
     setEditFicha(false);
@@ -10580,7 +10621,7 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom }) {
 
       // DASHBOARD
       tabGrm === "dashboard_grm" && React.createElement("div", null,
-        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:16 }}, "📊 Mi Dashboard — Marzo 2026"),
+        React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:16 }}, "\uD83D\uDCCA Mi Dashboard \u2014 " + new Date().toLocaleDateString("es-DO", { month: "long", year: "numeric" })),
         React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }},
           [
             { label:"Baños este mes", val:banosMes, color:CC.verde, icon:"🛁" },
@@ -11188,6 +11229,27 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const abrirCobro = (cita) => { setModalCobro({ cita, formaPago:"efectivo", desc: cita.servicio||(cita.servicios&&cita.servicios[0]?.nombre)||"Servicio", monto: cita.precio||0 }); cerrarModal(); };
   const confirmarCobro = () => {
     if (!modalCobro) return;
+    const ct = modalCobro.cita;
+    const monto = Number(modalCobro.monto) || 0;
+    if (monto > 0) {
+      const nuevaVenta = {
+        id: Date.now(),
+        fecha: ct.fecha || hoy(),
+        cliente: ct.nombreMascota || ct.nombreCliente || "",
+        area: ct.tipo === "veterinaria" ? "veterinaria" : "grooming",
+        servicio: modalCobro.desc || ct.servicio || "Servicio",
+        descripcion: modalCobro.desc || ct.servicio || "Servicio",
+        total: monto,
+        comision: 0,
+        formaPago: modalCobro.formaPago || "efectivo",
+        formapago: modalCobro.formaPago || "efectivo",
+        recibidoPor: ct.empleado || "",
+        recibidopor: ct.empleado || "",
+        notas: "Desde cita agendada"
+      };
+      if (setVentas) setVentas(prev => [...prev, nuevaVenta]);
+      upsertOne("pc_ventas", nuevaVenta).catch(e => console.error("[confirmarCobro]", e));
+    }
     cambiarEstado(modalCobro.cita.id, "completada");
     setModalCobro(null);
     setTab("ventas");
@@ -11217,6 +11279,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const eliminarCita = (id) => {
     if (!confirm("¿Eliminar esta cita?")) return;
     setCitas(prev => prev.filter(c => c.id !== id));
+    deleteOne("pc_citas", id).catch(e => console.error("[eliminarCita]", e));
     cerrarModal();
   };
 
@@ -11237,7 +11300,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   };
 
   const abrirWA = (tipo, cita) => setModalWA({ tipo, mensaje: generarMensajeWA(tipo, cita), telefono: cita.telefono||"", citaId: cita.id });
-  const enviarWA = (tel, msg, citaId, tipo) => { abrirWA(tel, msg); registrarMensaje(citaId, tipo); if (tipo === "confirmacion") cambiarEstado(citaId, "confirmada"); setModalWA(null); };
+  const enviarWA = (tel, msg, citaId, tipo) => { const tl = (tel || "").replace(/\D/g, ""); const telWa = tl.length >= 11 ? tl : (tl ? "1" + tl : ""); if (telWa) window.open("https://wa.me/" + telWa + "?text=" + encodeURIComponent(msg || ""), "_blank"); else alert("Esta cita no tiene tel\xE9fono registrado."); registrarMensaje(citaId, tipo); if (tipo === "confirmacion") cambiarEstado(citaId, "confirmada"); setModalWA(null); };
 
   const recordatoriosPendientes = citas.filter(c => c.fecha === manana() && c.estado !== "cancelada" && c.estado !== "noshow" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio"));
 
