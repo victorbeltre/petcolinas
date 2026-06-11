@@ -11825,7 +11825,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
 
   const guardarCita = (data) => {
     const esNueva = !data.id || data.id === "nuevo";
-    const cita = { ...data, id: esNueva ? "cita_"+Date.now() : data.id };
+    const cita = { ...data, id: esNueva ? Date.now() : data.id };
     const conflictos = detectarConflictos(cita, esNueva ? null : cita.id);
     if (conflictos.length > 0) {
       setConflictoMsg(`⚠️ ${cita.empleado} ya tiene ${conflictos.length} cita(s) en ese horario. Guardada en lista de espera.`);
@@ -11833,11 +11833,18 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     } else { cita.enEspera = false; setConflictoMsg(null); }
     if (esNueva) setCitas(prev => [...prev, cita]);
     else setCitas(prev => prev.map(c => c.id === cita.id ? cita : c));
+    // Push directo a Supabase para sincronización inmediata entre usuarios
+    upsertOne("pc_citas", cita).catch(e => console.warn("[guardarCita] sync error", e));
     cerrarModal();
   };
 
   const cambiarEstado = (id, estado, motivo) => {
-    setCitas(prev => prev.map(c => c.id === id ? { ...c, estado, ...(motivo ? { motivoCancelacion: motivo } : {}) } : c));
+    setCitas(prev => {
+      const updated = prev.map(c => c.id === id ? { ...c, estado, ...(motivo ? { motivoCancelacion: motivo } : {}) } : c);
+      const citaActualizada = updated.find(c => c.id === id);
+      if (citaActualizada) upsertOne("pc_citas", citaActualizada).catch(e => console.warn("[cambiarEstado] sync error", e));
+      return updated;
+    });
   };
 
   const registrarMensaje = (citaId, tipo) => {
