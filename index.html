@@ -4561,9 +4561,30 @@ function PetColinas() {
     // Exponer setVentas para portales
     window.__setVentasGlobal = setVentasVet;
   }, []);
-  // Polling cada 30s para que empleados vean citas creadas por el admin y viceversa
+  // Polling cada 30s — sincroniza citas, ventas y clientes con Supabase
   React.useEffect(() => {
-    const poll = setInterval(() => { refetchCitasPortal(); }, 30000);
+    const poll = setInterval(async () => {
+      refetchCitasPortal();
+      // Sincronizar ventas nuevas de otros usuarios
+      try {
+        const rows = await supaFetch("pc_ventas", "GET", null, "?order=id.asc&limit=5000");
+        if (Array.isArray(rows) && rows.length > 0) {
+          const normalized = rows.map(r => normalizeRow("pc_ventas", r));
+          setVentasVet(prev => {
+            const prevIds = new Set((prev||[]).map(v => String(v.id)));
+            const nuevas = normalized.filter(r => !prevIds.has(String(r.id)));
+            return nuevas.length > 0 ? [...(prev||[]), ...nuevas] : prev;
+          });
+        }
+      } catch(e) {}
+      // Sincronizar clientes nuevos
+      try {
+        const clRows = await supaFetch("pc_clientes", "GET", null, "?order=id.asc&limit=5000");
+        if (Array.isArray(clRows) && clRows.length > 0) {
+          setClientesVet(clRows.map(r => normalizeRow("pc_clientes", r)));
+        }
+      } catch(e) {}
+    }, 30000);
     return () => clearInterval(poll);
   }, []);
 
@@ -4831,18 +4852,21 @@ function PetColinasApp({ session, onLogout }) {
   }, []);
   const [tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet] = useSupaTarifas();
   const [ventas, setVentas, ventasLoaded, , deleteVenta, refetchVentas] = useSupabase("pc_ventas", VENTAS_SEED);
-  const [clientes, setClientes, clientesLoaded] = useSupabase("pc_clientes", CLIENTES_SEED);
-  const [seguimientos, setSeguimientos, segsLoaded] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
-  const [inventario, setInventario, invLoaded, , deleteInv] = useSupabase("pc_inventario", INVENTARIO_SEED);
+  const [clientes, setClientes, clientesLoaded, , , refetchClientes] = useSupabase("pc_clientes", CLIENTES_SEED);
+  const [seguimientos, setSeguimientos, segsLoaded, , , refetchSeguimientos] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
+  const [inventario, setInventario, invLoaded, , deleteInv, refetchInventario] = useSupabase("pc_inventario", INVENTARIO_SEED);
   const [citas, setCitas, , , , refetchCitas] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
   const [lastSync, setLastSync] = useState(null);
   const [pollingSync, setPollingSync] = useState(false);
-  // Polling: re-fetch ventas y citas cada 30 segundos para ver cambios de otros usuarios
+  // Polling: re-fetch todos los datos cada 30 segundos
   useEffect(() => {
-    const poll = setInterval(async () => {
+    const poll = setInterval(() => {
       setPollingSync(true);
       refetchVentas();
       refetchCitas();
+      refetchClientes();
+      refetchInventario();
+      refetchSeguimientos();
       setLastSync(new Date());
       setTimeout(() => setPollingSync(false), 2000);
     }, 30000);
@@ -4852,6 +4876,9 @@ function PetColinasApp({ session, onLogout }) {
     setPollingSync(true);
     refetchVentas();
     refetchCitas();
+    refetchClientes();
+    refetchInventario();
+    refetchSeguimientos();
     setLastSync(new Date());
     setTimeout(() => setPollingSync(false), 2000);
   }
