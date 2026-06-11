@@ -10748,18 +10748,31 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [servSelId, setServSelId] = React.useState("");
   const [precioCustom, setPrecioCustom] = React.useState("");
   const [qty, setQty] = React.useState(1);
-  const [pago, setPago] = React.useState("efectivo");
+  const [descItem, setDescItem] = React.useState("");
   const [nota, setNota] = React.useState("");
+  const [carrito, setCarrito] = React.useState([]);
+  const [descGlobal, setDescGlobal] = React.useState("");
+  const [descTipo, setDescTipo] = React.useState("pct");
+  const [pago, setPago] = React.useState("efectivo");
   const [ok, setOk] = React.useState(null);
-  const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gris:"#5a6472", fondo:"#f0f4f8", gold:"#b8860b" };
+
+  const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
   const tarifasGrm = typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [];
   const tarifasVetArr = typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [];
   const inv = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[])).filter(p => p.pventa > 0);
   const servicios = categoria === "grooming" ? tarifasGrm : categoria === "veterinaria" ? tarifasVetArr : inv;
   const servSel = servicios.find(s => s.id === servSelId) || null;
-  const precio = precioCustom !== "" ? (parseFloat(precioCustom)||0) : (servSel ? (servSel.pventa||servSel.precio||0) : 0);
-  const total = precio * qty;
+  const precioBase = precioCustom !== "" ? (parseFloat(precioCustom)||0) : (servSel ? (servSel.pventa||servSel.precio||0) : 0);
+  const descItemVal = parseFloat(descItem)||0;
+  const precioConDesc = Math.max(0, precioBase - (precioBase * descItemVal / 100));
+  const subtotalItem = precioConDesc * qty;
+
+  const subtotalCarrito = carrito.reduce((s, it) => s + it.subtotal, 0);
+  const descGlobalVal = parseFloat(descGlobal)||0;
+  const descGlobalMonto = descTipo === "pct" ? subtotalCarrito * descGlobalVal / 100 : Math.min(descGlobalVal, subtotalCarrito);
+  const totalFinal = Math.max(0, subtotalCarrito - descGlobalMonto);
+
   const sugerencias = React.useMemo(() => {
     if (cliente.length < 2) return [];
     const q = cliente.toLowerCase();
@@ -10772,18 +10785,42 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     });
     return [...names].slice(0, 6);
   }, [cliente, clientes]);
+
+  function agregarItem() {
+    if (!servSel && !precioCustom) return alert("Selecciona un servicio o ingresa un precio");
+    const nombre = servSel ? (servSel.nombre||servSel.servicio||servSel.descripcion||"") : (nota||"Servicio personalizado");
+    const item = {
+      id: Date.now(),
+      categoria,
+      nombre,
+      qty,
+      precioUnit: precioBase,
+      descPct: descItemVal,
+      subtotal: subtotalItem,
+      nota
+    };
+    setCarrito(prev => [...prev, item]);
+    setServSelId(""); setPrecioCustom(""); setQty(1); setDescItem(""); setNota("");
+  }
+
+  function quitarItem(id) { setCarrito(prev => prev.filter(it => it.id !== id)); }
+
   function registrar() {
     if (!cliente.trim()) return alert("Escribe el nombre del cliente o mascota");
-    if (!servSel && !precioCustom) return alert("Selecciona un servicio o ingresa un precio");
-    const nombre = servSel ? (servSel.nombre||servSel.servicio||servSel.descripcion||"") : (nota||"Servicio");
+    if (carrito.length === 0) return alert("Agrega al menos un servicio al carrito");
+    const fecha = new Date().toISOString().slice(0,10);
+    const descripcion = carrito.map(it => (it.qty > 1 ? it.qty + "x " : "") + it.nombre).join(" + ");
     const v = {
       id: Date.now(),
-      fecha: new Date().toISOString().slice(0,10),
+      fecha,
       cliente: cliente.trim(),
-      area: categoria,
-      servicio: qty > 1 ? qty + "x " + nombre : nombre,
-      descripcion: nombre,
-      total,
+      area: carrito[0].categoria,
+      servicio: descripcion,
+      descripcion,
+      items: JSON.stringify(carrito),
+      subtotal: subtotalCarrito,
+      descuento: descGlobalMonto,
+      total: totalFinal,
       comision: 0,
       formapago: pago,
       recibidopor: usuario.nombre,
@@ -10791,117 +10828,214 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       ...(nota ? { notas: nota } : {})
     };
     setVentas(prev => [...(prev||[]), v]);
-    setOk(v);
-    setCliente(""); setServSelId(""); setPrecioCustom(""); setQty(1); setNota("");
-    setTimeout(() => setOk(null), 5000);
+    setOk({ ...v, clienteNombre: cliente.trim() });
+    setCarrito([]); setCliente(""); setDescGlobal(""); setNota("");
+    setTimeout(() => setOk(null), 8000);
   }
+
+  function imprimir(facturaData) {
+    const fecha = facturaData.fecha || new Date().toISOString().slice(0,10);
+    const items = (() => { try { return JSON.parse(facturaData.items||"[]"); } catch { return []; } })();
+    const lineas = items.length > 0
+      ? items.map(it => `<tr><td>${(it.qty>1?it.qty+"x ":"")+it.nombre}</td><td style="text-align:right">RD$ ${Math.round(it.precioUnit).toLocaleString("es-DO")}</td><td style="text-align:center">${it.qty}</td>${it.descPct>0?`<td style="text-align:center">${it.descPct}%</td>`:"<td>—</td>"}<td style="text-align:right;font-weight:700">RD$ ${Math.round(it.subtotal).toLocaleString("es-DO")}</td></tr>`).join("")
+      : `<tr><td colspan="5">${facturaData.servicio||""}</td></tr>`;
+    const descLine = (facturaData.descuento||0) > 0 ? `<tr><td colspan="4" style="text-align:right;color:#c0392b">Descuento</td><td style="text-align:right;color:#c0392b">- RD$ ${Math.round(facturaData.descuento).toLocaleString("es-DO")}</td></tr>` : "";
+    const w = window.open("","_blank","width=420,height=620");
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura PetColinas</title>
+    <style>body{font-family:'Segoe UI',sans-serif;margin:0;padding:20px;font-size:13px;color:#222}
+    .logo{text-align:center;margin-bottom:8px}.logo h1{font-size:20px;margin:0;color:#1a6b3a}
+    .logo p{margin:2px 0;font-size:11px;color:#666}hr{border:none;border-top:1px dashed #ccc;margin:10px 0}
+    table{width:100%;border-collapse:collapse}th{font-size:11px;text-transform:uppercase;color:#666;padding:4px 6px;border-bottom:1px solid #eee}
+    td{padding:5px 6px;vertical-align:top}
+    .total-row td{font-size:15px;font-weight:900;color:#1a6b3a;border-top:2px solid #1a6b3a;padding-top:8px}
+    .footer{text-align:center;font-size:11px;color:#888;margin-top:12px}
+    @media print{button{display:none}}</style></head><body>
+    <div class="logo"><h1>🐾 PetColinas</h1><p>Plaza Las Colinas · Santo Domingo Oeste</p><p>petcolinasrd@gmail.com</p></div>
+    <hr>
+    <table><tr><td><b>Cliente:</b> ${facturaData.clienteNombre||facturaData.cliente||""}</td><td style="text-align:right"><b>Fecha:</b> ${fecha}</td></tr>
+    <tr><td><b>Atendido por:</b> ${facturaData.recibidopor||""}</td><td style="text-align:right"><b>Pago:</b> ${facturaData.formapago||""}</td></tr></table>
+    <hr>
+    <table><thead><tr><th>Servicio</th><th style="text-align:right">Precio</th><th style="text-align:center">Cant</th><th style="text-align:center">Desc</th><th style="text-align:right">Subtotal</th></tr></thead>
+    <tbody>${lineas}${descLine}
+    <tr class="total-row"><td colspan="4" style="text-align:right">TOTAL</td><td style="text-align:right">RD$ ${Math.round(facturaData.total).toLocaleString("es-DO")}</td></tr>
+    </tbody></table>
+    <hr><div class="footer">¡Gracias por confiar en PetColinas!<br>Su mascota es nuestra familia 🐾</div>
+    <br><button onclick="window.print()" style="width:100%;padding:10px;background:#1a6b3a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🖨️ Imprimir</button>
+    </body></html>`);
+    w.document.close();
+  }
+
+  const CATS = [
+    { id:"grooming", label:"✂️ Grooming", color:"#1a6b3a" },
+    { id:"veterinaria", label:"🩺 Veterinaria", color:"#1a4fa0" },
+    { id:"farmacia", label:"💊 Farmacia/Tienda", color:"#b8860b" }
+  ];
+
   return React.createElement("div", null,
-    React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4, color:CC.verde }}, "🧾 Facturar Servicio"),
-    React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:20 }}, "Registra un servicio o venta de producto para un cliente"),
-    ok && React.createElement("div", { style:{ background:"#d1fae5", border:"2px solid #059669", borderRadius:10, padding:"12px 16px", marginBottom:16, fontSize:13, color:"#065f46", fontWeight:700 }},
-      "✅ Factura registrada — " + ok.servicio + " · " + RD2(ok.total) + " · " + ok.formapago
+    React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4, color:CC.verde }}, "🧾 Facturar"),
+    React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:20 }}, "Agrega servicios al carrito, aplica descuentos e imprime el recibo"),
+
+    ok && React.createElement("div", { style:{ background:"#d1fae5", border:"2px solid #059669", borderRadius:10, padding:"12px 16px", marginBottom:16, fontSize:13, color:"#065f46", fontWeight:700, display:"flex", justifyContent:"space-between", alignItems:"center" }},
+      React.createElement("span", null, "✅ Factura registrada — " + ok.clienteNombre + " · " + RD2(ok.total)),
+      React.createElement("button", { onClick:()=>imprimir(ok), style:{ background:"#059669", color:"#fff", border:"none", borderRadius:8, padding:"7px 14px", cursor:"pointer", fontWeight:700, fontSize:12 }}, "🖨️ Imprimir")
     ),
-    React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:24, boxShadow:"0 2px 12px rgba(0,0,0,0.07)", maxWidth:620 }},
-      React.createElement("div", { style:{ marginBottom:18 }},
-        React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:8 }}, "Tipo de servicio"),
-        React.createElement("div", { style:{ display:"flex", gap:8, flexWrap:"wrap" }},
-          [
-            { id:"grooming", label:"✂️ Grooming", color:"#1a6b3a" },
-            { id:"veterinaria", label:"🩺 Veterinaria", color:"#1a4fa0" },
-            { id:"farmacia", label:"💊 Farmacia/Tienda", color:"#b8860b" }
-          ].map(cat => React.createElement("button", {
-            key:cat.id, onClick:()=>{ setCategoria(cat.id); setServSelId(""); setPrecioCustom(""); },
-            style:{ padding:"8px 16px", borderRadius:20, border:"2px solid "+(categoria===cat.id?cat.color:"#e0e4e8"), background:categoria===cat.id?cat.color:"#fff", color:categoria===cat.id?"#fff":CC.gris, fontSize:12, fontWeight:700, cursor:"pointer" }
-          }, cat.label))
-        )
-      ),
-      React.createElement("div", { style:{ marginBottom:16, position:"relative" }},
-        React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Cliente / Mascota"),
-        React.createElement("input", {
-          value:cliente, onChange:e=>{ setCliente(e.target.value); setShowSugg(true); },
-          onBlur:()=>setTimeout(()=>setShowSugg(false),150),
-          placeholder:"Buscar nombre del cliente o mascota...",
-          style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14, boxSizing:"border-box" }
-        }),
-        showSugg && sugerencias.length > 0 && React.createElement("div", { style:{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #dde0e4", borderRadius:10, boxShadow:"0 4px 16px rgba(0,0,0,0.1)", zIndex:100, maxHeight:180, overflowY:"auto" }},
-          sugerencias.map((s,i) => React.createElement("div", { key:i, onMouseDown:()=>{ setCliente(s); setShowSugg(false); }, style:{ padding:"10px 14px", cursor:"pointer", fontSize:13, borderBottom:"1px solid #f4f5f6" }}, "🐾 " + s))
-        )
-      ),
-      React.createElement("div", { style:{ marginBottom:16 }},
-        React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Servicio / Producto"),
-        servicios.length > 0
-          ? React.createElement("select", {
-              value:servSelId, onChange:e=>{ setServSelId(e.target.value); setPrecioCustom(""); },
-              style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14 }
-            },
-            React.createElement("option", { value:"" }, "-- Selecciona --"),
-            servicios.map(s => React.createElement("option", { key:s.id, value:s.id }, (s.nombre||s.servicio||s.descripcion||"") + " · RD$ " + Math.round(s.pventa||s.precio||0).toLocaleString("es-DO")))
+
+    React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }},
+
+      // ── Panel izquierdo: formulario ──
+      React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:22, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }},
+
+        // Cliente
+        React.createElement("div", { style:{ marginBottom:16, position:"relative" }},
+          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "👤 Cliente / Mascota"),
+          React.createElement("input", {
+            value:cliente, onChange:e=>{ setCliente(e.target.value); setShowSugg(true); },
+            onBlur:()=>setTimeout(()=>setShowSugg(false),150),
+            placeholder:"Buscar en el CRM...",
+            style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14, boxSizing:"border-box" }
+          }),
+          showSugg && sugerencias.length > 0 && React.createElement("div", { style:{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:"1.5px solid #dde0e4", borderRadius:10, boxShadow:"0 4px 16px rgba(0,0,0,0.1)", zIndex:100, maxHeight:180, overflowY:"auto" }},
+            sugerencias.map((s,i) => React.createElement("div", { key:i, onMouseDown:()=>{ setCliente(s); setShowSugg(false); }, style:{ padding:"10px 14px", cursor:"pointer", fontSize:13, borderBottom:"1px solid #f4f5f6" }}, "🐾 " + s))
           )
-          : React.createElement("input", { placeholder:"Nombre del servicio", value:nota, onChange:e=>setNota(e.target.value), style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14, boxSizing:"border-box" } })
-      ),
-      React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }},
-        React.createElement("div", null,
-          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Precio (RD$)"),
-          React.createElement("input", {
-            type:"number", value:precioCustom !== "" ? precioCustom : (servSel ? (servSel.pventa||servSel.precio||0) : ""),
-            onChange:e=>setPrecioCustom(e.target.value), placeholder:"0",
-            style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14, boxSizing:"border-box" }
-          })
         ),
-        React.createElement("div", null,
-          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Cantidad"),
-          React.createElement("input", {
-            type:"number", min:1, value:qty, onChange:e=>setQty(Math.max(1,parseInt(e.target.value)||1)),
-            style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14, boxSizing:"border-box" }
-          })
-        )
-      ),
-      React.createElement("div", { style:{ marginBottom:16 }},
-        React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Forma de pago"),
-        React.createElement("select", {
-          value:pago, onChange:e=>setPago(e.target.value),
-          style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14 }
-        },
-          React.createElement("option", { value:"efectivo" }, "💵 Efectivo"),
-          React.createElement("option", { value:"Transferencia Popular" }, "🏦 Transferencia Popular"),
-          React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Transferencia Reservas"),
-          React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta"),
-          React.createElement("option", { value:"pendiente" }, "⏳ Pago pendiente")
-        )
-      ),
-      React.createElement("div", { style:{ marginBottom:20 }},
-        React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Nota (opcional)"),
-        React.createElement("input", {
-          value:nota, onChange:e=>setNota(e.target.value),
-          placeholder:"Ej: Baño + corte, Consulta de rutina...",
-          style:{ width:"100%", padding:"10px 14px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:14, boxSizing:"border-box" }
-        })
-      ),
-      React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" }},
-        React.createElement("div", { style:{ fontSize:18, fontWeight:900, color:CC.verde }}, "Total: " + RD2(total)),
-        React.createElement("button", {
-          onClick:registrar,
-          style:{ background:CC.verde, color:"#fff", border:"none", borderRadius:12, padding:"12px 28px", fontSize:15, fontWeight:800, cursor:"pointer" }
-        }, "✅ Registrar Factura")
-      )
-    ),
-    React.createElement("div", { style:{ marginTop:24 }},
-      React.createElement("div", { style:{ fontWeight:700, fontSize:14, marginBottom:12 }}, "📋 Facturas registradas hoy"),
-      (() => {
-        const hoyStr = new Date().toISOString().slice(0,10);
-        const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
-        const propias = (ventas||[]).filter(v => v.fecha === hoyStr && (v.recibidopor||"").toLowerCase().includes(nombreBase)).slice(-10).reverse();
-        if (propias.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:13 }}, "No hay facturas registradas hoy.");
-        return React.createElement("div", { style:{ background:"#fff", borderRadius:12, padding:16, boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }},
-          propias.map((v,i) => React.createElement("div", { key:i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:"1px solid #f4f5f6", fontSize:13 }},
-            React.createElement("div", null,
-              React.createElement("div", { style:{ fontWeight:600 }}, v.cliente||"—"),
-              React.createElement("div", { style:{ fontSize:11, color:CC.gris }}, (v.servicio||v.descripcion||"").slice(0,40) + " · " + (v.formapago||""))
+
+        // Tipo
+        React.createElement("div", { style:{ marginBottom:14 }},
+          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Tipo"),
+          React.createElement("div", { style:{ display:"flex", gap:6, flexWrap:"wrap" }},
+            CATS.map(cat => React.createElement("button", {
+              key:cat.id, onClick:()=>{ setCategoria(cat.id); setServSelId(""); setPrecioCustom(""); },
+              style:{ padding:"6px 12px", borderRadius:16, border:"2px solid "+(categoria===cat.id?cat.color:"#e0e4e8"), background:categoria===cat.id?cat.color:"#fff", color:categoria===cat.id?"#fff":CC.gris, fontSize:11, fontWeight:700, cursor:"pointer" }
+            }, cat.label))
+          )
+        ),
+
+        // Servicio
+        React.createElement("div", { style:{ marginBottom:12 }},
+          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Servicio / Producto"),
+          servicios.length > 0
+            ? React.createElement("select", {
+                value:servSelId, onChange:e=>{ setServSelId(e.target.value); setPrecioCustom(""); },
+                style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13 }
+              },
+              React.createElement("option", { value:"" }, "-- Selecciona --"),
+              servicios.map(s => React.createElement("option", { key:s.id, value:s.id }, (s.nombre||s.servicio||s.descripcion||"") + " · RD$ " + Math.round(s.pventa||s.precio||0).toLocaleString("es-DO")))
+            )
+            : React.createElement("input", { placeholder:"Nombre del servicio", value:nota, onChange:e=>setNota(e.target.value), style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13, boxSizing:"border-box" } })
+        ),
+
+        // Precio, Cantidad, Descuento item
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }},
+          React.createElement("div", null,
+            React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Precio RD$"),
+            React.createElement("input", { type:"number", value:precioCustom !== "" ? precioCustom : (servSel ? (servSel.pventa||servSel.precio||0) : ""), onChange:e=>setPrecioCustom(e.target.value), placeholder:"0", style:{ width:"100%", padding:"8px 10px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13, boxSizing:"border-box" } })
+          ),
+          React.createElement("div", null,
+            React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Cant"),
+            React.createElement("input", { type:"number", min:1, value:qty, onChange:e=>setQty(Math.max(1,parseInt(e.target.value)||1)), style:{ width:"100%", padding:"8px 10px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13, boxSizing:"border-box" } })
+          ),
+          React.createElement("div", null,
+            React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Desc %"),
+            React.createElement("input", { type:"number", min:0, max:100, value:descItem, onChange:e=>setDescItem(e.target.value), placeholder:"0", style:{ width:"100%", padding:"8px 10px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13, boxSizing:"border-box" } })
+          )
+        ),
+
+        // Nota ítem
+        React.createElement("div", { style:{ marginBottom:14 }},
+          React.createElement("input", { value:nota, onChange:e=>setNota(e.target.value), placeholder:"Nota del servicio (opcional)...", style:{ width:"100%", padding:"8px 12px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:12, boxSizing:"border-box" } })
+        ),
+
+        // Subtotal ítem + botón agregar
+        React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }},
+          React.createElement("div", { style:{ fontSize:13, color:CC.gris }}, "Subtotal: ", React.createElement("b", { style:{ color:CC.verde }}, RD2(subtotalItem))),
+          React.createElement("button", { onClick:agregarItem, style:{ background:CC.azul, color:"#fff", border:"none", borderRadius:10, padding:"9px 18px", fontSize:13, fontWeight:800, cursor:"pointer" }}, "+ Agregar al carrito")
+        ),
+
+        // Descuento global
+        React.createElement("div", { style:{ borderTop:"1px solid #f0f2f4", paddingTop:14, marginBottom:14 }},
+          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Descuento global"),
+          React.createElement("div", { style:{ display:"flex", gap:8 }},
+            React.createElement("select", { value:descTipo, onChange:e=>setDescTipo(e.target.value), style:{ padding:"8px 10px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13 }},
+              React.createElement("option", { value:"pct" }, "% Porcentaje"),
+              React.createElement("option", { value:"monto" }, "RD$ Monto fijo")
             ),
-            React.createElement("div", { style:{ fontWeight:700, color:CC.verde }}, RD2(v.total))
-          ))
-        );
-      })()
+            React.createElement("input", { type:"number", min:0, value:descGlobal, onChange:e=>setDescGlobal(e.target.value), placeholder:"0", style:{ flex:1, padding:"8px 10px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13 } })
+          )
+        ),
+
+        // Forma de pago
+        React.createElement("div", { style:{ marginBottom:18 }},
+          React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Forma de pago"),
+          React.createElement("select", { value:pago, onChange:e=>setPago(e.target.value), style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13 }},
+            React.createElement("option", { value:"efectivo" }, "💵 Efectivo"),
+            React.createElement("option", { value:"Transferencia Popular" }, "🏦 Transferencia Popular"),
+            React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Transferencia Reservas"),
+            React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta"),
+            React.createElement("option", { value:"pendiente" }, "⏳ Pago pendiente")
+          )
+        ),
+
+        // Botón registrar
+        React.createElement("button", { onClick:registrar, style:{ width:"100%", background:CC.verde, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:15, fontWeight:900, cursor:"pointer" }}, "✅ Registrar Factura")
+      ),
+
+      // ── Panel derecho: carrito ──
+      React.createElement("div", null,
+        React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)", marginBottom:16 }},
+          React.createElement("div", { style:{ fontWeight:800, fontSize:15, marginBottom:12, color:CC.verde }}, "🛒 Carrito"),
+          carrito.length === 0
+            ? React.createElement("div", { style:{ color:CC.gris, fontSize:13, textAlign:"center", padding:"20px 0" }}, "Sin ítems — agrega servicios desde la izquierda")
+            : React.createElement("div", null,
+                carrito.map((it,i) => React.createElement("div", { key:it.id, style:{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", padding:"9px 0", borderBottom:"1px solid #f4f5f6" }},
+                  React.createElement("div", { style:{ flex:1 }},
+                    React.createElement("div", { style:{ fontWeight:600, fontSize:13 }}, (it.qty>1?it.qty+"x ":"")+it.nombre),
+                    React.createElement("div", { style:{ fontSize:11, color:CC.gris }},
+                      "RD$ " + Math.round(it.precioUnit).toLocaleString("es-DO") + (it.descPct>0?" · −"+it.descPct+"%":"")
+                    )
+                  ),
+                  React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:8 }},
+                    React.createElement("div", { style:{ fontWeight:700, color:CC.verde, fontSize:13 }}, RD2(it.subtotal)),
+                    React.createElement("button", { onClick:()=>quitarItem(it.id), style:{ background:"none", border:"none", color:CC.rojo, cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 2px" }}, "×")
+                  )
+                )),
+                React.createElement("div", { style:{ marginTop:12, paddingTop:10, borderTop:"1px solid #eee" }},
+                  React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13, marginBottom:4 }},
+                    React.createElement("span", { style:{ color:CC.gris }}, "Subtotal"),
+                    React.createElement("span", null, RD2(subtotalCarrito))
+                  ),
+                  descGlobalMonto > 0 && React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13, marginBottom:4, color:CC.rojo }},
+                    React.createElement("span", null, "Descuento"),
+                    React.createElement("span", null, "− " + RD2(descGlobalMonto))
+                  ),
+                  React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:17, fontWeight:900, color:CC.verde, marginTop:6 }},
+                    React.createElement("span", null, "TOTAL"),
+                    React.createElement("span", null, RD2(totalFinal))
+                  )
+                )
+              )
+        ),
+
+        // Facturas del día
+        React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }},
+          React.createElement("div", { style:{ fontWeight:800, fontSize:14, marginBottom:12 }}, "📋 Facturas de hoy"),
+          (() => {
+            const hoyStr = new Date().toISOString().slice(0,10);
+            const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
+            const propias = (ventas||[]).filter(v => v.fecha === hoyStr && (v.recibidopor||"").toLowerCase().includes(nombreBase)).slice(-8).reverse();
+            if (propias.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:12, textAlign:"center", padding:"12px 0" }}, "Sin facturas hoy");
+            return propias.map((v,i) => React.createElement("div", { key:i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:12 }},
+              React.createElement("div", null,
+                React.createElement("div", { style:{ fontWeight:600 }}, v.cliente||"—"),
+                React.createElement("div", { style:{ color:CC.gris, fontSize:11 }}, (v.servicio||"").slice(0,30))
+              ),
+              React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:8 }},
+                React.createElement("div", { style:{ fontWeight:700, color:CC.verde }}, RD2(v.total)),
+                React.createElement("button", { onClick:()=>imprimir({...v, clienteNombre:v.cliente}), style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "🖨️")
+              )
+            ));
+          })()
+        )
+      )
     )
   );
 }
