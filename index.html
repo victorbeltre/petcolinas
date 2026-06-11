@@ -7,6 +7,17 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>🐾 PetColinas — Sistema de Gestión 2026</title>
+  <script>
+    // Auto-actualización: si la versión cambió, recarga forzada
+    (function() {
+      var V = "20260611-v5";
+      var stored = localStorage.getItem("pc_app_version");
+      if (stored !== V) {
+        localStorage.setItem("pc_app_version", V);
+        if (stored) { window.location.reload(true); }
+      }
+    })();
+  </script>
   <!-- React + Babel (para JSX en el navegador, sin instalación) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
