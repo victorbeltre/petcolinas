@@ -4540,7 +4540,7 @@ function PetColinas() {
   const [ventasVet, setVentasVet]   = useVentasConSeed(VENTAS_SEED);
   const setVentas = setVentasVet;
   const [clientesVet, setClientesVet] = useClientesConSeed(CLIENTES_SEED);
-  const [citasPortal, setCitasPortal] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
+  const [citasPortal, setCitasPortal, , , , refetchCitasPortal] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
   const [pagosNomVet, setPagosNomVet] = React.useState([]);
   const [invGlobal, setInvGlobal]     = React.useState([]);
   // Exponer inventario y pagos via window para portales veterinaria/groomer
@@ -4557,6 +4557,11 @@ function PetColinas() {
     }
     // Exponer setVentas para portales
     window.__setVentasGlobal = setVentasVet;
+  }, []);
+  // Polling cada 30s para que empleados vean citas creadas por el admin y viceversa
+  React.useEffect(() => {
+    const poll = setInterval(() => { refetchCitasPortal(); }, 30000);
+    return () => clearInterval(poll);
   }, []);
 
   useEffect(() => {
