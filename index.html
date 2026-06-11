@@ -112,11 +112,11 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
       const data = await res.json();
       if (!res.ok) {
         console.error(`[supaFetch] GET ${table} ${res.status}:`, data);
-        return [];
+        return null;
       }
       return data;
     } catch {
-      return [];
+      return null;
     }
   }
   if (method === "POST") {
@@ -176,7 +176,8 @@ function useSupabase(table, seed = []) {
           };
           let normalized = rows.filter((r) => !deletedIds.current.has(String(r.id))).map((r) => {
             const n = normalizeRow(table, r);
-            if (n.fecha) {
+            // Solo corregir fechas futuras en ventas/gastos — las citas futuras son válidas
+            if (n.fecha && (table === "pc_ventas" || table === "pc_gastos")) {
               const orig = n.fecha;
               n.fecha = fixFecha(n.fecha);
               if (table === "pc_ventas" && n.fecha !== orig) {
@@ -213,7 +214,7 @@ function useSupabase(table, seed = []) {
             const supaIds = new Set(normalized.map((r) => String(r.id)));
             // Dedup lógico: evitar que seed muestre ventas ya registradas en Supabase con diferente ID
             const supaLogicalKeys = new Set(normalized.map(r => `${r.fecha||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`));
-            const seedRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)) && !supaLogicalKeys.has(`${r.fecha||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`));
+            const seedRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)) && !supaLogicalKeys.has(`${r.fecha||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`) && !supaLogicalKeys.has(`${fixFecha(r.fecha)||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`));
             let merged = [...seedRows, ...normalized];
             // Aplicar descripciones del localStorage a filas sin descripción
             try {
@@ -260,6 +261,35 @@ function useSupabase(table, seed = []) {
                 }
               }
             } catch {}
+            // Aplicar correcciones de fecha guardadas localmente (persisten aunque Supabase falle)
+            try {
+              const fechaOv = JSON.parse(localStorage.getItem("pc_fecha_overrides") || "{}");
+              const ovIds = Object.keys(fechaOv);
+              if (ovIds.length > 0) {
+                merged = merged.map(v => {
+                  const nf = fechaOv[String(v.id)];
+                  return nf && v.fecha !== nf ? { ...v, fecha: nf } : v;
+                });
+                console.log("[FechaOverride] " + ovIds.length + " correccion(es) de fecha aplicadas localmente");
+                // Reintentar subir a Supabase; al lograrlo, limpiar el override
+                setTimeout(() => {
+                  ovIds.forEach(oid => {
+                    const v = merged.find(x => String(x.id) === oid);
+                    if (!v) return;
+                    upsertOne("pc_ventas", { ...v, fecha: fechaOv[oid] }).then(ok => {
+                      if (ok) {
+                        try {
+                          const cur = JSON.parse(localStorage.getItem("pc_fecha_overrides") || "{}");
+                          delete cur[oid];
+                          localStorage.setItem("pc_fecha_overrides", JSON.stringify(cur));
+                          console.log("[FechaOverride→Supa] id=" + oid + " sincronizada y limpiada");
+                        } catch {}
+                      }
+                    }).catch(() => {});
+                  });
+                }, 3500);
+              }
+            } catch {}
             console.log("[Merge] pc_ventas: " + seedRows.length + " seed + " + normalized.length + " Supa = " + merged.length);
             setData(merged);
           } else if (table === "pc_citas" || table === "pc_facturas") {
@@ -287,8 +317,14 @@ function useSupabase(table, seed = []) {
           } else {
             setData(normalized);
           }
-        } else {
+        } else if (Array.isArray(rows)) {
+          // Tabla realmente vacía: subir el seed por primera vez
           await uploadSeed(table, seed);
+          setData(seed.filter((r) => !deletedIds.current.has(String(r.id))));
+        } else {
+          // GET falló (red/sesión/RLS): usar seed local SIN subir nada a la nube
+          console.warn(`[Supabase] ${table}: error de carga — usando datos locales sin re-subir seed`);
+          if (typeof window.__notifSyncError === "function") window.__notifSyncError(table + " no se pudo cargar");
           setData(seed.filter((r) => !deletedIds.current.has(String(r.id))));
         }
       } catch (e) {
@@ -301,14 +337,16 @@ function useSupabase(table, seed = []) {
   const dataRef = useRef(null);
   dataRef.current = data;
   const setDataSync = useCallback(async (newDataOrFn) => {
-    const newData = typeof newDataOrFn === "function" ? newDataOrFn(dataRef.current || data) : newDataOrFn;
+    const prevData = dataRef.current || data;
+    const newData = typeof newDataOrFn === "function" ? newDataOrFn(prevData) : newDataOrFn;
+    dataRef.current = newData;
     setData(newData);
     // Guardar descripciones en localStorage como respaldo (para pc_ventas)
     if (table === "pc_ventas") {
       try {
         const descMap = JSON.parse(localStorage.getItem("pc_venta_serv") || "{}");
         newData.forEach(v => {
-          const s = v.servicio || v.descripcion || v.area;
+          const s = v.servicio || v.descripcion;
           if (s) descMap[String(v.id)] = s;
         });
         localStorage.setItem("pc_venta_serv", JSON.stringify(descMap));
@@ -335,24 +373,28 @@ function useSupabase(table, seed = []) {
     setSyncing(true);
     try {
       const currentSeedIds = seedIds.current;
-      const currentDataIds = new Set((dataRef.current || data).map((r) => String(r.id)));
+      const currentDataIds = new Set(prevData.map((r) => String(r.id)));
       let soloNuevas = newData.filter((r) => !currentSeedIds.has(String(r.id)) && !currentDataIds.has(String(r.id)));
-      if (table === "pc_citas" || table === "pc_facturas") {
-        // Citas y facturas cambian de estado: sincronizar tambien las editadas (no auto-generadas)
-        const prevById = new Map((dataRef.current || []).map((r) => [String(r.id), r]));
-        const editadas = newData.filter((r) => {
-          if (table === "pc_facturas" && r.autoGenerada) return false;
-          const prev = prevById.get(String(r.id));
-          return prev && JSON.stringify(prev) !== JSON.stringify(r);
-        });
-        soloNuevas = [...soloNuevas, ...editadas];
-      }
+      // Sincronizar también filas EDITADAS — para TODAS las tablas (antes solo citas/facturas)
+      const prevById = new Map(prevData.map((r) => [String(r.id), r]));
+      const editadas = newData.filter((r) => {
+        if (table === "pc_facturas" && r.autoGenerada) return false;
+        const prev = prevById.get(String(r.id));
+        return prev && prev !== r && JSON.stringify(prev) !== JSON.stringify(r);
+      });
+      soloNuevas = [...soloNuevas, ...editadas];
       if (table === "pc_facturas") soloNuevas = soloNuevas.filter((r) => !r.autoGenerada);
       if (soloNuevas.length > 0) {
         console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " fila(s)");
         for (const row of soloNuevas) {
           const dbRow = denormalizeRow(table, row);
-          await supaFetch(table, "POST", dbRow, `?on_conflict=id`);
+          const result = await supaFetch(table, "POST", dbRow, `?on_conflict=id`);
+          if (result && result.error) {
+            const em = (result.error && result.error.message) || JSON.stringify(result.error);
+            console.error("[Sync] " + table + " id=" + row.id + " FALLÓ:", em);
+            window.__lastSyncError = table + " id=" + row.id + " — " + em;
+            if (typeof window.__notifSyncError === "function") window.__notifSyncError(window.__lastSyncError);
+          }
         }
       }
     } catch (e) {
@@ -393,8 +435,10 @@ async function upsertOne(table, row) {
     const dbRow = denormalizeRow(table, row);
     const result = await supaFetch(table, "POST", dbRow, "?on_conflict=id");
     if (result && result.error) {
-      console.error(`[upsertOne] ${table} id=${row.id} ERROR:`, result.error, result.message);
-      if (typeof window.__notifSyncError === "function") window.__notifSyncError(table + " " + row.id);
+      const errMsg = result.error && result.error.message ? result.error.message : (typeof result.error === "object" ? JSON.stringify(result.error) : String(result.error));
+      console.error(`[upsertOne] ${table} id=${row.id} ERROR:`, errMsg);
+      window.__lastSyncError = table + " id=" + row.id + " — " + errMsg;
+      if (typeof window.__notifSyncError === "function") window.__notifSyncError(window.__lastSyncError);
       return false;
     }
     console.log(`[upsertOne] ${table} id=${row.id} OK`);
@@ -408,7 +452,12 @@ async function upsertOne(table, row) {
 }
 async function deleteOne(table, id) {
   try {
-    await supaFetch(table, "DELETE", null, `?id=eq.${id}`);
+    const result = await supaFetch(table, "DELETE", null, `?id=eq.${id}`);
+    if (result && result.error) {
+      const em = (result.error && result.error.message) || JSON.stringify(result.error);
+      console.error(`[deleteOne] ${table} id=${id} FALLÓ:`, em);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error("deleteOne error:", e);
@@ -933,7 +982,7 @@ function denormalizeRow(table, r) {
   };
   return r;
 }
-const LAST_UPDATE = "11 jun 2026 \u00b7 facturas en la nube, carnet de vacunas, citas en portales, PDE din\u00e1mico";
+const LAST_UPDATE = "11 jun 2026 \u00b7 sync de ediciones a la nube, fechas persistentes, protecci\u00f3n de datos";
 const PETCOLINAS_RNC = ""; // Ingresa aquí el RNC de PetColinas (ej: "1-30-12345-6")
 const C = {
   verde: "#1a6b3a",
@@ -1037,7 +1086,7 @@ function useSupaTarifas() {
       if (Array.isArray(rows) && rows.length > 0) {
         const norm = rows.map(r => normalizeRow("pc_tarifas", r));
         _setData(norm); dataRef.current = norm;
-      } else {
+      } else if (Array.isArray(rows)) {
         await uploadSeed("pc_tarifas", SEED_ALL);
       }
     })();
@@ -5883,23 +5932,35 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
   const corregirFechaVenta = async (venta, nuevaFecha) => {
     setCorrigiendoId(venta.id);
     const ventaCorregida = { ...venta, fecha: nuevaFecha };
+    // 1. Guardar override local SIEMPRE — sobrevive recargas aunque Supabase falle
     try {
-      await upsertOne("pc_ventas", ventaCorregida);
-      try {
-        const lk = "pc_ventas_local";
-        const local = JSON.parse(localStorage.getItem(lk) || "[]");
-        localStorage.setItem(lk, JSON.stringify(local.map(v => String(v.id) === String(venta.id) ? { ...v, fecha: nuevaFecha } : v)));
-      } catch {}
-      if (setVentas) setVentas(prev => prev.map(v => v.id === venta.id ? ventaCorregida : v));
-    } catch(e) {
-      alert("Error al guardar: " + (e.message || e));
+      const ov = JSON.parse(localStorage.getItem("pc_fecha_overrides") || "{}");
+      ov[String(venta.id)] = nuevaFecha;
+      localStorage.setItem("pc_fecha_overrides", JSON.stringify(ov));
+    } catch {}
+    try {
+      const lk = "pc_ventas_local";
+      const local = JSON.parse(localStorage.getItem(lk) || "[]");
+      localStorage.setItem(lk, JSON.stringify(local.map(v => String(v.id) === String(venta.id) ? { ...v, fecha: nuevaFecha } : v)));
+    } catch {}
+    // 2. Actualizar estado local
+    if (setVentas) setVentas(prev => prev.map(v => v.id === venta.id ? ventaCorregida : v));
+    // 3. Intentar guardar en la nube — avisar honestamente si falla
+    const ok = await upsertOne("pc_ventas", ventaCorregida);
+    if (!ok) {
+      alert("⚠️ La fecha quedó corregida en este dispositivo y se reintentará subir a la nube automáticamente.\n\nDetalle del error: " + (window.__lastSyncError || "sin conexión con Supabase"));
     }
     setCorrigiendoId(null);
     setEditFechaModal(null);
   };
   const confirmDateAlert = async (alert) => {
     const venta = ventas.find(v => String(v.id) === String(alert.id));
-    if (venta) { try { await upsertOne("pc_ventas", venta); } catch(e) {} }
+    let okConf = false;
+    if (venta) { try { okConf = await upsertOne("pc_ventas", venta); } catch(e) {} }
+    if (venta && !okConf) {
+      window.alert("⚠️ No se pudo guardar la corrección en la nube: " + (window.__lastSyncError || "error de conexión") + "\n\nLa alerta seguirá visible hasta que se logre guardar.");
+      return;
+    }
     try {
       const dismissed = new Set(JSON.parse(localStorage.getItem("pc_fecha_dismissed") || "[]"));
       dismissed.add(alert.key);
