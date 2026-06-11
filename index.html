@@ -11321,6 +11321,26 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
 // ═══════════════════════════════════════════════════════════
 // EVOLUCIÓN CLÍNICA
 // ═══════════════════════════════════════════════════════════
+// Helpers defined at module level to avoid losing focus on re-render
+function EvFLD({ label, children }) {
+  return React.createElement("div", { style: { marginBottom: 14 } },
+    React.createElement("label", { style: { display: "block", fontSize: 11, fontWeight: 700, color: "#5a6472", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 } }, label),
+    children
+  );
+}
+function EvINP(props) {
+  return React.createElement("input", {
+    ...props,
+    style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 11px", fontSize: 13, boxSizing: "border-box", ...(props.style || {}) }
+  });
+}
+function EvTEA(props) {
+  return React.createElement("textarea", {
+    rows: 3, ...props,
+    style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical", boxSizing: "border-box", ...(props.style || {}) }
+  });
+}
+
 function EvolucionClinica({ usuario, clientes }) {
   const [evoluciones, setEvoluciones, evLoaded] = useSupabase("pc_evoluciones", []);
   const [busqueda, setBusqueda] = useState("");
@@ -11364,18 +11384,6 @@ function EvolucionClinica({ usuario, clientes }) {
     setModal(false);
   }
 
-  const FLD = ({ label, children }) => React.createElement("div", { style: { marginBottom: 14 } },
-    React.createElement("label", { style: { display: "block", fontSize: 11, fontWeight: 700, color: C.grisd, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 } }, label),
-    children
-  );
-  const INP = (props) => React.createElement("input", {
-    ...props,
-    style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 11px", fontSize: 13, boxSizing: "border-box", ...(props.style || {}) }
-  });
-  const TEA = (props) => React.createElement("textarea", {
-    rows: 3, ...props,
-    style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical", boxSizing: "border-box", ...(props.style || {}) }
-  });
 
   return React.createElement("div", { style: { display: "flex", gap: 20, alignItems: "flex-start" } },
 
@@ -11383,7 +11391,7 @@ function EvolucionClinica({ usuario, clientes }) {
     React.createElement("div", { style: { width: 260, flexShrink: 0, background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" } },
       React.createElement("div", { style: { background: C.azul, padding: "14px 16px", color: "#fff", fontWeight: 800, fontSize: 14 } }, "📋 Pacientes"),
       React.createElement("div", { style: { padding: "10px 12px" } },
-        React.createElement(INP, { placeholder: "Buscar mascota…", value: busqueda, onChange: e => setBusqueda(e.target.value) })
+        React.createElement(EvINP, { placeholder: "Buscar mascota…", value: busqueda, onChange: e => setBusqueda(e.target.value) })
       ),
       React.createElement("div", { style: { maxHeight: 520, overflowY: "auto" } },
         listaPacientes.length === 0 && React.createElement("div", { style: { padding: "20px 16px", color: C.grisd, fontSize: 13, textAlign: "center" } }, "Sin pacientes en CRM"),
@@ -11484,22 +11492,22 @@ function EvolucionClinica({ usuario, clientes }) {
         ),
         React.createElement("div", { style: { padding: "20px 22px", display: "flex", flexDirection: "column", gap: 0 } },
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" } },
-            React.createElement(FLD, { label: "Mascota" }, React.createElement(INP, { value: form.mascota, onChange: e => setF("mascota", e.target.value) })),
-            React.createElement(FLD, { label: "Propietario" }, React.createElement(INP, { value: form.propietario, onChange: e => setF("propietario", e.target.value) })),
-            React.createElement(FLD, { label: "Fecha" }, React.createElement(INP, { type: "date", value: form.fecha, onChange: e => setF("fecha", e.target.value) })),
-            React.createElement(FLD, { label: "Veterinario" }, React.createElement(INP, { value: form.veterinario, onChange: e => setF("veterinario", e.target.value) })),
-            React.createElement(FLD, { label: "Peso (kg)" }, React.createElement(INP, { type: "number", step: "0.1", value: form.peso, onChange: e => setF("peso", e.target.value) })),
-            React.createElement(FLD, { label: "Temperatura (°C)" }, React.createElement(INP, { type: "number", step: "0.1", value: form.temperatura, onChange: e => setF("temperatura", e.target.value) }))
+            React.createElement(EvFLD, { label: "Mascota" }, React.createElement(EvINP, { value: form.mascota, onChange: e => setF("mascota", e.target.value) })),
+            React.createElement(EvFLD, { label: "Propietario" }, React.createElement(EvINP, { value: form.propietario, onChange: e => setF("propietario", e.target.value) })),
+            React.createElement(EvFLD, { label: "Fecha" }, React.createElement(EvINP, { type: "date", value: form.fecha, onChange: e => setF("fecha", e.target.value) })),
+            React.createElement(EvFLD, { label: "Veterinario" }, React.createElement(EvINP, { value: form.veterinario, onChange: e => setF("veterinario", e.target.value) })),
+            React.createElement(EvFLD, { label: "Peso (kg)" }, React.createElement(EvINP, { type: "number", step: "0.1", value: form.peso, onChange: e => setF("peso", e.target.value) })),
+            React.createElement(EvFLD, { label: "Temperatura (°C)" }, React.createElement(EvINP, { type: "number", step: "0.1", value: form.temperatura, onChange: e => setF("temperatura", e.target.value) }))
           ),
-          React.createElement(FLD, { label: "Motivo de consulta *" }, React.createElement(INP, { value: form.motivo, onChange: e => setF("motivo", e.target.value) })),
-          React.createElement(FLD, { label: "Anamnesis" }, React.createElement(TEA, { value: form.anamnesis, onChange: e => setF("anamnesis", e.target.value), placeholder: "Historia del paciente, síntomas previos…" })),
-          React.createElement(FLD, { label: "Examen físico" }, React.createElement(TEA, { value: form.examen_fisico, onChange: e => setF("examen_fisico", e.target.value), placeholder: "Hallazgos al examen físico…" })),
-          React.createElement(FLD, { label: "Diagnóstico" }, React.createElement(INP, { value: form.diagnostico, onChange: e => setF("diagnostico", e.target.value) })),
-          React.createElement(FLD, { label: "Tratamiento" }, React.createElement(TEA, { value: form.tratamiento, onChange: e => setF("tratamiento", e.target.value), placeholder: "Procedimientos realizados…" })),
-          React.createElement(FLD, { label: "Prescripción / Medicamentos" }, React.createElement(TEA, { value: form.prescripcion, onChange: e => setF("prescripcion", e.target.value), placeholder: "Medicamentos, dosis, frecuencia…" })),
+          React.createElement(EvFLD, { label: "Motivo de consulta *" }, React.createElement(EvINP, { value: form.motivo, onChange: e => setF("motivo", e.target.value) })),
+          React.createElement(EvFLD, { label: "Anamnesis" }, React.createElement(EvTEA, { value: form.anamnesis, onChange: e => setF("anamnesis", e.target.value), placeholder: "Historia del paciente, síntomas previos…" })),
+          React.createElement(EvFLD, { label: "Examen físico" }, React.createElement(EvTEA, { value: form.examen_fisico, onChange: e => setF("examen_fisico", e.target.value), placeholder: "Hallazgos al examen físico…" })),
+          React.createElement(EvFLD, { label: "Diagnóstico" }, React.createElement(EvINP, { value: form.diagnostico, onChange: e => setF("diagnostico", e.target.value) })),
+          React.createElement(EvFLD, { label: "Tratamiento" }, React.createElement(EvTEA, { value: form.tratamiento, onChange: e => setF("tratamiento", e.target.value), placeholder: "Procedimientos realizados…" })),
+          React.createElement(EvFLD, { label: "Prescripción / Medicamentos" }, React.createElement(EvTEA, { value: form.prescripcion, onChange: e => setF("prescripcion", e.target.value), placeholder: "Medicamentos, dosis, frecuencia…" })),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" } },
-            React.createElement(FLD, { label: "Próxima cita" }, React.createElement(INP, { type: "date", value: form.proxima_cita, onChange: e => setF("proxima_cita", e.target.value) })),
-            React.createElement(FLD, { label: "Notas adicionales" }, React.createElement(INP, { value: form.notas, onChange: e => setF("notas", e.target.value) }))
+            React.createElement(EvFLD, { label: "Próxima cita" }, React.createElement(EvINP, { type: "date", value: form.proxima_cita, onChange: e => setF("proxima_cita", e.target.value) })),
+            React.createElement(EvFLD, { label: "Notas adicionales" }, React.createElement(EvINP, { value: form.notas, onChange: e => setF("notas", e.target.value) }))
           ),
           React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 8 } },
             React.createElement("button", { onClick: () => setModal(false), style: { flex: 1, background: "#f4f5f7", border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, fontSize: 14, cursor: "pointer", color: C.grisd } }, "Cancelar"),
