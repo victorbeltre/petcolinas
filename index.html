@@ -10,7 +10,7 @@
   <script>
     // Auto-actualización: si la versión cambió, recarga forzada
     (function() {
-      var V = "20260612-v1";
+      var V = "20260613-v1";
       var stored = localStorage.getItem("pc_app_version");
       if (stored !== V) {
         localStorage.setItem("pc_app_version", V);
@@ -5986,6 +5986,8 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
     } catch(e) {}
     setDateAlerts(prev => prev.filter(a => a.key !== alert.key));
     setTab("ventas");
+    // Abrir directamente el editor de esa venta en la pestaña Ventas
+    setTimeout(() => { window.dispatchEvent(new CustomEvent("pc-edit-venta", { detail: alert.id })); }, 150);
   };
   const semReales = (() => {
     const totales = [0, 0, 0, 0];
@@ -6416,6 +6418,19 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [editandoVenta, setEditandoVenta] = useState(false);
   const [ventaEditForm, setVentaEditForm] = useState({});
   const [fechaFuturaWarn, setFechaFuturaWarn] = useState(null);
+  // Permite abrir el editor de una venta específica desde otra pestaña (ej: alerta de fechas del Dashboard)
+  useEffect(() => {
+    const handler = (e) => {
+      const id = e.detail;
+      const v = ventas.find((x) => String(x.id) === String(id));
+      if (!v) { window.alert("No se encontró la venta para editar (puede estar en otro mes o dispositivo)."); return; }
+      setVentaDetalle(v);
+      setEditandoVenta(true);
+      setVentaEditForm({ cliente: v.cliente || "", fecha: v.fecha || "", area: v.area || "grooming", descripcion: v.servicio || v.descripcion || "", formapago: v.formapago || v.formaPago || "", total: v.total || 0 });
+    };
+    window.addEventListener("pc-edit-venta", handler);
+    return () => window.removeEventListener("pc-edit-venta", handler);
+  }, [ventas]);
   const sugerencias = cliente.length > 0 ? clientes.filter(
     (c) => c.nombreMascota?.toLowerCase().includes(cliente.toLowerCase()) || c.nombrePropietario?.toLowerCase().includes(cliente.toLowerCase())
   ).slice(0, 10) : [];
