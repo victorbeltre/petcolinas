@@ -3876,6 +3876,13 @@ function Facturas({ ventas, clientes }) {
       style: { background: "#e8fdf0", color: "#1a8a3c", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12 }
     },
     "\u{1F4F1}"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); deleteOne("pc_facturas", f.id).catch(() => {}); } },
+      style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 }
+    },
+    "\u{1F5D1}️"
   ))))))))), vistaMode === "clientes" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 16, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, fontWeight: 600 } }, "Ordenar por:"), /* @__PURE__ */ React.createElement(
     "select",
     {
