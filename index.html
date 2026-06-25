@@ -3440,7 +3440,14 @@ function Facturas({ ventas, clientes }) {
     });
     // Agregar grupos completamente nuevos (cliente+fecha que no existían antes)
     const maxNumero = Math.max(0, ...facturas.map(f => parseInt(f.numero || "0", 10)).filter(n => !isNaN(n)));
-    const nuevasAuto = facturasDeVentas.filter((f) => !savedIds.has(String(f.id)));
+    // Huellas de facturas ya incluidas (fecha+cliente) para evitar duplicados con hist_* vs venta_*
+    const savedFingerprints = new Set(
+      manualesActualizadas.map(f => (f.fecha || "") + "___" + (f.mascota || "").toLowerCase().trim())
+    );
+    const nuevasAuto = facturasDeVentas.filter((f) => {
+      if (savedIds.has(String(f.id))) return false;
+      return !savedFingerprints.has((f.fecha || "") + "___" + (f.mascota || "").toLowerCase().trim());
+    });
     const nuevasConNumero = nuevasAuto.map((f, i) => ({ ...f, numero: String(maxNumero + i + 1).padStart(4, "0") }));
     const todas = [...manualesActualizadas, ...nuevasConNumero];
     return todas.sort((a, b) => {
