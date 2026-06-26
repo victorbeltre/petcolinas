@@ -5925,7 +5925,7 @@ function AlertaClientesInactivos({ clientes = [], ventas = [], onIr }) {
 function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNomina: _tn, totalGastos: _tg, ventasMes: _vm, comisionesGrm: _cg, comisionesVet: _cv, comisionesValen = 0, comGrmSistema: _cgs, comVetSistema: _cvs, comAyleinSistema = 0, comValenSistema = 0, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos = [], clientes = [], ventas = [], inventario = [], setVentas, setTab, citas = [], gastos = [], pagosNom = [] }) {
   const mesHoy = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const [mesSel, setMesSel] = React.useState(mesHoy);
-  const PDE_BASE = 230000;
+  const PDE_BASE = 203739;
   const prevMes = () => { const [y,m] = mesSel.split("-").map(Number); setMesSel(new Date(y,m-2,1).toISOString().slice(0,7)); };
   const nextMes = () => { const [y,m] = mesSel.split("-").map(Number); const nk = new Date(y,m,1).toISOString().slice(0,7); if(nk <= mesHoy) setMesSel(nk); };
   const mesNombreActual = new Date(mesSel + "-15").toLocaleDateString("es-DO", { month: "long", year: "numeric" }).replace(/^\w/, c => c.toUpperCase());
@@ -5936,16 +5936,10 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
   const totalGastos = gastosMesSel.reduce((s,g) => s+g.monto, 0);
   const totalNomina = pagosMesSel.reduce((s,p) => s+(p.mensualidad+p.comisiones-p.descuentos), 0);
   const totalEgresos = totalGastos + totalNomina;
-  // Punto de equilibrio dinamico: egresos reales del mes seleccionado (o del anterior si el actual va empezando)
-  const PDE = (() => {
-    const [py, pm] = mesSel.split("-").map(Number);
-    const mesAntKey = new Date(py, pm - 2, 15).toISOString().slice(0, 7);
-    const gastosAnt = gastos.filter((g) => g.fecha?.slice(0, 7) === mesAntKey).reduce((s, g) => s + g.monto, 0);
-    const nominaAnt = pagosNom.filter((p) => p.mes === mesAntKey).reduce((s, p) => s + (p.mensualidad + p.comisiones - p.descuentos), 0);
-    const egresosAnt = gastosAnt + nominaAnt;
-    const dinamico = Math.max(totalEgresos, egresosAnt);
-    return dinamico > 10000 ? Math.round(dinamico) : PDE_BASE;
-  })();
+  // Meta mensual / punto de equilibrio: monto fijo del PE real (RD$203,739/mes).
+  // Antes era dinamico (max de egresos del mes), pero meses con gastos puntuales
+  // grandes (alquiler, registro, etc.) inflaban la meta a ~233k. Se fija al PE real.
+  const PDE = PDE_BASE;
   const utilidad = totalVentas - totalEgresos;
   const grm = ventasMes.filter((v) => v.area==="grooming").reduce((s,v)=>s+v.total,0);
   const vet = ventasMes.filter((v) => v.area==="veterinaria").reduce((s,v)=>s+v.total,0);
