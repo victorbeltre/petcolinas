@@ -34,6 +34,19 @@ recibidopor vacio en vet historico = Aylein por defecto.
 const script = html.slice(html.lastIndexOf('<script>')+8, html.lastIndexOf('</script>'));
 try { new Function(script); } catch(e) { throw 'SINTAXIS ERROR: ' + e.message; }
 
+## REGLA CRITICA 4 - REPO Y VERSION CORRECTA (NO REGRESAR)
+La app LIVE vive en el repo `victorbeltre/petcolinas` (este), servida por
+GitHub Pages desde `main`. El codigo fuente de desarrollo esta en
+`petcolinas-app`. NUNCA deployar/commitear un index.html que NO sea la app
+completa. Un deploy desde petcolinas-app pisó la version buena con una vieja
+de 10 pestañas (PR #33) — no repetir.
+ANTES de commitear index.html, correr: node .github/scripts/validate-index.js
+Debe tener 14 pestañas: dashboard, agenda, ventas, clientes, seguimientos,
+inventario, nomina, gastos, reportes, facturas, servicios, importar(Exportar
+Excel), vozia, notificaciones. Y los componentes Agenda, PortalVeterinaria,
+PortalGroomer, VozIA, ExportarExcel. Peso >1 MB. El workflow validate-app.yml
+bloquea el merge a main si falla.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
