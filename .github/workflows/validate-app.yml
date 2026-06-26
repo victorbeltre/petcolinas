@@ -1,0 +1,23 @@
+name: Validar app PetColinas
+
+# Guardia anti-regresión: impide mergear/desplegar una versión de index.html
+# que no sea la app completa. Bloquea el merge si faltan pestañas, componentes,
+# si la sintaxis JS es inválida o si el archivo es sospechosamente pequeño.
+# Motivo: un "deploy" desde petcolinas-app pisó la versión buena con una vieja
+# de 10 pestañas (ver PR #33). Esto evita que vuelva a pasar.
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['index.html']
+  push:
+    branches: [main]
+    paths: ['index.html']
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar index.html
+        run: node .github/scripts/validate-index.js
