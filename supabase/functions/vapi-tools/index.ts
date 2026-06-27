@@ -13,6 +13,35 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// CANDADO DE HORARIO PetColinas
+//   Lun, Mie-Sab: 9:00-18:00  ·  Martes: SOLO veterinaria 9:00-18:00
+//   Domingo: 9:00-13:00  ·  Citas de 45 min.
+function validarHorario(fechaISO: string, hora: string, tipo: string): { ok: boolean; motivo?: string } {
+  const toMin = (h: string) => { const [hh, mm] = (h || "").split(":").map(Number); return (hh || 0) * 60 + (mm || 0); };
+  const fmt = (x: number) => String(Math.floor(x / 60)).padStart(2, "0") + ":" + String(x % 60).padStart(2, "0");
+  const dia = new Date(fechaISO + "T12:00:00Z").getUTCDay(); // 0=dom .. 6=sab
+  const nombres = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const DUR = 45;
+  const m = toMin(hora);
+
+  // Martes: solo veterinaria (consulta). Grooming no.
+  if (dia === 2 && tipo !== "consulta") {
+    return { ok: false, motivo: "Los martes solo atendemos servicios de veterinaria; el grooming no está disponible ese día. ¿Le agendo otro día, o prefiere una consulta veterinaria el martes?" };
+  }
+
+  const open = 540;                       // 9:00
+  const close = dia === 0 ? 780 : 1080;   // domingo 13:00, resto 18:00
+  const lastStart = close - DUR;          // ultima cita que cierra a tiempo
+
+  if (m < open || m > lastStart) {
+    return {
+      ok: false,
+      motivo: `Ese horario está fuera de nuestro horario de atención. El ${nombres[dia]} atendemos de ${fmt(open)} a ${fmt(close)} (la última cita es a las ${fmt(lastStart)}). ¿Le agendo a la hora disponible más cercana dentro de ese rango?`,
+    };
+  }
+  return { ok: true };
+}
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -171,6 +200,13 @@ async function handleAgendarCita(
   const sl = (servicio + " " + motivo).toLowerCase();
   const tipo = /ba[ñn]o|corte|grooming|peluquer|desenred|deslan/.test(sl) ? "grooming" : "consulta";
 
+  // CANDADO DE HORARIO: rechaza dias/horas fuera de atencion
+  const chk = validarHorario(fechaISO, hora, tipo);
+  if (!chk.ok) {
+    console.log("agendarCita rechazada por horario:", chk.motivo);
+    return chk.motivo;
+  }
+
   // Vincular clienteid del CRM (opcional, no bloquea)
   let clienteid: string | null = null;
   try {
@@ -186,7 +222,7 @@ async function handleAgendarCita(
     id: Date.now(),
     fecha: fechaISO,
     hora,
-    duracion: 60,
+    duracion: 45,
     tipo,
     empleado: String(args.empleado ?? "").trim(),
     estado: "pendiente",
