@@ -42,6 +42,61 @@ function validarHorario(fechaISO: string, hora: string, tipo: string): { ok: boo
   return { ok: true };
 }
 
+// --- Fecha/hora en horario de República Dominicana (America/Santo_Domingo, UTC-4) ---
+const TZ = "America/Santo_Domingo";
+const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+function hoyRDiso(): string {
+  // en-CA produce YYYY-MM-DD
+  return new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+}
+
+function horaRD(): string {
+  return new Date().toLocaleTimeString("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+}
+
+// Convierte lo que diga el cliente ("hoy", "mañana", "el viernes", "28/06", "2026-06-28")
+// a una fecha real YYYY-MM-DD usando SIEMPRE la fecha actual de RD como base.
+function parseFechaRD(raw: string): string {
+  const hoyISO = hoyRDiso();
+  const base = new Date(hoyISO + "T12:00:00Z");
+  const addDays = (n: number) => { const d = new Date(base); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const s = (raw || "").toLowerCase().trim();
+  if (!s) return hoyISO;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/pasado\s+ma[ñn]ana/.test(s)) return addDays(2);
+  if (/\bma[ñn]ana\b/.test(s)) return addDays(1);
+  if (/\bhoy\b/.test(s)) return hoyISO;
+  const dows: Record<string, number> = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, "miércoles": 3, jueves: 4, viernes: 5, sabado: 6, "sábado": 6 };
+  for (const [k, v] of Object.entries(dows)) {
+    if (s.includes(k)) {
+      const cur = base.getUTCDay();
+      let diff = (v - cur + 7) % 7;
+      if (diff === 0) diff = 7; // "el lunes" = el próximo lunes
+      return addDays(diff);
+    }
+  }
+  const m = s.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+  if (m) {
+    const dd = +m[1], mm = +m[2];
+    let yy = m[3] ? +m[3] : +hoyISO.slice(0, 4);
+    if (yy < 100) yy += 2000;
+    const mk = (y: number) => `${y}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    let iso = mk(yy);
+    if (!m[3] && iso < hoyISO) iso = mk(yy + 1); // si ya pasó este año, usar el próximo
+    return iso;
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? hoyISO : d.toISOString().slice(0, 10);
+}
+
+function handleFechaHora(): string {
+  const iso = hoyRDiso();
+  const d = new Date(iso + "T12:00:00Z");
+  return `Hoy es ${DIAS[d.getUTCDay()]} ${d.getUTCDate()} de ${MESES[d.getUTCMonth()]} de ${d.getUTCFullYear()}. La fecha en formato corto es ${iso} y la hora actual es ${horaRD()}.`;
+}
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -71,6 +126,15 @@ Deno.serve(async (req: Request) => {
   console.log("vapi-tools BODY:", JSON.stringify(body));
 
   const msg = (body.message ?? body) as Record<string, unknown>;
+
+  // Reporte de fin de llamada: guardamos el resumen para la app (pestaña Llamadas)
+  const msgType = String(msg.type ?? "");
+  if (msgType === "end-of-call-report" || msgType === "report") {
+    await guardarLlamada(msg);
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
 
   // Las tool calls pueden venir en varios campos según la versión de Vapi
   const rawCalls = (
@@ -105,6 +169,8 @@ Deno.serve(async (req: Request) => {
       results.push({ toolCallId: id, result: await handleObtenerInfoCliente(args) });
     } else if (name === "agendarCita") {
       results.push({ toolCallId: id, result: await handleAgendarCita(args, msg) });
+    } else if (name === "obtenerFechaHora" || name === "fechaHoy") {
+      results.push({ toolCallId: id, result: handleFechaHora() });
     } else {
       results.push({ toolCallId: id, result: "Herramienta desconocida: " + name });
     }
@@ -158,7 +224,7 @@ async function handleObtenerInfoCliente(args: Record<string, unknown>): Promise<
 
   if (ventas && ventas.length > 0) {
     const ultima = ventas[0];
-    info.push(`Última visita: ${ultima.fecha} (${ultima.area ?? ""} — ${ultima.servicio ?? ""} RD$${ultima.total ?? 0})`);
+    info.push(`Última visita: ${ultima.fecha} (${ultima.area ?? ""} — ${ultima.servicio ?? ""} ${ultima.total ?? 0} pesos)`);
   } else {
     info.push("No se encontraron visitas anteriores.");
   }
@@ -176,13 +242,14 @@ async function handleObtenerInfoCliente(args: Record<string, unknown>): Promise<
 }
 
 // Devuelve la presentación de NexGard Spectra y su precio según el peso (kg).
+// Precios en texto hablable ("1462 pesos") para que el TTS los pronuncie bien.
 function nexgardPorPeso(peso: number | null): string | null {
   if (!peso || peso <= 0) return null;
-  if (peso <= 3) return "NexGard Spectra 2–3 kg (RD$1,416)";
-  if (peso <= 7) return "NexGard Spectra 3–7 kg (RD$1,462)";
-  if (peso <= 15) return "NexGard Spectra 7.6–15 kg (RD$1,559)";
-  if (peso <= 30) return "NexGard Spectra 15–30 kg (RD$1,771)";
-  return "NexGard Spectra 30–60 kg (RD$1,992)";
+  if (peso <= 3) return "NexGard Spectra de 2 a 3 kg (1416 pesos)";
+  if (peso <= 7) return "NexGard Spectra de 3 a 7 kg (1462 pesos)";
+  if (peso <= 15) return "NexGard Spectra de 7.6 a 15 kg (1559 pesos)";
+  if (peso <= 30) return "NexGard Spectra de 15 a 30 kg (1771 pesos)";
+  return "NexGard Spectra de 30 a 60 kg (1992 pesos)";
 }
 
 // Analiza las ventas y dice si la protección antiparasitaria está vencida.
@@ -224,6 +291,78 @@ function estadoAntiparasitario(
 }
 
 // ---------------------------------------------------------------------------
+// Guarda el resumen de la llamada (end-of-call-report de Vapi) en pc_llamadas
+// y, si la llamada generó una cita, le adjunta el resumen a esa cita.
+
+async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
+  try {
+    const call = (msg.call as Record<string, unknown>) ?? {};
+    const customer = (call.customer as Record<string, unknown>) ?? {};
+    const telefono = String(customer.number ?? "").replace(/\D/g, "").slice(-10);
+
+    const analysis = (msg.analysis as Record<string, unknown>) ?? {};
+    const resumen = String(msg.summary ?? analysis.summary ?? "").trim();
+    const transcript = String(msg.transcript ?? "").trim();
+
+    const startedAt = String(msg.startedAt ?? call.startedAt ?? "");
+    const endedAt = String(msg.endedAt ?? call.endedAt ?? "");
+    let duracion = 0;
+    if (startedAt && endedAt) {
+      duracion = Math.max(0, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000));
+    }
+    const grabacion = String(msg.recordingUrl ?? msg.stereoRecordingUrl ?? "");
+    const motivo = String(msg.endedReason ?? "").trim();
+
+    const fechaISO = hoyRDiso();
+    const hora = horaRD();
+
+    // Enlazar con la cita recién creada en esta llamada (mismo teléfono)
+    let citaid: number | null = null;
+    let nombrecliente = "";
+    let nombremascota = "";
+    if (telefono) {
+      const { data: citas } = await supabase
+        .from("pc_citas")
+        .select("*")
+        .eq("telefono", telefono)
+        .order("id", { ascending: false })
+        .limit(1);
+      const c = citas?.[0];
+      if (c) {
+        citaid = Number(c.id) || null;
+        nombrecliente = String(c.nombrecliente ?? "");
+        nombremascota = String(c.nombremascota ?? "");
+        if (resumen) {
+          const notas = `Agendada por Sofía (agente de voz)\nResumen de la llamada: ${resumen}`;
+          await supabase.from("pc_citas").update({ notas }).eq("id", c.id);
+        }
+      }
+    }
+
+    const { error } = await supabase.from("pc_llamadas").insert({
+      id: Date.now(),
+      fecha: fechaISO,
+      hora,
+      telefono: telefono || null,
+      nombrecliente: nombrecliente || null,
+      nombremascota: nombremascota || null,
+      resumen: resumen || null,
+      transcript: transcript || null,
+      duracion,
+      grabacionurl: grabacion || null,
+      motivofin: motivo || null,
+      citaid,
+      origen: "sofia",
+    });
+
+    if (error) console.error("Error guardando en pc_llamadas:", JSON.stringify(error));
+    else console.log("Llamada guardada:", telefono, fechaISO, "dur", duracion, "s");
+  } catch (e) {
+    console.error("guardarLlamada error:", String(e));
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 async function handleAgendarCita(
   args: Record<string, unknown>,
@@ -243,9 +382,9 @@ async function handleAgendarCita(
     args.nombrePropietario ?? args.propietario ?? (msg as Record<string, unknown>)?.nombrePropietario ?? "",
   ).trim();
 
-  // Fecha ISO (YYYY-MM-DD): si no parsea, usar hoy
-  const d = new Date(fechaRaw);
-  const fechaISO = (fechaRaw && !isNaN(d.getTime())) ? d.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+  // Fecha ISO (YYYY-MM-DD): interpreta "hoy"/"mañana"/"el viernes"/"28/06"/ISO
+  // usando SIEMPRE la fecha real de RD como base.
+  const fechaISO = parseFechaRD(fechaRaw);
 
   // Teléfono del cliente que llama
   const callObj = (msg.call as Record<string, unknown>) ?? {};

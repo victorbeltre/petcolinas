@@ -1264,6 +1264,7 @@ const TABS = [
   { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
   { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
   { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
+  { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
 const VENTAS_SEED = [
@@ -3913,6 +3914,93 @@ function Facturas({ ventas, clientes }) {
 // ─────────────────────────────────────────────────────────────
 // VOZ IA — Generador de voz y guiones con IA para PetColinas
 // ─────────────────────────────────────────────────────────────
+function Llamadas() {
+  const E = React.createElement;
+  const C = { card:"#fff", border:"#e5e7eb", texto:"#1f2937", grisd:"#6b7280", verde:"#1a6b3a", morado:"#6b21a8", moradoL:"#f3e8ff" };
+  const [llamadas, , loaded, , , refetch] = useSupabase("pc_llamadas", []);
+  const [sel, setSel] = React.useState(null);
+  const [callStatus, setCallStatus] = React.useState({});
+
+  const lista = [...(llamadas || [])].sort((a, b) =>
+    (String(b.fecha || "") + String(b.hora || "")).localeCompare(String(a.fecha || "") + String(a.hora || "")));
+
+  const fmtDur = (s) => { s = Number(s) || 0; const m = Math.floor(s / 60), ss = s % 60; return m + "m " + String(ss).padStart(2, "0") + "s"; };
+  const fmtFecha = (f) => { try { const [y, m, d] = String(f || "").split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("es-DO", { weekday: "short", day: "numeric", month: "short" }); } catch { return f || ""; } };
+
+  const abrirWA = (ll) => {
+    const tl = (ll.telefono || "").replace(/\D/g, "");
+    const w = tl.length >= 11 ? tl : (tl ? "1" + tl : "");
+    if (!w) { alert("Esta llamada no tiene teléfono registrado."); return; }
+    const m = ll.nombremascota || "tu mascota";
+    const msg = `Hola${ll.nombrecliente ? " " + ll.nombrecliente : ""}, le saludamos de PetColinas 🐾. Damos seguimiento a la llamada sobre ${m}. ¿En qué le podemos ayudar?`;
+    window.open("https://wa.me/" + w + "?text=" + encodeURIComponent(msg), "_blank");
+  };
+
+  const llamarSofia = async (ll) => {
+    if (!ll.telefono) { alert("Esta llamada no tiene teléfono registrado."); return; }
+    setCallStatus(s => ({ ...s, [ll.id]: "llamando" }));
+    try {
+      const r = await fetch(SUPA_URL + "/functions/v1/vapi-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY },
+        body: JSON.stringify({ nombreMascota: ll.nombremascota || "", nombrePropietario: ll.nombrecliente || "", telefono: ll.telefono, motivo: "seguimiento" })
+      });
+      setCallStatus(s => ({ ...s, [ll.id]: r.ok ? "ok" : "error" }));
+    } catch { setCallStatus(s => ({ ...s, [ll.id]: "error" })); }
+    setTimeout(() => setCallStatus(s => ({ ...s, [ll.id]: null })), 6000);
+  };
+
+  const btn = (bg, txt, onClick, extra) => E("button", { onClick, style: { background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", ...(extra || {}) } }, txt);
+
+  return E("div", { style: { maxWidth: 900, margin: "0 auto" } },
+    E("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 } },
+      E("div", null,
+        E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800, color: C.texto } }, "📞 Llamadas de Sofía"),
+        E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Registro de llamadas del agente de voz. Toca una para ver el resumen y dar seguimiento.")
+      ),
+      E("button", { onClick: refetch, style: { background: "#f3f4f6", color: C.texto, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "🔄 Actualizar")
+    ),
+    !loaded && E("div", { style: { textAlign: "center", padding: "60px 20px", color: C.grisd } }, "⏳ Cargando llamadas…"),
+    loaded && lista.length === 0 && E("div", { style: { textAlign: "center", padding: "60px 20px", color: C.grisd, background: C.card, borderRadius: 12, border: "1px dashed " + C.border } },
+      E("div", { style: { fontSize: 34, marginBottom: 10 } }, "📭"),
+      E("div", { style: { fontWeight: 700, marginBottom: 6 } }, "Aún no hay llamadas registradas"),
+      E("div", { style: { fontSize: 13 } }, "Cuando Sofía atienda o haga una llamada, aparecerá aquí con su resumen.")
+    ),
+    loaded && lista.map((ll) => E("div", { key: ll.id, style: { background: C.card, border: "1px solid " + C.border, borderRadius: 12, padding: "14px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(0,0,0,.04)" } },
+      E("div", { style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, cursor: "pointer" }, onClick: () => setSel(sel === ll.id ? null : ll.id) },
+        E("div", { style: { flex: 1 } },
+          E("div", { style: { fontWeight: 800, fontSize: 15, color: C.texto } },
+            "🐾 " + (ll.nombremascota || "Mascota sin nombre") + (ll.nombrecliente ? " · " + ll.nombrecliente : "")),
+          E("div", { style: { fontSize: 12, color: C.grisd, marginTop: 3 } },
+            fmtFecha(ll.fecha) + " " + (ll.hora || "") + " · ⏱️ " + fmtDur(ll.duracion) + (ll.telefono ? " · 📱 " + ll.telefono : "")),
+          ll.resumen && sel !== ll.id && E("div", { style: { fontSize: 13, color: "#374151", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } }, ll.resumen)
+        ),
+        E("div", { style: { fontSize: 18, color: C.grisd } }, sel === ll.id ? "▲" : "▼")
+      ),
+      sel === ll.id && E("div", { style: { marginTop: 12, borderTop: "1px solid " + C.border, paddingTop: 12 } },
+        E("div", { style: { background: C.moradoL, borderRadius: 10, padding: "12px 14px", marginBottom: 12 } },
+          E("div", { style: { fontWeight: 800, fontSize: 12, color: C.morado, marginBottom: 6 } }, "🤖 Resumen de la conversación"),
+          E("div", { style: { fontSize: 13, color: "#3b0764", whiteSpace: "pre-wrap", lineHeight: 1.5 } }, ll.resumen || "Sin resumen disponible para esta llamada.")
+        ),
+        ll.transcript && E("details", { style: { marginBottom: 12 } },
+          E("summary", { style: { cursor: "pointer", fontSize: 12, fontWeight: 700, color: C.grisd } }, "📝 Ver transcripción completa"),
+          E("div", { style: { fontSize: 12, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.5, marginTop: 8, maxHeight: 260, overflow: "auto", background: "#f9fafb", borderRadius: 8, padding: "10px 12px" } }, ll.transcript)
+        ),
+        ll.grabacionurl && E("audio", { controls: true, src: ll.grabacionurl, style: { width: "100%", marginBottom: 12 } }),
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+          btn("#25D366", "💬 WhatsApp", () => abrirWA(ll)),
+          ll.telefono && E("a", { href: "tel:" + ll.telefono, style: { background: "#dbeafe", color: "#1d4ed8", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, textDecoration: "none" } }, "📞 Llamar yo"),
+          btn(
+            callStatus[ll.id] === "ok" ? "#16a34a" : callStatus[ll.id] === "error" ? "#dc2626" : C.verde,
+            callStatus[ll.id] === "llamando" ? "📞 Llamando…" : callStatus[ll.id] === "ok" ? "✅ Sofía llamando" : callStatus[ll.id] === "error" ? "❌ Error" : "🤖 Llamar con Sofía",
+            () => llamarSofia(ll)
+          )
+        )
+      )
+    ))
+  );
+}
+
 function VozIA() {
   const e = React.createElement;
   const C = { fondo:"#0f172a", card:"#1e293b", border:"#334155", texto:"#f1f5f9", grisd:"#94a3b8", verde:"#1a6b3a" };
@@ -5168,6 +5256,7 @@ function PetColinasApp({ session, onLogout }) {
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
+    tab === "llamadas" && React.createElement(Llamadas, null),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
       setTab, setCrmClienteInicial
@@ -12090,6 +12179,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const [filtroFechaHasta, setFiltroFechaHasta] = React.useState("");
   const [busqueda, setBusqueda] = React.useState("");
   const [conflictoMsg, setConflictoMsg] = React.useState(null);
+  const [sofiaStatus, setSofiaStatus] = React.useState(null);
   const [crmQuery, setCrmQuery] = React.useState("");
   const [crmOpen, setCrmOpen] = React.useState(false);
   const [svcSel, setSvcSel] = React.useState("");
@@ -12259,6 +12349,19 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   };
 
   const abrirWA = (tipo, cita) => setModalWA({ tipo, mensaje: generarMensajeWA(tipo, cita), telefono: cita.telefono||"", citaId: cita.id });
+  const llamarConSofia = async (cita) => {
+    if (!cita.telefono) { alert("Esta cita no tiene teléfono registrado."); return; }
+    setSofiaStatus("llamando");
+    try {
+      const r = await fetch(SUPA_URL + "/functions/v1/vapi-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY },
+        body: JSON.stringify({ nombreMascota: cita.nombreMascota || "", nombrePropietario: cita.nombreCliente || "", telefono: cita.telefono, motivo: "seguimiento" })
+      });
+      setSofiaStatus(r.ok ? "ok" : "error");
+    } catch { setSofiaStatus("error"); }
+    setTimeout(() => setSofiaStatus(null), 6000);
+  };
   const enviarWA = (tel, msg, citaId, tipo) => { const tl = (tel || "").replace(/\D/g, ""); const telWa = tl.length >= 11 ? tl : (tl ? "1" + tl : ""); if (telWa) window.open("https://wa.me/" + telWa + "?text=" + encodeURIComponent(msg || ""), "_blank"); else alert("Esta cita no tiene tel\xE9fono registrado."); registrarMensaje(citaId, tipo); if (tipo === "confirmacion") cambiarEstado(citaId, "confirmada"); setModalWA(null); };
 
   const recordatoriosPendientes = citas.filter(c => c.fecha === manana() && c.estado !== "cancelada" && c.estado !== "noshow" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio"));
@@ -12444,6 +12547,10 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
             E("button",{onClick:agregarServicio,style:{background:C.verde,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",alignSelf:"flex-end"}},"➕ Agregar")
           )
         ),
+        (modalCita.notas||"").includes("Resumen de la llamada") && E("div",{style:{marginBottom:14,background:"#f3e8ff",border:"1px solid #c4b5fd",borderRadius:10,padding:"12px 14px"}},
+          E("div",{style:{fontWeight:800,fontSize:12,color:"#6b21a8",marginBottom:6}},"🤖 Resumen de la llamada con Sofía"),
+          E("div",{style:{fontSize:13,color:"#3b0764",whiteSpace:"pre-wrap",lineHeight:1.5}}, (modalCita.notas||"").split("Resumen de la llamada:").slice(1).join("Resumen de la llamada:").trim() || (modalCita.notas||""))
+        ),
         E("div", { style:{marginBottom:16} }, E("label",{style:labelStyle},"Notas internas 🔒"), E("textarea",{value:modalCita.notas||"",onChange:e=>setF("notas",e.target.value),placeholder:"Instrucciones especiales, comportamiento del animal...",rows:2,style:{...inputStyle,resize:"vertical"}})),
         !esNueva && modalCita.clienteId && historialCliente.length>0 && E("div",{style:{marginBottom:14}},
           E("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}},
@@ -12469,7 +12576,8 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
             ...[["confirmacion","✅ Confirmar"],["recordatorio","⏰ Mañana"],["recordatorio_hoy","🌞 Hoy"],["recordatorio_2h","⏱️ 2h"],["lista","🎉 Lista"],["reagendar","🔄 Reagendar"]].map(([tipo,lbl])=>
               E("button",{key:tipo,onClick:()=>abrirWA(tipo,modalCita),style:{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}},`💬 ${lbl}`)
             ),
-            modalCita.telefono && E("a",{href:`tel:${modalCita.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,textDecoration:"none"}},"📞 Llamar")
+            modalCita.telefono && E("a",{href:`tel:${modalCita.telefono}`,style:{background:"#dbeafe",color:"#1d4ed8",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,textDecoration:"none"}},"📞 Llamar"),
+            modalCita.telefono && E("button",{onClick:()=>llamarConSofia(modalCita),disabled:sofiaStatus==="llamando",style:{background: sofiaStatus==="ok"?"#16a34a":sofiaStatus==="error"?"#dc2626":"#1a6b3a",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}, sofiaStatus==="llamando"?"📞 Llamando…":sofiaStatus==="ok"?"✅ Sofía llamando":sofiaStatus==="error"?"❌ Error":"🤖 Llamar con Sofía")
           ),
           histMsgs.length>0 && E("div",{style:{fontSize:11,color:C.grisd}},
             E("span",{style:{fontWeight:700}},"Historial: "),
