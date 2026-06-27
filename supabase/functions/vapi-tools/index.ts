@@ -129,12 +129,13 @@ async function handleObtenerInfoCliente(args: Record<string, unknown>): Promise<
 
   const cliente = clientes?.[0];
 
+  // Trae más ventas para poder detectar la última desparasitación.
   const { data: ventas } = await supabase
     .from("pc_ventas")
-    .select("fecha, area, servicio, total")
+    .select("*")
     .ilike("cliente", `%${nombreMascota}%`)
     .order("fecha", { ascending: false })
-    .limit(5);
+    .limit(40);
 
   const { data: seguimientos } = await supabase
     .from("pc_seguimientos")
@@ -144,20 +145,27 @@ async function handleObtenerInfoCliente(args: Record<string, unknown>): Promise<
     .limit(3);
 
   const info: string[] = [];
+  let peso: number | null = null;
 
   if (cliente) {
     if (cliente.nombrepropietario) info.push(`Propietario: ${cliente.nombrepropietario}`);
     if (cliente.especie) info.push(`Especie: ${cliente.especie}`);
     if (cliente.raza) info.push(`Raza: ${cliente.raza}`);
     if (cliente.telefono) info.push(`Teléfono: ${cliente.telefono}`);
+    const p = Number(cliente.peso ?? cliente.pesokg ?? cliente.peso_kg);
+    if (!isNaN(p) && p > 0) { peso = p; info.push(`Peso: ${p} kg`); }
   }
 
   if (ventas && ventas.length > 0) {
     const ultima = ventas[0];
-    info.push(`Última visita: ${ultima.fecha} (${ultima.area} — ${ultima.servicio || ""} RD$${ultima.total || 0})`);
+    info.push(`Última visita: ${ultima.fecha} (${ultima.area ?? ""} — ${ultima.servicio ?? ""} RD$${ultima.total ?? 0})`);
   } else {
     info.push("No se encontraron visitas anteriores.");
   }
+
+  // --- Estado de la desparasitación (lo más importante para seguimiento) ---
+  const estado = estadoAntiparasitario(ventas ?? [], peso);
+  if (estado) info.push(estado);
 
   if (seguimientos && seguimientos.length > 0) {
     const seg = seguimientos[0];
@@ -165,6 +173,54 @@ async function handleObtenerInfoCliente(args: Record<string, unknown>): Promise<
   }
 
   return info.length > 0 ? info.join("\n") : "No se encontró información del cliente.";
+}
+
+// Devuelve la presentación de NexGard Spectra y su precio según el peso (kg).
+function nexgardPorPeso(peso: number | null): string | null {
+  if (!peso || peso <= 0) return null;
+  if (peso <= 3) return "NexGard Spectra 2–3 kg (RD$1,416)";
+  if (peso <= 7) return "NexGard Spectra 3–7 kg (RD$1,462)";
+  if (peso <= 15) return "NexGard Spectra 7.6–15 kg (RD$1,559)";
+  if (peso <= 30) return "NexGard Spectra 15–30 kg (RD$1,771)";
+  return "NexGard Spectra 30–60 kg (RD$1,992)";
+}
+
+// Analiza las ventas y dice si la protección antiparasitaria está vencida.
+//   NexGard/Frontline/Spot On = ciclo 30 días · Bravecto = ciclo 90 días.
+function estadoAntiparasitario(
+  ventas: Array<Record<string, unknown>>,
+  peso: number | null,
+): string | null {
+  const texto = (v: Record<string, unknown>) =>
+    `${v.servicio ?? ""} ${v.producto ?? ""} ${v.descripcion ?? ""} ${v.detalle ?? ""} ${v.area ?? ""}`.toLowerCase();
+
+  let mejor: { fecha: string; ciclo: number; nombre: string } | null = null;
+  for (const v of ventas) {
+    const t = texto(v);
+    let ciclo = 0;
+    let nombre = "";
+    if (/bravecto/.test(t)) { ciclo = 90; nombre = "Bravecto"; }
+    else if (/nexgard|next ?gard|spectra/.test(t)) { ciclo = 30; nombre = "NexGard Spectra"; }
+    else if (/frontline|spot ?on|pipeta|antiparasit|desparasit/.test(t)) { ciclo = 30; nombre = "antiparasitario"; }
+    if (!ciclo) continue;
+    const fecha = String(v.fecha ?? "");
+    if (!fecha) continue;
+    if (!mejor || fecha > mejor.fecha) mejor = { fecha, ciclo, nombre };
+  }
+
+  if (!mejor) {
+    const sug = nexgardPorPeso(peso);
+    return `Antiparasitario: NO hay compras registradas de protección antipulgas/garrapatas. Oportunidad de venta.${sug ? ` Recomendado para su peso: ${sug}.` : ""}`;
+  }
+
+  const dias = Math.floor((Date.now() - new Date(mejor.fecha + "T12:00:00Z").getTime()) / 86400000);
+  const vencido = dias > mejor.ciclo;
+  const sug = nexgardPorPeso(peso);
+  if (vencido) {
+    return `Antiparasitario VENCIDO: última dosis (${mejor.nombre}) fue hace ${dias} días el ${mejor.fecha}; el ciclo es de ${mejor.ciclo} días, así que ya está DESPROTEGIDO. Prioridad de venta.${sug ? ` Recomendado para su peso: ${sug}.` : ""}`;
+  }
+  const restan = mejor.ciclo - dias;
+  return `Antiparasitario al día: última dosis (${mejor.nombre}) hace ${dias} días el ${mejor.fecha}; le quedan ~${restan} días de protección.`;
 }
 
 // ---------------------------------------------------------------------------
