@@ -298,6 +298,7 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
   try {
     const call = (msg.call as Record<string, unknown>) ?? {};
     const customer = (call.customer as Record<string, unknown>) ?? {};
+    const callId = String(call.id ?? msg.callId ?? "").trim();
     const telefono = String(customer.number ?? "").replace(/\D/g, "").slice(-10);
 
     const analysis = (msg.analysis as Record<string, unknown>) ?? {};
@@ -312,8 +313,7 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
     if (startedAt && endedAt) {
       duracion = Math.max(0, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000));
     }
-    const grabacion = String(msg.recordingUrl ?? msg.stereoRecordingUrl ?? "");
-    const motivo = String(msg.endedReason ?? "").trim();
+    const grabacion = String(msg.recordingUrl ?? msg.stereoRecordingUrl ?? artifact.recordingUrl ?? "");
 
     const fechaISO = hoyRDiso();
     const hora = horaRD();
@@ -341,24 +341,53 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
       }
     }
 
-    const { error } = await supabase.from("pc_llamadas").insert({
-      id: Date.now(),
-      fecha: fechaISO,
-      hora,
-      telefono: telefono || null,
-      nombrecliente: nombrecliente || callerName || null,
-      nombremascota: nombremascota || null,
-      resumen: resumen || null,
-      transcript: transcript || null,
+    // Campos a completar (no pisamos con vacío lo que ya escribió vapi-trigger)
+    const patch: Record<string, unknown> = {
+      estado: "completada",
       duracion,
-      grabacionurl: grabacion || null,
-      motivofin: motivo || null,
-      citaid,
-      origen: "sofia",
-    });
+    };
+    if (resumen) patch.resumen = resumen;
+    if (transcript) patch.transcript = transcript;
+    if (grabacion) patch.grabacionurl = grabacion;
+    if (citaid != null) patch.citaid = citaid;
+    if (nombremascota) patch.nombremascota = nombremascota;
+    if (nombrecliente || callerName) patch.nombrecliente = nombrecliente || callerName;
 
-    if (error) console.error("Error guardando en pc_llamadas:", JSON.stringify(error));
-    else console.log("Llamada guardada:", telefono, fechaISO, "dur", duracion, "s");
+    // Paso A: si la llamada fue SALIENTE, vapi-trigger ya creó la fila: la completamos por callId.
+    let actualizada = false;
+    if (callId) {
+      const { data: upd, error: e1 } = await supabase
+        .from("pc_llamadas")
+        .update(patch)
+        .eq("vapicallid", callId)
+        .select("id");
+      if (e1) console.error("Error actualizando pc_llamadas por callId:", JSON.stringify(e1));
+      actualizada = Array.isArray(upd) && upd.length > 0;
+    }
+
+    // Paso B: si no había fila, la llamada fue ENTRANTE: insertamos una nueva.
+    if (!actualizada) {
+      const { error: e2 } = await supabase.from("pc_llamadas").insert({
+        vapicallid: callId || null,
+        fecha: fechaISO,
+        hora,
+        telefono: telefono || null,
+        nombrecliente: nombrecliente || callerName || null,
+        nombremascota: nombremascota || null,
+        motivo: "entrante",
+        estado: "completada",
+        resumen: resumen || null,
+        transcript: transcript || null,
+        duracion,
+        grabacionurl: grabacion || null,
+        citaid,
+        origen: "entrante",
+      });
+      if (e2) console.error("Error insertando en pc_llamadas:", JSON.stringify(e2));
+      else console.log("Llamada ENTRANTE guardada:", telefono, fechaISO, "dur", duracion, "s");
+    } else {
+      console.log("Llamada SALIENTE completada por callId:", callId, "dur", duracion, "s");
+    }
   } catch (e) {
     console.error("guardarLlamada error:", String(e));
   }
