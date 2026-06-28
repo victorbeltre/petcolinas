@@ -301,8 +301,10 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
     const telefono = String(customer.number ?? "").replace(/\D/g, "").slice(-10);
 
     const analysis = (msg.analysis as Record<string, unknown>) ?? {};
-    const resumen = String(msg.summary ?? analysis.summary ?? "").trim();
-    const transcript = String(msg.transcript ?? "").trim();
+    const artifact = (msg.artifact as Record<string, unknown>) ?? {};
+    const resumen = String(msg.summary ?? analysis.summary ?? artifact.summary ?? "").trim();
+    const transcript = String(msg.transcript ?? artifact.transcript ?? "").trim();
+    const callerName = String(customer.name ?? call.name ?? "").trim();
 
     const startedAt = String(msg.startedAt ?? call.startedAt ?? "");
     const endedAt = String(msg.endedAt ?? call.endedAt ?? "");
@@ -344,7 +346,7 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
       fecha: fechaISO,
       hora,
       telefono: telefono || null,
-      nombrecliente: nombrecliente || null,
+      nombrecliente: nombrecliente || callerName || null,
       nombremascota: nombremascota || null,
       resumen: resumen || null,
       transcript: transcript || null,

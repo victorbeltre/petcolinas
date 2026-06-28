@@ -313,7 +313,9 @@ function useSupabase(table, seed = []) {
             // Merge: filas de Supabase + filas locales (seed) que aun no estan en la nube
             const supaIds = new Set(normalized.map((r) => String(r.id)));
             const localRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
-            const merged = [...normalized, ...localRows];
+            // Ocultar también filas que el usuario borró aunque el DELETE en Supabase
+            // haya fallado (p.ej. falta política RLS DELETE): la eliminación local manda.
+            const merged = [...normalized.filter((r) => !deletedIds.current.has(String(r.id))), ...localRows];
             // Solo subir filas locales que NO sean auto-generadas (las auto se derivan de ventas)
             const porSubir = localRows.filter((r) => !r.autoGenerada);
             if (porSubir.length > 0) {
@@ -3924,26 +3926,36 @@ function Llamadas() {
   const lista = [...(llamadas || [])].sort((a, b) =>
     (String(b.fecha || "") + String(b.hora || "")).localeCompare(String(a.fecha || "") + String(a.hora || "")));
 
+  // Lectura tolerante: las filas pueden venir con distintos nombres de columna.
+  const g = (ll, ...keys) => { for (const k of keys) { if (ll[k] != null && ll[k] !== "") return ll[k]; } return ""; };
   const fmtDur = (s) => { s = Number(s) || 0; const m = Math.floor(s / 60), ss = s % 60; return m + "m " + String(ss).padStart(2, "0") + "s"; };
-  const fmtFecha = (f) => { try { const [y, m, d] = String(f || "").split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("es-DO", { weekday: "short", day: "numeric", month: "short" }); } catch { return f || ""; } };
+  const fmtFecha = (f) => {
+    const s = String(f || "").slice(0, 10);
+    const [y, m, d] = s.split("-").map(Number);
+    const dt = new Date(y, (m || 1) - 1, d || 1);
+    if (isNaN(dt.getTime())) { const d2 = new Date(f); return isNaN(d2.getTime()) ? "—" : d2.toLocaleDateString("es-DO", { weekday: "short", day: "numeric", month: "short" }); }
+    return dt.toLocaleDateString("es-DO", { weekday: "short", day: "numeric", month: "short" });
+  };
 
   const abrirWA = (ll) => {
-    const tl = (ll.telefono || "").replace(/\D/g, "");
+    const tl = String(g(ll, "telefono", "numero", "phone")).replace(/\D/g, "");
     const w = tl.length >= 11 ? tl : (tl ? "1" + tl : "");
     if (!w) { alert("Esta llamada no tiene teléfono registrado."); return; }
-    const m = ll.nombremascota || "tu mascota";
-    const msg = `Hola${ll.nombrecliente ? " " + ll.nombrecliente : ""}, le saludamos de PetColinas 🐾. Damos seguimiento a la llamada sobre ${m}. ¿En qué le podemos ayudar?`;
+    const m = g(ll, "nombremascota", "nombreMascota", "mascota") || "tu mascota";
+    const cli = g(ll, "nombrecliente", "nombreCliente", "cliente");
+    const msg = `Hola${cli ? " " + cli : ""}, le saludamos de PetColinas 🐾. Damos seguimiento a la llamada sobre ${m}. ¿En qué le podemos ayudar?`;
     window.open("https://wa.me/" + w + "?text=" + encodeURIComponent(msg), "_blank");
   };
 
   const llamarSofia = async (ll) => {
-    if (!ll.telefono) { alert("Esta llamada no tiene teléfono registrado."); return; }
+    const tel = g(ll, "telefono", "numero", "phone");
+    if (!tel) { alert("Esta llamada no tiene teléfono registrado."); return; }
     setCallStatus(s => ({ ...s, [ll.id]: "llamando" }));
     try {
       const r = await fetch(SUPA_URL + "/functions/v1/vapi-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY },
-        body: JSON.stringify({ nombreMascota: ll.nombremascota || "", nombrePropietario: ll.nombrecliente || "", telefono: ll.telefono, motivo: "seguimiento" })
+        body: JSON.stringify({ nombreMascota: g(ll, "nombremascota", "nombreMascota", "mascota"), nombrePropietario: g(ll, "nombrecliente", "nombreCliente", "cliente"), telefono: tel, motivo: "seguimiento" })
       });
       setCallStatus(s => ({ ...s, [ll.id]: r.ok ? "ok" : "error" }));
     } catch { setCallStatus(s => ({ ...s, [ll.id]: "error" })); }
@@ -3966,30 +3978,38 @@ function Llamadas() {
       E("div", { style: { fontWeight: 700, marginBottom: 6 } }, "Aún no hay llamadas registradas"),
       E("div", { style: { fontSize: 13 } }, "Cuando Sofía atienda o haga una llamada, aparecerá aquí con su resumen.")
     ),
-    loaded && lista.map((ll) => E("div", { key: ll.id, style: { background: C.card, border: "1px solid " + C.border, borderRadius: 12, padding: "14px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(0,0,0,.04)" } },
+    loaded && lista.map((ll) => {
+      const mascota = g(ll, "nombremascota", "nombreMascota", "mascota");
+      const cliente = g(ll, "nombrecliente", "nombreCliente", "cliente");
+      const tel = g(ll, "telefono", "numero", "phone");
+      const resumen = g(ll, "resumen", "summary", "resumen_llamada");
+      const transcript = g(ll, "transcript", "transcripcion", "transcripción");
+      const grab = g(ll, "grabacionurl", "grabacionUrl", "recordingurl", "recordingUrl", "grabacion");
+      const dur = g(ll, "duracion", "duration", "duracion_seg");
+      return E("div", { key: ll.id, style: { background: C.card, border: "1px solid " + C.border, borderRadius: 12, padding: "14px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(0,0,0,.04)" } },
       E("div", { style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, cursor: "pointer" }, onClick: () => setSel(sel === ll.id ? null : ll.id) },
         E("div", { style: { flex: 1 } },
           E("div", { style: { fontWeight: 800, fontSize: 15, color: C.texto } },
-            "🐾 " + (ll.nombremascota || "Mascota sin nombre") + (ll.nombrecliente ? " · " + ll.nombrecliente : "")),
+            "🐾 " + (mascota || "Mascota sin nombre") + (cliente ? " · " + cliente : "")),
           E("div", { style: { fontSize: 12, color: C.grisd, marginTop: 3 } },
-            fmtFecha(ll.fecha) + " " + (ll.hora || "") + " · ⏱️ " + fmtDur(ll.duracion) + (ll.telefono ? " · 📱 " + ll.telefono : "")),
-          ll.resumen && sel !== ll.id && E("div", { style: { fontSize: 13, color: "#374151", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } }, ll.resumen)
+            fmtFecha(g(ll, "fecha", "created_at", "createdat")) + " " + (ll.hora || "") + " · ⏱️ " + fmtDur(dur) + (tel ? " · 📱 " + tel : "")),
+          resumen && sel !== ll.id && E("div", { style: { fontSize: 13, color: "#374151", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } }, resumen)
         ),
         E("div", { style: { fontSize: 18, color: C.grisd } }, sel === ll.id ? "▲" : "▼")
       ),
       sel === ll.id && E("div", { style: { marginTop: 12, borderTop: "1px solid " + C.border, paddingTop: 12 } },
         E("div", { style: { background: C.moradoL, borderRadius: 10, padding: "12px 14px", marginBottom: 12 } },
           E("div", { style: { fontWeight: 800, fontSize: 12, color: C.morado, marginBottom: 6 } }, "🤖 Resumen de la conversación"),
-          E("div", { style: { fontSize: 13, color: "#3b0764", whiteSpace: "pre-wrap", lineHeight: 1.5 } }, ll.resumen || "Sin resumen disponible para esta llamada.")
+          E("div", { style: { fontSize: 13, color: "#3b0764", whiteSpace: "pre-wrap", lineHeight: 1.5 } }, resumen || "Sin resumen disponible para esta llamada. (Revisa que 'end-of-call-report' esté activo en Vapi a nivel del asistente.)")
         ),
-        ll.transcript && E("details", { style: { marginBottom: 12 } },
+        transcript && E("details", { style: { marginBottom: 12 } },
           E("summary", { style: { cursor: "pointer", fontSize: 12, fontWeight: 700, color: C.grisd } }, "📝 Ver transcripción completa"),
-          E("div", { style: { fontSize: 12, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.5, marginTop: 8, maxHeight: 260, overflow: "auto", background: "#f9fafb", borderRadius: 8, padding: "10px 12px" } }, ll.transcript)
+          E("div", { style: { fontSize: 12, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.5, marginTop: 8, maxHeight: 260, overflow: "auto", background: "#f9fafb", borderRadius: 8, padding: "10px 12px" } }, transcript)
         ),
-        ll.grabacionurl && E("audio", { controls: true, src: ll.grabacionurl, style: { width: "100%", marginBottom: 12 } }),
+        grab && E("audio", { controls: true, src: grab, style: { width: "100%", marginBottom: 12 } }),
         E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
           btn("#25D366", "💬 WhatsApp", () => abrirWA(ll)),
-          ll.telefono && E("a", { href: "tel:" + ll.telefono, style: { background: "#dbeafe", color: "#1d4ed8", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, textDecoration: "none" } }, "📞 Llamar yo"),
+          tel && E("a", { href: "tel:" + tel, style: { background: "#dbeafe", color: "#1d4ed8", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, textDecoration: "none" } }, "📞 Llamar yo"),
           btn(
             callStatus[ll.id] === "ok" ? "#16a34a" : callStatus[ll.id] === "error" ? "#dc2626" : C.verde,
             callStatus[ll.id] === "llamando" ? "📞 Llamando…" : callStatus[ll.id] === "ok" ? "✅ Sofía llamando" : callStatus[ll.id] === "error" ? "❌ Error" : "🤖 Llamar con Sofía",
@@ -3997,7 +4017,7 @@ function Llamadas() {
           )
         )
       )
-    ))
+    ); })
   );
 }
 
@@ -5011,7 +5031,7 @@ function PetColinasApp({ session, onLogout }) {
   const [clientes, setClientes, clientesLoaded, , deleteCliente, refetchClientes] = useSupabase("pc_clientes", CLIENTES_SEED);
   const [seguimientos, setSeguimientos, segsLoaded, , , refetchSeguimientos] = useSupabase("pc_seguimientos", SEGUIMIENTOS_SEED);
   const [inventario, setInventario, invLoaded, , deleteInv, refetchInventario] = useSupabase("pc_inventario", INVENTARIO_SEED);
-  const [citas, setCitas, , , , refetchCitas] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
+  const [citas, setCitas, , , deleteCitaRow, refetchCitas] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
   const [lastSync, setLastSync] = useState(null);
   const [pollingSync, setPollingSync] = useState(false);
   const [virtualFusionVer, setVirtualFusionVer] = useState(0);
@@ -5253,7 +5273,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
@@ -12327,8 +12347,10 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
 
   const eliminarCita = (id) => {
     if (!confirm("¿Eliminar esta cita?")) return;
-    setCitas(prev => prev.filter(c => c.id !== id));
-    deleteOne("pc_citas", id).catch(e => console.error("[eliminarCita]", e));
+    // deleteCita (deleteRow del hook) registra el id como borrado y lo elimina en
+    // Supabase; así no reaparece al refrescar aunque el DELETE remoto falle por RLS.
+    if (deleteCita) deleteCita(id);
+    else { setCitas(prev => prev.filter(c => c.id !== id)); deleteOne("pc_citas", id).catch(e => console.error("[eliminarCita]", e)); }
     cerrarModal();
   };
 
