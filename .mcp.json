@@ -2,7 +2,10 @@
   "mcpServers": {
     "n8n-mcp": {
       "type": "http",
-      "url": "https://api.n8n-mcp.com/mcp"
+      "url": "https://api.n8n-mcp.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${N8N_MCP_API_KEY}"
+      }
     }
   }
 }
