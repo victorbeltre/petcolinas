@@ -3942,18 +3942,49 @@ const CAND_PREGUNTAS = [
   ["Manejo y trato", "¿Cómo maneja a un paciente asustado o agresivo, y cómo explica un diagnóstico y su costo al dueño?", "Manejo seguro (bozal, contención, calma). Comunicación clara y empática con el dueño; transparencia con los costos. Clave para la atención al cliente."],
   ["Disponibilidad (logística)", "¿Qué disponibilidad de horario tiene, incluyendo fines de semana, y qué expectativa salarial maneja?", "Confirmar que su disponibilidad calza con el horario (Lun–Sáb 9-6, Dom 9-1) y alinear expectativa salarial desde el inicio."],
 ];
+// Vacantes disponibles. Para agregar una nueva, añade aquí { id, label, icon }.
+const CAND_PUESTOS = [
+  { id: "vet", label: "Veterinario/a", icon: "🩺" },
+  { id: "groomer", label: "Groomer / Peluquero", icon: "✂️" },
+  { id: "recepcion", label: "Recepción / Ventas", icon: "🗂️" },
+];
+const CAND_PREGUNTAS_GROOMER = [
+  ["Experiencia", "¿Cuántos años tienes bañando y cortando perros? ¿Qué razas manejas con soltura?", "Que detalle años reales y razas concretas (poodle, schnauzer, shih tzu, yorkshire). Ojo con respuestas vagas."],
+  ["Cortes de raza", "¿Sabes hacer cortes estándar por raza y cortes de tijera?", "Debe conocer patrones por raza y saber trabajar a tijera, no solo máquina."],
+  ["Manejo del animal", "¿Cómo manejas un perro nervioso o agresivo durante el baño o corte?", "Contención segura, calma, bozal si hace falta, sin lastimar. Seguridad del animal y suya."],
+  ["Herramientas", "¿Sabes usar y mantener máquinas, cuchillas y tijeras? ¿Cómo las cuidas?", "Limpieza y aceitado de cuchillas, tipos de cuchilla (#10, #7, #4), mantener filo."],
+  ["Deslanado y nudos", "¿Cómo manejas un perro muy enredado o con mucho pelo muerto?", "Deslanado correcto, cuándo rapar por bienestar, evitar tirones. Criterio, no fuerza."],
+  ["Higiene", "¿Haces corte de uñas, limpieza de oídos y glándulas anales?", "Debe poder hacer estos extras con seguridad y saber cuándo derivar al veterinario."],
+  ["Ritmo y calidad", "¿Cuántos baños o cortes puedes hacer al día manteniendo la calidad?", "Un número realista sin sacrificar calidad ni maltratar al animal por apuro."],
+  ["Disponibilidad", "¿Qué disponibilidad de horario tienes y qué expectativa salarial manejas?", "Que calce con Lun–Sáb 9-6, Dom 9-1. Alinear salario/comisión desde el inicio."],
+];
+const CAND_PREGUNTAS_RECEPCION = [
+  ["Atención al cliente", "¿Qué experiencia tienes atendiendo público y teléfono?", "Trato cálido, paciencia, buena dicción. Experiencia en atención directa."],
+  ["Agenda y citas", "¿Has manejado agenda de citas o reservaciones?", "Organización, confirmar citas, evitar choques de horario."],
+  ["Ventas", "¿Tienes experiencia vendiendo productos o servicios?", "Capacidad de ofrecer productos (antiparasitarios, alimentos) sin presionar."],
+  ["Cobros y caja", "¿Has manejado caja: efectivo, tarjeta y transferencias?", "Cuadre de caja, honestidad, manejo de distintos métodos de pago."],
+  ["Herramientas", "¿Manejas computadora, WhatsApp y sistemas de registro?", "Nivel básico-intermedio de computadora y apps; se puede entrenar en el sistema."],
+  ["Manejo de quejas", "¿Cómo manejas a un cliente molesto o una queja?", "Calma, escucha, solución; escalar cuando corresponde sin discutir."],
+  ["Disponibilidad", "¿Qué disponibilidad de horario tienes y qué expectativa salarial manejas?", "Que calce con Lun–Sáb 9-6, Dom 9-1. Alinear salario desde el inicio."],
+];
+const CAND_PREGUNTAS_POR_PUESTO = { vet: CAND_PREGUNTAS, groomer: CAND_PREGUNTAS_GROOMER, recepcion: CAND_PREGUNTAS_RECEPCION };
 
 function Candidatos() {
   const E = React.createElement;
   const C = { navy: "#12324a", navy2: "#1c4a6b", orange: "#F2901C", teal: "#29A6C4", card: "#fff", border: "#e6ddcc", grisd: "#6b7b88", green: "#2e8b57", greenbg: "#e4f3ea", yellow: "#c98a10", yellowbg: "#fdf3d9", nobg: "#fbe9e7", nofg: "#c0392b", cream: "#FCF8F0" };
-  const seed = CANDIDATOS_VET.map((c) => ({ id: c.id, nombre: c.name, estado: "Por contactar", notas: "" }));
-  const [rows, setRows, loaded] = useSupabase("pc_candidatos", seed);
+  const seed = CANDIDATOS_VET.map((c) => ({ id: c.id, puesto: "vet", nombre: c.name, estado: "Por contactar", notas: "" }));
+  const [rows, setRows, loaded, , deleteRow] = useSupabase("pc_candidatos", seed);
+  const [puesto, setPuesto] = React.useState("vet");
   const [vista, setVista] = React.useState("cands");
   const [filter, setFilter] = React.useState("todos");
   const [openForm, setOpenForm] = React.useState({});
   const [openQ, setOpenQ] = React.useState({});
   const [toastMsg, setToastMsg] = React.useState("");
+  const [nuevoOpen, setNuevoOpen] = React.useState(false);
+  const [nuevo, setNuevo] = React.useState({ nombre: "", telefono: "", email: "", tier: "revisar", evalt: "" });
 
+  const puestoLabel = (CAND_PUESTOS.find((p) => p.id === puesto) || {}).label || "";
+  const staticIds = new Set(CANDIDATOS_VET.map((c) => String(c.id)));
   const byId = {}; (rows || []).forEach((r) => { byId[String(r.id)] = r; });
   const getEstado = (id) => (byId[String(id)] && byId[String(id)].estado) || "Por contactar";
   const getNotas = (id) => (byId[String(id)] && byId[String(id)].notas) || "";
@@ -3961,21 +3992,39 @@ function Candidatos() {
     const ex = prev.find((r) => String(r.id) === String(id));
     if (ex) return prev.map((r) => String(r.id) === String(id) ? { ...r, ...patch } : r);
     const base = CANDIDATOS_VET.find((c) => c.id === id);
-    return [...prev, { id, nombre: base ? base.name : "", estado: "Por contactar", notas: "", ...patch }];
+    return [...prev, { id, puesto: base ? "vet" : puesto, nombre: base ? base.name : "", estado: "Por contactar", notas: "", ...patch }];
   });
   const toast = (m) => { setToastMsg(m); setTimeout(() => setToastMsg(""), 1600); };
   const copiar = (t) => { try { navigator.clipboard.writeText(t); toast("Mensaje copiado ✓"); } catch { toast("No se pudo copiar"); } };
-  const waLink = (c) => "https://wa.me/" + c.phone + "?text=" + encodeURIComponent(c.msg);
+  const getPhone = (c) => String(c.phone || c.telefono || "").replace(/\D/g, "");
+  const getMsg = (c) => c.msg || `Hola ${c.name || ""}, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su interés en la vacante de ${puestoLabel}. Nos gustaría conocerle mejor. ¿Tiene disponibilidad esta semana para una breve entrevista? Gracias.`;
+  const waLink = (c) => "https://wa.me/" + getPhone(c) + "?text=" + encodeURIComponent(getMsg(c));
 
-  const pass = (c) => filter === "alta" ? c.tier === "alta" : filter === "exeq" ? c.exeq === "Sí" : filter === "grad" ? c.grad.startsWith("Sí") : true;
-  const lista = CANDIDATOS_VET.filter(pass);
-  const nG = CANDIDATOS_VET.filter((c) => c.grad.startsWith("Sí")).length;
-  const nE = CANDIDATOS_VET.filter((c) => c.exeq === "Sí").length;
-  const nNear = CANDIDATOS_VET.filter((c) => c.cerca.startsWith("Muy") || c.cerca === "Cerca").length;
+  const agregar = () => {
+    if (!nuevo.nombre.trim()) { toast("Escribe al menos el nombre"); return; }
+    const id = Date.now();
+    setRows((prev) => [...prev, { id, puesto, nombre: nuevo.nombre.trim(), telefono: nuevo.telefono.trim(), email: nuevo.email.trim(), tier: nuevo.tier, estado: "Por contactar", notas: "", evalt: nuevo.evalt.trim() }]);
+    setNuevo({ nombre: "", telefono: "", email: "", tier: "revisar", evalt: "" });
+    setNuevoOpen(false);
+    toast("Candidato agregado ✓");
+  };
+  const eliminar = (id) => { if (!confirm("¿Eliminar este candidato?")) return; if (deleteRow) deleteRow(id); toast("Candidato eliminado"); };
+
+  // Candidatos del puesto: estáticos (solo vet) + manuales guardados en Supabase
+  const manual = (rows || []).filter((r) => String(r.puesto || "vet") === puesto && !staticIds.has(String(r.id)))
+    .map((r) => ({ id: r.id, name: r.nombre || "(sin nombre)", disp: r.telefono || "", phone: r.telefono || "", email: r.email || "", tier: r.tier || "revisar", eval: r.evalt || r.eval || "", manual: true }));
+  const base = puesto === "vet" ? CANDIDATOS_VET : [];
+  const todosPuesto = [...base, ...manual];
+  const pass = (c) => filter === "alta" ? c.tier === "alta" : filter === "exeq" ? c.exeq === "Sí" : filter === "grad" ? (c.grad || "").startsWith("Sí") : true;
+  const lista = todosPuesto.filter(pass);
+
+  const nAlta = todosPuesto.filter((c) => c.tier === "alta").length;
+  const nProc = todosPuesto.filter((c) => { const e = getEstado(c.id); return e === "Entrevista agendada" || e === "En evaluación"; }).length;
+  const nContrat = todosPuesto.filter((c) => getEstado(c.id) === "Contratado").length;
 
   const tierColor = { alta: C.green, revisar: C.orange, futuro: "#9aa7b1" };
   const tierBg = { alta: C.greenbg, revisar: C.yellowbg, futuro: "#ececec" };
-  const pill = (txt, bg, fg) => E("span", { style: { fontSize: 11.5, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: bg || "#f1f5f7", color: fg || C.navy2, display: "inline-flex", alignItems: "center", gap: 4 } }, txt);
+  const pill = (key, txt, bg, fg) => E("span", { key, style: { fontSize: 11.5, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: bg || "#f1f5f7", color: fg || C.navy2, display: "inline-flex", alignItems: "center", gap: 4 } }, txt);
 
   const statTile = (n, l, color) => E("div", { style: { background: C.card, borderRadius: 14, padding: "16px 18px", boxShadow: "0 6px 22px rgba(18,50,74,.08)" } },
     E("div", { style: { fontWeight: 800, fontSize: 30, color: color || C.navy, fontFamily: "Georgia,serif" } }, n),
@@ -3985,36 +4034,44 @@ function Candidatos() {
 
   const tabBtn = (id, label) => E("button", { onClick: () => setVista(id), style: { fontWeight: 700, fontSize: 15, padding: "10px 20px", borderRadius: 999, border: "none", background: vista === id ? C.navy : "#fff", color: vista === id ? "#fff" : C.navy, cursor: "pointer", boxShadow: "0 6px 22px rgba(18,50,74,.08)" } }, label);
 
+  const puestoBtn = (p) => E("button", { key: p.id, onClick: () => { setPuesto(p.id); setFilter("todos"); }, style: { fontWeight: 700, fontSize: 14, padding: "9px 16px", borderRadius: 999, border: "1.5px solid " + (puesto === p.id ? C.navy : C.border), background: puesto === p.id ? C.navy : "#fff", color: puesto === p.id ? "#fff" : C.navy, cursor: "pointer" } }, p.icon + " " + p.label);
+
+  const inp = (val, on, ph) => E("input", { value: val, onChange: (e) => on(e.target.value), placeholder: ph, style: { fontSize: 13, border: "1.5px solid " + C.border, borderRadius: 8, padding: "8px 10px", width: "100%" } });
+
   const tarjeta = (c) => {
     const estado = getEstado(c.id);
     const notas = getNotas(c.id);
     const abierto = !!openForm[c.id];
-    return E("div", { key: c.id, style: { background: C.card, borderRadius: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)", overflow: "hidden", borderLeft: "6px solid " + tierColor[c.tier], display: "flex", flexDirection: "column" } },
+    const tier = c.tier || "revisar";
+    const pills = [];
+    if (c.grad) pills.push(pill("g", "🎓 " + c.grad, c.grad.startsWith("Sí") ? C.greenbg : C.nobg, c.grad.startsWith("Sí") ? C.green : C.nofg));
+    if (c.exeq) pills.push(pill("e", "📋 Exequátur: " + c.exeq, c.exeq === "Sí" ? C.greenbg : c.exeq === "En trámite" ? C.yellowbg : C.nobg, c.exeq === "Sí" ? C.green : c.exeq === "En trámite" ? C.yellow : C.nofg));
+    if (c.exp) pills.push(pill("x", "⏱ " + c.exp));
+    if (c.uni) pills.push(pill("u", "🏫 " + c.uni));
+    if (c.sector) pills.push(pill("s", "📍 " + c.sector));
+    return E("div", { key: c.id, style: { background: C.card, borderRadius: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)", overflow: "hidden", borderLeft: "6px solid " + tierColor[tier], display: "flex", flexDirection: "column" } },
       E("div", { style: { padding: "16px 18px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 } },
         E("div", null,
           E("div", { style: { fontWeight: 700, fontSize: 18, color: C.navy } }, c.name),
-          E("div", { style: { fontSize: 11, color: "#8a97a1", fontWeight: 600, marginTop: 1 } }, "#" + c.id + " · " + c.disp),
-          E("div", { style: { fontSize: 11, color: "#8a97a1", marginTop: 1 } }, c.email)
+          E("div", { style: { fontSize: 11, color: "#8a97a1", fontWeight: 600, marginTop: 1 } }, (c.disp || getPhone(c) || "sin teléfono")),
+          c.email && E("div", { style: { fontSize: 11, color: "#8a97a1", marginTop: 1 } }, c.email)
         ),
-        E("span", { style: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap", background: tierBg[c.tier], color: tierColor[c.tier] } }, CAND_TIERL[c.tier])
+        E("span", { style: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap", background: tierBg[tier], color: tierColor[tier] } }, CAND_TIERL[tier])
       ),
-      E("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, padding: "0 18px 12px" } },
-        pill("🎓 " + c.grad, c.grad.startsWith("Sí") ? C.greenbg : C.nobg, c.grad.startsWith("Sí") ? C.green : C.nofg),
-        pill("📋 Exequátur: " + c.exeq, c.exeq === "Sí" ? C.greenbg : c.exeq === "En trámite" ? C.yellowbg : C.nobg, c.exeq === "Sí" ? C.green : c.exeq === "En trámite" ? C.yellow : C.nofg),
-        pill("⏱ " + c.exp), pill("🏫 " + c.uni), pill("📍 " + c.sector)
-      ),
-      E("div", { style: { fontSize: 13, color: "#4a5a66", padding: "0 18px 12px" } }, c.eval),
-      E("button", { onClick: () => setOpenForm((s) => ({ ...s, [c.id]: !s[c.id] })), style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "1.5px solid " + C.border, background: "#eef4f7", color: C.navy, cursor: "pointer", margin: "0 18px 12px", textAlign: "center" } }, abierto ? "▲ Ocultar respuestas del formulario" : "📄 Ver respuestas del formulario"),
-      abierto && E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px" } },
+      pills.length > 0 && E("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, padding: "0 18px 12px" } }, pills),
+      c.eval && E("div", { style: { fontSize: 13, color: "#4a5a66", padding: "0 18px 12px" } }, c.eval),
+      c.form && E("button", { onClick: () => setOpenForm((s) => ({ ...s, [c.id]: !s[c.id] })), style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "1.5px solid " + C.border, background: "#eef4f7", color: C.navy, cursor: "pointer", margin: "0 18px 12px", textAlign: "center" } }, abierto ? "▲ Ocultar respuestas del formulario" : "📄 Ver respuestas del formulario"),
+      c.form && abierto && E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px" } },
         E("div", { style: { fontWeight: 700, fontSize: 12, color: C.teal, textTransform: "uppercase", letterSpacing: .5, marginBottom: 8 } }, "Respuestas del formulario"),
         c.form.map((a, i) => E("div", { key: i, style: { marginBottom: 9, paddingBottom: 9, borderBottom: i < c.form.length - 1 ? "1px dashed " + C.border : "none" } },
           E("div", { style: { fontSize: 11.5, fontWeight: 700, color: C.navy } }, CAND_FQ[i]),
           E("div", { style: { fontSize: 12.5, color: "#3d4d59", marginTop: 1 } }, a)))
       ),
-      E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "11px 13px", fontSize: 12.5, color: "#3d4d59" } }, c.msg),
+      E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "11px 13px", fontSize: 12.5, color: "#3d4d59" } }, getMsg(c)),
       E("div", { style: { display: "flex", gap: 8, padding: "0 18px 14px", flexWrap: "wrap" } },
-        E("a", { href: waLink(c), target: "_blank", style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, background: "#25D366", color: "#fff", textDecoration: "none" } }, "💬 Abrir WhatsApp"),
-        E("button", { onClick: () => copiar(c.msg), style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "1.5px solid " + C.border, background: "#fff", color: C.navy, cursor: "pointer" } }, "📋 Copiar mensaje")
+        getPhone(c) && E("a", { href: waLink(c), target: "_blank", style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, background: "#25D366", color: "#fff", textDecoration: "none" } }, "💬 Abrir WhatsApp"),
+        E("button", { onClick: () => copiar(getMsg(c)), style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "1.5px solid " + C.border, background: "#fff", color: C.navy, cursor: "pointer" } }, "📋 Copiar mensaje"),
+        c.manual && E("button", { onClick: () => eliminar(c.id), style: { fontWeight: 600, fontSize: 13, padding: "9px 12px", borderRadius: 9, border: "1.5px solid " + C.nobg, background: C.nobg, color: C.nofg, cursor: "pointer" } }, "🗑")
       ),
       E("div", { style: { marginTop: "auto", borderTop: "1px solid " + C.border, padding: "12px 18px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
         E("label", { style: { fontSize: 11.5, fontWeight: 600, color: C.grisd } }, "Estado:"),
@@ -4024,28 +4081,46 @@ function Candidatos() {
     );
   };
 
+  const preguntas = CAND_PREGUNTAS_POR_PUESTO[puesto] || [];
+
   return E("div", { style: { maxWidth: 1180, margin: "0 auto" } },
     E("div", { style: { marginBottom: 6 } },
-      E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800, color: C.navy } }, "Candidatos — Vacante Veterinario/a 🐾"),
-      E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "El estado y las notas se guardan automáticamente y se sincronizan con Supabase.")
+      E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800, color: C.navy } }, "Candidatos — Vacante " + puestoLabel + " 🐾"),
+      E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Elige la vacante, revisa los candidatos y agrega tus notas. Todo se guarda y sincroniza con Supabase.")
     ),
-    E("div", { style: { display: "flex", gap: 8, margin: "18px 0" } }, tabBtn("cands", "Candidatos"), tabBtn("qs", "Preguntas de entrevista")),
+    E("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, margin: "14px 0" } }, CAND_PUESTOS.map(puestoBtn)),
+    E("div", { style: { display: "flex", gap: 8, marginBottom: 18 } }, tabBtn("cands", "Candidatos"), tabBtn("qs", "Preguntas de entrevista")),
     vista === "cands" && E("div", null,
       E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 } },
-        statTile(CANDIDATOS_VET.length, "Aplicaciones", C.navy), statTile(nG, "Ya graduados/as", C.teal), statTile(nE, "Con exequátur", C.orange), statTile(nNear, "Viven cerca", C.navy)),
-      E("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 } }, chip("todos", "Todos"), chip("alta", "Prioridad alta"), chip("exeq", "Con exequátur"), chip("grad", "Graduados")),
+        statTile(todosPuesto.length, "Candidatos", C.navy), statTile(nAlta, "Prioridad alta", C.green), statTile(nProc, "En proceso", C.orange), statTile(nContrat, "Contratados", C.teal)),
+      E("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 } },
+        chip("todos", "Todos"), chip("alta", "Prioridad alta"),
+        puesto === "vet" && chip("exeq", "Con exequátur"), puesto === "vet" && chip("grad", "Graduados")),
+      E("div", { style: { marginBottom: 18 } },
+        E("button", { onClick: () => setNuevoOpen((v) => !v), style: { fontWeight: 700, fontSize: 13, padding: "9px 16px", borderRadius: 9, border: "1.5px dashed " + C.teal, background: "#fff", color: C.teal, cursor: "pointer" } }, nuevoOpen ? "✕ Cancelar" : "➕ Agregar candidato a " + puestoLabel),
+        nuevoOpen && E("div", { style: { marginTop: 12, background: "#fff", border: "1px solid " + C.border, borderRadius: 12, padding: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)" } },
+          E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 10 } },
+            inp(nuevo.nombre, (v) => setNuevo((n) => ({ ...n, nombre: v })), "Nombre completo *"),
+            inp(nuevo.telefono, (v) => setNuevo((n) => ({ ...n, telefono: v })), "Teléfono (ej. 8095551234)"),
+            inp(nuevo.email, (v) => setNuevo((n) => ({ ...n, email: v })), "Email"),
+            E("select", { value: nuevo.tier, onChange: (e) => setNuevo((n) => ({ ...n, tier: e.target.value })), style: { fontSize: 13, border: "1.5px solid " + C.border, borderRadius: 8, padding: "8px 10px" } },
+              E("option", { value: "alta" }, "Prioridad alta"), E("option", { value: "revisar" }, "Revisar"), E("option", { value: "futuro" }, "A futuro / auxiliar"))),
+          E("textarea", { value: nuevo.evalt, onChange: (e) => setNuevo((n) => ({ ...n, evalt: e.target.value })), placeholder: "Evaluación / resumen del candidato (opcional)", rows: 2, style: { width: "100%", fontSize: 13, border: "1.5px solid " + C.border, borderRadius: 8, padding: "8px 10px", resize: "vertical", marginBottom: 10 } }),
+          E("button", { onClick: agregar, style: { fontWeight: 700, fontSize: 13, padding: "9px 18px", borderRadius: 9, border: "none", background: C.green, color: "#fff", cursor: "pointer" } }, "Guardar candidato")
+        )
+      ),
       !loaded && E("div", { style: { color: C.grisd, padding: "10px 0" } }, "⏳ Cargando notas guardadas…"),
       E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(345px,1fr))", gap: 18, alignItems: "start" } },
-        lista.length ? lista.map(tarjeta) : E("p", { style: { color: C.grisd } }, "No hay candidatos con este filtro."))
+        lista.length ? lista.map(tarjeta) : E("p", { style: { color: C.grisd } }, "No hay candidatos para esta vacante todavía. Usa “➕ Agregar candidato”."))
     ),
     vista === "qs" && E("div", null,
-      E("div", { style: { background: "#fff", borderRadius: 14, padding: "16px 20px", boxShadow: "0 6px 22px rgba(18,50,74,.08)", marginBottom: 16, fontSize: 14, color: "#4a5a66" } }, "11 preguntas clave basadas en los servicios más frecuentes de la clínica. Toca cada una para ver qué debería mencionar el candidato."),
-      CAND_PREGUNTAS.map((q, i) => E("div", { key: i, style: { background: "#fff", borderRadius: 12, boxShadow: "0 6px 22px rgba(18,50,74,.08)", marginBottom: 10, overflow: "hidden" } },
+      E("div", { style: { background: "#fff", borderRadius: 14, padding: "16px 20px", boxShadow: "0 6px 22px rgba(18,50,74,.08)", marginBottom: 16, fontSize: 14, color: "#4a5a66" } }, "Preguntas clave para evaluar al candidato de " + puestoLabel + ". Toca cada una para ver qué debería mencionar."),
+      preguntas.length ? preguntas.map((q, i) => E("div", { key: i, style: { background: "#fff", borderRadius: 12, boxShadow: "0 6px 22px rgba(18,50,74,.08)", marginBottom: 10, overflow: "hidden" } },
         E("div", { onClick: () => setOpenQ((s) => ({ ...s, [i]: !s[i] })), style: { padding: "15px 18px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 } },
           E("span", { style: { fontWeight: 700, color: C.navy, fontSize: 14, minWidth: 170 } }, (i + 1) + ". " + q[0]),
           E("span", { style: { fontSize: 14, color: "#3d4d59", flex: 1 } }, q[1]),
           E("span", { style: { color: C.orange, fontWeight: 800 } }, openQ[i] ? "▼" : "›")),
-        openQ[i] && E("div", { style: { padding: "14px 18px", fontSize: 13, color: "#4a5a66", background: C.cream } }, E("b", { style: { color: C.navy } }, "Qué debería mencionar: "), q[2])))
+        openQ[i] && E("div", { style: { padding: "14px 18px", fontSize: 13, color: "#4a5a66", background: C.cream } }, E("b", { style: { color: C.navy } }, "Qué debería mencionar: "), q[2]))) : E("p", { style: { color: C.grisd } }, "Aún no hay preguntas para esta vacante.")
     ),
     toastMsg && E("div", { style: { position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.navy, color: "#fff", padding: "12px 22px", borderRadius: 999, fontSize: 14, fontWeight: 600, boxShadow: "0 6px 22px rgba(18,50,74,.2)", zIndex: 9999 } }, toastMsg)
   );
