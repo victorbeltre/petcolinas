@@ -4012,7 +4012,7 @@ function Candidatos() {
 
   // Candidatos del puesto: estáticos (solo vet) + manuales guardados en Supabase
   const manual = (rows || []).filter((r) => String(r.puesto || "vet") === puesto && !staticIds.has(String(r.id)))
-    .map((r) => ({ id: r.id, name: r.nombre || "(sin nombre)", disp: r.telefono || "", phone: r.telefono || "", email: r.email || "", tier: r.tier || "revisar", eval: r.evalt || r.eval || "", manual: true }));
+    .map((r) => ({ id: r.id, name: r.nombre || "(sin nombre)", disp: r.telefono || "", phone: r.telefono || "", email: r.email || "", tier: r.tier || "revisar", eval: r.evalt || r.eval || "", manual: true, origen: r.origen || "" }));
   const base = puesto === "vet" ? CANDIDATOS_VET : [];
   const todosPuesto = [...base, ...manual];
   const pass = (c) => filter === "alta" ? c.tier === "alta" : filter === "exeq" ? c.exeq === "Sí" : filter === "grad" ? (c.grad || "").startsWith("Sí") : true;
@@ -4056,7 +4056,9 @@ function Candidatos() {
           E("div", { style: { fontSize: 11, color: "#8a97a1", fontWeight: 600, marginTop: 1 } }, (c.disp || getPhone(c) || "sin teléfono")),
           c.email && E("div", { style: { fontSize: 11, color: "#8a97a1", marginTop: 1 } }, c.email)
         ),
-        E("span", { style: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap", background: tierBg[tier], color: tierColor[tier] } }, CAND_TIERL[tier])
+        E("div", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" } },
+          E("span", { style: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap", background: tierBg[tier], color: tierColor[tier] } }, CAND_TIERL[tier]),
+          c.origen === "meta" && E("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap", background: "#e7f0ff", color: "#1877F2" } }, "vía Meta"))
       ),
       pills.length > 0 && E("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, padding: "0 18px 12px" } }, pills),
       c.eval && E("div", { style: { fontSize: 13, color: "#4a5a66", padding: "0 18px 12px" } }, c.eval),
