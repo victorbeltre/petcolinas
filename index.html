@@ -1267,6 +1267,7 @@ const TABS = [
   { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
   { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
   { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa" },
+  { id: "candidatos", icon: "\u{1F9D1}‍⚕️", label: "Candidatos" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
 const VENTAS_SEED = [
@@ -3914,6 +3915,143 @@ function Facturas({ ventas, clientes }) {
   }))))));
 }
 // ─────────────────────────────────────────────────────────────
+// CANDIDATOS — Aspirantes a vacantes (vet). Estado + notas de Laura se guardan
+// en Supabase (pc_candidatos). Los datos del aspirante son estáticos aquí.
+// ─────────────────────────────────────────────────────────────
+const CAND_FQ = ["¿Eres veterinario/a graduado/a?", "¿Tienes exequátur?", "¿Tienes experiencia trabajando con mascotas?", "¿En qué año te graduaste de Medicina Veterinaria?", "¿En qué universidad te graduaste?", "¿Cuántos años de experiencia tienes?", "¿En qué sector/municipio vives?"];
+const CANDIDATOS_VET = [
+  { id: 1, tier: "alta", name: "Arianna López", phone: "18494744429", disp: "+1 849 474 4429", email: "clh031501@gmail.com", grad: "Sí", exeq: "Sí", exp: "2 años", uni: "UASD", anio: "2024", sector: "Santo Domingo Oeste", cerca: "Muy cerca", eval: "Graduada + exequátur + 2 años + vive en la zona de la clínica. Perfil completo.", form: ["si", "Si", "si", "2024", "Uasd", "2", "Santo domingo oeste"], msg: "Hola Arianna, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su aplicación a la vacante de veterinario/a. Leímos su perfil (graduada de la UASD, con exequátur) y nos interesaría conocerla mejor. ¿Tiene disponibilidad esta semana para una breve entrevista? Gracias." },
+  { id: 2, tier: "alta", name: "Dailet", phone: "18492063450", disp: "+1 849 206 3450", email: "dailet_17@hotmail.com", grad: "Sí", exeq: "Sí", exp: "3-4 años", uni: "UASD", anio: "2025", sector: "Los Restauradores (SD Este)", cerca: "Media", eval: "Graduada + exequátur, en clínica de menores desde 2022 (mejor experiencia entre los licenciados). Vive más lejos.", form: ["si", "Si", "si", "2025", "Universidad Autónoma de Santo Domingo", "Desde el 2022 estoy trabajando en la clínica de animales menores", "Los restauradores"], msg: "Hola Dailet, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su aplicación a la vacante de veterinario/a. Leímos su perfil, incluida su experiencia en clínica de animales menores, y nos interesaría conocerla mejor. ¿Tiene disponibilidad esta semana para una breve entrevista? Gracias." },
+  { id: 3, tier: "revisar", name: "Dra. Karina Sena", phone: "18494502392", disp: "+1 849 450 2392", email: "senakarina25@gmail.com", grad: "Sí", exeq: "En trámite", exp: "3 años", uni: "UNPHU", anio: "2024", sector: "Distrito Nacional", cerca: "Cerca", eval: "Graduada, 3 años en clínica, cerca. Exequátur EN TRÁMITE — confirmar plazo.", form: ["si", "Esta en Tranmite", "si", "2026, termine 2024, 3 años trabajando en clínica", "Unphu", "3", "Distrito nacional"], msg: "Hola, Dra. Sena, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su aplicación a la vacante de veterinario/a. Leímos su perfil y nos interesaría conocerla mejor y confirmar el estatus de su exequátur. ¿Tiene disponibilidad esta semana para una breve entrevista? Gracias." },
+  { id: 4, tier: "revisar", name: "Winnifer Dominguez", phone: "18496207437", disp: "+1 849 620 7437", email: "winnifervet@gmail.com", grad: "Sí", exeq: "Sí", exp: "3 meses", uni: "Universidad ISA", anio: "2021", sector: "SD Oeste (pueblo chico)", cerca: "Muy cerca", eval: "Graduada 2021 + exequátur y vive cerca, pero solo 3 meses de pasantía — experiencia práctica limitada.", form: ["si", "Si", "si", "2021", "Universidad isa", "En clinica de menores hice pasantia de 3 meses", "Santo domingo oeste pueblo chico"], msg: "Hola Winnifer, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su aplicación a la vacante de veterinario/a. Leímos su perfil y nos interesaría conocerla mejor. ¿Tiene disponibilidad esta semana para una breve entrevista? Gracias." },
+  { id: 5, tier: "futuro", name: "Liliana Angeles", phone: "18494871081", disp: "+1 849 487 1081", email: "La_biblia024@hotmail.com", grad: "No (en proceso)", exeq: "No", exp: "5 años", uni: "UASD (estudiando)", anio: "—", sector: "Santo Domingo Oeste", cerca: "Muy cerca", eval: "No graduada aún, sin exequátur, pero 5 años como auxiliar (incl. cirugías) y vive cerca. Opción para AUXILIAR.", form: ["si", "No", "si", "Aún estoy en proceso pero tengo experiencia como auxiliar incluso he participado en cirugías complejas no solo como ayudante sino como médico de cabeza", "Estoy estudiando en UASD", "5 años", "Santo Domingo oeste"], msg: "Hola Liliana, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su aplicación. La vacante actual es para veterinario/a graduado/a; no obstante, vimos su experiencia como auxiliar y nos interesaría conocerla para posibles roles de apoyo. ¿Tiene disponibilidad para conversar? Gracias." },
+  { id: 6, tier: "futuro", name: "Alondra D. Marchena", phone: "18295209062", disp: "+1 829 520 9062", email: "alondra.dariana09@gmail.com", grad: "No (se gradúa nov)", exeq: "No", exp: "1-2 años", uni: "UNPHU", anio: "Nov 2026", sector: "Altos de Arroyo Hondo III", cerca: "Media", eval: "No graduada aún — se gradúa 19 nov 2026. Sin exequátur. Prospecto a futuro.", form: ["no", "No", "si", "Hola! Presento tesis este viernes 10 de julio y me graduó el 19 de noviembre", "UNPHU", "He trabajado como pasante y médico auxiliar, actualmente estoy trabajando como médico auxiliar", "En altos de Arroyo Hondo III"], msg: "Hola Alondra, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su aplicación. Vimos que se gradúa en noviembre; la vacante es para veterinario/a graduado/a, pero nos interesaría conocerla de cara a esa fecha. ¿Tiene disponibilidad para conversar? Gracias." },
+];
+const CAND_TIERL = { alta: "Prioridad alta", revisar: "Revisar", futuro: "A futuro / auxiliar" };
+const CAND_STATUSES = ["Por contactar", "Contactado", "Entrevista agendada", "En evaluación", "Descartado", "Contratado"];
+const CAND_PREGUNTAS = [
+  ["Vacunación", "¿Qué esquema de vacunación aplica a cachorros y a gatitos? ¿A qué edad inicia y cada cuánto refuerza?", "Cachorros: primeras a las 6-8 semanas, refuerzos cada 3-4 sem hasta ~16 sem (quíntuple/séxtuple); rabia desde los 3 meses; refuerzo anual. Gatos: triple felina + leucemia + rabia. Debe manejar edades y refuerzos con soltura."],
+  ["Desparasitación", "¿Cómo maneja la desparasitación interna y externa? ¿Qué usa según edad/peso y cada cuánto?", "Interna cada ~3 meses (ajusta por riesgo); externa (pulgas/garrapatas) mensual. Ajusta producto y dosis por peso y edad."],
+  ["Canalizar (catéter IV)", "¿Tiene experiencia colocando catéter intravenoso (canalizar) en perros y gatos? ¿Cómo elige calibre y sitio?", "Sí, con soltura. Vena cefálica (pata delantera) o safena; calibre según tamaño (22-24G gatos/pequeños, 18-20G grandes); asepsia y fijación."],
+  ["Sueroterapia (fluidos IV)", "¿Sabe calcular y administrar fluidos intravenosos (suero)? ¿Cómo calcula la tasa?", "Mantenimiento ~40-60 ml/kg/día; corrige deshidratación (% x peso corporal); ajusta según el caso. Debe poder explicar el cálculo, no solo 'poner suero'."],
+  ["Emergencias", "Ante una emergencia (atropello, dificultad para respirar, intoxicación, golpe de calor), ¿cuál es su abordaje inicial?", "Triage ABC (vía aérea, respiración, circulación): estabiliza ANTES de diagnosticar; oxígeno, fluidos, control de sangrado, prioriza. Calma y método bajo presión."],
+  ["Gastroenteritis", "¿Cómo aborda un caso de vómito y diarrea? ¿Qué considera y qué manejo inicial da?", "Diferenciales: dieta, parásitos, viral (parvo), cuerpo extraño. Hidratación, antieméticos, pruebas (coprológico, test de parvo), señales de alarma."],
+  ["Infecciosas frecuentes", "¿Ha manejado parvovirus o moquillo? ¿Cómo los diagnostica y trata?", "Test de parvo, signos clínicos; manejo de soporte (fluidos, antiemético, antibiótico, aislamiento). Debe demostrar manejo real, no teórico."],
+  ["Cirugía y anestesia", "¿Tiene experiencia en esterilización/castración y en manejo anestésico y post-operatorio?", "Evaluación prequirúrgica, protocolo anestésico, monitoreo durante cirugía, control del dolor y cuidados post-op. Que diga qué ha hecho y con qué frecuencia."],
+  ["Muestras y laboratorio", "¿Sabe tomar muestras (sangre, coprológico) e interpretar un hemograma/química básica?", "Toma de sangre (cefálica/yugular), coprológico; interpretación básica (anemia, infección, función renal/hepática). Petcolinas ofrece estos servicios."],
+  ["Manejo y trato", "¿Cómo maneja a un paciente asustado o agresivo, y cómo explica un diagnóstico y su costo al dueño?", "Manejo seguro (bozal, contención, calma). Comunicación clara y empática con el dueño; transparencia con los costos. Clave para la atención al cliente."],
+  ["Disponibilidad (logística)", "¿Qué disponibilidad de horario tiene, incluyendo fines de semana, y qué expectativa salarial maneja?", "Confirmar que su disponibilidad calza con el horario (Lun–Sáb 9-6, Dom 9-1) y alinear expectativa salarial desde el inicio."],
+];
+
+function Candidatos() {
+  const E = React.createElement;
+  const C = { navy: "#12324a", navy2: "#1c4a6b", orange: "#F2901C", teal: "#29A6C4", card: "#fff", border: "#e6ddcc", grisd: "#6b7b88", green: "#2e8b57", greenbg: "#e4f3ea", yellow: "#c98a10", yellowbg: "#fdf3d9", nobg: "#fbe9e7", nofg: "#c0392b", cream: "#FCF8F0" };
+  const seed = CANDIDATOS_VET.map((c) => ({ id: c.id, nombre: c.name, estado: "Por contactar", notas: "" }));
+  const [rows, setRows, loaded] = useSupabase("pc_candidatos", seed);
+  const [vista, setVista] = React.useState("cands");
+  const [filter, setFilter] = React.useState("todos");
+  const [openForm, setOpenForm] = React.useState({});
+  const [openQ, setOpenQ] = React.useState({});
+  const [toastMsg, setToastMsg] = React.useState("");
+
+  const byId = {}; (rows || []).forEach((r) => { byId[String(r.id)] = r; });
+  const getEstado = (id) => (byId[String(id)] && byId[String(id)].estado) || "Por contactar";
+  const getNotas = (id) => (byId[String(id)] && byId[String(id)].notas) || "";
+  const update = (id, patch) => setRows((prev) => {
+    const ex = prev.find((r) => String(r.id) === String(id));
+    if (ex) return prev.map((r) => String(r.id) === String(id) ? { ...r, ...patch } : r);
+    const base = CANDIDATOS_VET.find((c) => c.id === id);
+    return [...prev, { id, nombre: base ? base.name : "", estado: "Por contactar", notas: "", ...patch }];
+  });
+  const toast = (m) => { setToastMsg(m); setTimeout(() => setToastMsg(""), 1600); };
+  const copiar = (t) => { try { navigator.clipboard.writeText(t); toast("Mensaje copiado ✓"); } catch { toast("No se pudo copiar"); } };
+  const waLink = (c) => "https://wa.me/" + c.phone + "?text=" + encodeURIComponent(c.msg);
+
+  const pass = (c) => filter === "alta" ? c.tier === "alta" : filter === "exeq" ? c.exeq === "Sí" : filter === "grad" ? c.grad.startsWith("Sí") : true;
+  const lista = CANDIDATOS_VET.filter(pass);
+  const nG = CANDIDATOS_VET.filter((c) => c.grad.startsWith("Sí")).length;
+  const nE = CANDIDATOS_VET.filter((c) => c.exeq === "Sí").length;
+  const nNear = CANDIDATOS_VET.filter((c) => c.cerca.startsWith("Muy") || c.cerca === "Cerca").length;
+
+  const tierColor = { alta: C.green, revisar: C.orange, futuro: "#9aa7b1" };
+  const tierBg = { alta: C.greenbg, revisar: C.yellowbg, futuro: "#ececec" };
+  const pill = (txt, bg, fg) => E("span", { style: { fontSize: 11.5, fontWeight: 600, padding: "4px 9px", borderRadius: 8, background: bg || "#f1f5f7", color: fg || C.navy2, display: "inline-flex", alignItems: "center", gap: 4 } }, txt);
+
+  const statTile = (n, l, color) => E("div", { style: { background: C.card, borderRadius: 14, padding: "16px 18px", boxShadow: "0 6px 22px rgba(18,50,74,.08)" } },
+    E("div", { style: { fontWeight: 800, fontSize: 30, color: color || C.navy, fontFamily: "Georgia,serif" } }, n),
+    E("div", { style: { fontSize: 12.5, color: C.grisd, fontWeight: 500, marginTop: 2 } }, l));
+
+  const chip = (id, label) => E("button", { key: id, onClick: () => setFilter(id), style: { fontSize: 13.5, fontWeight: 600, padding: "8px 16px", borderRadius: 999, border: "1.5px solid " + (filter === id ? C.orange : C.border), background: filter === id ? C.orange : "#fff", color: filter === id ? "#fff" : C.navy, cursor: "pointer" } }, label);
+
+  const tabBtn = (id, label) => E("button", { onClick: () => setVista(id), style: { fontWeight: 700, fontSize: 15, padding: "10px 20px", borderRadius: 999, border: "none", background: vista === id ? C.navy : "#fff", color: vista === id ? "#fff" : C.navy, cursor: "pointer", boxShadow: "0 6px 22px rgba(18,50,74,.08)" } }, label);
+
+  const tarjeta = (c) => {
+    const estado = getEstado(c.id);
+    const notas = getNotas(c.id);
+    const abierto = !!openForm[c.id];
+    return E("div", { key: c.id, style: { background: C.card, borderRadius: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)", overflow: "hidden", borderLeft: "6px solid " + tierColor[c.tier], display: "flex", flexDirection: "column" } },
+      E("div", { style: { padding: "16px 18px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 } },
+        E("div", null,
+          E("div", { style: { fontWeight: 700, fontSize: 18, color: C.navy } }, c.name),
+          E("div", { style: { fontSize: 11, color: "#8a97a1", fontWeight: 600, marginTop: 1 } }, "#" + c.id + " · " + c.disp),
+          E("div", { style: { fontSize: 11, color: "#8a97a1", marginTop: 1 } }, c.email)
+        ),
+        E("span", { style: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap", background: tierBg[c.tier], color: tierColor[c.tier] } }, CAND_TIERL[c.tier])
+      ),
+      E("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, padding: "0 18px 12px" } },
+        pill("🎓 " + c.grad, c.grad.startsWith("Sí") ? C.greenbg : C.nobg, c.grad.startsWith("Sí") ? C.green : C.nofg),
+        pill("📋 Exequátur: " + c.exeq, c.exeq === "Sí" ? C.greenbg : c.exeq === "En trámite" ? C.yellowbg : C.nobg, c.exeq === "Sí" ? C.green : c.exeq === "En trámite" ? C.yellow : C.nofg),
+        pill("⏱ " + c.exp), pill("🏫 " + c.uni), pill("📍 " + c.sector)
+      ),
+      E("div", { style: { fontSize: 13, color: "#4a5a66", padding: "0 18px 12px" } }, c.eval),
+      E("button", { onClick: () => setOpenForm((s) => ({ ...s, [c.id]: !s[c.id] })), style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "1.5px solid " + C.border, background: "#eef4f7", color: C.navy, cursor: "pointer", margin: "0 18px 12px", textAlign: "center" } }, abierto ? "▲ Ocultar respuestas del formulario" : "📄 Ver respuestas del formulario"),
+      abierto && E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px" } },
+        E("div", { style: { fontWeight: 700, fontSize: 12, color: C.teal, textTransform: "uppercase", letterSpacing: .5, marginBottom: 8 } }, "Respuestas del formulario"),
+        c.form.map((a, i) => E("div", { key: i, style: { marginBottom: 9, paddingBottom: 9, borderBottom: i < c.form.length - 1 ? "1px dashed " + C.border : "none" } },
+          E("div", { style: { fontSize: 11.5, fontWeight: 700, color: C.navy } }, CAND_FQ[i]),
+          E("div", { style: { fontSize: 12.5, color: "#3d4d59", marginTop: 1 } }, a)))
+      ),
+      E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "11px 13px", fontSize: 12.5, color: "#3d4d59" } }, c.msg),
+      E("div", { style: { display: "flex", gap: 8, padding: "0 18px 14px", flexWrap: "wrap" } },
+        E("a", { href: waLink(c), target: "_blank", style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, background: "#25D366", color: "#fff", textDecoration: "none" } }, "💬 Abrir WhatsApp"),
+        E("button", { onClick: () => copiar(c.msg), style: { fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "1.5px solid " + C.border, background: "#fff", color: C.navy, cursor: "pointer" } }, "📋 Copiar mensaje")
+      ),
+      E("div", { style: { marginTop: "auto", borderTop: "1px solid " + C.border, padding: "12px 18px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
+        E("label", { style: { fontSize: 11.5, fontWeight: 600, color: C.grisd } }, "Estado:"),
+        E("select", { value: estado, onChange: (e) => update(c.id, { estado: e.target.value }), style: { fontSize: 13, fontWeight: 600, padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.border, background: "#fff", color: C.navy, cursor: "pointer" } }, CAND_STATUSES.map((s) => E("option", { key: s, value: s }, s))),
+        E("textarea", { value: notas, onChange: (e) => update(c.id, { notas: e.target.value }), placeholder: "Notas de Laura…", rows: 2, style: { width: "100%", fontSize: 12.5, border: "1.5px solid " + C.border, borderRadius: 8, padding: "7px 9px", resize: "vertical" } })
+      )
+    );
+  };
+
+  return E("div", { style: { maxWidth: 1180, margin: "0 auto" } },
+    E("div", { style: { marginBottom: 6 } },
+      E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800, color: C.navy } }, "Candidatos — Vacante Veterinario/a 🐾"),
+      E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "El estado y las notas se guardan automáticamente y se sincronizan con Supabase.")
+    ),
+    E("div", { style: { display: "flex", gap: 8, margin: "18px 0" } }, tabBtn("cands", "Candidatos"), tabBtn("qs", "Preguntas de entrevista")),
+    vista === "cands" && E("div", null,
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 } },
+        statTile(CANDIDATOS_VET.length, "Aplicaciones", C.navy), statTile(nG, "Ya graduados/as", C.teal), statTile(nE, "Con exequátur", C.orange), statTile(nNear, "Viven cerca", C.navy)),
+      E("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 } }, chip("todos", "Todos"), chip("alta", "Prioridad alta"), chip("exeq", "Con exequátur"), chip("grad", "Graduados")),
+      !loaded && E("div", { style: { color: C.grisd, padding: "10px 0" } }, "⏳ Cargando notas guardadas…"),
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(345px,1fr))", gap: 18, alignItems: "start" } },
+        lista.length ? lista.map(tarjeta) : E("p", { style: { color: C.grisd } }, "No hay candidatos con este filtro."))
+    ),
+    vista === "qs" && E("div", null,
+      E("div", { style: { background: "#fff", borderRadius: 14, padding: "16px 20px", boxShadow: "0 6px 22px rgba(18,50,74,.08)", marginBottom: 16, fontSize: 14, color: "#4a5a66" } }, "11 preguntas clave basadas en los servicios más frecuentes de la clínica. Toca cada una para ver qué debería mencionar el candidato."),
+      CAND_PREGUNTAS.map((q, i) => E("div", { key: i, style: { background: "#fff", borderRadius: 12, boxShadow: "0 6px 22px rgba(18,50,74,.08)", marginBottom: 10, overflow: "hidden" } },
+        E("div", { onClick: () => setOpenQ((s) => ({ ...s, [i]: !s[i] })), style: { padding: "15px 18px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 } },
+          E("span", { style: { fontWeight: 700, color: C.navy, fontSize: 14, minWidth: 170 } }, (i + 1) + ". " + q[0]),
+          E("span", { style: { fontSize: 14, color: "#3d4d59", flex: 1 } }, q[1]),
+          E("span", { style: { color: C.orange, fontWeight: 800 } }, openQ[i] ? "▼" : "›")),
+        openQ[i] && E("div", { style: { padding: "14px 18px", fontSize: 13, color: "#4a5a66", background: C.cream } }, E("b", { style: { color: C.navy } }, "Qué debería mencionar: "), q[2])))
+    ),
+    toastMsg && E("div", { style: { position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.navy, color: "#fff", padding: "12px 22px", borderRadius: 999, fontSize: 14, fontWeight: 600, boxShadow: "0 6px 22px rgba(18,50,74,.2)", zIndex: 9999 } }, toastMsg)
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // VOZ IA — Generador de voz y guiones con IA para PetColinas
 // ─────────────────────────────────────────────────────────────
 function Llamadas() {
@@ -5277,6 +5415,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
+    tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
       setTab, setCrmClienteInicial
