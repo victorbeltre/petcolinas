@@ -3935,7 +3935,11 @@ const CANDIDATOS_VET = [
   { id: 13, tier: "alta", name: "Cintia Bernal", phone: "18097605339", disp: "+1 809 760 5339", email: "vetecin19@gmail.com", grad: "Sí", exeq: "Sí", exp: "11 años", uni: "UASD", anio: "—", sector: "Santo Domingo Oeste", cerca: "Muy cerca", eval: "Graduada (UASD) + exequátur + 11 años de experiencia y vive en la zona (SD Oeste). Perfil muy completo — contactar primero.", form: ["si", "Si", "si", "buen día, somos médicoa veterinarios", "UASD", "11años", "Santo Domingo Oeste"], msg: "¡Hola Cintia! 🐾 Le saludamos de PetColinas, en Plaza Las Colinas (a 3 min de la Plaza de la Bandera). Gracias por aplicar a nuestra vacante de veterinario/a. Nos encantó su perfil (graduada de la UASD, con exequátur y 11 años de experiencia) y nos gustaría conocerla en una entrevista. ¿Le queda bien esta semana? Dígame dos horarios que le convengan y coordinamos. ¡Quedamos atentos!" },
   { id: 14, tier: "alta", name: "Anabel Medrano", phone: "18296390333", disp: "+1 829 639 0333", email: "nojotsulu@gmail.com", grad: "Sí", exeq: "Sí", exp: "16 años", uni: "UNPHU", anio: "2009", sector: "Mirador Sur (D.N.)", cerca: "Media", eval: "Graduada (UNPHU, 2009) + exequátur + 16 años de experiencia. Perfil senior, muy fuerte.", form: ["si", "Si", "si", "2009", "UNPHU", "16", "Mirador sur"], msg: "¡Hola Anabel! 🐾 Le saludamos de PetColinas, en Plaza Las Colinas (a 3 min de la Plaza de la Bandera). Gracias por aplicar a nuestra vacante de veterinario/a. Nos impresionó su trayectoria (graduada con exequátur y 16 años de experiencia) y nos encantaría conocerla en una entrevista. ¿Le queda bien esta semana? Dígame dos horarios que le convengan y coordinamos. ¡Quedamos atentos!" },
   { id: 15, tier: "revisar", name: "Breiny Thomas", phone: "18099382853", disp: "+1 809 938 2853", email: "breynithomasleonardo@gmail.com", grad: "Sí", exeq: "En trámite", exp: "5 años", uni: "UASD", anio: "2022", sector: "Sabana Perdida (SD Norte)", cerca: "Lejos", eval: "Graduada (UASD, 2022), 5 años de experiencia, exequátur EN TRÁMITE. Vive más lejos (Sabana Perdida). Confirmar exequátur.", form: ["si", "Esta en Tranmite", "si", "2022", "Uas", "5", "Sabana perdida"], msg: "¡Hola Breiny! 🐾 Le saludamos de PetColinas, en Plaza Las Colinas (a 3 min de la Plaza de la Bandera). Gracias por aplicar a nuestra vacante de veterinario/a. Nos gustó su perfil (graduada, 5 años de experiencia) y nos encantaría conocerla en una breve entrevista, y confirmar el estatus de su exequátur. ¿Le queda bien esta semana? Dígame dos horarios que le convengan y coordinamos. ¡Quedamos atentos!" },
+  { id: 16, tier: "alta", name: "Dr. Julio Ponce", phone: "18299866078", disp: "+1 829 986 6078", email: "drjulioponcerivera@gmail.com", grad: "Sí", exeq: "Sí", exp: "30 años", uni: "UASD", anio: "1983", sector: "Santo Domingo", cerca: "Media", eval: "Graduado UASD (1983) + exequátur + 30 años de experiencia. Perfil muy senior — considerar expectativa salarial.", form: ["si", "Si", "si", "1983", "UASD", "30", "Santo Domingo"], msg: "¡Hola, Dr. Ponce! 🐾 Le saludamos de PetColinas, en Plaza Las Colinas (a 3 min de la Plaza de la Bandera). Gracias por aplicar a nuestra vacante de veterinario/a. Su trayectoria (graduado con exequátur y 30 años de experiencia) nos parece excelente y nos encantaría conocerle en una entrevista. ¿Le queda bien esta semana? Indíquenos dos horarios que le convengan y coordinamos. ¡Quedamos atentos!" },
 ];
+// IDs de los prospectos NUEVOS (recién llegados). Se resaltan con ✨ hasta que
+// Laura los revise. Al agregar leads nuevos, añade aquí sus IDs.
+const CAND_NUEVOS_VET = new Set([7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
 const CAND_TIERL = { alta: "Prioridad alta", revisar: "Revisar", futuro: "A futuro / auxiliar" };
 const CAND_STATUSES = ["Por contactar", "Contactado", "Entrevista agendada", "En evaluación", "Descartado", "Contratado"];
 const CAND_PREGUNTAS = [
@@ -4025,7 +4029,15 @@ function Candidatos() {
   const base = puesto === "vet" ? CANDIDATOS_VET : [];
   const todosPuesto = [...base, ...manual];
   const pass = (c) => filter === "alta" ? c.tier === "alta" : filter === "exeq" ? c.exeq === "Sí" : filter === "grad" ? (c.grad || "").startsWith("Sí") : true;
-  const lista = todosPuesto.filter(pass);
+  const esNuevo = (c) => c.manual || c.origen === "meta" || (puesto === "vet" && CAND_NUEVOS_VET.has(Number(c.id)));
+  const tierRank = { alta: 0, revisar: 1, futuro: 2 };
+  const lista = todosPuesto.filter(pass).sort((a, b) => {
+    const ra = tierRank[a.tier || "revisar"] ?? 1, rb = tierRank[b.tier || "revisar"] ?? 1;
+    if (ra !== rb) return ra - rb;                       // 1º por prioridad
+    const na = esNuevo(a) ? 0 : 1, nb = esNuevo(b) ? 0 : 1;
+    if (na !== nb) return na - nb;                       // 2º los nuevos arriba
+    return 0;
+  });
 
   const nAlta = todosPuesto.filter((c) => c.tier === "alta").length;
   const nProc = todosPuesto.filter((c) => { const e = getEstado(c.id); return e === "Entrevista agendada" || e === "En evaluación"; }).length;
@@ -4058,10 +4070,12 @@ function Candidatos() {
     if (c.exp) pills.push(pill("x", "⏱ " + c.exp));
     if (c.uni) pills.push(pill("u", "🏫 " + c.uni));
     if (c.sector) pills.push(pill("s", "📍 " + c.sector));
-    return E("div", { key: c.id, style: { background: C.card, borderRadius: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)", overflow: "hidden", borderLeft: "6px solid " + tierColor[tier], display: "flex", flexDirection: "column" } },
+    const nuevo = esNuevo(c);
+    return E("div", { key: c.id, style: { background: C.card, borderRadius: 16, boxShadow: nuevo ? "0 0 0 2px " + C.orange + ", 0 8px 26px rgba(242,144,28,.28)" : "0 6px 22px rgba(18,50,74,.08)", overflow: "hidden", borderLeft: "6px solid " + tierColor[tier], display: "flex", flexDirection: "column", position: "relative" } },
+      nuevo && E("div", { style: { background: "linear-gradient(90deg,#F2901C,#f7b34d)", color: "#fff", fontSize: 11.5, fontWeight: 800, padding: "5px 14px", letterSpacing: .3 } }, "✨ NUEVO PROSPECTO — ¡revísalo!"),
       E("div", { style: { padding: "16px 18px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 } },
         E("div", null,
-          E("div", { style: { fontWeight: 700, fontSize: 18, color: C.navy } }, c.name),
+          E("div", { style: { fontWeight: 700, fontSize: 18, color: C.navy } }, (nuevo ? "✨ " : "") + c.name),
           E("div", { style: { fontSize: 11, color: "#8a97a1", fontWeight: 600, marginTop: 1 } }, (c.disp || getPhone(c) || "sin teléfono")),
           c.email && E("div", { style: { fontSize: 11, color: "#8a97a1", marginTop: 1 } }, c.email)
         ),
