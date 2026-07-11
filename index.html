@@ -4173,6 +4173,47 @@ function Candidatos() {
 // ─────────────────────────────────────────────────────────────
 // VOZ IA — Generador de voz y guiones con IA para PetColinas
 // ─────────────────────────────────────────────────────────────
+// Aviso en el Dashboard: llamadas registradas HOY por Sofía (marca las no vistas).
+// Al tocarlo lleva a la pestaña Llamadas y las marca como vistas.
+function AvisoLlamadasSofia({ setTab }) {
+  const E = React.createElement;
+  const [calls, setCalls] = React.useState([]);
+  React.useEffect(() => {
+    let vivo = true;
+    const cargar = async () => {
+      try {
+        const rows = await supaFetch("pc_llamadas", "GET", null, "?fecha=eq." + hoy() + "&order=id.desc&limit=20");
+        if (vivo && Array.isArray(rows)) setCalls(rows);
+      } catch {}
+    };
+    cargar();
+    const t = setInterval(cargar, 60000);
+    return () => { vivo = false; clearInterval(t); };
+  }, []);
+  if (!calls.length) return null;
+  let visto = 0; try { visto = Number(localStorage.getItem("pc_llamadas_visto") || 0); } catch {}
+  const nuevas = calls.filter((r) => Number(r.id) > visto).length;
+  const ult = calls[0];
+  const quien = [ult.nombremascota, ult.nombrecliente].filter(Boolean).join(" · ");
+  const resumen = String(ult.resumen || "").split("\n")[0].slice(0, 110);
+  return E("div", {
+    onClick: () => {
+      try { localStorage.setItem("pc_llamadas_visto", String(Math.max(...calls.map((r) => Number(r.id) || 0)))); } catch {}
+      setTab("llamadas");
+    },
+    style: { background: "linear-gradient(90deg,#6b21a8,#7c3aed)", color: "#fff", borderRadius: 12, padding: "14px 18px", marginBottom: 18, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 6px 18px rgba(124,58,237,.3)" }
+  },
+    E("div", { style: { fontSize: 26 } }, "📞"),
+    E("div", { style: { flex: 1 } },
+      E("div", { style: { fontWeight: 800, fontSize: 14 } },
+        "Sofía registró " + calls.length + " llamada(s) hoy" + (nuevas > 0 ? " — " + nuevas + " nueva(s) sin revisar ✨" : "")),
+      E("div", { style: { fontSize: 12, opacity: .9, marginTop: 2 } },
+        (quien ? quien + ": " : "") + (resumen || "toca para ver los resúmenes"))
+    ),
+    E("div", { style: { fontWeight: 800, fontSize: 13, whiteSpace: "nowrap" } }, "Ver llamadas →")
+  );
+}
+
 function Llamadas() {
   const E = React.createElement;
   const C = { card:"#fff", border:"#e5e7eb", texto:"#1f2937", grisd:"#6b7280", verde:"#1a6b3a", morado:"#6b21a8", moradoL:"#f3e8ff" };
@@ -5529,7 +5570,7 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),

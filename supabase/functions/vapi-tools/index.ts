@@ -303,14 +303,32 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
 
     const analysis = (msg.analysis as Record<string, unknown>) ?? {};
     const artifact = (msg.artifact as Record<string, unknown>) ?? {};
-    const resumen = String(msg.summary ?? analysis.summary ?? artifact.summary ?? "").trim();
+    const resumenBase = String(msg.summary ?? analysis.summary ?? artifact.summary ?? "").trim();
     const transcript = String(msg.transcript ?? artifact.transcript ?? "").trim();
     const callerName = String(customer.name ?? call.name ?? "").trim();
 
+    // Datos estructurados (Vapi → Analysis → Structured Data), si están configurados:
+    // qué producto/servicio quiere el cliente y a qué hora quedó en venir.
+    const sd = (analysis.structuredData ?? {}) as Record<string, unknown>;
+    const sdProducto = String(sd.producto ?? sd.servicio ?? "").trim();
+    const sdHora = String(sd.hora ?? "").trim();
+    const sdFecha = String(sd.fecha ?? "").trim();
+    const sdMascota = String(sd.nombreMascota ?? sd.mascota ?? "").trim();
+    const sdCliente = String(sd.nombrePropietario ?? sd.cliente ?? "").trim();
+
+    // Resumen final: encabezado con producto y hora acordada + resumen de Vapi
+    const encabezado: string[] = [];
+    if (sdProducto) encabezado.push(`🛒 Quiere: ${sdProducto}`);
+    if (sdHora) encabezado.push(`🕐 Quedó en venir: ${sdFecha || "hoy"} a las ${sdHora}`);
+    const resumen = ((encabezado.length ? encabezado.join(" · ") + "\n" : "") + resumenBase).trim();
+
     const startedAt = String(msg.startedAt ?? call.startedAt ?? "");
     const endedAt = String(msg.endedAt ?? call.endedAt ?? "");
-    let duracion = 0;
-    if (startedAt && endedAt) {
+    // Duración: Vapi puede mandarla directa (durationSeconds/durationMs) o se calcula
+    let duracion = Math.round(Number(msg.durationSeconds ?? 0)) ||
+      Math.round(Number(msg.durationMs ?? 0) / 1000) ||
+      Math.round(Number(artifact.durationSeconds ?? 0)) || 0;
+    if (!duracion && startedAt && endedAt) {
       duracion = Math.max(0, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000));
     }
     const grabacion = String(msg.recordingUrl ?? msg.stereoRecordingUrl ?? artifact.recordingUrl ?? "");
@@ -327,6 +345,7 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
         .from("pc_citas")
         .select("*")
         .eq("telefono", telefono)
+        .gte("fecha", fechaISO)
         .order("id", { ascending: false })
         .limit(1);
       const c = citas?.[0];
@@ -337,6 +356,53 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
         if (resumen) {
           const notas = `Agendada por Sofía (agente de voz)\nResumen de la llamada: ${resumen}`;
           await supabase.from("pc_citas").update({ notas }).eq("id", c.id);
+        }
+      }
+    }
+
+    // AUTO-CITA: si el cliente quedó en venir a una hora (datos estructurados)
+    // y Sofía NO agendó con la herramienta, registramos la visita en la Agenda.
+    if (sdHora) {
+      const fechaCita = parseFechaRD(sdFecha);
+      const horaCita = /^\d:\d\d/.test(sdHora) ? "0" + sdHora : sdHora; // "9:00" → "09:00"
+      let existe = citaid != null; // ya se enlazó una cita creada en esta llamada
+      if (!existe) {
+        try {
+          let q = supabase.from("pc_citas").select("id").eq("fecha", fechaCita).eq("hora", horaCita);
+          q = telefono ? q.eq("telefono", telefono) : q.ilike("nombremascota", `%${sdMascota || nombremascota}%`);
+          const { data: ya } = await q.limit(1);
+          existe = !!(ya && ya.length > 0);
+        } catch { /* seguir e intentar crear */ }
+      }
+      if (!existe) {
+        const servicioCita = sdProducto || "Visita acordada en llamada con Sofía";
+        const esGrooming = /ba[ñn]o|corte|grooming|peluquer/.test(servicioCita.toLowerCase());
+        const nueva = {
+          id: Date.now() + 1,
+          fecha: fechaCita,
+          hora: horaCita,
+          duracion: 45,
+          tipo: esGrooming ? "grooming" : (sdProducto ? "recogida" : "seguimiento"),
+          empleado: "",
+          estado: "pendiente",
+          clienteid: null,
+          nombrecliente: sdCliente || nombrecliente || callerName || null,
+          nombremascota: sdMascota || nombremascota || "Cliente de llamada",
+          telefono: telefono || null,
+          servicio: servicioCita,
+          precio: 0,
+          notas: "Registrada automáticamente al finalizar la llamada de Sofía" + (resumen ? `\nResumen de la llamada: ${resumen}` : ""),
+          motivocancelacion: "",
+          enespera: false,
+          mensajesenviados: "[]",
+        };
+        const { error: eCita } = await supabase.from("pc_citas").insert(nueva);
+        if (eCita) console.error("Auto-cita error:", JSON.stringify(eCita));
+        else {
+          citaid = nueva.id;
+          if (!nombremascota) nombremascota = nueva.nombremascota;
+          if (!nombrecliente) nombrecliente = String(nueva.nombrecliente ?? "");
+          console.log("Auto-cita creada:", fechaCita, horaCita, servicioCita);
         }
       }
     }
