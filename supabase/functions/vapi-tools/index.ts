@@ -99,8 +99,31 @@ function handleFechaHora(): string {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Misma API key que usa vapi-trigger (los Secrets son compartidos en el proyecto).
+// Se usa para consultar los Structured Outputs si no llegan en el reporte.
+const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+// Fusiona los "Structured Outputs" de Vapi dentro de sd. Soporta:
+//   { "uuid": { name: "hora", result: "13:00" }, ... }  (dashboard nuevo)
+//   { hora: "13:00", ... }                              (formato plano)
+//   { "uuid": { name: "x", result: { hora: "13:00" } }} (schema con propiedades)
+function mezclarOutputs(sd: Record<string, unknown>, so: Record<string, unknown>): void {
+  for (const [k, v] of Object.entries(so)) {
+    if (v == null) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      sd[k] = v;
+    } else if (typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      const nombre = String(o.name ?? k).trim();
+      const val = o.result ?? o.value ?? o.output;
+      if (val == null) continue;
+      if (typeof val === "object") Object.assign(sd, val as Record<string, unknown>);
+      else sd[nombre] = val;
+    }
+  }
+}
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -127,10 +150,15 @@ Deno.serve(async (req: Request) => {
 
   const msg = (body.message ?? body) as Record<string, unknown>;
 
-  // Reporte de fin de llamada: guardamos el resumen para la app (pestaña Llamadas)
+  // Reporte de fin de llamada: guardamos el resumen para la app (pestaña Llamadas).
+  // Se procesa en SEGUNDO PLANO porque los Structured Outputs de Vapi tardan unos
+  // segundos más que el reporte y guardarLlamada los espera consultando la API.
   const msgType = String(msg.type ?? "");
   if (msgType === "end-of-call-report" || msgType === "report") {
-    await guardarLlamada(msg);
+    const tarea = guardarLlamada(msg);
+    const runtime = (globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }).EdgeRuntime;
+    if (runtime && typeof runtime.waitUntil === "function") runtime.waitUntil(tarea);
+    else await tarea;
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...cors, "Content-Type": "application/json" },
     });
@@ -308,23 +336,37 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
     const callerName = String(customer.name ?? call.name ?? "").trim();
 
     // Datos estructurados: soporta el plan clásico (analysis.structuredData) y los
-    // nuevos "Structured Outputs" del dashboard de Vapi (vienen en artifact/analysis
-    // como objetos { name, result } o como valores planos).
+    // nuevos "Structured Outputs" del dashboard de Vapi.
     const sd: Record<string, unknown> = { ...((analysis.structuredData ?? {}) as Record<string, unknown>) };
-    const so = (artifact.structuredOutputs ?? analysis.structuredOutputs ?? msg.structuredOutputs ?? {}) as Record<string, unknown>;
-    for (const [k, v] of Object.entries(so)) {
-      if (v == null) continue;
-      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-        sd[k] = v; // formato plano: { producto: "...", hora: "..." }
-      } else if (typeof v === "object") {
-        const o = v as Record<string, unknown>;
-        const nombre = String(o.name ?? k).trim();
-        const val = o.result ?? o.value ?? o.output;
-        if (val == null) continue;
-        if (typeof val === "object") Object.assign(sd, val as Record<string, unknown>); // schema con propiedades
-        else sd[nombre] = val;
+    mezclarOutputs(sd, (artifact.structuredOutputs ?? analysis.structuredOutputs ?? msg.structuredOutputs ?? {}) as Record<string, unknown>);
+
+    // Los Structured Outputs se calculan unos segundos DESPUÉS de terminar la
+    // llamada, así que casi nunca vienen en el reporte. Si falta la hora,
+    // consultamos la llamada a la API de Vapi con reintentos (hasta ~32 s).
+    if (!String(sd.hora ?? "").trim() && callId && VAPI_API_KEY) {
+      for (let intento = 1; intento <= 4; intento++) {
+        await new Promise((r) => setTimeout(r, 8000));
+        try {
+          const r = await fetch(`https://api.vapi.ai/call/${callId}`, {
+            headers: { Authorization: `Bearer ${VAPI_API_KEY}` },
+          });
+          if (!r.ok) { console.error("Vapi GET call error:", r.status, await r.text()); continue; }
+          const cl = await r.json() as Record<string, unknown>;
+          const art2 = (cl.artifact as Record<string, unknown>) ?? {};
+          const an2 = (cl.analysis as Record<string, unknown>) ?? {};
+          if (an2.structuredData && typeof an2.structuredData === "object") Object.assign(sd, an2.structuredData as Record<string, unknown>);
+          mezclarOutputs(sd, (art2.structuredOutputs ?? an2.structuredOutputs ?? cl.structuredOutputs ?? {}) as Record<string, unknown>);
+          if (String(sd.hora ?? "").trim() || String(sd.producto ?? "").trim()) {
+            console.log("Structured outputs obtenidos de la API en intento", intento, JSON.stringify(sd));
+            break;
+          }
+          console.log("Intento", intento, "sin structured outputs todavía");
+        } catch (e) {
+          console.error("Error consultando la API de Vapi:", String(e));
+        }
       }
     }
+
     const sdProducto = String(sd.producto ?? sd.servicio ?? "").trim();
     const sdHora = String(sd.hora ?? "").trim();
     const sdFecha = String(sd.fecha ?? "").trim();
