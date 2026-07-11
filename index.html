@@ -4190,9 +4190,10 @@ function AvisoLlamadasSofia({ setTab }) {
     const t = setInterval(cargar, 60000);
     return () => { vivo = false; clearInterval(t); };
   }, []);
-  if (!calls.length) return null;
   let visto = 0; try { visto = Number(localStorage.getItem("pc_llamadas_visto") || 0); } catch {}
   const nuevas = calls.filter((r) => Number(r.id) > visto).length;
+  // Solo se muestra si hay llamadas SIN revisar; al tocarlo se marca como visto y desaparece.
+  if (!calls.length || nuevas === 0) return null;
   const ult = calls[0];
   const quien = [ult.nombremascota, ult.nombrecliente].filter(Boolean).join(" · ");
   const resumen = String(ult.resumen || "").split("\n")[0].slice(0, 110);
