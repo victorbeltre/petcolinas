@@ -3940,6 +3940,21 @@ const CANDIDATOS_VET = [
 // IDs de los prospectos NUEVOS (recién llegados). Se resaltan con ✨ hasta que
 // Laura los revise. Al agregar leads nuevos, añade aquí sus IDs.
 const CAND_NUEVOS_VET = new Set([7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+
+// Preguntas del formulario de GROOMER (para mostrar las respuestas).
+const CAND_FQ_GROOMER = ["¿Cuántos años de experiencia como groomer?", "¿Qué servicios sabes hacer?", "¿Cortes de razas específicas? ¿Cuáles?", "¿En qué sector/municipio vives?"];
+const CANDIDATOS_GROOMER = [
+  { id: 101, tier: "alta", name: "Jean Carlos Nuñez Capellán", phone: "18098660607", disp: "+1 809 866 0607", email: "nunezjean0996@gmail.com", exp: "10+ años", sector: "Las Palmas de Herrera (SDO)", cerca: "Muy cerca", eval: "Más de 10 años en peluquería canina, especialista en pelo tipo spitz y de caída. Vive muy cerca. Perfil top.", form: ["Más de 3 años", "Tengo mas de 10 años de experiencia en peluquería canina", "Especialista en pelo tipo spitz y tipo de pelo de caida", "Las palmas de herrera"], msg: "¡Hola Jean Carlos! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas (a 3 min de la Plaza de la Bandera). Gracias por aplicar a nuestra vacante de groomer. Nos encantó su perfil (más de 10 años y especialista en pelo tipo spitz y de caída) y nos gustaría conocerle; solemos hacer una pequeña prueba práctica. ¿Le queda bien esta semana? Dígame dos horarios que le convengan y coordinamos. ¡Quedamos atentos!" },
+  { id: 102, tier: "alta", name: "Jordan Arturo", phone: "18495793825", disp: "+1 849 579 3825", email: "jordanarturodelacruz@gmail.com", exp: "3+ años", sector: "Villa Mella (SD Norte)", cerca: "Media", eval: "Más de 3 años, maneja todos los servicios y razas.", form: ["Más de 3 años", "Todos", "Todos", "Santo domingo villa mella"], msg: "¡Hola Jordan! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas. Gracias por aplicar a nuestra vacante de groomer. Nos gustó su perfil (más de 3 años, todos los servicios y razas) y nos encantaría conocerle con una pequeña prueba práctica. ¿Le queda bien esta semana? Dígame dos horarios y coordinamos. ¡Quedamos atentos!" },
+  { id: 103, tier: "alta", name: "Félix", phone: "18298479786", disp: "+1 829 847 9786", email: "felixjesus.leonardo@icloud.com", exp: "3+ años", sector: "Santo Domingo", cerca: "Media", eval: "Más de 3 años, cortes de todas las razas.", form: ["Más de 3 años", "Cortes", "Toda la razas", "Santo Domingo"], msg: "¡Hola Félix! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas. Gracias por aplicar a nuestra vacante de groomer. Nos gustó su perfil (más de 3 años en cortes) y nos encantaría conocerle con una pequeña prueba práctica. ¿Le queda bien esta semana? Dígame dos horarios y coordinamos. ¡Quedamos atentos!" },
+  { id: 104, tier: "alta", name: "Lino Almonte", phone: "18299268374", disp: "+1 829 926 8374", email: "linoalmon972301@gmail.com", exp: "3+ años", sector: "Santo Domingo", cerca: "Media", eval: "Más de 3 años de experiencia (respuestas breves — confirmar servicios en la entrevista).", form: ["Más de 3 años", "Si", "Todo", "Santo Domingo"], msg: "¡Hola Lino! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas. Gracias por aplicar a nuestra vacante de groomer. Vimos que tiene más de 3 años de experiencia y nos gustaría conocerle con una pequeña prueba práctica para ver su trabajo. ¿Le queda bien esta semana? Dígame dos horarios y coordinamos. ¡Quedamos atentos!" },
+  { id: 105, tier: "revisar", name: "Alejandro Córdova", phone: "18292718113", disp: "+1 829 271 8113", email: "alejandrojosecordovatonito@gmail.com", exp: "1-3 años", sector: "Los Alcarrizos", cerca: "Cerca", eval: "1-3 años, todos los cortes y casi todas las razas. Vive cerca (Los Alcarrizos).", form: ["1 a 3 años", "Todos los cortes", "Caso todas las razas", "Los alcarrizos"], msg: "¡Hola Alejandro! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas. Gracias por aplicar a nuestra vacante de groomer. Nos gustó su perfil (1 a 3 años, todos los cortes) y nos gustaría conocerle con una pequeña prueba práctica. ¿Le queda bien esta semana? Dígame dos horarios y coordinamos. ¡Quedamos atentos!" },
+  { id: 106, tier: "revisar", name: "Lorenza Mercado Morris", phone: "18295280728", disp: "+1 829 528 0728", email: "mmlorenza11@gmail.co", exp: "1-3 años", sector: "Santiago (Gurabo)", cerca: "Lejos", eval: "1-3 años, todos los servicios y razas, PERO vive en Santiago (muy lejos). Confirmar si podría trabajar en Santo Domingo Oeste.", form: ["1 a 3 años", "Todos los mencionados", "Sí, todas las mencionadas", "santiago gurabo"], msg: "¡Hola Lorenza! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas, Santo Domingo Oeste. Gracias por aplicar a nuestra vacante de groomer. Nos gustó su perfil (todos los servicios y razas); notamos que vive en Santiago y la posición es aquí en Santo Domingo. ¿Tendría disponibilidad para trasladarse o mudarse? Con gusto conversamos. ¡Quedamos atentos!" },
+  { id: 107, tier: "futuro", name: "Channel Valenzuela", phone: "18494832353", disp: "+1 849 483 2353", email: "chanelorlandodelorbe@gmail.com", exp: "<1 año", sector: "Los Alcarrizos (SDO)", cerca: "Cerca", eval: "Menos de 1 año de experiencia, dice manejar todo. Vive cerca. Opción junior / a futuro.", form: ["Menos de 1 año", "Todos", "Si todas", "Santo domingo oeste los alcarrizo"], msg: "¡Hola Channel! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas. Gracias por aplicar a nuestra vacante de groomer. Aunque tiene menos de un año de experiencia, nos gustaría conocerle — buscamos también personas con ganas de crecer en el equipo. ¿Tiene disponibilidad esta semana para una pequeña prueba/entrevista? ¡Quedamos atentos!" },
+  { id: 108, tier: "futuro", name: "Luis Daniel Cuevas Medina", phone: "18094204373", disp: "+1 809 420 4373", email: "luisdcm171019@gmail.com", exp: "<1 año", sector: "Los Alcarrizos", cerca: "Cerca", eval: "Menos de 1 año de experiencia. Vive en Los Alcarrizos. Opción junior / a futuro.", form: ["Menos de 1 año", "Todos", "Si, todos", "Los Alcarrizos"], msg: "¡Hola Luis! ✂️🐾 Le saludamos de PetColinas, en Plaza Las Colinas. Gracias por aplicar a nuestra vacante de groomer. Aunque tiene menos de un año de experiencia, nos gustaría conocerle — buscamos también personas con ganas de crecer en el equipo. ¿Tiene disponibilidad esta semana para una pequeña prueba/entrevista? ¡Quedamos atentos!" },
+];
+const CAND_NUEVOS_GROOMER = new Set([101, 102, 103, 104, 105, 106, 107, 108]);
+const CAND_FQ_POR_PUESTO = { vet: CAND_FQ, groomer: CAND_FQ_GROOMER };
 const CAND_TIERL = { alta: "Prioridad alta", revisar: "Revisar", futuro: "A futuro / auxiliar" };
 const CAND_STATUSES = ["Por contactar", "Contactado", "Entrevista agendada", "En evaluación", "Descartado", "Contratado"];
 const CAND_PREGUNTAS = [
@@ -4004,8 +4019,8 @@ function Candidatos() {
   const update = (id, patch) => setRows((prev) => {
     const ex = prev.find((r) => String(r.id) === String(id));
     if (ex) return prev.map((r) => String(r.id) === String(id) ? { ...r, ...patch } : r);
-    const base = CANDIDATOS_VET.find((c) => c.id === id);
-    return [...prev, { id, puesto: base ? "vet" : puesto, nombre: base ? base.name : "", estado: "Por contactar", notas: "", ...patch }];
+    const base = CANDIDATOS_VET.find((c) => c.id === id) || CANDIDATOS_GROOMER.find((c) => c.id === id);
+    return [...prev, { id, puesto, nombre: base ? base.name : "", estado: "Por contactar", notas: "", ...patch }];
   });
   const toast = (m) => { setToastMsg(m); setTimeout(() => setToastMsg(""), 1600); };
   const copiar = (t) => { try { navigator.clipboard.writeText(t); toast("Mensaje copiado ✓"); } catch { toast("No se pudo copiar"); } };
@@ -4026,10 +4041,11 @@ function Candidatos() {
   // Candidatos del puesto: estáticos (solo vet) + manuales guardados en Supabase
   const manual = (rows || []).filter((r) => String(r.puesto || "vet") === puesto && !staticIds.has(String(r.id)))
     .map((r) => ({ id: r.id, name: r.nombre || "(sin nombre)", disp: r.telefono || "", phone: r.telefono || "", email: r.email || "", tier: r.tier || "revisar", eval: r.evalt || r.eval || "", manual: true, origen: r.origen || "" }));
-  const base = puesto === "vet" ? CANDIDATOS_VET : [];
+  const base = puesto === "vet" ? CANDIDATOS_VET : puesto === "groomer" ? CANDIDATOS_GROOMER : [];
   const todosPuesto = [...base, ...manual];
   const pass = (c) => filter === "alta" ? c.tier === "alta" : filter === "exeq" ? c.exeq === "Sí" : filter === "grad" ? (c.grad || "").startsWith("Sí") : true;
-  const esNuevo = (c) => c.manual || c.origen === "meta" || (puesto === "vet" && CAND_NUEVOS_VET.has(Number(c.id)));
+  const nuevosSet = puesto === "vet" ? CAND_NUEVOS_VET : puesto === "groomer" ? CAND_NUEVOS_GROOMER : new Set();
+  const esNuevo = (c) => c.manual || c.origen === "meta" || nuevosSet.has(Number(c.id));
   const tierRank = { alta: 0, revisar: 1, futuro: 2 };
   const lista = todosPuesto.filter(pass).sort((a, b) => {
     const ra = tierRank[a.tier || "revisar"] ?? 1, rb = tierRank[b.tier || "revisar"] ?? 1;
@@ -4089,7 +4105,7 @@ function Candidatos() {
       c.form && abierto && E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px" } },
         E("div", { style: { fontWeight: 700, fontSize: 12, color: C.teal, textTransform: "uppercase", letterSpacing: .5, marginBottom: 8 } }, "Respuestas del formulario"),
         c.form.map((a, i) => E("div", { key: i, style: { marginBottom: 9, paddingBottom: 9, borderBottom: i < c.form.length - 1 ? "1px dashed " + C.border : "none" } },
-          E("div", { style: { fontSize: 11.5, fontWeight: 700, color: C.navy } }, CAND_FQ[i]),
+          E("div", { style: { fontSize: 11.5, fontWeight: 700, color: C.navy } }, (CAND_FQ_POR_PUESTO[puesto] || CAND_FQ)[i]),
           E("div", { style: { fontSize: 12.5, color: "#3d4d59", marginTop: 1 } }, a)))
       ),
       E("div", { style: { margin: "0 18px 12px", background: C.cream, border: "1px solid " + C.border, borderRadius: 10, padding: "11px 13px", fontSize: 12.5, color: "#3d4d59" } }, getMsg(c)),
