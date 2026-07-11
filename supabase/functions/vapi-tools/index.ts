@@ -307,9 +307,24 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
     const transcript = String(msg.transcript ?? artifact.transcript ?? "").trim();
     const callerName = String(customer.name ?? call.name ?? "").trim();
 
-    // Datos estructurados (Vapi → Analysis → Structured Data), si están configurados:
-    // qué producto/servicio quiere el cliente y a qué hora quedó en venir.
-    const sd = (analysis.structuredData ?? {}) as Record<string, unknown>;
+    // Datos estructurados: soporta el plan clásico (analysis.structuredData) y los
+    // nuevos "Structured Outputs" del dashboard de Vapi (vienen en artifact/analysis
+    // como objetos { name, result } o como valores planos).
+    const sd: Record<string, unknown> = { ...((analysis.structuredData ?? {}) as Record<string, unknown>) };
+    const so = (artifact.structuredOutputs ?? analysis.structuredOutputs ?? msg.structuredOutputs ?? {}) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(so)) {
+      if (v == null) continue;
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        sd[k] = v; // formato plano: { producto: "...", hora: "..." }
+      } else if (typeof v === "object") {
+        const o = v as Record<string, unknown>;
+        const nombre = String(o.name ?? k).trim();
+        const val = o.result ?? o.value ?? o.output;
+        if (val == null) continue;
+        if (typeof val === "object") Object.assign(sd, val as Record<string, unknown>); // schema con propiedades
+        else sd[nombre] = val;
+      }
+    }
     const sdProducto = String(sd.producto ?? sd.servicio ?? "").trim();
     const sdHora = String(sd.hora ?? "").trim();
     const sdFecha = String(sd.fecha ?? "").trim();
