@@ -4005,7 +4005,11 @@ function Candidatos() {
   const C = { navy: "#12324a", navy2: "#1c4a6b", orange: "#F2901C", teal: "#29A6C4", card: "#fff", border: "#e6ddcc", grisd: "#6b7b88", green: "#2e8b57", greenbg: "#e4f3ea", yellow: "#c98a10", yellowbg: "#fdf3d9", nobg: "#fbe9e7", nofg: "#c0392b", cream: "#FCF8F0" };
   const seed = CANDIDATOS_VET.map((c) => ({ id: c.id, puesto: "vet", nombre: c.name, estado: "Por contactar", notas: "" }));
   const [rows, setRows, loaded, , deleteRow] = useSupabase("pc_candidatos", seed);
+  const rowsRef = React.useRef(rows); rowsRef.current = rows;
   const [puesto, setPuesto] = React.useState("vet");
+  const [sheetUrl, setSheetUrl] = React.useState("");
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [sheetStatus, setSheetStatus] = React.useState("");
   const [vista, setVista] = React.useState("cands");
   const [filter, setFilter] = React.useState("todos");
   const [openForm, setOpenForm] = React.useState({});
@@ -4041,6 +4045,91 @@ function Candidatos() {
   };
   const eliminar = (id) => { if (!confirm("¿Eliminar este candidato?")) return; if (deleteRow) deleteRow(id); toast("Candidato eliminado"); };
 
+  // --- Conexión con hoja de Google (leads de Meta → Sheets → app, en vivo) ---
+  // Parser CSV que respeta comillas y saltos de línea dentro de celdas.
+  const parseCSV = (txt) => {
+    const filas = []; let fila = [], cur = "", q = false;
+    for (let i = 0; i < txt.length; i++) {
+      const ch = txt[i];
+      if (q) {
+        if (ch === '"') { if (txt[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === ",") { fila.push(cur); cur = ""; }
+      else if (ch === "\n") { fila.push(cur); filas.push(fila); fila = []; cur = ""; }
+      else if (ch !== "\r") cur += ch;
+    }
+    if (cur !== "" || fila.length) { fila.push(cur); filas.push(fila); }
+    return filas;
+  };
+
+  const importarSheet = async (url, silencioso, puestoDestino) => {
+    const p = puestoDestino || puesto;
+    let u = (url || "").trim();
+    if (!u) { if (!silencioso) setSheetStatus("Pega el enlace de la hoja publicada."); return; }
+    // Acepta el enlace normal de la hoja y lo convierte a CSV (requiere compartir
+    // "cualquiera con el enlace: lector"); los enlaces ya publicados van tal cual.
+    const m = u.match(/docs\.google\.com\/spreadsheets\/d\/(?:e\/)?([\w-]+)/);
+    if (m && !/output=csv|pub\?|gviz/.test(u)) u = "https://docs.google.com/spreadsheets/d/" + m[1] + "/gviz/tq?tqx=out:csv";
+    if (!silencioso) setSheetStatus("⏳ Leyendo hoja…");
+    try {
+      const r = await fetch(u, { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const filas = parseCSV(await r.text());
+      if (filas.length < 2) { if (!silencioso) setSheetStatus("La hoja se leyó pero no tiene filas de datos todavía."); return; }
+      const head = filas[0].map((h) => String(h || "").toLowerCase().trim());
+      const idx = (re) => head.findIndex((h) => re.test(h));
+      const iNombre = idx(/full ?name|nombre/);
+      const iTel = idx(/whatsapp|phone|tel[eé]fono/);
+      const iMail = idx(/e-?mail|correo/);
+      const esColMeta = (h) => /^(id$|ad_|adset|campaign|form|is_|platform|lead|created|retailer|vendor|org)/.test(h);
+      const norm = (t) => String(t || "").replace(/\D/g, "").slice(-10);
+      // Teléfonos/emails ya registrados (Supabase + listas fijas) para no duplicar
+      const vistos = new Set();
+      (rowsRef.current || []).forEach((x) => { const t = norm(x.telefono); if (t) vistos.add(t); const e = String(x.email || "").toLowerCase().trim(); if (e) vistos.add(e); });
+      [...CANDIDATOS_VET, ...CANDIDATOS_GROOMER].forEach((x) => { const t = norm(x.phone); if (t) vistos.add(t); const e = String(x.email || "").toLowerCase().trim(); if (e) vistos.add(e); });
+      const nuevos = [];
+      for (let f = 1; f < filas.length; f++) {
+        const fila = filas[f];
+        const nombre = iNombre >= 0 ? String(fila[iNombre] || "").trim() : "";
+        const tel = iTel >= 0 ? norm(fila[iTel]) : "";
+        const mail = iMail >= 0 ? String(fila[iMail] || "").toLowerCase().trim() : "";
+        if (!nombre && !tel) continue;
+        if ((tel && vistos.has(tel)) || (mail && vistos.has(mail))) continue;
+        const respuestas = [];
+        head.forEach((h, j) => {
+          if (j === iNombre || j === iTel || j === iMail || esColMeta(h)) return;
+          const val = String(fila[j] || "").trim();
+          if (val) respuestas.push(String(filas[0][j] || "").trim() + ": " + val);
+        });
+        if (tel) vistos.add(tel);
+        if (mail) vistos.add(mail);
+        nuevos.push({ id: Date.now() + f, puesto: p, nombre: nombre || "(sin nombre)", telefono: tel, email: mail, tier: "revisar", estado: "Por contactar", notas: "", evalt: respuestas.join(" · "), origen: "sheet" });
+      }
+      if (nuevos.length) setRows((prev) => [...prev, ...nuevos]);
+      if (!silencioso || nuevos.length) setSheetStatus("✅ " + (filas.length - 1) + " fila(s) en la hoja · " + nuevos.length + " prospecto(s) nuevo(s) importado(s)" + (nuevos.length ? " ✨" : ""));
+    } catch (e) {
+      if (!silencioso) setSheetStatus("❌ No se pudo leer la hoja (" + (e.message || e) + "). Verifica que esté publicada en la web como CSV o compartida con enlace.");
+    }
+  };
+
+  // Cargar URL guardada al cambiar de puesto + importar automático al abrir y cada 5 min
+  React.useEffect(() => {
+    let u = ""; try { u = localStorage.getItem("pc_sheet_" + puesto) || ""; } catch {}
+    setSheetUrl(u); setSheetStatus("");
+    if (!u || !loaded) return;
+    importarSheet(u, true, puesto);
+    const t = setInterval(() => importarSheet(u, true, puesto), 300000);
+    return () => clearInterval(t);
+  }, [puesto, loaded]);
+
+  const guardarSheet = () => {
+    const u = sheetUrl.trim();
+    try { localStorage.setItem("pc_sheet_" + puesto, u); } catch {}
+    if (u) importarSheet(u, false, puesto);
+    else setSheetStatus("Conexión desactivada para esta vacante.");
+  };
+
   // Candidatos del puesto: estáticos (solo vet) + manuales guardados en Supabase
   const manual = (rows || []).filter((r) => String(r.puesto || "vet") === puesto && !staticIds.has(String(r.id)))
     .map((r) => ({ id: r.id, name: r.nombre || "(sin nombre)", disp: r.telefono || "", phone: r.telefono || "", email: r.email || "", tier: r.tier || "revisar", eval: r.evalt || r.eval || "", manual: true, origen: r.origen || "" }));
@@ -4048,7 +4137,9 @@ function Candidatos() {
   const todosPuesto = [...base, ...manual];
   const pass = (c) => filter === "alta" ? c.tier === "alta" : filter === "exeq" ? c.exeq === "Sí" : filter === "grad" ? (c.grad || "").startsWith("Sí") : true;
   const nuevosSet = puesto === "vet" ? CAND_NUEVOS_VET : puesto === "groomer" ? CAND_NUEVOS_GROOMER : new Set();
-  const esNuevo = (c) => c.manual || c.origen === "meta" || nuevosSet.has(Number(c.id));
+  // "Nuevo" = candidato aún sin gestionar (estado "Por contactar").
+  // Al cambiarle el estado, el brillito desaparece solo.
+  const esNuevo = (c) => (getEstado(c.id) === "Por contactar") && (c.manual || c.origen === "meta" || c.origen === "sheet" || nuevosSet.has(Number(c.id)));
   const tierRank = { alta: 0, revisar: 1, futuro: 2 };
   const lista = todosPuesto.filter(pass).sort((a, b) => {
     const ra = tierRank[a.tier || "revisar"] ?? 1, rb = tierRank[b.tier || "revisar"] ?? 1;
@@ -4151,6 +4242,18 @@ function Candidatos() {
               E("option", { value: "alta" }, "Prioridad alta"), E("option", { value: "revisar" }, "Revisar"), E("option", { value: "futuro" }, "A futuro / auxiliar"))),
           E("textarea", { value: nuevo.evalt, onChange: (e) => setNuevo((n) => ({ ...n, evalt: e.target.value })), placeholder: "Evaluación / resumen del candidato (opcional)", rows: 2, style: { width: "100%", fontSize: 13, border: "1.5px solid " + C.border, borderRadius: 8, padding: "8px 10px", resize: "vertical", marginBottom: 10 } }),
           E("button", { onClick: agregar, style: { fontWeight: 700, fontSize: 13, padding: "9px 18px", borderRadius: 9, border: "none", background: C.green, color: "#fff", cursor: "pointer" } }, "Guardar candidato")
+        ),
+        E("div", { style: { marginTop: 10 } },
+          E("button", { onClick: () => setSheetOpen((v) => !v), style: { fontWeight: 700, fontSize: 13, padding: "9px 16px", borderRadius: 9, border: "1.5px dashed #0F9D58", background: "#fff", color: "#0F9D58", cursor: "pointer" } }, sheetOpen ? "✕ Cerrar conexión de hoja" : "🔗 Conectar hoja de Google (leads en vivo)"),
+          sheetOpen && E("div", { style: { marginTop: 12, background: "#fff", border: "1px solid " + C.border, borderRadius: 12, padding: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)" } },
+            E("div", { style: { fontSize: 12.5, color: C.grisd, marginBottom: 10, lineHeight: 1.5 } },
+              "Pega el enlace de la hoja de Google donde caen los leads de Meta para la vacante de " + puestoLabel + ". La app la revisará al abrir esta pestaña y cada 5 minutos, e importará solo los prospectos nuevos (sin duplicar, comparando teléfono y email)."),
+            E("input", { value: sheetUrl, onChange: (e) => setSheetUrl(e.target.value), placeholder: "https://docs.google.com/spreadsheets/d/…", style: { width: "100%", fontSize: 13, border: "1.5px solid " + C.border, borderRadius: 8, padding: "9px 11px", marginBottom: 10 } }),
+            E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+              E("button", { onClick: guardarSheet, style: { fontWeight: 700, fontSize: 13, padding: "9px 18px", borderRadius: 9, border: "none", background: "#0F9D58", color: "#fff", cursor: "pointer" } }, "💾 Guardar y leer ahora"),
+              sheetUrl.trim() && E("button", { onClick: () => importarSheet(sheetUrl, false, puesto), style: { fontWeight: 700, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "1.5px solid " + C.border, background: "#fff", color: C.navy, cursor: "pointer" } }, "🔄 Releer hoja")),
+            sheetStatus && E("div", { style: { marginTop: 10, fontSize: 13, fontWeight: 600, color: sheetStatus.startsWith("❌") ? C.nofg : C.navy } }, sheetStatus)
+          )
         )
       ),
       !loaded && E("div", { style: { color: C.grisd, padding: "10px 0" } }, "⏳ Cargando notas guardadas…"),
