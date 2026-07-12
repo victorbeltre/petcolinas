@@ -4089,18 +4089,27 @@ function Candidatos() {
       const iMail = idx(/e-?mail|correo/);
       const esColMeta = (h) => /^(id$|ad_|adset|campaign|form|is_|platform|lead|created|retailer|vendor|org)/.test(h);
       const norm = (t) => String(t || "").replace(/\D/g, "").slice(-10);
-      // Teléfonos/emails ya registrados (Supabase + listas fijas) para no duplicar
-      const vistos = new Set();
-      (rowsRef.current || []).forEach((x) => { const t = norm(x.telefono); if (t) vistos.add(t); const e = String(x.email || "").toLowerCase().trim(); if (e) vistos.add(e); });
-      [...CANDIDATOS_VET, ...CANDIDATOS_GROOMER].forEach((x) => { const t = norm(x.phone); if (t) vistos.add(t); const e = String(x.email || "").toLowerCase().trim(); if (e) vistos.add(e); });
+      // Filas ya registradas en Supabase (por teléfono/email) → para no duplicar y
+      // para REPARAR las que quedaron mal en importaciones anteriores.
+      const porClave = new Map();
+      (rowsRef.current || []).forEach((x) => {
+        const t = norm(x.telefono); if (t) porClave.set(t, x);
+        const e = String(x.email || "").toLowerCase().trim(); if (e) porClave.set(e, x);
+      });
+      // Candidatos fijos del código: nunca importar sobre ellos
+      const fijos = new Set();
+      [...CANDIDATOS_VET, ...CANDIDATOS_GROOMER].forEach((x) => { const t = norm(x.phone); if (t) fijos.add(t); const e = String(x.email || "").toLowerCase().trim(); if (e) fijos.add(e); });
       const nuevos = [];
+      const reparar = new Map();
+      const enLectura = new Set();
       for (let f = 1; f < filas.length; f++) {
         const fila = filas[f];
         const nombre = iNombre >= 0 ? limpiar(fila[iNombre]) : "";
         const tel = iTel >= 0 ? norm(fila[iTel]) : "";
         const mail = iMail >= 0 ? String(fila[iMail] || "").toLowerCase().trim() : "";
         if (!nombre && !tel) continue;
-        if ((tel && vistos.has(tel)) || (mail && vistos.has(mail))) continue;
+        if ((tel && fijos.has(tel)) || (mail && fijos.has(mail))) continue;
+        if ((tel && enLectura.has(tel)) || (mail && enLectura.has(mail))) continue;
         // Preguntas y respuestas del formulario, limpias (sin guiones bajos de Meta)
         const qa = [];
         head.forEach((h, j) => {
@@ -4117,12 +4126,27 @@ function Candidatos() {
         const el = exp.toLowerCase();
         const tier = /m[áa]s.?de.?3|[4-9] ?a[ñn]|1[0-9] ?a[ñn]|m[áa]s de 10/.test(el) ? "alta" : /menos.?de.?1|ninguna|no tengo/.test(el) ? "futuro" : "revisar";
         const evalTxt = [exp && ("Experiencia: " + exp), servicios && ("Servicios: " + servicios), razas && ("Razas: " + razas), sector && ("Vive en " + sector)].filter(Boolean).join(" · ");
-        if (tel) vistos.add(tel);
-        if (mail) vistos.add(mail);
+        if (tel) enLectura.add(tel);
+        if (mail) enLectura.add(mail);
+        const existente = (tel && porClave.get(tel)) || (mail && porClave.get(mail)) || null;
+        if (existente) {
+          // Ya está registrado: si quedó mal de una importación anterior (sin nombre,
+          // texto crudo con guiones bajos o sin formqa), lo REPARAMOS conservando
+          // su estado y las notas de Laura.
+          const mal = !existente.nombre || existente.nombre === "(sin nombre)" || !existente.formqa || /_/.test(String(existente.evalt || ""));
+          if (String(existente.origen || "") === "sheet" && mal) {
+            reparar.set(String(existente.id), { nombre: nombre || existente.nombre || "(sin nombre)", telefono: tel || existente.telefono, email: mail || existente.email, tier, evalt: evalTxt, formqa: JSON.stringify({ qa, exp, sector }) });
+          }
+          continue;
+        }
         nuevos.push({ id: Date.now() + f, puesto: p, nombre: nombre || "(sin nombre)", telefono: tel, email: mail, tier, estado: "Por contactar", notas: "", evalt: evalTxt, formqa: JSON.stringify({ qa, exp, sector }), origen: "sheet" });
       }
-      if (nuevos.length) setRows((prev) => [...prev, ...nuevos]);
-      if (!silencioso || nuevos.length) setSheetStatus("✅ " + (filas.length - 1) + " fila(s) en la hoja · " + nuevos.length + " prospecto(s) nuevo(s) importado(s)" + (nuevos.length ? " ✨" : ""));
+      const cambios = reparar.size + nuevos.length;
+      if (cambios) setRows((prev) => {
+        let arr = reparar.size ? prev.map((x) => reparar.has(String(x.id)) ? { ...x, ...reparar.get(String(x.id)) } : x) : prev;
+        return nuevos.length ? [...arr, ...nuevos] : arr;
+      });
+      if (!silencioso || cambios) setSheetStatus("✅ " + (filas.length - 1) + " fila(s) en la hoja · " + nuevos.length + " nuevo(s) · " + reparar.size + " reparado(s)" + (cambios ? " ✨" : ""));
     } catch (e) {
       if (!silencioso) setSheetStatus("❌ No se pudo leer la hoja (" + (e.message || e) + "). Verifica que esté publicada en la web como CSV o compartida con enlace.");
     }
