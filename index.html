@@ -1099,18 +1099,38 @@ function useSupaTarifas() {
     ...TARIFAS_GROOMING.map(t => ({ ...t, area: "grooming" })),
     ...TARIFAS_VET.map(t => ({ ...t, area: "vet" }))
   ], []);
-  const [data, _setData] = useState(SEED_ALL);
-  const dataRef = useRef(SEED_ALL);
+  const [data, _setData] = useState(() => {
+    try {
+      const cached = localStorage.getItem("pc_tarifas_local");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return SEED_ALL;
+  });
+  const dataRef = useRef(data);
   useEffect(() => {
     (async () => {
       const rows = await supaFetch("pc_tarifas", "GET", null, "?order=id.asc&limit=500");
       if (Array.isArray(rows) && rows.length > 0) {
         const norm = rows.map(r => normalizeRow("pc_tarifas", r));
         _setData(norm); dataRef.current = norm;
+        try { localStorage.setItem("pc_tarifas_local", JSON.stringify(norm)); } catch {}
       } else if (Array.isArray(rows)) {
         await uploadSeed("pc_tarifas", SEED_ALL);
+        try { localStorage.setItem("pc_tarifas_local", JSON.stringify(SEED_ALL)); } catch {}
       }
     })();
+  }, []);
+  const _persistAll = useCallback(async (newAll) => {
+    try { localStorage.setItem("pc_tarifas_local", JSON.stringify(newAll)); } catch {}
+    let supaError = false;
+    for (const row of newAll) {
+      const r = await supaFetch("pc_tarifas", "POST", denormalizeRow("pc_tarifas", row), "?on_conflict=id");
+      if (r && r.error) supaError = true;
+    }
+    if (supaError) console.warn("[Tarifas] Algunos cambios no se guardaron en Supabase, pero se conservan en localStorage.");
   }, []);
   const setTarifasGrooming = useCallback(async (fnOrArr) => {
     const cur = dataRef.current;
@@ -1120,8 +1140,8 @@ function useSupaTarifas() {
     _setData(newAll); dataRef.current = newAll;
     const newIds = new Set(newG.map(t => t.id));
     for (const old of curG) { if (!newIds.has(old.id)) await supaFetch("pc_tarifas", "DELETE", null, `?id=eq.${old.id}`); }
-    for (const row of newG) await supaFetch("pc_tarifas", "POST", denormalizeRow("pc_tarifas", row), "?on_conflict=id");
-  }, []);
+    await _persistAll(newAll);
+  }, [_persistAll]);
   const setTarifasVet = useCallback(async (fnOrArr) => {
     const cur = dataRef.current;
     const curV = cur.filter(t => t.area === "vet");
@@ -1130,8 +1150,8 @@ function useSupaTarifas() {
     _setData(newAll); dataRef.current = newAll;
     const newIds = new Set(newV.map(t => t.id));
     for (const old of curV) { if (!newIds.has(old.id)) await supaFetch("pc_tarifas", "DELETE", null, `?id=eq.${old.id}`); }
-    for (const row of newV) await supaFetch("pc_tarifas", "POST", denormalizeRow("pc_tarifas", row), "?on_conflict=id");
-  }, []);
+    await _persistAll(newAll);
+  }, [_persistAll]);
   const tarifasGrooming = useMemo(() => data.filter(t => t.area === "grooming"), [data]);
   const tarifasVet = useMemo(() => data.filter(t => t.area === "vet"), [data]);
   return [tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet];
