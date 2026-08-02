@@ -3092,7 +3092,7 @@ function enviarPDFWhatsApp(f, clientes) {
   }
   window.open(waUrl, "_blank");
 }
-function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario }) {
+function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, tarifasVet, inventario }) {
   const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
     try {
       const stored = JSON.parse(localStorage.getItem("pc_facturas") || "null");
@@ -3104,6 +3104,7 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
   const [facturaActual, setFacturaActual] = useState(null);
   const [editandoId, setEditandoId] = useState(null);
   const [editandoNum, setEditandoNum] = useState("");
+  const [editandoOrig, setEditandoOrig] = useState(null);
   // Fila del formulario que tiene abierto el autocompletado de servicios
   const [sugItem, setSugItem] = useState(null);
   // Catalogo para el autocompletado: mismas tarifas y productos que usa Ventas
@@ -3138,6 +3139,7 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
   function abrirEditar(factura) {
     setEditandoId(factura.id);
     setEditandoNum(factura.numero || "");
+    setEditandoOrig(factura);
     setForm({
       clienteId:   factura.clienteId   || "",
       mascota:     factura.mascota     || "",
@@ -3227,6 +3229,81 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
     const dCRM = crmCli ? parseInt(crmCli.banos2025) || 0 : 0;
     return fechas.size + dCRM;
   }
+  // --- Puente Facturas <-> Ventas -------------------------------------------
+  const normNom = (s) => String(s || "").toLowerCase().trim();
+  // Ventas que componen una factura generada desde el registro de ventas.
+  function ventasDeFactura(f) {
+    if (!f || !String(f.id).startsWith("venta_")) return [];
+    return (ventas || [])
+      .filter((v) => v.fecha === f.fecha && normNom(v.cliente) === normNom(f.mascota))
+      .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+  }
+  // Deduce el area de una venta a partir del nombre del servicio.
+  function areaDeServicio(servicio, fallback) {
+    const s = normNom(servicio);
+    if (/ba[ñn]o|corte|grooming|peluquer|desenred|deslan|u[ñn]as|spa/.test(s)) return "grooming";
+    if (/consulta|vacuna|test|aplicaci|desparasit|cirug|inyecc|refuerzo|muestra|diagn/.test(s)) return "veterinaria";
+    return fallback || "farmacia";
+  }
+  // Reescribe las ventas del grupo para que coincidan con las lineas de la
+  // factura. Devuelve true si habia ventas que actualizar.
+  function volcarFacturaEnVentas(grupoOriginal, datos) {
+    if (!setVentas || grupoOriginal.length === 0) return false;
+
+    const lineas = (datos.items || [])
+      .filter((it) => String(it.descripcion || "").trim())
+      .map((it) => {
+        const precio = parseFloat(it.precio) || 0;
+        const cant = parseInt(it.cantidad) || 1;
+        const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0));
+        return { servicio: String(it.descripcion).trim(), total: Math.round(precio * cant * (1 - desc / 100)) };
+      });
+    if (lineas.length === 0) return false;
+
+    const formaPago = datos.estado === "pendiente" ? "Pago pendiente" : (datos.metodoPago || "Efectivo");
+    const base = grupoOriginal[0];
+    const actualizadas = [];
+    const aBorrar = [];
+
+    for (let i = 0; i < Math.max(grupoOriginal.length, lineas.length); i++) {
+      const v = grupoOriginal[i], l = lineas[i];
+      if (v && l) {
+        // Se conserva area, comision y quien la recibio; solo cambia lo editado.
+        actualizadas.push({ ...v, fecha: datos.fecha, cliente: datos.mascota, servicio: l.servicio, descripcion: l.servicio, total: l.total, formaPago });
+      } else if (l) {
+        actualizadas.push({
+          id: Date.now() + i, fecha: datos.fecha, cliente: datos.mascota,
+          area: areaDeServicio(l.servicio, base.area), servicio: l.servicio, descripcion: l.servicio,
+          total: l.total, comision: 0, formaPago,
+          recibidoPor: base.recibidoPor || base.recibidopor || "", notas: ""
+        });
+      } else if (v) {
+        aBorrar.push(v);
+      }
+    }
+
+    const idsGrupo = new Set(grupoOriginal.map((x) => String(x.id)));
+    setVentas((vs) => [...vs.filter((x) => !idsGrupo.has(String(x.id))), ...actualizadas]);
+    if (deleteVenta) aBorrar.forEach((v) => { try { deleteVenta(v.id); } catch {} });
+    return true;
+  }
+  // Borra una factura. Si viene del registro de ventas, borra tambien esas ventas
+  // (si no, se volveria a generar sola en el siguiente refresco).
+  function borrarFactura(f, alTerminar) {
+    const grupo = ventasDeFactura(f);
+    const aviso = grupo.length > 0
+      ? "\xBFBorrar la factura #" + f.numero + "?\n\n⚠️ Esta factura viene del registro de ventas, as\xED que tambi\xE9n se eliminar\xE1n " +
+        grupo.length + " venta(s) de " + (f.mascota || "este cliente") + " del " + f.fecha +
+        " por RD$ " + grupo.reduce((s, v) => s + (Number(v.total) || 0), 0).toLocaleString("es-DO") +
+        ".\n\nEsta acci\xF3n no se puede deshacer."
+      : "\xBFBorrar la factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.";
+    if (!confirm(aviso)) return;
+    setFacturas((fs) => fs.filter((x) => String(x.id) !== String(f.id)));
+    deleteOne("pc_facturas", f.id).catch(() => {});
+    if (deleteVenta) grupo.forEach((v) => { try { deleteVenta(v.id); } catch {} });
+    if (typeof alTerminar === "function") alTerminar();
+  }
+
   function crearFactura() {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
     // Esta visita suma 1 solo si tiene grooming Y no hay otra factura de grooming para esa fecha
@@ -3259,15 +3336,39 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
       groomingCount: gCount
     };
     if (editandoId) {
-      // Al editar una factura auto-generada (id "venta_...") se marca como manual:
-      // asi deja de regenerarse desde las ventas y SI se guarda en Supabase.
-      const editada = { ...nueva, id: editandoId, numero: editandoNum || nueva.numero, autoGenerada: false, editadaManual: true };
+      const esDeVentas = String(editandoId).startsWith("venta_");
+      const numero = editandoNum || nueva.numero;
+      let idFinal = editandoId;
+
+      if (esDeVentas) {
+        // La factura vive en el registro de ventas: se vuelcan ahi los cambios
+        // para que Ventas y Facturas queden siempre iguales.
+        // Se busca el grupo con la fecha/mascota ORIGINALES (pueden haber cambiado
+        // en el formulario). El id lleva la fecha embebida: "venta_YYYY-MM-DD_...".
+        const grupo = ventasDeFactura({
+          id: editandoId,
+          fecha: (editandoOrig && editandoOrig.fecha) || String(editandoId).slice(6, 16),
+          mascota: (editandoOrig && editandoOrig.mascota) || form.mascota
+        });
+        volcarFacturaEnVentas(grupo, {
+          fecha: form.fecha, mascota: form.mascota, items: form.items,
+          metodoPago: form.metodoPago, estado: form.estado
+        });
+        // Si cambio la fecha o el nombre de la mascota, el id derivado cambia.
+        idFinal = "venta_" + (form.fecha || "") + "_" + (form.mascota || "sin_cliente").toLowerCase().trim().replace(/\s/g, "_");
+        try {
+          const reg = JSON.parse(localStorage.getItem("pc_fact_nums") || "{}");
+          reg[idFinal] = parseInt(numero, 10) || reg[idFinal];
+          localStorage.setItem("pc_fact_nums", JSON.stringify(reg));
+        } catch {}
+      }
+
+      const editada = { ...nueva, id: idFinal, numero, autoGenerada: false };
       setFacturas((fs) => {
-        const existe = fs.some((f) => String(f.id) === String(editandoId));
-        return existe
-          ? fs.map((f) => String(f.id) === String(editandoId) ? { ...editada, numero: f.numero || editada.numero } : f)
-          : [editada, ...fs];
+        const sinViejas = fs.filter((f) => String(f.id) !== String(editandoId) && String(f.id) !== String(idFinal));
+        return [editada, ...sinViejas];
       });
+      if (idFinal !== editandoId) deleteOne("pc_facturas", editandoId).catch(() => {});
       setFacturaActual(editada);
     } else {
       setFacturas((fs) => [nueva, ...fs]);
@@ -3275,6 +3376,7 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
     }
     setEditandoId(null);
     setEditandoNum("");
+    setEditandoOrig(null);
     setSugItem(null);
     setVista("ver");
     setForm({ clienteId: "", mascota: "", propietario: "", telefono: "", fecha: hoy(), items: [{ descripcion: "", cantidad: 1, precio: 0, descuento: 0 }], itbis: true, metodoPago: "Efectivo", estado: "pagada", notas: "" }); setBusqFact("");
@@ -3500,8 +3602,10 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
           if (_parts.length <= 1) return [{ descripcion: _desc, cantidad: 1, precio: v.total || 0, descuento: 0 }];
           return _parts.map((s, i) => ({ descripcion: s, cantidad: 1, precio: i === 0 ? (v.total || 0) : 0, descuento: 0 }));
         }),
-        metodoPago: g.items[0]?.formapago && g.items[0].formapago !== "Pago pendiente" ? g.items[0].formapago : "Efectivo",
-        estado: g.items.some(v => (v.formapago || "") === "Pago pendiente") ? "pendiente" : "pagada",
+        // OJO: normalizeRow devuelve formaPago en camelCase; antes se leia
+        // "formapago" y por eso toda factura salia como Efectivo/PAGADA.
+        metodoPago: (() => { const fp = g.items[0]?.formaPago || g.items[0]?.formapago || ""; return fp && fp !== "Pago pendiente" ? fp : "Efectivo"; })(),
+        estado: g.items.some(v => (v.formaPago || v.formapago || "") === "Pago pendiente") ? "pendiente" : "pagada",
         itbis: false,
         subtotal,
         itbisAmt: 0,
@@ -3520,12 +3624,25 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
     const savedIds = new Set(facturas.map((f) => String(f.id)));
     const manualesActualizadas = facturas.map((f) => {
       const fresh = autoMap.get(String(f.id));
-      // Si el usuario la edito a mano, MANDA la version guardada (si no, se
-      // perderian los cambios al regenerarla desde las ventas).
-      if (f.editadaManual || f.autoGenerada === false) return f;
-      // Para auto-generadas: usar datos frescos pero conservar el numero guardado
-      if (fresh) return { ...fresh, numero: f.numero };
-      return f;
+      if (!fresh) return f;
+      // Facturas ligadas a ventas: las LINEAS y los MONTOS salen siempre de las
+      // ventas (fuente de verdad, asi editar una venta actualiza la factura).
+      // La factura guardada solo aporta lo que no existe en ventas: numero,
+      // ITBIS, notas y los datos del cliente.
+      const itbis = f.itbis === true;
+      const itbisAmt = itbis ? Math.round((fresh.subtotal || 0) * 0.18) : 0;
+      return {
+        ...fresh,
+        numero: f.numero || fresh.numero,
+        itbis,
+        itbisAmt,
+        total: (fresh.subtotal || 0) + itbisAmt,
+        notas: f.notas || fresh.notas || "",
+        propietario: f.propietario || fresh.propietario,
+        telefono: f.telefono || fresh.telefono,
+        clienteId: f.clienteId || fresh.clienteId || "",
+        autoGenerada: f.autoGenerada
+      };
     });
     // Agregar grupos completamente nuevos (cliente+fecha que no existían antes)
     const maxNumero = Math.max(0, ...facturas.map(f => parseInt(f.numero || "0", 10)).filter(n => !isNaN(n)));
@@ -3762,13 +3879,13 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
         style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "14px 28px", fontSize: 15, fontWeight: 700, cursor: "pointer" }
       },
       editandoId ? "\ud83d\udcbe Guardar cambios" : "\u2705 Emitir Factura"
-    ), /* @__PURE__ */ React.createElement("button", { onClick: () => { setEditandoId(null); setEditandoNum(""); setSugItem(null); setVista("lista"); }, style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 10, padding: "14px 20px", fontSize: 14, cursor: "pointer" } }, "Cancelar")));
+    ), /* @__PURE__ */ React.createElement("button", { onClick: () => { setEditandoId(null); setEditandoNum(""); setEditandoOrig(null); setSugItem(null); setVista("lista"); }, style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 10, padding: "14px 20px", fontSize: 14, cursor: "pointer" } }, "Cancelar")));
   }
   if (vista === "ver" && facturaActual) {
     const f = facturaActual;
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
     const gLealtad = calcGroomingLealtad(f.mascota);
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); deleteOne("pc_facturas", f.id).catch(() => {}); setVista("lista"); } }, style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => borrarFactura(f, () => setVista("lista")), style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
       marginTop: 6,
       background: gLealtad >= 10 ? "#d4edda" : "#fff3cd",
       color: gLealtad >= 10 ? "#155724" : "#856404",
@@ -3844,7 +3961,7 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
       title: "Editar",
       style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }
     }, "\u270F\uFE0F"), React.createElement("button", {
-      onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); deleteOne("pc_facturas", f.id).catch(() => {}); } },
+      onClick: () => borrarFactura(f),
       title: "Borrar",
       style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }
     }, "\u{1F5D1}\uFE0F"))))))));
@@ -3997,6 +4114,14 @@ function Facturas({ ventas, clientes, tarifasGrooming, tarifasVet, inventario })
       style: { background: "#e8fdf0", color: "#1a8a3c", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12 }
     },
     "\u{1F4F1}"
+  ), React.createElement(
+    "button",
+    {
+      onClick: () => borrarFactura(f),
+      title: "Eliminar factura",
+      style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }
+    },
+    "\u{1F5D1}️"
   ))))))))), vistaMode === "clientes" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 16, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, fontWeight: 600 } }, "Ordenar por:"), /* @__PURE__ */ React.createElement(
     "select",
     {
@@ -6088,7 +6213,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
