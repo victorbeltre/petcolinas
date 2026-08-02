@@ -5115,6 +5115,22 @@ function WAPreviewModal() {
   );
 }
 function abrirWA(tel, msg) { window.dispatchEvent(new CustomEvent("pc-wa", { detail: { tel, msg } })); }
+// Sincroniza la Agenda con Google Calendar en ambos sentidos. Se dispara sin
+// esperar respuesta al guardar/cancelar/borrar una cita; se agrupan las llamadas
+// seguidas para no lanzar una por cada tecleo.
+let _calSyncT = null;
+function dispararCalendarSync(inmediato) {
+  if (_calSyncT) clearTimeout(_calSyncT);
+  const lanzar = () => {
+    _calSyncT = null;
+    fetch(SUPA_URL + "/functions/v1/calendar-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY },
+    }).then(r => r.json()).then(j => console.log("[calendar-sync]", j))
+      .catch(e => console.warn("[calendar-sync]", e.message || e));
+  };
+  if (inmediato) lanzar(); else _calSyncT = setTimeout(lanzar, 4000);
+}
 document.addEventListener("click", function(ev) {
   const a = ev.target.closest("a[href]");
   if (!a || !a.href.includes("wa.me")) return;
@@ -5733,7 +5749,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, clientes: todosClientes }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
@@ -12661,7 +12677,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
   );
 }
 
-function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], setVentas, tarifasGrooming = [], tarifasVet = [], setTab }) {
+function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], setVentas, tarifasGrooming = [], tarifasVet = [], setTab, refetchCitasAgenda }) {
   const [vista, setVista] = React.useState("dia");
   const [fechaActual, setFechaActual] = React.useState(hoy());
   const [modalCita, setModalCita] = React.useState(null);
@@ -12679,6 +12695,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
   const [filtroFechaHasta, setFiltroFechaHasta] = React.useState("");
   const [busqueda, setBusqueda] = React.useState("");
   const [conflictoMsg, setConflictoMsg] = React.useState(null);
+  const [calMsg, setCalMsg] = React.useState("");
   const [sofiaStatus, setSofiaStatus] = React.useState(null);
   const [crmQuery, setCrmQuery] = React.useState("");
   const [crmOpen, setCrmOpen] = React.useState(false);
@@ -12809,6 +12826,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     else setCitas(prev => prev.map(c => c.id === cita.id ? cita : c));
     // Push directo a Supabase para sincronización inmediata entre usuarios
     upsertOne("pc_citas", cita).catch(e => console.warn("[guardarCita] sync error", e));
+    dispararCalendarSync();
     cerrarModal();
   };
 
@@ -12819,6 +12837,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
       if (citaActualizada) upsertOne("pc_citas", citaActualizada).catch(e => console.warn("[cambiarEstado] sync error", e));
       return updated;
     });
+    dispararCalendarSync();
   };
 
   const registrarMensaje = (citaId, tipo) => {
@@ -12831,6 +12850,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     // Supabase; así no reaparece al refrescar aunque el DELETE remoto falle por RLS.
     if (deleteCita) deleteCita(id);
     else { setCitas(prev => prev.filter(c => c.id !== id)); deleteOne("pc_citas", id).catch(e => console.error("[eliminarCita]", e)); }
+    dispararCalendarSync();
     cerrarModal();
   };
 
@@ -13365,8 +13385,26 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
         E("h2",{style:{fontFamily:"Georgia,serif",fontSize:26,margin:0}},"📅 Agenda"),
         E("p",{style:{color:C.grisd,fontSize:13,margin:"4px 0 0"}},"Gestión de citas · PetColinas")
       ),
-      E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
+      E("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+        E("button",{
+          onClick: async () => {
+            setCalMsg("⏳ Sincronizando…");
+            try {
+              const r = await fetch(SUPA_URL + "/functions/v1/calendar-sync", { method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + SUPA_KEY } });
+              const j = await r.json();
+              if (!j.ok) throw new Error(j.error || "error");
+              setCalMsg(`✅ Calendar: +${j.creadosEnCalendar} · ${j.actualizadosEnCalendar} act. · App: +${j.creadasEnApp}`);
+              refetchCitasAgenda && refetchCitasAgenda();
+            } catch (e) { setCalMsg("❌ " + (e.message || e)); }
+            setTimeout(() => setCalMsg(""), 8000);
+          },
+          title:"Sincronizar la agenda con Google Calendar en ambos sentidos",
+          style:{background:"#fff",color:"#1a73e8",border:"1.5px solid #1a73e8",borderRadius:10,padding:"10px 14px",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}
+        },"📆 Google Calendar"),
+        E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
+      )
     ),
+    calMsg && E("div",{style:{background:"#e8f0fe",border:"1.5px solid #1a73e8",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,fontWeight:600,color:"#174ea6"}},calMsg),
     recordatoriosHoy.length>0 && E("div",{style:{background:"#e0f2fe",border:"1.5px solid #0284c7",borderRadius:12,padding:"14px 16px",marginBottom:12}},
       E("div",{style:{fontWeight:800,color:"#0369a1",fontSize:13,marginBottom:8}},`🌞 ${recordatoriosHoy.length} cita(s) HOY sin recordatorio enviado`),
       recordatoriosHoy.slice(0,3).map(c=>E("div",{key:c.id,style:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f0f9ff",borderRadius:8,padding:"8px 12px",marginBottom:4}},

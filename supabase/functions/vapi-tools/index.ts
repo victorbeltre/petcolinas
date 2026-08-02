@@ -105,6 +105,15 @@ const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+// Avisa a calendar-sync para que la cita aparezca en Google Calendar enseguida
+// (si no, igual la recoge la sincronización periódica). No bloquea ni falla.
+function sincronizarCalendario(): void {
+  fetch(SUPABASE_URL + "/functions/v1/calendar-sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + SUPABASE_SERVICE_KEY },
+  }).then(() => console.log("calendar-sync avisado")).catch((e) => console.warn("calendar-sync:", String(e)));
+}
+
 // Fusiona los "Structured Outputs" de Vapi dentro de sd. Soporta:
 //   { "uuid": { name: "hora", result: "13:00" }, ... }  (dashboard nuevo)
 //   { hora: "13:00", ... }                              (formato plano)
@@ -460,6 +469,7 @@ async function guardarLlamada(msg: Record<string, unknown>): Promise<void> {
           if (!nombremascota) nombremascota = nueva.nombremascota;
           if (!nombrecliente) nombrecliente = String(nueva.nombrecliente ?? "");
           console.log("Auto-cita creada:", fechaCita, horaCita, servicioCita);
+          sincronizarCalendario();
         }
       }
     }
@@ -595,5 +605,6 @@ async function handleAgendarCita(
   }
 
   console.log("agendarCita OK:", nombreMascota, fechaISO, hora);
+  sincronizarCalendario();
   return `Cita agendada correctamente para ${nombreMascota} el ${fechaISO} a las ${hora}. ¡Los esperamos en PetColinas!`;
 }
