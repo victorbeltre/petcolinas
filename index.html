@@ -9434,15 +9434,34 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
   color: "#25D366",
   onClick: () => {
     const tel = (c.telefono || "").replace(/\D/g, "");
-    const msg = encodeURIComponent(
+    // Contexto del mensaje: los servicios de la factura r\u00E1pida si se est\u00E1n cargando
+    // ahora; si no, la \u00DALTIMA visita registrada (todas las ventas de esa fecha, que
+    // es como queda una visita con varios servicios: ba\u00F1o + farmacia, etc.).
+    let lineas = [], total = 0;
+    if (serviciosFactura.length > 0) {
+      lineas = serviciosFactura.map((s) => (s.nombre || "Servicio") + " - RD$" + (Number(s.precio) || 0).toLocaleString("es-DO"));
+      total = serviciosFactura.reduce((a, s) => a + (Number(s.precio) || 0), 0);
+    } else if (ventasCliente.length > 0) {
+      const ordenadas = [...ventasCliente].sort((a, b) =>
+        (b.fecha || "").localeCompare(a.fecha || "") || (Number(b.id) || 0) - (Number(a.id) || 0));
+      const delDia = ordenadas.filter((v) => v.fecha === ordenadas[0].fecha);
+      lineas = delDia.map((v) => {
+        const desc = v.descripcion || v.servicio ||
+          (v.items && v.items.length ? v.items.map((i) => i.nombre || i.descripcion || "").filter(Boolean).join(" + ") : "") || "Servicio";
+        return desc + " - RD$" + (Number(v.total) || 0).toLocaleString("es-DO");
+      });
+      total = delDia.reduce((a, v) => a + (Number(v.total) || 0), 0);
+    }
+    const bloque = lineas.length === 0
+      ? "*Servicio a realizar:* Por confirmar\n\n"
+      : (lineas.length === 1 ? "*Servicio:* " + lineas[0] + "\n" : "*Servicios:*\n" + lineas.map((l) => "\u2022 " + l).join("\n") + "\n") +
+        "*Total:* RD$" + total.toLocaleString("es-DO") + "\n\n";
+    abrirWA(tel,
       "\u{1F43E} *\u00A1Bienvenido/a a PetColinas!* \u{1F43E}\n\n" +
       "Hola " + (c.nombrePropietario || c.nombrepropietario || "estimado cliente") + ", con mucho gusto les damos la bienvenida a nuestra familia PetColinas.\n\n" +
       "*Mascota:* " + (c.nombreMascota || c.nombremascota || "") + "\n" +
-      "*Servicio a realizar:* " + (serviciosFactura.length > 0 ? serviciosFactura.map(s=>s.nombre + " - RD$" + s.precio).join(", ") : "Por confirmar") + "\n" +
-      "*Total:* RD$" + serviciosFactura.reduce((a,s) => a + (s.precio||0), 0).toLocaleString("es-DO") + "\n\n" +
-      "Le avisaremos por este mismo medio cuando su mascota est\xe9 lista. \u{1F4AC}\n\n_Plaza Las Colinas \u2022 809-752-6806_"
-    );
-    abrirWA(tel, decodeURIComponent(msg));
+      bloque +
+      "Le avisaremos por este mismo medio cuando su mascota est\xe9 lista. \u{1F4AC}\n\n_Plaza Las Colinas \u2022 809-752-6806_");
   }
 }, "\u{1F4AC} WhatsApp Bienvenida"),
 /* Botón Mascota Lista */
