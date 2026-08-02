@@ -3023,32 +3023,74 @@ function generarFacturaPDFDoc(f) {
   doc.text("Plaza Las Colinas, Santo Domingo Oeste \xB7 Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com", W/2, 290, {align:"center"});
   return doc;
 }
-async function enviarPDFWhatsApp(f) {
-  const telRaw = (f.telefono||"").replace(/\D/g,"");
-  const tel = telRaw.length>=11 ? telRaw : (telRaw ? "1"+telRaw : "");
-  if(!tel){alert("Esta factura no tiene n\xFAmero de tel\xE9fono registrado.");return;}
-  const msgText = "Anexamos su factura. Gracias por la visita 🐾\n\nPetColinas — Factura #"+f.numero+" \xB7 "+f.fecha+"\nTotal: RD$ "+(f.total||0).toLocaleString("es-DO");
-  const waUrl = "https://wa.me/"+tel+"?text="+encodeURIComponent(msgText);
-  if(!window.jspdf){window.open(waUrl,"_blank");return;}
-  try {
-    const doc = generarFacturaPDFDoc(f);
-    const fileName = "Factura_PetColinas_"+f.numero+".pdf";
-    // Móvil: intentar Web Share API con archivo
-    if(navigator.share && navigator.canShare){
-      const blob=doc.output("blob");
-      const file=new File([blob],fileName,{type:"application/pdf"});
-      if(navigator.canShare({files:[file]})){
-        try{await navigator.share({files:[file],text:"Anexamos su factura. Gracias por la visita 🐾"});return;}
-        catch(se){if(se.name!=="AbortError")console.warn("Share:",se);}
-      }
-    }
-    // Escritorio / fallback: descargar PDF + abrir WhatsApp
-    doc.save(fileName);
-    setTimeout(()=>window.open(waUrl,"_blank"),800);
-  } catch(e){
-    console.error("PDF error:",e);
-    window.open(waUrl,"_blank");
+// Busca el telefono del cliente de una factura. Muchas facturas viejas se
+// guardaron sin telefono, por eso tambien se busca en el CRM: primero por el
+// clienteId vinculado, luego por nombre de mascota y por nombre de propietario.
+function resolverTelFactura(f, clientes) {
+  const dig = (t) => String(t || "").replace(/\D/g, "");
+  const norm = (s) => String(s || "").toLowerCase().trim();
+  const propio = dig(f && f.telefono);
+  if (propio.length >= 10) return propio;
+
+  const conTel = (Array.isArray(clientes) ? clientes : []).filter((c) => dig(c.telefono).length >= 10);
+  const mascota = norm(f && f.mascota);
+  const duenio = norm(f && f.propietario);
+  let c = null;
+
+  if (f && f.clienteId) c = conTel.find((x) => String(x.id) === String(f.clienteId));
+  if (!c && mascota) c = conTel.find((x) => norm(x.nombreMascota) === mascota);
+  if (!c && duenio) c = conTel.find((x) => norm(x.nombrePropietario) === duenio);
+  // Ultimo intento: coincidencia parcial del nombre de la mascota ("Copito" vs "Copito Perez")
+  if (!c && mascota.length >= 3) {
+    c = conTel.find((x) => { const n = norm(x.nombreMascota); return n.length >= 3 && (n.includes(mascota) || mascota.includes(n)); });
   }
+  if (!c && duenio.length >= 4) {
+    c = conTel.find((x) => { const n = norm(x.nombrePropietario); return n.length >= 4 && (n.includes(duenio) || duenio.includes(n)); });
+  }
+  return c ? dig(c.telefono) : "";
+}
+
+function enviarPDFWhatsApp(f, clientes) {
+  const telRaw = resolverTelFactura(f, clientes);
+  const tel = telRaw ? (telRaw.length >= 11 ? telRaw : "1" + telRaw) : "";
+  const saludo = f.propietario ? "Hola " + String(f.propietario).split(" ")[0] + ", " : "Hola, ";
+  const msgText = saludo + "le anexamos su factura de PetColinas 🐾\n\n*Factura #" + f.numero + "* \xB7 " + f.fecha +
+    (f.mascota ? "\n🐾 " + f.mascota : "") +
+    "\n*Total: RD$ " + (f.total || 0).toLocaleString("es-DO") + "*\n\n\xA1Gracias por la visita!";
+  const waUrl = tel
+    ? "https://wa.me/" + tel + "?text=" + encodeURIComponent(msgText)
+    : "https://wa.me/?text=" + encodeURIComponent(msgText);
+
+  // Sin telefono no se puede abrir la conversacion: se comparte el PDF y el
+  // usuario elige el contacto (unica salida posible en ese caso).
+  if (!tel) {
+    if (!confirm("No encontramos el tel\xE9fono de este cliente ni en la factura ni en el CRM.\n\n\xBFQuieres abrir WhatsApp para elegir el contacto a mano?\n\nConsejo: agrega el tel\xE9fono en la ficha del CRM y la pr\xF3xima vez se abrir\xE1 solo.")) return;
+    if (window.jspdf) {
+      try {
+        const doc0 = generarFacturaPDFDoc(f);
+        const fileName0 = "Factura_PetColinas_" + f.numero + ".pdf";
+        if (navigator.share && navigator.canShare) {
+          const file0 = new File([doc0.output("blob")], fileName0, { type: "application/pdf" });
+          if (navigator.canShare({ files: [file0] })) {
+            navigator.share({ files: [file0], text: msgText }).catch((se) => { if (se.name !== "AbortError") console.warn("Share:", se); });
+            return;
+          }
+        }
+        doc0.save(fileName0);
+      } catch (e) { console.error("PDF error:", e); }
+    }
+    window.open(waUrl, "_blank");
+    return;
+  }
+
+  // Con telefono: se descarga el PDF y se abre DIRECTO la conversacion de ese
+  // cliente con el mensaje ya escrito. Sin await antes de window.open para que
+  // el navegador no bloquee la ventana (sigue siendo el mismo clic del usuario).
+  if (window.jspdf) {
+    try { generarFacturaPDFDoc(f).save("Factura_PetColinas_" + f.numero + ".pdf"); }
+    catch (e) { console.error("PDF error:", e); }
+  }
+  window.open(waUrl, "_blank");
 }
 function Facturas({ ventas, clientes }) {
   const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
@@ -3365,7 +3407,15 @@ function Facturas({ ventas, clientes }) {
     win.document.close();
     setTimeout(() => win.print(), 500);
   }
-  function compartirWhatsApp(f) { enviarPDFWhatsApp(f); }
+  function compartirWhatsApp(f) {
+    // Si el telefono salio del CRM, se guarda en la factura para no volver a buscarlo.
+    const tel = resolverTelFactura(f, clientes);
+    if (tel && String(f.telefono || "").replace(/\D/g, "").length < 10) {
+      setFacturas((fs) => fs.map((x) => x.id === f.id ? { ...x, telefono: tel } : x));
+      f = { ...f, telefono: tel };
+    }
+    enviarPDFWhatsApp(f, clientes);
+  }
   const [busqueda, setBusqueda] = useState("");
   const [busqFact, setBusqFact] = useState("");
   const [pagFact, setPagFact] = useState(1);
@@ -3660,7 +3710,7 @@ function Facturas({ ventas, clientes }) {
     const f = facturaActual;
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
     const gLealtad = calcGroomingLealtad(f.mascota);
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), React.createElement("button", { onClick: () => compartirWhatsApp(f), style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4F1} WhatsApp"), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); deleteOne("pc_facturas", f.id).catch(() => {}); setVista("lista"); } }, style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => { if (confirm("\xBFBorrar factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.")) { setFacturas((fs) => fs.filter((x) => x.id !== f.id)); deleteOne("pc_facturas", f.id).catch(() => {}); setVista("lista"); } }, style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
       marginTop: 6,
       background: gLealtad >= 10 ? "#d4edda" : "#fff3cd",
       color: gLealtad >= 10 ? "#155724" : "#856404",
