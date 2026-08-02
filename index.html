@@ -1267,6 +1267,7 @@ const TABS = [
   { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
   { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
   { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa" },
+  { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp" },
   { id: "candidatos", icon: "\u{1F9D1}‍⚕️", label: "Candidatos" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
@@ -4481,6 +4482,228 @@ function Llamadas() {
   );
 }
 
+// Bandeja de WhatsApp: conversaciones que atiende Sofía (bot) por WhatsApp Business.
+// Laura puede leerlas, tomar el control de un chat y responder ella misma.
+function WhatsAppInbox() {
+  const E = React.createElement;
+  const C = { card:"#fff", border:"#e5e7eb", texto:"#1f2937", grisd:"#6b7280", verde:"#25D366", verdeO:"#128C7E", burbuja:"#dcf8c6", fondo:"#efeae2" };
+
+  const [chats, setChats] = React.useState([]);
+  const [sel, setSel] = React.useState(null);
+  const [msgs, setMsgs] = React.useState([]);
+  const [texto, setTexto] = React.useState("");
+  const [cargando, setCargando] = React.useState(true);
+  const [enviando, setEnviando] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [buscar, setBuscar] = React.useState("");
+  const finRef = React.useRef(null);
+
+  const fnUrl = SUPA_URL + "/functions/v1/whatsapp-bot";
+
+  const accion = async (payload) => {
+    const r = await fetch(fnUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY },
+      body: JSON.stringify(payload)
+    });
+    let j = {}; try { j = await r.json(); } catch {}
+    if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+    return j;
+  };
+
+  const cargarChats = React.useCallback(async () => {
+    try {
+      const rows = await supaFetch("pc_wa_chats", "GET", null, "?order=ultimafecha.desc.nullslast&limit=200");
+      setChats(Array.isArray(rows) ? rows : []);
+      setError("");
+    } catch (e) {
+      setError("No se pudieron cargar los chats. ¿Ya creaste las tablas pc_wa_chats y pc_wa_mensajes en Supabase?");
+    }
+    setCargando(false);
+  }, []);
+
+  const cargarMsgs = React.useCallback(async (tel) => {
+    if (!tel) { setMsgs([]); return; }
+    try {
+      const rows = await supaFetch("pc_wa_mensajes", "GET", null, "?telefono=eq." + encodeURIComponent(tel) + "&order=id.asc&limit=300");
+      setMsgs(Array.isArray(rows) ? rows : []);
+    } catch { setMsgs([]); }
+  }, []);
+
+  React.useEffect(() => { cargarChats(); }, [cargarChats]);
+  React.useEffect(() => { cargarMsgs(sel); }, [sel, cargarMsgs]);
+
+  // Refresco automático cada 7 s mientras la pestaña está abierta.
+  React.useEffect(() => {
+    const t = setInterval(() => { cargarChats(); if (sel) cargarMsgs(sel); }, 7000);
+    return () => clearInterval(t);
+  }, [sel, cargarChats, cargarMsgs]);
+
+  React.useEffect(() => { if (finRef.current) finRef.current.scrollIntoView({ block: "end" }); }, [msgs]);
+
+  const abrirChat = async (tel) => {
+    setSel(tel);
+    setChats((cs) => cs.map((c) => c.telefono === tel ? { ...c, noleidos: 0 } : c));
+    try { await accion({ accion: "leido", telefono: tel }); } catch {}
+  };
+
+  const enviar = async () => {
+    const t = texto.trim();
+    if (!t || !sel || enviando) return;
+    setEnviando(true);
+    try {
+      await accion({ accion: "enviar", telefono: sel, texto: t });
+      setTexto("");
+      await cargarMsgs(sel);
+      await cargarChats();
+    } catch (e) {
+      alert("No se pudo enviar: " + e.message);
+    }
+    setEnviando(false);
+  };
+
+  const toggleBot = async (chat) => {
+    const activo = !(chat.bot !== false);
+    try {
+      await accion({ accion: "bot", telefono: chat.telefono, activo });
+      setChats((cs) => cs.map((c) => c.telefono === chat.telefono ? { ...c, bot: activo } : c));
+    } catch (e) { alert("No se pudo cambiar el bot: " + e.message); }
+  };
+
+  const fmtHora = (f) => {
+    const d = new Date(f);
+    if (isNaN(d.getTime())) return "";
+    const hoy = new Date();
+    const mismoDia = d.toDateString() === hoy.toDateString();
+    return mismoDia
+      ? d.toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString("es-DO", { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" });
+  };
+  const telBonito = (t) => {
+    const d = String(t || "").replace(/\D/g, "").slice(-10);
+    return d.length === 10 ? d.slice(0,3) + "-" + d.slice(3,6) + "-" + d.slice(6) : (t || "");
+  };
+
+  const q = buscar.trim().toLowerCase();
+  const lista = chats.filter((c) => !q ||
+    String(c.nombre || "").toLowerCase().includes(q) ||
+    String(c.telefono || "").includes(q.replace(/\D/g, "")) ||
+    String(c.ultimomensaje || "").toLowerCase().includes(q));
+  const chatSel = chats.find((c) => c.telefono === sel) || null;
+  const sinLeer = chats.reduce((a, c) => a + (Number(c.noleidos) || 0), 0);
+
+  return E("div", { style: { maxWidth: 1150, margin: "0 auto" } },
+    E("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 16 } },
+      E("div", null,
+        E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800, color: C.texto } }, "💬 WhatsApp de PetColinas"),
+        E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } },
+          "Sofía contesta sola. Si tomas el control de un chat, el bot se apaga en esa conversación." +
+          (sinLeer > 0 ? "  ·  " + sinLeer + " sin leer" : ""))
+      ),
+      E("button", { onClick: () => { cargarChats(); if (sel) cargarMsgs(sel); },
+        style: { background: "#f3f4f6", color: C.texto, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "🔄 Actualizar")
+    ),
+
+    error && E("div", { style: { background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10, padding: "12px 14px", fontSize: 13, marginBottom: 14 } }, "⚠️ " + error),
+
+    E("div", { style: { display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" } },
+
+      // ---- Lista de conversaciones ----
+      E("div", { style: { flex: "1 1 300px", minWidth: 280, maxWidth: 380, background: C.card, border: "1px solid " + C.border, borderRadius: 12, overflow: "hidden" } },
+        E("div", { style: { padding: 10, borderBottom: "1px solid " + C.border } },
+          E("input", {
+            value: buscar, onChange: (ev) => setBuscar(ev.target.value), placeholder: "Buscar chat…",
+            style: { width: "100%", boxSizing: "border-box", border: "1px solid " + C.border, borderRadius: 8, padding: "8px 10px", fontSize: 13, outline: "none" }
+          })
+        ),
+        E("div", { style: { maxHeight: 560, overflowY: "auto" } },
+          cargando && E("div", { style: { padding: "40px 16px", textAlign: "center", color: C.grisd, fontSize: 13 } }, "⏳ Cargando…"),
+          !cargando && lista.length === 0 && E("div", { style: { padding: "40px 16px", textAlign: "center", color: C.grisd, fontSize: 13 } },
+            E("div", { style: { fontSize: 30, marginBottom: 8 } }, "📭"),
+            "Todavía no hay conversaciones."),
+          lista.map((c) => {
+            const activo = c.telefono === sel;
+            const nolei = Number(c.noleidos) || 0;
+            return E("div", {
+              key: c.telefono, onClick: () => abrirChat(c.telefono),
+              style: { padding: "11px 13px", borderBottom: "1px solid #f3f4f6", cursor: "pointer", background: activo ? "#ecfdf5" : "#fff", display: "flex", gap: 10, alignItems: "center" }
+            },
+              E("div", { style: { width: 38, height: 38, borderRadius: "50%", background: c.bot === false ? "#fde68a" : "#d1fae5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 } }, c.bot === false ? "🙋" : "🤖"),
+              E("div", { style: { flex: 1, minWidth: 0 } },
+                E("div", { style: { display: "flex", justifyContent: "space-between", gap: 6 } },
+                  E("div", { style: { fontWeight: 700, fontSize: 13.5, color: C.texto, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, c.nombre || telBonito(c.telefono)),
+                  E("div", { style: { fontSize: 10.5, color: C.grisd, whiteSpace: "nowrap" } }, fmtHora(c.ultimafecha))
+                ),
+                E("div", { style: { fontSize: 12, color: C.grisd, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 } }, c.ultimomensaje || "—")
+              ),
+              nolei > 0 && E("div", { style: { background: C.verde, color: "#fff", borderRadius: 999, minWidth: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, padding: "0 5px" } }, nolei)
+            );
+          })
+        )
+      ),
+
+      // ---- Conversación ----
+      E("div", { style: { flex: "2 1 420px", minWidth: 300, background: C.card, border: "1px solid " + C.border, borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", height: 620 } },
+        !chatSel && E("div", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", color: C.grisd, fontSize: 13, textAlign: "center", padding: 24 } },
+          E("div", { style: { fontSize: 40, marginBottom: 10 } }, "💬"),
+          "Selecciona una conversación para leerla y responder."),
+
+        chatSel && E("div", { style: { padding: "11px 14px", borderBottom: "1px solid " + C.border, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" } },
+          E("div", null,
+            E("div", { style: { fontWeight: 800, fontSize: 15, color: C.texto } }, chatSel.nombre || telBonito(chatSel.telefono)),
+            E("div", { style: { fontSize: 11.5, color: C.grisd, marginTop: 2 } },
+              "📱 " + telBonito(chatSel.telefono) + (chatSel.etiqueta ? " · ⚠️ " + chatSel.etiqueta : ""))
+          ),
+          E("div", { style: { display: "flex", gap: 7 } },
+            E("a", { href: "https://wa.me/" + String(chatSel.telefono || "").replace(/\D/g, ""), target: "_blank",
+              style: { background: "#f3f4f6", color: C.texto, border: "1px solid " + C.border, borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 700, textDecoration: "none" } }, "↗ Abrir"),
+            E("button", { onClick: () => toggleBot(chatSel),
+              style: { background: chatSel.bot === false ? "#f59e0b" : C.verdeO, color: "#fff", border: "none", borderRadius: 8, padding: "7px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer" } },
+              chatSel.bot === false ? "🙋 Lo atiendo yo" : "🤖 Sofía activa")
+          )
+        ),
+
+        chatSel && E("div", { style: { flex: 1, overflowY: "auto", background: C.fondo, padding: "14px 14px 6px" } },
+          msgs.length === 0 && E("div", { style: { textAlign: "center", color: C.grisd, fontSize: 12, padding: 20 } }, "Sin mensajes."),
+          msgs.map((m) => {
+            const mio = m.rol !== "cliente";
+            const esHumano = m.rol === "humano";
+            return E("div", { key: m.id, style: { display: "flex", justifyContent: mio ? "flex-end" : "flex-start", marginBottom: 8 } },
+              E("div", { style: {
+                maxWidth: "78%", background: mio ? (esHumano ? "#d9fdd3" : C.burbuja) : "#fff",
+                border: "1px solid " + (mio ? "#c7e9b8" : "#e9e4dd"),
+                borderRadius: 10, padding: "8px 11px", fontSize: 13.5, color: "#111827", whiteSpace: "pre-wrap", lineHeight: 1.45,
+                boxShadow: "0 1px 1px rgba(0,0,0,.05)"
+              } },
+                m.texto,
+                E("div", { style: { fontSize: 10, color: C.grisd, textAlign: "right", marginTop: 3 } },
+                  (esHumano ? "Laura · " : mio ? "Sofía 🤖 · " : "") + fmtHora(m.fecha))
+              )
+            );
+          }),
+          E("div", { ref: finRef })
+        ),
+
+        chatSel && E("div", { style: { borderTop: "1px solid " + C.border, padding: 10, display: "flex", gap: 8, alignItems: "flex-end" } },
+          E("textarea", {
+            value: texto, onChange: (ev) => setTexto(ev.target.value),
+            onKeyDown: (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); enviar(); } },
+            placeholder: "Escribe tu respuesta… (Enter para enviar)",
+            rows: 2,
+            style: { flex: 1, resize: "none", border: "1px solid " + C.border, borderRadius: 10, padding: "9px 11px", fontSize: 13.5, fontFamily: "inherit", outline: "none" }
+          }),
+          E("button", { onClick: enviar, disabled: enviando || !texto.trim(),
+            style: { background: enviando || !texto.trim() ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 800, cursor: enviando ? "wait" : "pointer" } },
+            enviando ? "…" : "➤")
+        )
+      )
+    ),
+
+    E("div", { style: { fontSize: 11.5, color: C.grisd, marginTop: 12, lineHeight: 1.6 } },
+      "Al responder tú, Sofía deja de contestar ese chat automáticamente. Vuelve a tocar «🙋 Lo atiendo yo» para reactivarla.")
+  );
+}
+
 function VozIA() {
   const e = React.createElement;
   const C = { fondo:"#0f172a", card:"#1e293b", border:"#334155", texto:"#f1f5f9", grisd:"#94a3b8", verde:"#1a6b3a" };
@@ -5753,6 +5976,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
+    tab === "whatsapp" && React.createElement(WhatsAppInbox, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, limpiarTodasNotif,
