@@ -4266,6 +4266,8 @@ function Candidatos() {
   const [toastMsg, setToastMsg] = React.useState("");
   const [nuevoOpen, setNuevoOpen] = React.useState(false);
   const [nuevo, setNuevo] = React.useState({ nombre: "", telefono: "", email: "", tier: "revisar", evalt: "" });
+  const [orden, setOrden] = React.useState(() => { try { return localStorage.getItem("pc_cand_orden") || "prioridad"; } catch { return "prioridad"; } });
+  React.useEffect(() => { try { localStorage.setItem("pc_cand_orden", orden); } catch {} }, [orden]);
 
   const puestoLabel = (CAND_PUESTOS.find((p) => p.id === puesto) || {}).label || "";
   const staticIds = new Set(CANDIDATOS_VET.map((c) => String(c.id)));
@@ -4433,12 +4435,17 @@ function Candidatos() {
   // Al cambiarle el estado, el brillito desaparece solo.
   const esNuevo = (c) => (getEstado(c.id) === "Por contactar") && (c.manual || c.origen === "meta" || c.origen === "sheet" || nuevosSet.has(Number(c.id)));
   const tierRank = { alta: 0, revisar: 1, futuro: 2 };
+  // Recencia: el id sirve de reloj. Los estáticos van 1..23 (vet) y 101..111
+  // (groomer) en el orden en que se agregaron, y los importados/manuales usan
+  // Date.now(), así que a mayor id, más reciente.
+  const recencia = (c) => Number(c.id) || 0;
   const lista = todosPuesto.filter(pass).sort((a, b) => {
+    if (orden === "recientes") return recencia(b) - recencia(a);
     const ra = tierRank[a.tier || "revisar"] ?? 1, rb = tierRank[b.tier || "revisar"] ?? 1;
     if (ra !== rb) return ra - rb;                       // 1º por prioridad
     const na = esNuevo(a) ? 0 : 1, nb = esNuevo(b) ? 0 : 1;
     if (na !== nb) return na - nb;                       // 2º los nuevos arriba
-    return 0;
+    return recencia(b) - recencia(a);                    // 3º el más reciente
   });
 
   const nAlta = todosPuesto.filter((c) => c.tier === "alta").length;
@@ -4530,7 +4537,15 @@ function Candidatos() {
         statTile(todosPuesto.length, "Candidatos", C.navy), statTile(nAlta, "Prioridad alta", C.green), statTile(nProc, "En proceso", C.orange), statTile(nContrat, "Contratados", C.teal)),
       E("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 } },
         chip("todos", "Todos"), chip("alta", "Prioridad alta"),
-        puesto === "vet" && chip("exeq", "Con exequátur"), puesto === "vet" && chip("grad", "Graduados")),
+        puesto === "vet" && chip("exeq", "Con exequátur"), puesto === "vet" && chip("grad", "Graduados"),
+        E("div", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 7 } },
+          E("span", { style: { fontSize: 12.5, color: C.grisd, fontWeight: 600 } }, "Ordenar:"),
+          E("select", {
+            value: orden, onChange: (e) => setOrden(e.target.value),
+            style: { fontSize: 13, fontWeight: 600, color: C.navy, border: "1.5px solid " + C.border, borderRadius: 999, padding: "8px 14px", background: "#fff", cursor: "pointer" }
+          },
+            E("option", { value: "prioridad" }, "⭐ Prioridad"),
+            E("option", { value: "recientes" }, "🕐 Más recientes")))),
       E("div", { style: { marginBottom: 18 } },
         E("button", { onClick: () => setNuevoOpen((v) => !v), style: { fontWeight: 700, fontSize: 13, padding: "9px 16px", borderRadius: 9, border: "1.5px dashed " + C.teal, background: "#fff", color: C.teal, cursor: "pointer" } }, nuevoOpen ? "✕ Cancelar" : "➕ Agregar candidato a " + puestoLabel),
         nuevoOpen && E("div", { style: { marginTop: 12, background: "#fff", border: "1px solid " + C.border, borderRadius: 12, padding: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)" } },
