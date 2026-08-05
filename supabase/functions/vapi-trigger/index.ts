@@ -16,6 +16,11 @@
  * IMPORTANTE: el esquema de pc_llamadas es compartido con vapi-tools:
  *   vapicallid, fecha, hora, telefono, nombremascota, nombrecliente, motivo,
  *   estado, resumen, transcript, duracion, grabacionurl, citaid, origen.
+ *
+ * Secrets opcionales:
+ *   VAPI_VOICE_PROVIDER  — proveedor de voz (def. "azure")
+ *   VAPI_VOICE_ID        — voz (def. "es-DO-RamonaNeural", español dominicano)
+ *   VAPI_PHONE_NUMBER_ID — número desde el que llama Sofía (el que ve el cliente)
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -25,6 +30,36 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY")!;
 const VAPI_ASSISTANT_ID = Deno.env.get("VAPI_ASSISTANT_ID")!;
 const VAPI_PHONE_NUMBER_ID = Deno.env.get("VAPI_PHONE_NUMBER_ID")!;
+
+// --- VOZ DE SOFÍA -----------------------------------------------------------
+// Se fija aquí y NO se toma del dashboard, para que nunca se cambie sola por un
+// fallback a una voz en inglés. Se puede ajustar por Secrets sin redeployar:
+//   VAPI_VOICE_PROVIDER (def. "azure")  ·  VAPI_VOICE_ID (def. es-DO-RamonaNeural)
+// es-DO-RamonaNeural es la única voz neuronal de español DOMINICANO.
+const VOICE_PROVIDER = Deno.env.get("VAPI_VOICE_PROVIDER") ?? "azure";
+const VOICE_ID = Deno.env.get("VAPI_VOICE_ID") ?? "es-DO-RamonaNeural";
+
+// Si la voz principal falla (créditos, proveedor caído), Vapi usa estas EN
+// ESPAÑOL en vez de caer en la voz inglesa por defecto.
+const VOICE_FALLBACKS = [
+  { provider: "azure", voiceId: "es-DO-RamonaNeural" },
+  { provider: "azure", voiceId: "es-MX-DaliaNeural" },
+  { provider: "azure", voiceId: "es-ES-ElviraNeural" },
+].filter((v) => !(v.provider === VOICE_PROVIDER && v.voiceId === VOICE_ID));
+
+const voiceOverride = {
+  provider: VOICE_PROVIDER,
+  voiceId: VOICE_ID,
+  fallbackPlan: { voices: VOICE_FALLBACKS },
+};
+
+// El transcriptor también se fija en español: si queda en inglés, Sofía
+// entiende mal al cliente y responde raro.
+const transcriberOverride = {
+  provider: "deepgram",
+  model: "nova-2",
+  language: "es",
+};
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -99,6 +134,10 @@ Deno.serve(async (req: Request) => {
     },
     assistantOverrides: {
       firstMessage,
+      // Voz e idioma FIJOS en cada llamada: aunque alguien toque el dashboard o
+      // el proveedor falle, Sofía siempre sale con voz femenina dominicana.
+      voice: voiceOverride,
+      transcriber: transcriberOverride,
       variableValues: {
         nombreMascota,
         nombrePropietario,
