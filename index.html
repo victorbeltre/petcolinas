@@ -4160,6 +4160,196 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
 // CANDIDATOS — Aspirantes a vacantes (vet). Estado + notas de Laura se guardan
 // en Supabase (pc_candidatos). Los datos del aspirante son estáticos aquí.
 // ─────────────────────────────────────────────────────────────
+// Hoja de Google (publicada como CSV) con los leads de las vacantes. Está
+// conectada en vivo: la app la relee sola cada 2 minutos, esté abierta o no la
+// pestaña de Candidatos, y sube a Supabase lo que falte.
+const CAND_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTN9m0L2MAVQdlBeCV3aDkvYimPi9oY6fk7v6UKQWSgDeURIwKHHgFY2sWFVzFfo6-y97zgXwXaKzQg/pub?output=csv";
+const CAND_SHEET_PUESTO = "groomer"; // vacante por defecto si la fila no la indica
+const CAND_SHEET_MS = 120000;
+
+// Parser CSV que respeta comillas y saltos de línea dentro de celdas.
+function parseCSVCand(txt) {
+  const filas = []; let fila = [], cur = "", q = false;
+  for (let i = 0; i < txt.length; i++) {
+    const ch = txt[i];
+    if (q) {
+      if (ch === '"') { if (txt[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") { fila.push(cur); cur = ""; }
+    else if (ch === "\n") { fila.push(cur); filas.push(fila); fila = []; cur = ""; }
+    else if (ch !== "\r") cur += ch;
+  }
+  if (cur !== "" || fila.length) { fila.push(cur); filas.push(fila); }
+  return filas;
+}
+
+// Lee la hoja y devuelve las filas ya interpretadas (nombre, tel, email, tier…).
+// No toca React: la usan tanto la pestaña de Candidatos como el sincronizador
+// global que corre en el fondo.
+async function leerHojaCandidatos(url, puestoDef) {
+  let u = String(url || "").trim();
+  if (!u) throw new Error("Sin enlace de hoja");
+  const m = u.match(/docs\.google\.com\/spreadsheets\/d\/(?:e\/)?([\w-]+)/);
+  if (m && !/output=csv|pub\?|gviz/.test(u)) u = "https://docs.google.com/spreadsheets/d/" + m[1] + "/gviz/tq?tqx=out:csv";
+  const r = await fetch(u, { cache: "no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const filas = parseCSVCand(await r.text());
+  if (filas.length < 2) return { total: 0, leidos: [] };
+
+  const limpiar = (s) => String(s || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  const head = filas[0].map((h) => String(h || "").toLowerCase().trim());
+  const idx = (re) => head.findIndex((h) => re.test(h));
+  const iNombre = idx(/full[ _]?name|nombre/);
+  const iTel = idx(/whatsapp|phone|tel[eé]fono/);
+  const iMail = idx(/e-?mail|correo/);
+  const iForm = idx(/form[ _]?name|campaign[ _]?name|vacante|puesto/);
+  const esColMeta = (h) => /^(id$|ad_|adset|campaign|form|is_|platform|lead|created|retailer|vendor|org)/.test(h);
+  const norm = (t) => String(t || "").replace(/\D/g, "").slice(-10);
+
+  const leidos = [];
+  for (let f = 1; f < filas.length; f++) {
+    const fila = filas[f];
+    const nombre = iNombre >= 0 ? limpiar(fila[iNombre]) : "";
+    const tel = iTel >= 0 ? norm(fila[iTel]) : "";
+    const mail = iMail >= 0 ? String(fila[iMail] || "").toLowerCase().trim() : "";
+    if (!nombre && !tel) continue;
+
+    const qa = [];
+    head.forEach((h, j) => {
+      if (j === iNombre || j === iTel || j === iMail || esColMeta(h)) return;
+      const val = limpiar(fila[j]);
+      if (val) qa.push([limpiar(filas[0][j]), val]);
+    });
+    const buscarQA = (re) => { const par = qa.find(([q]) => re.test(q.toLowerCase())); return par ? par[1] : ""; };
+    const exp = buscarQA(/experiencia|años/);
+    const sector = buscarQA(/sector|municipio|vives|dirección|direccion/);
+    const servicios = buscarQA(/servicios/);
+    const razas = buscarQA(/razas/);
+    const el = exp.toLowerCase();
+    const tier = /m[áa]s.?de.?3|[4-9] ?a[ñn]|1[0-9] ?a[ñn]|m[áa]s de 10/.test(el) ? "alta"
+      : /menos.?de.?1|ninguna|no tengo/.test(el) ? "futuro" : "revisar";
+    const evalTxt = [exp && ("Experiencia: " + exp), servicios && ("Servicios: " + servicios), razas && ("Razas: " + razas), sector && ("Vive en " + sector)].filter(Boolean).join(" · ");
+
+    // Vacante: se deduce del nombre del formulario/campaña si la hoja lo trae.
+    let puestoFila = puestoDef || CAND_SHEET_PUESTO;
+    const etiqueta = (iForm >= 0 ? String(fila[iForm] || "") : "").toLowerCase();
+    if (/groom|peluquer|estilis|ba[ñn]ist/.test(etiqueta)) puestoFila = "groomer";
+    else if (/veterinar|m[eé]dic|vet\b/.test(etiqueta)) puestoFila = "vet";
+    else if (/recepci|cajer|atenci[oó]n|ventas/.test(etiqueta)) puestoFila = "recepcion";
+
+    leidos.push({ nombre: nombre || "(sin nombre)", tel, mail, tier, evalTxt, puesto: puestoFila, formqa: JSON.stringify({ qa, exp, sector }) });
+  }
+  return { total: filas.length - 1, leidos };
+}
+
+// Sincroniza la hoja con pc_candidatos sin pasar por React: inserta los que
+// faltan y repara los que quedaron mal en importaciones anteriores.
+async function sincronizarCandidatosSheet(url, puestoDef) {
+  const { total, leidos } = await leerHojaCandidatos(url || CAND_SHEET_URL, puestoDef);
+  if (!leidos.length) return { total, nuevos: 0, reparados: 0 };
+
+  const norm = (t) => String(t || "").replace(/\D/g, "").slice(-10);
+  const existentes = await supaFetch("pc_candidatos", "GET", null, "?limit=3000") || [];
+  const porClave = new Map();
+  (Array.isArray(existentes) ? existentes : []).forEach((x) => {
+    const t = norm(x.telefono); if (t) porClave.set(t, x);
+    const e = String(x.email || "").toLowerCase().trim(); if (e) porClave.set(e, x);
+  });
+  const fijos = new Set();
+  [...CANDIDATOS_VET, ...CANDIDATOS_GROOMER].forEach((x) => {
+    const t = norm(x.phone); if (t) fijos.add(t);
+    const e = String(x.email || "").toLowerCase().trim(); if (e) fijos.add(e);
+  });
+
+  const vistos = new Set();
+  let nuevos = 0, reparados = 0, i = 0;
+  for (const c of leidos) {
+    i++;
+    if ((c.tel && fijos.has(c.tel)) || (c.mail && fijos.has(c.mail))) continue;
+    if ((c.tel && vistos.has(c.tel)) || (c.mail && vistos.has(c.mail))) continue;
+    if (c.tel) vistos.add(c.tel);
+    if (c.mail) vistos.add(c.mail);
+
+    const ex = (c.tel && porClave.get(c.tel)) || (c.mail && porClave.get(c.mail)) || null;
+    if (ex) {
+      const mal = !ex.nombre || ex.nombre === "(sin nombre)" || !ex.formqa || /_/.test(String(ex.evalt || ""));
+      if (String(ex.origen || "") === "sheet" && mal) {
+        const ok = await upsertOne("pc_candidatos", { ...ex, nombre: c.nombre, telefono: c.tel || ex.telefono, email: c.mail || ex.email, tier: c.tier, evalt: c.evalTxt, formqa: c.formqa });
+        if (ok !== false) reparados++;
+      }
+      continue;
+    }
+    const ok = await upsertOne("pc_candidatos", {
+      id: Date.now() + i, puesto: c.puesto, nombre: c.nombre, telefono: c.tel, email: c.mail,
+      tier: c.tier, estado: "Por contactar", notas: "", evalt: c.evalTxt, formqa: c.formqa, origen: "sheet"
+    });
+    if (ok !== false) nuevos++;
+  }
+  if (nuevos > 0) { try { window.dispatchEvent(new CustomEvent("pc-cand-nuevos", { detail: { nuevos } })); } catch {} }
+  return { total, nuevos, reparados };
+}
+
+// Aviso en el Dashboard: candidatos nuevos que Laura todavía no ha revisado.
+function AvisoCandidatosNuevos({ setTab }) {
+  const E = React.createElement;
+  const [pend, setPend] = React.useState([]);
+  const cargar = React.useCallback(async () => {
+    try {
+      const rows = await supaFetch("pc_candidatos", "GET", null, "?order=id.desc&limit=200");
+      const lista = (Array.isArray(rows) ? rows : []).filter((r) => String(r.estado || "Por contactar") === "Por contactar");
+      // Primera vez en este navegador: se toma lo que ya existe como "visto"
+      // para no soltar un aviso con todo el historial de golpe.
+      try {
+        if (localStorage.getItem("pc_cand_visto") === null) {
+          const max = lista.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0);
+          localStorage.setItem("pc_cand_visto", String(max));
+        }
+      } catch {}
+      setPend(lista);
+    } catch { /* sin conexión: no molestar */ }
+  }, []);
+  React.useEffect(() => {
+    cargar();
+    const t = setInterval(cargar, 60000);
+    const h = () => cargar();
+    window.addEventListener("pc-cand-nuevos", h);
+    return () => { clearInterval(t); window.removeEventListener("pc-cand-nuevos", h); };
+  }, [cargar]);
+
+  let visto = 0; try { visto = Number(localStorage.getItem("pc_cand_visto") || 0); } catch {}
+  const nuevos = pend.filter((r) => Number(r.id) > visto);
+  if (nuevos.length === 0) return null;
+
+  const puestoTxt = (p) => (CAND_PUESTOS.find((x) => x.id === (p || "vet")) || {}).label || "la vacante";
+  const porPuesto = {};
+  nuevos.forEach((r) => { const k = puestoTxt(r.puesto); porPuesto[k] = (porPuesto[k] || 0) + 1; });
+  const resumen = Object.entries(porPuesto).map(([k, n]) => n + " de " + k).join(" · ");
+  const nombres = nuevos.slice(0, 3).map((r) => r.nombre || "(sin nombre)").join(", ");
+
+  return E("div", {
+    onClick: () => {
+      try { localStorage.setItem("pc_cand_visto", String(pend.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0))); } catch {}
+      setPend([]);
+      if (setTab) setTab("candidatos");
+    },
+    style: {
+      display: "flex", alignItems: "center", gap: 14, cursor: "pointer",
+      background: "linear-gradient(90deg,#fff7e6,#fffdf7)", border: "2px solid #F2901C",
+      borderRadius: 14, padding: "14px 18px", marginBottom: 18,
+      boxShadow: "0 4px 16px rgba(242,144,28,.16)"
+    }
+  },
+    E("div", { style: { fontSize: 26 } }, "✨"),
+    E("div", { style: { flex: 1, minWidth: 0 } },
+      E("div", { style: { fontWeight: 800, fontSize: 14.5, color: "#12324a" } },
+        nuevos.length === 1 ? "1 candidato nuevo sin revisar" : nuevos.length + " candidatos nuevos sin revisar"),
+      E("div", { style: { fontSize: 12.5, color: "#6b7b88", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } },
+        resumen + " — " + nombres + (nuevos.length > 3 ? " y " + (nuevos.length - 3) + " más" : ""))),
+    E("div", { style: { fontWeight: 800, fontSize: 13, color: "#F2901C", whiteSpace: "nowrap" } }, "Ver candidatos →")
+  );
+}
+
 const CAND_FQ = ["¿Eres veterinario/a graduado/a?", "¿Tienes exequátur?", "¿Tienes experiencia trabajando con mascotas?", "¿En qué año te graduaste de Medicina Veterinaria?", "¿En qué universidad te graduaste?", "¿Cuántos años de experiencia tienes?", "¿En qué sector/municipio vives?"];
 const CANDIDATOS_VET = [
   { id: 1, tier: "alta", name: "Arianna López", phone: "18494744429", disp: "+1 849 474 4429", email: "clh031501@gmail.com", grad: "Sí", exeq: "Sí", exp: "2 años", uni: "UASD", anio: "2024", sector: "Santo Domingo Oeste", cerca: "Muy cerca", eval: "Graduada + exequátur + 2 años + vive en la zona de la clínica. Perfil completo.", form: ["si", "Si", "si", "2024", "Uasd", "2", "Santo domingo oeste"], msg: "Hola Arianna, le escribimos de Petcolinas (Plaza Las Colinas, a 3 min de la Plaza de la Bandera). Recibimos su aplicación a la vacante de veterinario/a. Leímos su perfil (graduada de la UASD, con exequátur) y nos interesaría conocerla mejor. ¿Tiene disponibilidad esta semana para una breve entrevista? Gracias." },
@@ -4253,8 +4443,7 @@ function Candidatos() {
   const E = React.createElement;
   const C = { navy: "#12324a", navy2: "#1c4a6b", orange: "#F2901C", teal: "#29A6C4", card: "#fff", border: "#e6ddcc", grisd: "#6b7b88", green: "#2e8b57", greenbg: "#e4f3ea", yellow: "#c98a10", yellowbg: "#fdf3d9", nobg: "#fbe9e7", nofg: "#c0392b", cream: "#FCF8F0" };
   const seed = CANDIDATOS_VET.map((c) => ({ id: c.id, puesto: "vet", nombre: c.name, estado: "Por contactar", notas: "" }));
-  const [rows, setRows, loaded, , deleteRow] = useSupabase("pc_candidatos", seed);
-  const rowsRef = React.useRef(rows); rowsRef.current = rows;
+  const [rows, setRows, loaded, , deleteRow, refetchCands] = useSupabase("pc_candidatos", seed);
   const [puesto, setPuesto] = React.useState("vet");
   const [sheetUrl, setSheetUrl] = React.useState("");
   const [sheetOpen, setSheetOpen] = React.useState(false);
@@ -4301,117 +4490,41 @@ function Candidatos() {
   const eliminar = (id) => { if (!confirm("¿Eliminar este candidato?")) return; if (deleteRow) deleteRow(id); toast("Candidato eliminado"); };
 
   // --- Conexión con hoja de Google (leads de Meta → Sheets → app, en vivo) ---
-  // Parser CSV que respeta comillas y saltos de línea dentro de celdas.
-  const parseCSV = (txt) => {
-    const filas = []; let fila = [], cur = "", q = false;
-    for (let i = 0; i < txt.length; i++) {
-      const ch = txt[i];
-      if (q) {
-        if (ch === '"') { if (txt[i + 1] === '"') { cur += '"'; i++; } else q = false; }
-        else cur += ch;
-      } else if (ch === '"') q = true;
-      else if (ch === ",") { fila.push(cur); cur = ""; }
-      else if (ch === "\n") { fila.push(cur); filas.push(fila); fila = []; cur = ""; }
-      else if (ch !== "\r") cur += ch;
-    }
-    if (cur !== "" || fila.length) { fila.push(cur); filas.push(fila); }
-    return filas;
-  };
-
+  // Delega en el mismo lector que usa el sincronizador de fondo, para que la
+  // deteccion de vacante y el anti-duplicados sean identicos en ambos caminos.
   const importarSheet = async (url, silencioso, puestoDestino) => {
     const p = puestoDestino || puesto;
-    let u = (url || "").trim();
-    if (!u) { if (!silencioso) setSheetStatus("Pega el enlace de la hoja publicada."); return; }
-    // Acepta el enlace normal de la hoja y lo convierte a CSV (requiere compartir
-    // "cualquiera con el enlace: lector"); los enlaces ya publicados van tal cual.
-    const m = u.match(/docs\.google\.com\/spreadsheets\/d\/(?:e\/)?([\w-]+)/);
-    if (m && !/output=csv|pub\?|gviz/.test(u)) u = "https://docs.google.com/spreadsheets/d/" + m[1] + "/gviz/tq?tqx=out:csv";
+    const u = String(url || "").trim() || CAND_SHEET_URL;
     if (!silencioso) setSheetStatus("⏳ Leyendo hoja…");
     try {
-      const r = await fetch(u, { cache: "no-store" });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const filas = parseCSV(await r.text());
-      if (filas.length < 2) { if (!silencioso) setSheetStatus("La hoja se leyó pero no tiene filas de datos todavía."); return; }
-      const limpiar = (s) => String(s || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
-      const head = filas[0].map((h) => String(h || "").toLowerCase().trim());
-      const idx = (re) => head.findIndex((h) => re.test(h));
-      const iNombre = idx(/full[ _]?name|nombre/);
-      const iTel = idx(/whatsapp|phone|tel[eé]fono/);
-      const iMail = idx(/e-?mail|correo/);
-      const esColMeta = (h) => /^(id$|ad_|adset|campaign|form|is_|platform|lead|created|retailer|vendor|org)/.test(h);
-      const norm = (t) => String(t || "").replace(/\D/g, "").slice(-10);
-      // Filas ya registradas en Supabase (por teléfono/email) → para no duplicar y
-      // para REPARAR las que quedaron mal en importaciones anteriores.
-      const porClave = new Map();
-      (rowsRef.current || []).forEach((x) => {
-        const t = norm(x.telefono); if (t) porClave.set(t, x);
-        const e = String(x.email || "").toLowerCase().trim(); if (e) porClave.set(e, x);
-      });
-      // Candidatos fijos del código: nunca importar sobre ellos
-      const fijos = new Set();
-      [...CANDIDATOS_VET, ...CANDIDATOS_GROOMER].forEach((x) => { const t = norm(x.phone); if (t) fijos.add(t); const e = String(x.email || "").toLowerCase().trim(); if (e) fijos.add(e); });
-      const nuevos = [];
-      const reparar = new Map();
-      const enLectura = new Set();
-      for (let f = 1; f < filas.length; f++) {
-        const fila = filas[f];
-        const nombre = iNombre >= 0 ? limpiar(fila[iNombre]) : "";
-        const tel = iTel >= 0 ? norm(fila[iTel]) : "";
-        const mail = iMail >= 0 ? String(fila[iMail] || "").toLowerCase().trim() : "";
-        if (!nombre && !tel) continue;
-        if ((tel && fijos.has(tel)) || (mail && fijos.has(mail))) continue;
-        if ((tel && enLectura.has(tel)) || (mail && enLectura.has(mail))) continue;
-        // Preguntas y respuestas del formulario, limpias (sin guiones bajos de Meta)
-        const qa = [];
-        head.forEach((h, j) => {
-          if (j === iNombre || j === iTel || j === iMail || esColMeta(h)) return;
-          const val = limpiar(fila[j]);
-          if (val) qa.push([limpiar(filas[0][j]), val]);
-        });
-        const buscarQA = (re) => { const par = qa.find(([q]) => re.test(q.toLowerCase())); return par ? par[1] : ""; };
-        const exp = buscarQA(/experiencia|años/);
-        const sector = buscarQA(/sector|municipio|vives|dirección|direccion/);
-        const servicios = buscarQA(/servicios/);
-        const razas = buscarQA(/razas/);
-        // Prioridad automática según la experiencia declarada
-        const el = exp.toLowerCase();
-        const tier = /m[áa]s.?de.?3|[4-9] ?a[ñn]|1[0-9] ?a[ñn]|m[áa]s de 10/.test(el) ? "alta" : /menos.?de.?1|ninguna|no tengo/.test(el) ? "futuro" : "revisar";
-        const evalTxt = [exp && ("Experiencia: " + exp), servicios && ("Servicios: " + servicios), razas && ("Razas: " + razas), sector && ("Vive en " + sector)].filter(Boolean).join(" · ");
-        if (tel) enLectura.add(tel);
-        if (mail) enLectura.add(mail);
-        const existente = (tel && porClave.get(tel)) || (mail && porClave.get(mail)) || null;
-        if (existente) {
-          // Ya está registrado: si quedó mal de una importación anterior (sin nombre,
-          // texto crudo con guiones bajos o sin formqa), lo REPARAMOS conservando
-          // su estado y las notas de Laura.
-          const mal = !existente.nombre || existente.nombre === "(sin nombre)" || !existente.formqa || /_/.test(String(existente.evalt || ""));
-          if (String(existente.origen || "") === "sheet" && mal) {
-            reparar.set(String(existente.id), { nombre: nombre || existente.nombre || "(sin nombre)", telefono: tel || existente.telefono, email: mail || existente.email, tier, evalt: evalTxt, formqa: JSON.stringify({ qa, exp, sector }) });
-          }
-          continue;
-        }
-        nuevos.push({ id: Date.now() + f, puesto: p, nombre: nombre || "(sin nombre)", telefono: tel, email: mail, tier, estado: "Por contactar", notas: "", evalt: evalTxt, formqa: JSON.stringify({ qa, exp, sector }), origen: "sheet" });
+      const r = await sincronizarCandidatosSheet(u, p);
+      if (refetchCands) refetchCands();
+      if (!silencioso || r.nuevos || r.reparados) {
+        setSheetStatus("✅ " + r.total + " fila(s) en la hoja · " + r.nuevos + " nuevo(s) · " + r.reparados + " reparado(s)" + ((r.nuevos || r.reparados) ? " ✨" : ""));
       }
-      const cambios = reparar.size + nuevos.length;
-      if (cambios) setRows((prev) => {
-        let arr = reparar.size ? prev.map((x) => reparar.has(String(x.id)) ? { ...x, ...reparar.get(String(x.id)) } : x) : prev;
-        return nuevos.length ? [...arr, ...nuevos] : arr;
-      });
-      if (!silencioso || cambios) setSheetStatus("✅ " + (filas.length - 1) + " fila(s) en la hoja · " + nuevos.length + " nuevo(s) · " + reparar.size + " reparado(s)" + (cambios ? " ✨" : ""));
     } catch (e) {
       if (!silencioso) setSheetStatus("❌ No se pudo leer la hoja (" + (e.message || e) + "). Verifica que esté publicada en la web como CSV o compartida con enlace.");
     }
   };
 
-  // Cargar URL guardada al cambiar de puesto + importar automático al abrir y cada 5 min
+  // La hoja viene conectada de fábrica (CAND_SHEET_URL); si alguien guardó otra
+  // para esta vacante, esa manda. Se relee al abrir y cada 2 min, sin botones.
   React.useEffect(() => {
     let u = ""; try { u = localStorage.getItem("pc_sheet_" + puesto) || ""; } catch {}
+    if (!u) u = CAND_SHEET_URL;
     setSheetUrl(u); setSheetStatus("");
-    if (!u || !loaded) return;
+    if (!loaded) return;
     importarSheet(u, true, puesto);
-    const t = setInterval(() => importarSheet(u, true, puesto), 300000);
+    const t = setInterval(() => importarSheet(u, true, puesto), CAND_SHEET_MS);
     return () => clearInterval(t);
   }, [puesto, loaded]);
+
+  // Cuando el sincronizador de fondo mete candidatos nuevos, refrescar la lista.
+  React.useEffect(() => {
+    const h = () => { if (refetchCands) refetchCands(); };
+    window.addEventListener("pc-cand-nuevos", h);
+    return () => window.removeEventListener("pc-cand-nuevos", h);
+  }, [refetchCands]);
 
   const guardarSheet = () => {
     const u = sheetUrl.trim();
@@ -4559,10 +4672,10 @@ function Candidatos() {
           E("button", { onClick: agregar, style: { fontWeight: 700, fontSize: 13, padding: "9px 18px", borderRadius: 9, border: "none", background: C.green, color: "#fff", cursor: "pointer" } }, "Guardar candidato")
         ),
         E("div", { style: { marginTop: 10 } },
-          E("button", { onClick: () => setSheetOpen((v) => !v), style: { fontWeight: 700, fontSize: 13, padding: "9px 16px", borderRadius: 9, border: "1.5px dashed #0F9D58", background: "#fff", color: "#0F9D58", cursor: "pointer" } }, sheetOpen ? "✕ Cerrar conexión de hoja" : "🔗 Conectar hoja de Google (leads en vivo)"),
+          E("button", { onClick: () => setSheetOpen((v) => !v), style: { fontWeight: 700, fontSize: 13, padding: "9px 16px", borderRadius: 9, border: "1.5px solid #0F9D58", background: "#eaf7ef", color: "#0F9D58", cursor: "pointer" } }, sheetOpen ? "✕ Cerrar" : "🟢 Hoja de Google conectada en vivo"),
           sheetOpen && E("div", { style: { marginTop: 12, background: "#fff", border: "1px solid " + C.border, borderRadius: 12, padding: 16, boxShadow: "0 6px 22px rgba(18,50,74,.08)" } },
             E("div", { style: { fontSize: 12.5, color: C.grisd, marginBottom: 10, lineHeight: 1.5 } },
-              "Pega el enlace de la hoja de Google donde caen los leads de Meta para la vacante de " + puestoLabel + ". La app la revisará al abrir esta pestaña y cada 5 minutos, e importará solo los prospectos nuevos (sin duplicar, comparando teléfono y email)."),
+              "La hoja de leads ya está conectada y se relee sola cada 2 minutos — aunque esta pestaña esté cerrada — e importa solo los prospectos nuevos (sin duplicar, comparando teléfono y email). Cuando entra alguien nuevo, sale un aviso en el Dashboard. Solo cambia el enlace de abajo si quieres usar OTRA hoja para la vacante de " + puestoLabel + "."),
             E("input", { value: sheetUrl, onChange: (e) => setSheetUrl(e.target.value), placeholder: "https://docs.google.com/spreadsheets/d/…", style: { width: "100%", fontSize: 13, border: "1.5px solid " + C.border, borderRadius: 8, padding: "9px 11px", marginBottom: 10 } }),
             E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
               E("button", { onClick: guardarSheet, style: { fontWeight: 700, fontSize: 13, padding: "9px 18px", borderRadius: 9, border: "none", background: "#0F9D58", color: "#fff", cursor: "pointer" } }, "💾 Guardar y leer ahora"),
@@ -5952,6 +6065,19 @@ function PetColinasApp({ session, onLogout }) {
   const [syncStatus, setSyncStatus] = useState("conectando");
   const [crmClienteInicial, setCrmClienteInicial] = useState(null);
   const clearCrmClienteInicial = useCallback(() => setCrmClienteInicial(null), []);
+  // Hoja de leads SIEMPRE en vivo: se relee cada 2 min aunque la pestaña de
+  // Candidatos esté cerrada, para que el aviso del Dashboard salga solo.
+  useEffect(() => {
+    let vivo = true;
+    const correr = () => {
+      sincronizarCandidatosSheet(CAND_SHEET_URL)
+        .then((r) => { if (vivo && r && (r.nuevos || r.reparados)) console.log("[Candidatos] hoja:", r.total, "filas ·", r.nuevos, "nuevo(s) ·", r.reparados, "reparado(s)"); })
+        .catch((e) => console.warn("[Candidatos] no se pudo leer la hoja:", e.message || e));
+    };
+    const t0 = setTimeout(correr, 4000);            // esperar a que cargue la app
+    const t = setInterval(correr, CAND_SHEET_MS);
+    return () => { vivo = false; clearTimeout(t0); clearInterval(t); };
+  }, []);
   // IDs de notificaciones marcadas como "listas/vistas" — persiste en localStorage
   const [notifLeidas, setNotifLeidas] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("pc_notif_leidas") || "[]")); }
@@ -6227,7 +6353,7 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
