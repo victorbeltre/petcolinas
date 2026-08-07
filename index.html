@@ -483,6 +483,7 @@ function useSupabase(table, seed = []) {
       }
     }
     savDeleted(deletedIds.current);
+    auditar(table, "borrar", row || { id });
     if (table === "pc_ventas") {
       try {
         const localVentas = JSON.parse(localStorage.getItem("pc_ventas_local") || "[]");
@@ -502,7 +503,7 @@ function useSupabase(table, seed = []) {
 // corrió el SQL que las crea, PostgREST rechaza el INSERT entero y se perdería
 // la venta completa. Este respaldo detecta ese error, quita las columnas que no
 // existen y reintenta, para que el guardado nunca se caiga por eso.
-const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco"] };
+const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"] };
 function faltaColumna(msg, table) {
   const m = String(msg || "").toLowerCase();
   if (!/column|schema cache|pgrst204|42703/.test(m)) return null;
@@ -513,6 +514,37 @@ function sinColumnas(row, cols) {
   cols.forEach((c) => { delete copia[c]; });
   return copia;
 }
+// ─── AUDITORÍA ──────────────────────────────────────────────────────────────
+// Antes no había forma de saber quién cambió o borró qué. Cada escritura y cada
+// borrado quedan registrados en pc_auditoria con el email de quien lo hizo.
+// Si la tabla todavía no existe, no pasa nada: falla en silencio.
+const AUD_TABLAS = new Set(["pc_ventas", "pc_facturas", "pc_clientes", "pc_citas", "pc_gastos", "pc_inventario", "pc_pagos", "pc_tarifas"]);
+let AUD_DISPONIBLE = true;
+function usuarioActual() {
+  try {
+    const s = JSON.parse(localStorage.getItem("pc_session") || "null");
+    return (s && s.user && s.user.email) || "desconocido";
+  } catch { return "desconocido"; }
+}
+function auditar(tabla, accion, fila) {
+  if (!AUD_DISPONIBLE || !AUD_TABLAS.has(tabla)) return;
+  const r = fila || {};
+  const resumen = [r.cliente, r.nombreMascota, r.mascota, r.numero, r.descripcion, r.servicio, r.nombre]
+    .filter(Boolean).join(" · ").slice(0, 160);
+  supaFetch("pc_auditoria", "POST", {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    fecha: new Date().toISOString(),
+    usuario: usuarioActual(),
+    tabla,
+    accion,
+    filaid: String(r.id ?? ""),
+    resumen,
+    monto: Number(r.total ?? r.monto ?? r.totalPagado ?? 0) || 0
+  }).then((res) => {
+    if (res && res.error) { AUD_DISPONIBLE = false; console.warn("[Auditoría] desactivada (falta la tabla pc_auditoria)"); }
+  }).catch(() => { AUD_DISPONIBLE = false; });
+}
+
 async function upsertOne(table, row) {
   try {
     const dbRow = denormalizeRow(table, row);
@@ -537,6 +569,7 @@ async function upsertOne(table, row) {
       return false;
     }
     console.log(`[upsertOne] ${table} id=${row.id} OK`);
+    auditar(table, "guardar", row);
     if (typeof window.__notifSyncOk === "function") window.__notifSyncOk();
     return true;
   } catch (e) {
@@ -545,9 +578,10 @@ async function upsertOne(table, row) {
     return false;
   }
 }
-async function deleteOne(table, id) {
+async function deleteOne(table, id, filaBorrada) {
   try {
     const result = await supaFetch(table, "DELETE", null, `?id=eq.${id}`);
+    if (!result || !result.error) auditar(table, "borrar", filaBorrada || { id });
     if (result && result.error) {
       const em = (result.error && result.error.message) || JSON.stringify(result.error);
       console.error(`[deleteOne] ${table} id=${id} FALLÓ:`, em);
@@ -859,10 +893,17 @@ function normalizeRow(table, r) {
     id: r.id,
     mes: r.mes,
     empleadoId: r.empleadoid,
+    empleadoNombre: r.empleadonombre || "",
     mensualidad: r.mensualidad,
+    // Estos quedan CONGELADOS al pagar: si después se edita una venta vieja, la
+    // nómina ya pagada no cambia. Antes no se guardaban y se recalculaban.
     comisiones: r.comisiones,
     descuentos: r.descuentos,
-    notas: r.notas
+    totalPagado: r.totalpagado != null ? Number(r.totalpagado)
+      : (Number(r.mensualidad) || 0) + (Number(r.comisiones) || 0) - (Number(r.descuentos) || 0),
+    fecha: r.fecha || "",
+    nota: r.notas || "",
+    notas: r.notas || ""
   };
   if (table === "pc_empleados") return {
     id: r.id,
@@ -1017,10 +1058,15 @@ function denormalizeRow(table, r) {
     id: r.id,
     mes: r.mes,
     empleadoid: r.empleadoId,
+    empleadonombre: r.empleadoNombre || null,
     mensualidad: r.mensualidad,
     comisiones: r.comisiones,
     descuentos: r.descuentos,
-    notas: r.notas
+    // Se guardan para que el pago quede inmutable (antes se perdían).
+    totalpagado: r.totalPagado != null ? r.totalPagado
+      : (Number(r.mensualidad) || 0) + (Number(r.comisiones) || 0) - (Number(r.descuentos) || 0),
+    fecha: r.fecha || null,
+    notas: r.nota || r.notas || null
   };
   if (table === "pc_empleados") return {
     id: r.id,
@@ -1369,6 +1415,7 @@ const TABS = [
   { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
   { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa" },
   { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp" },
+  { id: "caja", icon: "\u{1F9FE}", label: "Cierre de caja" },
   { id: "candidatos", icon: "\u{1F9D1}‍⚕️", label: "Candidatos" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
@@ -3214,6 +3261,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   const [editandoId, setEditandoId] = useState(null);
   const [editandoNum, setEditandoNum] = useState("");
   const [editandoOrig, setEditandoOrig] = useState(null);
+  const [sepVer, setSepVer] = useState(0);   // fuerza recalcular al separar/unir facturas
   // Fila del formulario que tiene abierto el autocompletado de servicios
   const [sugItem, setSugItem] = useState(null);
   // Catalogo para el autocompletado: mismas tarifas y productos que usa Ventas
@@ -3412,6 +3460,28 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     if (deleteVenta) grupo.forEach((v) => { try { deleteVenta(v.id); } catch {} });
     if (typeof alTerminar === "function") alTerminar();
   }
+
+  // Separar o volver a unir las ventas de un mismo cliente y día en facturas.
+  function leerSeparadas() {
+    try { return JSON.parse(localStorage.getItem("pc_fact_separadas") || "{}"); } catch { return {}; }
+  }
+  function separarFactura(f) {
+    const grupo = ventasDeFactura(f);
+    if (grupo.length < 2) { alert("Esta factura tiene una sola venta; no hay nada que separar."); return; }
+    if (!confirm("¿Separar las " + grupo.length + " ventas de " + (f.mascota || "este cliente") + " del " + f.fecha + " en facturas individuales?\n\nCada una tendrá su propio número.")) return;
+    const sep = leerSeparadas();
+    grupo.slice(1).forEach((v) => { sep[String(v.id)] = true; });   // la primera conserva la factura original
+    guardarLocal("pc_fact_separadas", sep);
+    setSepVer((n) => n + 1);
+  }
+  function unirFactura(f) {
+    const grupo = ventasDeFactura(f);
+    const sep = leerSeparadas();
+    grupo.forEach((v) => { delete sep[String(v.id)]; });
+    guardarLocal("pc_fact_separadas", sep);
+    setSepVer((n) => n + 1);
+  }
+  const estaSeparada = (f) => String(f.id).includes("___s");
 
   function crearFactura() {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
@@ -3667,10 +3737,16 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   const [vistaMode, setVistaMode] = useState("facturas");
   const [clienteDetalle, setClienteDetalle] = useState(null);
   const facturasDeVentas = useMemo(() => {
+    // Por defecto las ventas del mismo cliente y día van en UNA factura. Si se
+    // separan a mano (botón "Separar en factura aparte"), la venta lleva su
+    // propio sufijo y sale como factura independiente.
+    let separadas = {};
+    try { separadas = JSON.parse(localStorage.getItem("pc_fact_separadas") || "{}"); } catch { separadas = {}; }
     const grupos = {};
     ventas.forEach((v) => {
-      const key = (v.fecha || "") + "___" + (v.cliente || "sin_cliente").toLowerCase().trim();
-      if (!grupos[key]) grupos[key] = { fecha: v.fecha, cliente: v.cliente, items: [] };
+      const suf = separadas[String(v.id)] ? "___s" + v.id : "";
+      const key = (v.fecha || "") + "___" + (v.cliente || "sin_cliente").toLowerCase().trim() + suf;
+      if (!grupos[key]) grupos[key] = { fecha: v.fecha, cliente: v.cliente, items: [], sufijo: suf };
       grupos[key].items.push(v);
     });
     // Registro persistente de numeros: cada factura auto-generada conserva su numero para siempre
@@ -3682,7 +3758,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     const resultado = gruposOrdenados.map((g, i) => {
       const subtotal = g.items.reduce((s, v) => s + (v.total || 0), 0);
       // ID estable: sin índice posicional (_i) para que no cambie al agregar ventas
-      const idEstable = "venta_" + (g.fecha || "") + "_" + (g.cliente || "sin_cliente").toLowerCase().trim().replace(/\s/g, "_");
+      const idEstable = "venta_" + (g.fecha || "") + "_" + (g.cliente || "sin_cliente").toLowerCase().trim().replace(/\s/g, "_") + (g.sufijo || "");
       let numAsignado = numReg[idEstable];
       if (!numAsignado) { maxNum += 1; numAsignado = maxNum; numReg[idEstable] = numAsignado; regCambio = true; }
       return {
@@ -3724,7 +3800,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     });
     if (regCambio) { try { guardarLocal("pc_fact_nums", numReg); } catch {} }
     return resultado;
-  }, [ventas, clientes]);
+  }, [ventas, clientes, sepVer]);
   const todasFacturas = useMemo(() => {
     // Mapa de auto-generadas frescas (desde ventas actuales), por ID estable
     const autoMap = new Map(facturasDeVentas.map((f) => [String(f.id), f]));
@@ -3994,7 +4070,11 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     const f = facturaActual;
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
     const gLealtad = calcGroomingLealtad(f.mascota);
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", { onClick: () => borrarFactura(f, () => setVista("lista")), style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), (() => {
+      if (!String(f.id).startsWith("venta_")) return null;
+      if (estaSeparada(f)) return React.createElement("button", { onClick: () => unirFactura(f), title: "Volver a juntarla con las demás ventas de ese día", style: { background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "🔗 Unir con las del día");
+      return ventasDeFactura(f).length > 1 ? React.createElement("button", { onClick: () => separarFactura(f), title: "Emitir una factura por cada venta de ese día", style: { background: "#f3e8ff", color: "#6b21a8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "✂️ Separar en facturas") : null;
+    })(), React.createElement("button", { onClick: () => borrarFactura(f, () => setVista("lista")), style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
       marginTop: 6,
       background: gLealtad >= 10 ? "#d4edda" : "#fff3cd",
       color: gLealtad >= 10 ? "#155724" : "#856404",
@@ -6476,12 +6556,13 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
     tab === "whatsapp" && React.createElement(WhatsAppInbox, null),
+    tab === "caja" && React.createElement(CierreCaja, { ventas, gastos }),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, marcarNotifLeidas, desmarcarNotif,
@@ -13105,6 +13186,200 @@ const ordenarRecientes = (arr) => [...(arr || [])].sort((a, b) => {
 });
 
 // Aviso en el Dashboard cuando alguien llena el formulario de admisión.
+// ─── RESPALDO ───────────────────────────────────────────────────────────────
+// No existía ninguno: un borrado accidental no tenía vuelta atrás. El navegador
+// no deja descargar archivos solo, así que la app recuerda cuándo fue el último
+// respaldo y avisa en el Dashboard cuando toca.
+const RESPALDO_TABLAS = ["pc_ventas", "pc_clientes", "pc_citas", "pc_facturas", "pc_gastos",
+  "pc_inventario", "pc_seguimientos", "pc_historias", "pc_tarifas", "pc_candidatos", "pc_llamadas"];
+const RESPALDO_DIAS = 7;
+
+async function descargarRespaldo() {
+  const paquete = { generado: new Date().toISOString(), version: 1, tablas: {} };
+  for (const t of RESPALDO_TABLAS) {
+    try {
+      const filas = await supaFetchTodo(t, "?order=id.asc");
+      paquete.tablas[t] = Array.isArray(filas) ? filas : [];
+    } catch (e) {
+      paquete.tablas[t] = { error: String(e && e.message || e) };
+    }
+  }
+  const total = Object.values(paquete.tablas).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
+  const blob = new Blob([JSON.stringify(paquete, null, 1)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "PetColinas_respaldo_" + hoy() + ".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  try { localStorage.setItem("pc_ultimo_respaldo", hoy()); } catch {}
+  return total;
+}
+
+// ─── CIERRE DE CAJA ─────────────────────────────────────────────────────────
+// Cuánto entró hoy y en qué forma. Sirve para cuadrar el efectivo del día
+// contra lo que hay físicamente en la gaveta.
+// Movimientos del día: quién guardó o borró qué. Se alimenta de pc_auditoria.
+function MovimientosAuditoria({ fecha }) {
+  const E = React.createElement;
+  const [filas, setFilas] = React.useState(null);
+  const [abierto, setAbierto] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!abierto) return;
+    let vivo = true;
+    supaFetch("pc_auditoria", "GET", null, "?fecha=gte." + fecha + "T00:00:00&fecha=lte." + fecha + "T23:59:59&order=fecha.desc&limit=200")
+      .then((r) => { if (vivo) setFilas(Array.isArray(r) ? r : []); })
+      .catch(() => { if (vivo) setFilas([]); });
+    return () => { vivo = false; };
+  }, [abierto, fecha]);
+
+  return E("div", { style: { marginTop: 18, background: "#fff", border: "1px solid #e0e4e8", borderRadius: 14, padding: "14px 18px" } },
+    E("div", { onClick: () => setAbierto((v) => !v), style: { display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" } },
+      E("div", { style: { fontWeight: 700, fontSize: 13.5, color: "#334155" } }, "🕵️ Movimientos del día — quién cambió qué"),
+      E("span", { style: { color: "#94a3b8", fontSize: 16 } }, abierto ? "▲" : "▼")),
+    abierto && E("div", { style: { marginTop: 12 } },
+      filas === null && E("div", { style: { fontSize: 13, color: "#94a3b8" } }, "⏳ Cargando…"),
+      filas && filas.length === 0 && E("div", { style: { fontSize: 12.5, color: "#94a3b8", lineHeight: 1.6 } },
+        "Sin movimientos registrados ese día. Si nunca aparece nada, falta crear la tabla pc_auditoria en Supabase (está en el SQL que te pasé)."),
+      filas && filas.map((r) => E("div", { key: r.id, style: { display: "flex", gap: 10, alignItems: "baseline", padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 12.5 } },
+        E("span", { style: { color: "#94a3b8", minWidth: 46 } }, String(r.fecha || "").slice(11, 16)),
+        E("span", { style: { fontWeight: 700, color: r.accion === "borrar" ? "#c0392b" : "#1a6b3a", minWidth: 58 } }, r.accion === "borrar" ? "borró" : "guardó"),
+        E("span", { style: { color: "#475569", flex: 1, minWidth: 0 } }, String(r.tabla || "").replace("pc_", "") + (r.resumen ? " · " + r.resumen : "")),
+        r.monto > 0 && E("span", { style: { fontWeight: 700, color: "#1f2937", whiteSpace: "nowrap" } }, "RD$ " + Number(r.monto).toLocaleString("es-DO")),
+        E("span", { style: { color: "#94a3b8", whiteSpace: "nowrap" } }, String(r.usuario || "").split("@")[0])
+      ))
+    )
+  );
+}
+
+function CierreCaja({ ventas, gastos }) {
+  const E = React.createElement;
+  const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b", gold: "#b8860b" };
+  const [fecha, setFecha] = React.useState(hoy());
+
+  const delDia = (ventas || []).filter((v) => String(v.fecha || "").slice(0, 10) === fecha);
+  const gastosDia = (gastos || []).filter((g) => String(g.fecha || "").slice(0, 10) === fecha);
+
+  // Clasificar por forma de pago. Las transferencias se agrupan por banco.
+  const grupos = {};
+  let pendiente = 0, cobrado = 0;
+  delDia.forEach((v) => {
+    const monto = Number(v.total) || 0;
+    if (esPagoPendiente(v)) { pendiente += monto; return; }
+    cobrado += monto;
+    const fp = String(v.formaPago || v.formapago || "").trim() || "Sin especificar";
+    const l = fp.toLowerCase();
+    const etiqueta = l.includes("efectivo") ? "💵 Efectivo"
+      : l.includes("tarjeta") ? "💳 Tarjeta"
+      : l.includes("transfer") ? "🏦 " + (fp.replace(/transferencias?/i, "").trim() || "Transferencia")
+      : fp;
+    grupos[etiqueta] = (grupos[etiqueta] || 0) + monto;
+  });
+  const totalGastos = gastosDia.reduce((n, g) => n + (Number(g.monto) || 0), 0);
+  const efectivo = grupos["💵 Efectivo"] || 0;
+  const gastosEfectivo = gastosDia.filter((g) => String(g.formaPago || g.formapago || "").toLowerCase().includes("efectivo")).reduce((n, g) => n + (Number(g.monto) || 0), 0);
+
+  const porArea = {};
+  delDia.forEach((v) => { const a = v.area || "otros"; porArea[a] = (porArea[a] || 0) + (Number(v.total) || 0); });
+
+  const fmt = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO");
+  const card = (hijos, extra) => E("div", { style: { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 14, padding: "18px 20px", ...(extra || {}) } }, hijos);
+  const fila = (lbl, val, color, grande) => E("div", { key: lbl, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: grande ? "10px 0" : "6px 0", borderTop: grande ? "2px solid " + (color || C.verde) : "none", marginTop: grande ? 8 : 0 } },
+    E("span", { style: { fontSize: grande ? 15 : 13.5, fontWeight: grande ? 800 : 500, color: grande ? (color || C.verde) : C.grisd } }, lbl),
+    E("span", { style: { fontSize: grande ? 18 : 14, fontWeight: grande ? 800 : 700, color: color || "#1f2937" } }, val));
+
+  return E("div", { style: { maxWidth: 820, margin: "0 auto" } },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 18 } },
+      E("div", null,
+        E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800 } }, "🧾 Cierre de caja"),
+        E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Lo que entró en el día, separado por forma de pago, para cuadrar la gaveta.")),
+      E("input", { type: "date", value: fecha, max: hoy(), onChange: (e) => setFecha(e.target.value),
+        style: { border: "1.5px solid #e0e4e8", borderRadius: 10, padding: "9px 13px", fontSize: 14, fontWeight: 600 } })),
+
+    delDia.length === 0
+      ? E("div", { style: { textAlign: "center", padding: "60px 20px", color: "#94a3b8", background: "#fff", borderRadius: 14, border: "1px dashed #e0e4e8" } },
+          E("div", { style: { fontSize: 42, marginBottom: 10 } }, "🗓️"),
+          E("div", { style: { fontWeight: 700, fontSize: 15, color: "#475569" } }, "No hay ventas registradas ese día"))
+      : E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 } },
+          card([
+            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Entradas por forma de pago"),
+            ...Object.keys(grupos).sort((a, b) => grupos[b] - grupos[a]).map((k) => fila(k, fmt(grupos[k]))),
+            pendiente > 0 && fila("⏳ Pendiente de cobro", fmt(pendiente), C.rojo),
+            fila("Total cobrado", fmt(cobrado), C.verde, true)
+          ]),
+          card([
+            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Efectivo en gaveta"),
+            fila("Ventas en efectivo", fmt(efectivo)),
+            fila("Gastos pagados en efectivo", "− " + fmt(gastosEfectivo), C.rojo),
+            fila("Debe haber en gaveta", fmt(efectivo - gastosEfectivo), C.gold, true),
+            E("div", { key: "n", style: { fontSize: 11.5, color: C.grisd, marginTop: 10, lineHeight: 1.5 } },
+              "Cuenta el efectivo físico y compáralo con este número. Si no cuadra, revisa las ventas del día.")
+          ]),
+          card([
+            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Por área"),
+            ...Object.keys(porArea).sort((a, b) => porArea[b] - porArea[a]).map((a) => fila(a.charAt(0).toUpperCase() + a.slice(1), fmt(porArea[a]))),
+            fila(delDia.length + " venta(s) del día", fmt(cobrado + pendiente), C.azul, true)
+          ]),
+          totalGastos > 0 && card([
+            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Gastos del día"),
+            ...gastosDia.slice(0, 8).map((g, i) => fila((g.descripcion || g.categoria || "Gasto") + (i === 7 && gastosDia.length > 8 ? " …" : ""), fmt(g.monto))),
+            fila("Total gastos", "− " + fmt(totalGastos), C.rojo, true)
+          ])
+        ),
+
+    E(MovimientosAuditoria, { fecha }),
+
+    delDia.length > 0 && E("div", { style: { marginTop: 18, background: "#f0fdf4", border: "2px solid " + C.verde, borderRadius: 14, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 } },
+      E("div", null,
+        E("div", { style: { fontSize: 12, color: "#166534", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "Resultado del día"),
+        E("div", { style: { fontSize: 12.5, color: C.grisd, marginTop: 3 } }, "Cobrado menos gastos registrados")),
+      E("div", { style: { fontSize: 26, fontWeight: 900, color: cobrado - totalGastos >= 0 ? C.verde : C.rojo } }, fmt(cobrado - totalGastos)))
+  );
+}
+
+function AvisoRespaldo() {
+  const E = React.createElement;
+  const [ultimo, setUltimo] = React.useState(() => { try { return localStorage.getItem("pc_ultimo_respaldo") || ""; } catch { return ""; } });
+  const [ocupado, setOcupado] = React.useState(false);
+
+  const dias = (() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ultimo)) return 9999;
+    return Math.floor((new Date(hoy() + "T12:00:00Z") - new Date(ultimo + "T12:00:00Z")) / 86400000);
+  })();
+  if (dias < RESPALDO_DIAS) return null;
+
+  const correr = async () => {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      const n = await descargarRespaldo();
+      setUltimo(hoy());
+      alert("Respaldo descargado: " + n.toLocaleString("es-DO") + " registros.\n\nGuárdalo en Google Drive o en un disco aparte. Si algún día se borra algo, con este archivo se recupera todo.");
+    } catch (e) {
+      alert("No se pudo generar el respaldo: " + (e.message || e));
+    }
+    setOcupado(false);
+  };
+
+  return E("div", { style: {
+      display: "flex", alignItems: "center", gap: 14,
+      background: "linear-gradient(90deg,#fff1f2,#fffafa)", border: "2px solid #e11d48",
+      borderRadius: 14, padding: "14px 18px", marginBottom: 18
+    } },
+    E("div", { style: { fontSize: 26 } }, "💾"),
+    E("div", { style: { flex: 1, minWidth: 0 } },
+      E("div", { style: { fontWeight: 800, fontSize: 14.5, color: "#9f1239" } },
+        ultimo ? "Hace " + dias + " días que no respaldas la información" : "Nunca has descargado un respaldo"),
+      E("div", { style: { fontSize: 12.5, color: "#6b7280", marginTop: 3 } },
+        "Descarga un archivo con todos los clientes, ventas, facturas e historias clínicas y guárdalo en Drive.")),
+    E("button", { onClick: correr, disabled: ocupado, style: {
+      background: ocupado ? "#9ca3af" : "#e11d48", color: "#fff", border: "none", borderRadius: 10,
+      padding: "10px 18px", fontWeight: 800, fontSize: 13, cursor: ocupado ? "wait" : "pointer", whiteSpace: "nowrap"
+    } }, ocupado ? "Generando…" : "Descargar respaldo")
+  );
+}
+
 function AvisoClientesNuevos({ clientes, notifLeidas, setTab }) {
   const E = React.createElement;
   const leidas = notifLeidas instanceof Set ? notifLeidas : new Set();
