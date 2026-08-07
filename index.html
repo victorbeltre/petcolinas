@@ -62,6 +62,42 @@ async function enviarASheet(venta) {
     console.warn("[Sheet sync] Error enviando al sheet:", e.message);
   }
 }
+// Trae TODAS las filas de una tabla en páginas. Antes se pedía "limit=5000":
+// al pasar de 5000 registros los reportes iban a dar números bajos sin ningún
+// error visible. Con paginación el techo desaparece.
+// localStorage tiene ~5 MB y la app guarda copias completas de ventas, clientes,
+// facturas y citas. Antes solo pc_facturas manejaba el desbordamiento; el resto
+// fallaba en silencio al llenarse. Este helper libera espacio y reintenta.
+const LS_DESECHABLES = ["pc_venta_serv", "pc_fecha_alerts", "pc_fecha_dismissed", "pc_ventas_local", "pc_facturas", "pc_ventas", "pc_clientes", "pc_citas_agenda", "pc_seguimientos"];
+function guardarLocal(clave, valor) {
+  const txt = typeof valor === "string" ? valor : JSON.stringify(valor);
+  try {
+    localStorage.setItem(clave, txt);
+    return true;
+  } catch (e) {
+    if (!e || (e.name !== "QuotaExceededError" && e.code !== 22)) { console.warn("[localStorage] " + clave + ":", e); return false; }
+    console.warn("[localStorage] Cuota llena guardando " + clave + " — liberando espacio…");
+    for (const k of LS_DESECHABLES) {
+      if (k === clave) continue;
+      try { localStorage.removeItem(k); } catch {}
+      try { localStorage.setItem(clave, txt); console.warn("[localStorage] Recuperado tras purgar " + k); return true; } catch {}
+    }
+    console.error("[localStorage] No se pudo guardar " + clave + " ni purgando. Los datos SÍ están en Supabase.");
+    if (typeof window.__notifSyncError === "function") window.__notifSyncError("memoria local llena — los datos siguen en la nube");
+    return false;
+  }
+}
+async function supaFetchTodo(table, params = "?order=id.asc", pagina = 1000, tope = 100000) {
+  const sep = params.includes("?") ? "&" : "?";
+  const todas = [];
+  for (let desde = 0; desde < tope; desde += pagina) {
+    const lote = await supaFetch(table, "GET", null, `${params}${sep}offset=${desde}&limit=${pagina}`);
+    if (!Array.isArray(lote)) return todas.length ? todas : lote;   // propagar el error tal cual
+    todas.push(...lote);
+    if (lote.length < pagina) break;
+  }
+  return todas;
+}
 async function supaFetch(table, method = "GET", body = null, params = "") {
   const url = `${SUPA_URL}/rest/v1/${table}${params}`;
   let authToken = SUPA_KEY;
@@ -173,16 +209,23 @@ function useSupabase(table, seed = []) {
   useEffect(() => {
     (async () => {
       try {
-        const rows = await supaFetch(table, "GET", null, "?order=id.asc&limit=5000");
+        const rows = await supaFetchTodo(table, "?order=id.asc");
         console.log(`[Supabase] ${table} \u2192 ${Array.isArray(rows) ? rows.length : "ERR"} filas`, rows?.error || "");
         if (Array.isArray(rows) && rows.length > 0) {
           const HOY = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
           // Fecha más frecuente entre ventas reales (no futuras) → fallback inteligente para fechas erróneas
           const dateCounts_ = {}; rows.forEach(r => { if (r.fecha && r.fecha <= HOY) dateCounts_[r.fecha] = (dateCounts_[r.fecha]||0)+1; });
           const modaFecha_ = Object.keys(dateCounts_).length ? Object.keys(dateCounts_).sort((a,b)=>dateCounts_[b]-dateCounts_[a])[0] : HOY;
+          // Antes esto reescribía CUALQUIER fecha futura, así que una venta puesta
+          // para mañana (a propósito o por un dedo) se alteraba sola y en silencio.
+          // Ahora solo se corrigen los errores evidentes: más de 60 días adelante
+          // (típicamente un año mal tecleado). El resto se respeta y solo se avisa.
+          const DIAS_TOLERANCIA = 60;
           const fixFecha = (f) => {
             if (!f) return f;
             if (f <= HOY) return f;
+            const adelanto = Math.floor((new Date(f + "T12:00:00Z") - new Date(HOY + "T12:00:00Z")) / 86400000);
+            if (!(adelanto > DIAS_TOLERANCIA)) return f;   // futuro cercano: se deja tal cual
             const [fY, fM, fD] = f.split("-");
             const [hY, hM] = HOY.split("-");
             if (fY === hY) {
@@ -196,7 +239,9 @@ function useSupabase(table, seed = []) {
             if (n.fecha && (table === "pc_ventas" || table === "pc_gastos")) {
               const orig = n.fecha;
               n.fecha = fixFecha(n.fecha);
-              if (table === "pc_ventas" && n.fecha !== orig) {
+              // Se avisa también cuando la fecha quedó intacta pero es futura,
+              // para que Victor la revise en vez de que pase desapercibida.
+              if (table === "pc_ventas" && (n.fecha !== orig || orig > HOY)) {
                 try {
                   const dismissed = new Set(JSON.parse(localStorage.getItem("pc_fecha_dismissed") || "[]"));
                   const ak = String(n.id) + "|" + orig;
@@ -204,7 +249,7 @@ function useSupabase(table, seed = []) {
                     const ex = JSON.parse(localStorage.getItem("pc_fecha_alerts") || "[]");
                     if (!ex.some(a => a.key === ak)) {
                       ex.push({ key: ak, id: n.id, originalFecha: orig, correctedFecha: n.fecha, cliente: n.cliente || "", area: n.area || "", total: n.total || 0, ts: Date.now() });
-                      localStorage.setItem("pc_fecha_alerts", JSON.stringify(ex));
+                      guardarLocal("pc_fecha_alerts", ex);
                     }
                   }
                 } catch(e2) {}
@@ -213,16 +258,26 @@ function useSupabase(table, seed = []) {
             return n;
           });
           if (table === "pc_ventas") {
-            const seen = /* @__PURE__ */ new Map();
+            // ANTES se BORRABAN las ventas con mismo cliente+fecha+total+servicio.
+            // Eso descartaba ventas reales (dos perros al mismo baño el mismo día
+            // por el mismo precio) y el ingreso desaparecía del reporte sin avisar.
+            // Ahora NO se borra nada: solo se marcan como sospechosas para que
+            // Victor decida en la pestaña Ventas.
+            const grupos = /* @__PURE__ */ new Map();
             for (const v of normalized) {
               const key = `${(v.cliente || "").toLowerCase().trim()}|${v.fecha}|${v.total}|${(v.servicio || v.descripcion || "").toLowerCase().trim()}`;
-              const prev = seen.get(key);
-              if (!prev || v.id > prev.id) seen.set(key, v);
+              if (!grupos.has(key)) grupos.set(key, []);
+              grupos.get(key).push(v);
             }
-            const antes = normalized.length;
-            normalized = [...seen.values()];
-            if (normalized.length < antes) {
-              console.log(`[Dedup] pc_ventas: ${antes - normalized.length} duplicado(s) eliminado(s)`);
+            const sospechosos = [];
+            for (const [, grupo] of grupos) {
+              if (grupo.length < 2) continue;
+              // El primero se deja limpio; los repetidos quedan señalados.
+              grupo.slice(1).forEach((v) => { v.posibleDuplicado = true; sospechosos.push(v); });
+            }
+            window.__ventasDuplicadas = sospechosos;
+            if (sospechosos.length > 0) {
+              console.warn(`[Dedup] pc_ventas: ${sospechosos.length} venta(s) se ven repetidas — NO se borraron, revísalas en la pestaña Ventas.`);
             }
           }
           // Merge: seed rows + Supabase rows nuevas (que no están en seed)
@@ -290,7 +345,7 @@ function useSupabase(table, seed = []) {
                 const presentIds = new Set(merged.map(v => String(v.id)));
                 let pruned = false;
                 ovIds.forEach(oid => { if (!presentIds.has(oid)) { delete fechaOv[oid]; pruned = true; } });
-                if (pruned) { try { localStorage.setItem("pc_fecha_overrides", JSON.stringify(fechaOv)); } catch {} ovIds = Object.keys(fechaOv); }
+                if (pruned) { try { guardarLocal("pc_fecha_overrides", fechaOv); } catch {} ovIds = Object.keys(fechaOv); }
                 merged = merged.map(v => {
                   const nf = fechaOv[String(v.id)];
                   return nf && v.fecha !== nf ? { ...v, fecha: nf } : v;
@@ -368,7 +423,7 @@ function useSupabase(table, seed = []) {
           const s = v.servicio || v.descripcion;
           if (s) descMap[String(v.id)] = s;
         });
-        localStorage.setItem("pc_venta_serv", JSON.stringify(descMap));
+        guardarLocal("pc_venta_serv", descMap);
       } catch {}
     }
     if (table === "pc_ventas") {
@@ -384,10 +439,10 @@ function useSupabase(table, seed = []) {
       } catch {}
     }
     if (table === "pc_citas") {
-      try { localStorage.setItem("pc_citas_agenda", JSON.stringify(newData)); } catch {}
+      try { guardarLocal("pc_citas_agenda", newData); } catch {}
     }
     if (table === "pc_facturas") {
-      try { localStorage.setItem("pc_facturas", JSON.stringify(newData)); } catch (e) { if (e && e.name === "QuotaExceededError") console.error("[localStorage] Cuota llena: pc_facturas"); }
+      guardarLocal("pc_facturas", newData);
     }
     setSyncing(true);
     try {
@@ -405,15 +460,9 @@ function useSupabase(table, seed = []) {
       if (table === "pc_facturas") soloNuevas = soloNuevas.filter((r) => !r.autoGenerada);
       if (soloNuevas.length > 0) {
         console.log("[Sync] " + table + ": guardando " + soloNuevas.length + " fila(s)");
+        // Pasa por upsertOne para heredar el respaldo de columnas faltantes.
         for (const row of soloNuevas) {
-          const dbRow = denormalizeRow(table, row);
-          const result = await supaFetch(table, "POST", dbRow, `?on_conflict=id`);
-          if (result && result.error) {
-            const em = (result.error && result.error.message) || JSON.stringify(result.error);
-            console.error("[Sync] " + table + " id=" + row.id + " FALLÓ:", em);
-            window.__lastSyncError = table + " id=" + row.id + " — " + em;
-            if (typeof window.__notifSyncError === "function") window.__notifSyncError(window.__lastSyncError);
-          }
+          await upsertOne(table, row);
         }
       }
     } catch (e) {
@@ -438,7 +487,7 @@ function useSupabase(table, seed = []) {
       try {
         const localVentas = JSON.parse(localStorage.getItem("pc_ventas_local") || "[]");
         const filtered = localVentas.filter((r) => String(r.id) !== sid);
-        localStorage.setItem("pc_ventas_local", JSON.stringify(filtered));
+        guardarLocal("pc_ventas_local", filtered);
       } catch {}
     }
     try {
@@ -449,12 +498,39 @@ function useSupabase(table, seed = []) {
   }, [table]);
   return [data, setDataSync, loaded, syncing, deleteRow, refetch];
 }
+// Columnas añadidas después de que la base ya estaba en uso. Si todavía no se
+// corrió el SQL que las crea, PostgREST rechaza el INSERT entero y se perdería
+// la venta completa. Este respaldo detecta ese error, quita las columnas que no
+// existen y reintenta, para que el guardado nunca se caiga por eso.
+const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco"] };
+function faltaColumna(msg, table) {
+  const m = String(msg || "").toLowerCase();
+  if (!/column|schema cache|pgrst204|42703/.test(m)) return null;
+  return (COLUMNAS_NUEVAS[table] || []).filter((c) => m.includes(c.toLowerCase()));
+}
+function sinColumnas(row, cols) {
+  const copia = { ...row };
+  cols.forEach((c) => { delete copia[c]; });
+  return copia;
+}
 async function upsertOne(table, row) {
   try {
     const dbRow = denormalizeRow(table, row);
-    const result = await supaFetch(table, "POST", dbRow, "?on_conflict=id");
+    let result = await supaFetch(table, "POST", dbRow, "?on_conflict=id");
     if (result && result.error) {
-      const errMsg = result.error && result.error.message ? result.error.message : (typeof result.error === "object" ? JSON.stringify(result.error) : String(result.error));
+      let errMsg = result.error && result.error.message ? result.error.message : (typeof result.error === "object" ? JSON.stringify(result.error) : String(result.error));
+      const faltan = faltaColumna(errMsg, table);
+      if (faltan && faltan.length) {
+        console.warn(`[upsertOne] ${table}: faltan columnas [${faltan.join(", ")}] en Supabase — se guarda sin ellas. Corre el SQL para no perder ese detalle.`);
+        window.__columnasFaltantes = faltan;
+        result = await supaFetch(table, "POST", sinColumnas(dbRow, COLUMNAS_NUEVAS[table] || []), "?on_conflict=id");
+        if (!result || !result.error) {
+          console.log(`[upsertOne] ${table} id=${row.id} OK (sin columnas nuevas)`);
+          if (typeof window.__notifSyncOk === "function") window.__notifSyncOk();
+          return true;
+        }
+        errMsg = (result.error && result.error.message) || JSON.stringify(result.error);
+      }
       console.error(`[upsertOne] ${table} id=${row.id} ERROR:`, errMsg);
       window.__lastSyncError = table + " id=" + row.id + " — " + errMsg;
       if (typeof window.__notifSyncError === "function") window.__notifSyncError(window.__lastSyncError);
@@ -741,19 +817,34 @@ function normalizeRow(table, r) {
     activo: r.activo,
     completado: r.completado
   };
-  if (table === "pc_ventas") return {
-    id: r.id,
-    fecha: r.fecha,
-    cliente: r.cliente,
-    area: r.area,
-    servicio: r.servicio || r.descripcion || r.area || null,
-    descripcion: r.descripcion || r.servicio || r.area || null,
-    total: r.total,
-    comision: r.comision,
-    formaPago: r.formapago,
-    recibidoPor: r.recibidopor,
-    notas: r.notas
-  };
+  if (table === "pc_ventas") {
+    // OJO: la fila se devuelve con los nombres en camelCase Y en minúscula.
+    // La semilla del código usa minúscula y Supabase devuelve camelCase; había
+    // ~15 sitios leyendo solo una de las dos formas (comisiones de farmacia,
+    // portal del empleado, export CSV, factura impresa…) y salían vacíos.
+    const fp = r.formapago ?? r.formaPago ?? null;
+    const rp = r.recibidopor ?? r.recibidoPor ?? null;
+    const cp = r.cobradopor ?? r.cobradoPor ?? null;
+    let items = r.items ?? [];
+    if (typeof items === "string") { try { items = JSON.parse(items || "[]"); } catch { items = []; } }
+    return {
+      id: r.id,
+      fecha: r.fecha,
+      cliente: r.cliente,
+      area: r.area,
+      servicio: r.servicio || r.descripcion || r.area || null,
+      descripcion: r.descripcion || r.servicio || r.area || null,
+      total: r.total,
+      comision: r.comision,
+      formaPago: fp, formapago: fp,
+      recibidoPor: rp, recibidopor: rp,
+      cobradoPor: cp, cobradopor: cp,
+      descuento: Number(r.descuento) || 0,
+      banco: r.banco || "",
+      items: Array.isArray(items) ? items : [],
+      notas: r.notas
+    };
+  }
   if (table === "pc_gastos") return {
     id: r.id,
     fecha: r.fecha,
@@ -903,6 +994,13 @@ function denormalizeRow(table, r) {
     comision: r.comision,
     formapago: r.formaPago || r.formapago || null,
     recibidopor: r.recibidoPor || r.recibidopor || null,
+    // Estos 4 se escribían al registrar la venta pero NO se enviaban a Supabase:
+    // el desglose por líneas, quién cobró, el descuento y el banco se perdían
+    // en cada refresco. Por eso las facturas mostraban una sola línea.
+    cobradopor: r.cobradoPor || r.cobradopor || null,
+    descuento: Number(r.descuento) || 0,
+    banco: r.banco || null,
+    items: JSON.stringify(Array.isArray(r.items) ? r.items : []),
     notas: r.notas
   };
   if (table === "pc_gastos") return {
@@ -1074,6 +1172,9 @@ const EMPLEADOS_INIT = [
 ];
 const RD = (n) => "RD$ " + (Math.round(Number(n) || 0) || 0).toLocaleString("es-DO");
 const hoy = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+// El valor guardado es "Pago pendiente"; varios sitios comparaban con
+// "pendiente" a secas y por eso la marca ⏳ PEND. nunca aparecía.
+const esPagoPendiente = (v) => String((v && (v.formaPago || v.formapago)) || "").toLowerCase().includes("pendiente");
 function useLS(key, def) {
   const [val, setVal] = useState(() => {
     try {
@@ -1168,7 +1269,7 @@ function useVentasConSeed(seed) {
       const next = typeof updater === "function" ? updater(prev) : updater;
       try {
         // Guardar todo en localStorage (no solo manuales)
-        localStorage.setItem("pc_ventas", JSON.stringify(next));
+        guardarLocal("pc_ventas", next);
       } catch(e) { console.warn("localStorage ventas:", e); }
       return next;
     });
@@ -1934,6 +2035,14 @@ const VENTAS_SEED = [
   { id: 30660, fecha: "2026-06-06", cliente: "Floki Toledo", area: "grooming", servicio: "baño pequeño + corte completo", total: 1315, comision: 0, formapago: "efectivo", recibidopor: "laura" },
   { id: 30661, fecha: "2026-06-06", cliente: "Floki Toledo", area: "farmacia", servicio: "(15% off por cumpleaños) + cepillo de peinar ($700)", total: 700, comision: 0, formapago: "efectivo", recibidopor: "laura" },
 ];
+// La semilla del código trae los campos en minúscula y Supabase los devuelve en
+// camelCase. Se agregan ambas formas para que cualquier lector funcione igual
+// con datos precargados y con datos de la nube.
+VENTAS_SEED.forEach((v) => {
+  if (v.formaPago === undefined) v.formaPago = v.formapago;
+  if (v.recibidoPor === undefined) v.recibidoPor = v.recibidopor;
+  if (v.cobradoPor === undefined) v.cobradoPor = v.cobradopor;
+});
 const GASTOS_SEED = [
   { id: 20001, fecha: "2026-03-12", categoria: "Marzo", descripcion: "PAGO INICIAL PARA EL REGISTRO DE LA EMPRESA PETCOLINAS", monto: 16470, formaPago: "", notas: "RESERVAS" },
   { id: 20002, fecha: "2026-03-11", categoria: "Marzo", descripcion: "Diseño valla publicidad Petcolinas", monto: 6133, formaPago: "", notas: "Reservas" },
@@ -2247,7 +2356,7 @@ function useClientesConSeed(seed) {
   });
   useEffect(() => {
     try {
-      localStorage.setItem("pc_clientes", JSON.stringify(val));
+      guardarLocal("pc_clientes", val);
     } catch {
     }
   }, [val]);
@@ -2804,7 +2913,7 @@ function useSeguimientosConSeed(seed) {
   });
   useEffect(() => {
     try {
-      localStorage.setItem("pc_seguimientos", JSON.stringify(val));
+      guardarLocal("pc_seguimientos", val);
     } catch {
     }
   }, [val]);
@@ -3359,7 +3468,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         try {
           const reg = JSON.parse(localStorage.getItem("pc_fact_nums") || "{}");
           reg[idFinal] = parseInt(numero, 10) || reg[idFinal];
-          localStorage.setItem("pc_fact_nums", JSON.stringify(reg));
+          guardarLocal("pc_fact_nums", reg);
         } catch {}
       }
 
@@ -3613,7 +3722,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         autoGenerada: true
       };
     });
-    if (regCambio) { try { localStorage.setItem("pc_fact_nums", JSON.stringify(numReg)); } catch {} }
+    if (regCambio) { try { guardarLocal("pc_fact_nums", numReg); } catch {} }
     return resultado;
   }, [ventas, clientes]);
   const todasFacturas = useMemo(() => {
@@ -3661,7 +3770,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   useEffect(() => {
     if (todasFacturas.length > 0) {
       try {
-        localStorage.setItem("pc_facturas", JSON.stringify(todasFacturas));
+        guardarLocal("pc_facturas", todasFacturas);
       } catch(e) { console.warn("Error guardando facturas:", e); }
     }
   }, [todasFacturas]);
@@ -5822,7 +5931,7 @@ function PetColinas() {
       refetchCitasPortal();
       // Sincronizar ventas nuevas de otros usuarios
       try {
-        const rows = await supaFetch("pc_ventas", "GET", null, "?order=id.asc&limit=5000");
+        const rows = await supaFetchTodo("pc_ventas", "?order=id.asc");
         if (Array.isArray(rows) && rows.length > 0) {
           const normalized = rows.map(r => normalizeRow("pc_ventas", r));
           setVentasVet(prev => {
@@ -5834,7 +5943,7 @@ function PetColinas() {
       } catch(e) {}
       // Sincronizar clientes nuevos
       try {
-        const clRows = await supaFetch("pc_clientes", "GET", null, "?order=id.asc&limit=5000");
+        const clRows = await supaFetchTodo("pc_clientes", "?order=id.asc");
         if (Array.isArray(clRows) && clRows.length > 0) {
           setClientesVet(clRows.map(r => normalizeRow("pc_clientes", r)));
         }
@@ -5996,7 +6105,7 @@ function ModalPagosPendientes({ ventas, setVentas, clientes, onClose }) {
     try {
       var pagosConf = JSON.parse(localStorage.getItem("pc_pagos_conf") || "{}");
       pagosConf[String(v.id)] = forma;
-      localStorage.setItem("pc_pagos_conf", JSON.stringify(pagosConf));
+      guardarLocal("pc_pagos_conf", pagosConf);
     } catch (e) {}
     setVentas(function(prev) { return prev.map(function(x) { return x.id === v.id ? updated : x; }); });
     supaFetch("pc_ventas", "PATCH", { formapago: forma }, "?id=eq." + encodeURIComponent(v.id));
@@ -6087,7 +6196,7 @@ function PetColinasApp({ session, onLogout }) {
     setNotifLeidas(prev => {
       const next = new Set(prev);
       next.add(String(id));
-      localStorage.setItem("pc_notif_leidas", JSON.stringify([...next]));
+      guardarLocal("pc_notif_leidas", [...next]);
       return next;
     });
   };
@@ -6097,7 +6206,7 @@ function PetColinasApp({ session, onLogout }) {
     setNotifLeidas(prev => {
       const next = new Set(prev);
       (ids || []).forEach(id => next.add(String(id)));
-      try { localStorage.setItem("pc_notif_leidas", JSON.stringify([...next])); } catch {}
+      try { guardarLocal("pc_notif_leidas", [...next]); } catch {}
       return next;
     });
   };
@@ -6105,7 +6214,7 @@ function PetColinasApp({ session, onLogout }) {
     setNotifLeidas(prev => {
       const next = new Set(prev);
       next.delete(String(id));
-      try { localStorage.setItem("pc_notif_leidas", JSON.stringify([...next])); } catch {}
+      try { guardarLocal("pc_notif_leidas", [...next]); } catch {}
       return next;
     });
   };
@@ -6547,7 +6656,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     try {
       const overrides = JSON.parse(localStorage.getItem("pc_seg_overrides") || "{}");
       overrides[String(updated.id)] = { completado: updated.completado, activo: updated.activo, ultimaFecha: updated.ultimaFecha, proximaFecha: updated.proximaFecha };
-      localStorage.setItem("pc_seg_overrides", JSON.stringify(overrides));
+      guardarLocal("pc_seg_overrides", overrides);
     } catch {}
   };
   const marcarHecho = async (id) => {
@@ -7170,7 +7279,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
     const validIds = new Set(ventas.map(v => String(v.id)));
     setDateAlerts(prev => {
       const next = prev.filter(a => validIds.has(String(a.id)));
-      if (next.length !== prev.length) { try { localStorage.setItem("pc_fecha_alerts", JSON.stringify(next)); } catch {} }
+      if (next.length !== prev.length) { try { guardarLocal("pc_fecha_alerts", next); } catch {} }
       return next;
     });
   }, [ventas]);
@@ -7187,7 +7296,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
     try {
       const ov = JSON.parse(localStorage.getItem("pc_fecha_overrides") || "{}");
       ov[String(venta.id)] = nuevaFecha;
-      localStorage.setItem("pc_fecha_overrides", JSON.stringify(ov));
+      guardarLocal("pc_fecha_overrides", ov);
     } catch {}
     try {
       const lk = "pc_ventas_local";
@@ -7215,16 +7324,16 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
     try {
       const dismissed = new Set(JSON.parse(localStorage.getItem("pc_fecha_dismissed") || "[]"));
       dismissed.add(alert.key);
-      localStorage.setItem("pc_fecha_dismissed", JSON.stringify([...dismissed]));
+      guardarLocal("pc_fecha_dismissed", [...dismissed]);
       const ex = JSON.parse(localStorage.getItem("pc_fecha_alerts") || "[]");
-      localStorage.setItem("pc_fecha_alerts", JSON.stringify(ex.filter(a => a.key !== alert.key)));
+      guardarLocal("pc_fecha_alerts", ex.filter(a => a.key !== alert.key));
     } catch(e) {}
     setDateAlerts(prev => prev.filter(a => a.key !== alert.key));
   };
   const editDateAlert = (alert) => {
     try {
       const ex = JSON.parse(localStorage.getItem("pc_fecha_alerts") || "[]");
-      localStorage.setItem("pc_fecha_alerts", JSON.stringify(ex.filter(a => a.key !== alert.key)));
+      guardarLocal("pc_fecha_alerts", ex.filter(a => a.key !== alert.key));
     } catch(e) {}
     setDateAlerts(prev => prev.filter(a => a.key !== alert.key));
     setTab("ventas");
@@ -7873,6 +7982,10 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       const dto = i.descPct > 0 ? ` (-${i.descPct}%)` : "";
       return i.nombre + dto;
     }).join(" + ");
+    const nombreEmpleado = (id) => id==="e1"?"Alexander":id==="e2"?"Aylein":id==="e3"?"Leydeli":id==="e4"?"Laura":id==="e5"?"Valentina":id==="ev"?"Victor":"";
+    const textoFormaPago = formaPago === "pendiente" ? "Pago pendiente"
+      : formaPago === "transferencia" ? ("Transferencia " + (banco === "Otro" ? bancoOtro : banco)).trim()
+      : formaPago;
     const nueva = {
       id: Date.now(),
       fecha,
@@ -7883,9 +7996,11 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       total: totalNeto,
       comision: totalComision,
       descuento: totalDescuento,
-      recibidopor: ((id) => id==="e1"?"Alexander":id==="e2"?"Aylein":id==="e3"?"Leydeli":id==="e4"?"Laura":id==="e5"?"Valentina":id==="ev"?"Victor":"")(servicioPor),
-      cobradopor: ((id) => id==="e1"?"Alexander":id==="e2"?"Aylein":id==="e3"?"Leydeli":id==="e4"?"Laura":id==="e5"?"Valentina":id==="ev"?"Victor":"")(cobradoPor),
-      formapago: formaPago === "pendiente" ? "Pago pendiente" : formaPago === "transferencia" ? ("Transferencia " + (banco === "Otro" ? bancoOtro : banco)).trim() : formaPago,
+      // Se escriben las dos formas (minúscula y camelCase) para que ningún
+      // lector de la app se quede sin el dato.
+      recibidopor: nombreEmpleado(servicioPor), recibidoPor: nombreEmpleado(servicioPor),
+      cobradopor: nombreEmpleado(cobradoPor), cobradoPor: nombreEmpleado(cobradoPor),
+      formapago: textoFormaPago, formaPago: textoFormaPago,
       banco: banco || "",
       items: items.map((i) => ({ nombre: i.nombre, precio: i.precio, descPct: i.descPct, subtotal: i.subtotal, area: i.area }))
     };
@@ -8401,10 +8516,10 @@ items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAd
     {
       key: v.id,
       onClick: () => setVentaDetalle(v),
-      className: (v.formapago === "pendiente") ? "fila-pendiente" : "",
+      className: esPagoPendiente(v) ? "fila-pendiente" : "",
       style: { borderBottom: "1px solid #f4f5f6", cursor: "pointer", transition: "background .12s" },
-      onMouseEnter: (e) => { if (v.formapago !== "pendiente") e.currentTarget.style.background = "#f8fffe"; },
-      onMouseLeave: (e) => { if (v.formapago !== "pendiente") e.currentTarget.style.background = ""; }
+      onMouseEnter: (e) => { if (!esPagoPendiente(v)) e.currentTarget.style.background = "#f8fffe"; },
+      onMouseLeave: (e) => { if (!esPagoPendiente(v)) e.currentTarget.style.background = ""; }
     },
     /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", whiteSpace: "nowrap" } }, v.fecha),
     /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, v.cliente ? /* @__PURE__ */ React.createElement(
@@ -8441,7 +8556,7 @@ items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAd
       title: v.comision > 0 ? "Ver desglose de comisión" : ""
     }, v.comision > 0 ? /* @__PURE__ */ React.createElement("span", { style:{ textDecoration:"underline dotted" }}, RD(v.comision)) : "\u2014"),
     /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.verde } },
-      v.formapago === "pendiente" && /* @__PURE__ */ React.createElement("span", { style: { fontSize:10, fontWeight:800, background:"#fee2e2", color:"#c0392b", borderRadius:4, padding:"2px 6px", marginRight:6, verticalAlign:"middle" } }, "\u23F3 PEND."),
+      esPagoPendiente(v) && /* @__PURE__ */ React.createElement("span", { style: { fontSize:10, fontWeight:800, background:"#fee2e2", color:"#c0392b", borderRadius:4, padding:"2px 6px", marginRight:6, verticalAlign:"middle" } }, "\u23F3 PEND."),
       RD(v.total)),
     /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(
       "button",
@@ -9507,7 +9622,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
       try {
         const existing = JSON.parse(localStorage.getItem("pc_virtual_fusionados") || "[]");
         const newNames = virtualLosers.map(l => (l.nombreMascota||"").toLowerCase().trim()).filter(n => n && !existing.includes(n));
-        if (newNames.length > 0) localStorage.setItem("pc_virtual_fusionados", JSON.stringify([...existing, ...newNames]));
+        if (newNames.length > 0) guardarLocal("pc_virtual_fusionados", [...existing, ...newNames]);
       } catch {}
       if (onVirtualFusion) onVirtualFusion();
     }
