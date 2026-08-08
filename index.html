@@ -3099,6 +3099,42 @@ const FACTURAS_SEED = [
   { id: "hist_130", numero: "0130", fecha: "2026-03-05", mascota: "Lucky Sanchez", propietario: "Lucky Sanchez", telefono: "", items: [{ "descripcion": "Ba\xF1o peque\xF1o + corte completo", "cantidad": 1, "precio": 1548 }], itbis: false, subtotal: 1548, itbisAmt: 0, total: 1548, notas: "Historial 2026", estado: "emitida" },
   { id: "hist_131", numero: "0131", fecha: "2026-03-05", mascota: "Shadow Felipe", propietario: "Shadow Felipe", telefono: "", items: [{ "descripcion": "Ba\xF1o grande", "cantidad": 1, "precio": 1080 }], itbis: false, subtotal: 1080, itbisAmt: 0, total: 1080, notas: "Historial 2026", estado: "emitida" }
 ];
+// ─── PROGRAMA DE LEALTAD ────────────────────────────────────────────────────
+// Cada 10 BAÑOS, el siguiente es gratis. Solo cuentan los baños: ni cortes, ni
+// uñas, ni desenredes. Antes la lista incluía "corte", "grooming", "pelado" e
+// "higiénico", así que un corte de uñas sumaba al programa.
+const BANO_RE = /ba[ñn]o/i;
+// Cuenta los baños de UNA venta, respetando cantidades ("2x Baño pequeño" = 2).
+function banosDeVenta(v) {
+  const cantEn = (txt, porDefecto) => {
+    const m = String(txt).match(/(\d+)\s*x/i);
+    return m ? (parseInt(m[1], 10) || porDefecto) : porDefecto;
+  };
+  if (Array.isArray(v.items) && v.items.length) {
+    return v.items.reduce((n, it) => {
+      const nombre = String(it.nombre || it.descripcion || "");
+      if (!BANO_RE.test(nombre)) return n;
+      const qty = Number(it.qty ?? it.cantidad) || 1;
+      return n + cantEn(nombre, qty);
+    }, 0);
+  }
+  // Sin desglose: la descripción viene como "2x Baño pequeño + Corte completo".
+  return String(v.servicio || v.descripcion || "").split("+")
+    .reduce((n, parte) => BANO_RE.test(parte) ? n + cantEn(parte, 1) : n, 0);
+}
+// Total de baños de una mascota: los de las ventas + los del histórico 2025 del CRM.
+function contarBanos(mascota, ventas, clientes) {
+  const key = String(mascota || "").toLowerCase().trim();
+  if (!key) return 0;
+  const deVentas = (ventas || [])
+    .filter((v) => String(v.cliente || "").toLowerCase().trim() === key)
+    .reduce((n, v) => n + banosDeVenta(v), 0);
+  const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === key);
+  return deVentas + (cli ? parseInt(cli.banos2025) || 0 : 0);
+}
+// jsPDF con las fuentes estándar no dibuja emojis: salían como "Ø=Ü>".
+const sinEmoji = (t) => String(t || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, "").replace(/\s{2,}/g, " ").trim();
+
 function generarFacturaPDFDoc(f) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
@@ -3115,7 +3151,7 @@ function generarFacturaPDFDoc(f) {
   doc.text("FACTURA #" + f.numero, W-M, 13, {align:"right"});
   doc.setFont("helvetica","normal"); doc.setFontSize(9);
   doc.text("Fecha: " + (f.fecha||""), W-M, 20, {align:"right"});
-  doc.text(f.estado==="pendiente" ? "PENDIENTE" : "✓ EMITIDA", W-M, 27, {align:"right"});
+  doc.text(f.estado==="pendiente" ? "PENDIENTE" : "EMITIDA", W-M, 27, {align:"right"});
   // Cajas cliente / emisor
   let y = 44;
   doc.setFillColor(248,249,250);
@@ -3123,9 +3159,9 @@ function generarFacturaPDFDoc(f) {
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...gr);
   doc.text("DATOS DEL CLIENTE", M+3, y); doc.text("EMITIDO POR", W/2+5, y);
   doc.setTextColor(...ng); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-  doc.text((f.propietario||"—").slice(0,32), M+3, y+8); doc.text("PetColinas", W/2+5, y+8);
+  doc.text(sinEmoji(f.propietario||"-").slice(0,32), M+3, y+8); doc.text("PetColinas", W/2+5, y+8);
   doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
-  if(f.mascota) doc.text("🐾 " + f.mascota, M+3, y+15);
+  if(f.mascota) doc.text("Mascota: " + sinEmoji(f.mascota), M+3, y+15);
   if(f.telefono) doc.text("Tel: " + f.telefono, M+3, y+21);
   doc.setTextColor(...gr); doc.setFontSize(8);
   doc.text("Plaza Las Colinas, SDO", W/2+5, y+15);
@@ -3146,7 +3182,7 @@ function generarFacturaPDFDoc(f) {
     const sub=Math.round(precio*cant*(1-desc/100)); subtotal+=sub;
     if(i%2===0){doc.setFillColor(248,249,250);doc.rect(M,y-4,W-2*M,7,"F");}
     doc.setTextColor(...ng);
-    const dl=(it.descripcion||"—"); doc.text(dl.length>55?dl.slice(0,52)+"...":dl, M+2, y);
+    const dl=sinEmoji(it.descripcion||"-"); doc.text(dl.length>55?dl.slice(0,52)+"...":dl, M+2, y);
     doc.text(String(cant), 123, y, {align:"center"});
     doc.text("RD$ "+precio.toLocaleString("es-DO"), 139, y);
     doc.text(desc>0?"-"+desc+"%":"—", 162, y, {align:"center"});
@@ -3162,20 +3198,20 @@ function generarFacturaPDFDoc(f) {
   doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(11);
   doc.text("TOTAL", 134, y+1.5); doc.text("RD$ "+total.toLocaleString("es-DO"), W-M-2, y+1.5, {align:"right"});
   // Lealtad grooming
-  const grm=f.groomingCount||0;
-  if(grm>0){y+=16;doc.setFillColor(255,251,234);doc.rect(M,y-4,W-2*M,16,"F");
+  const grm=Number(f.groomingCount)||0;
+  if(grm>=0 && f.groomingCount!=null){y+=16;doc.setFillColor(255,251,234);doc.rect(M,y-4,W-2*M,16,"F");
     doc.setDrawColor(240,192,48);doc.rect(M,y-4,W-2*M,16,"S");
     doc.setTextColor(184,134,11);doc.setFont("helvetica","bold");doc.setFontSize(9);
-    doc.text("🐾 Programa de Lealtad: "+grm+"/10 servicios de grooming", M+4, y+2);
+    doc.text("Programa de Lealtad: "+grm+" de 10 ba\xF1os acumulados", M+4, y+2);
     doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...gr);
-    doc.text(grm>=10?"¡BA\xD1O GRATIS DISPONIBLE! 🎉":"Faltan "+(10-grm)+" servicios para ganar un ba\xF1o gratis 🎁", M+4, y+9);}
+    doc.text(grm>=10?"\xA1BA\xD1O GRATIS DISPONIBLE en su pr\xF3xima visita!":"Faltan "+(10-grm)+" ba\xF1o(s) para el ba\xF1o gratis", M+4, y+9);}
   // Notas
   if(f.notas){y+=20;doc.setFillColor(248,249,250);doc.rect(M,y-4,W-2*M,12,"F");
     doc.setTextColor(...ng);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("Notas:", M+3, y);
     doc.setFont("helvetica","normal");doc.text(f.notas.slice(0,120), M+3, y+6);}
   // Footer
   doc.setTextColor(...gr);doc.setFont("helvetica","normal");doc.setFontSize(8);
-  doc.text("Gracias por confiar en PetColinas 🐾", W/2, 284, {align:"center"});
+  doc.text("Gracias por confiar en PetColinas", W/2, 284, {align:"center"});
   doc.text("Plaza Las Colinas, Santo Domingo Oeste \xB7 Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com", W/2, 290, {align:"center"});
   return doc;
 }
@@ -3313,16 +3349,6 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     });
     setBusqFact(factura.mascota || ""); setVista("nueva");
   }
-  function groomingsCliente(nombreMascota) {
-    const grm2026 = ventas.filter(
-      (v) => v.area === "grooming" && v.cliente && nombreMascota && v.cliente.toLowerCase().trim() === nombreMascota.toLowerCase().trim()
-    ).length;
-    const crmCliente = clientes.find(
-      (c) => c.nombreMascota && nombreMascota && c.nombreMascota.toLowerCase().trim() === nombreMascota.toLowerCase().trim()
-    );
-    const grm2025 = crmCliente ? parseInt(crmCliente.banos2025) || 0 : 0;
-    return grm2026 + grm2025;
-  }
   const nextNumero = () => {
     const allNums = facturas.filter((f) => !f.id.toString().startsWith("hist_")).map((f) => parseInt(f.numero) || 0);
     let regMax = 0;
@@ -3364,138 +3390,22 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       setField("clienteId", id);
     }
   }
-  function groomingCount(mascota) {
-    return ventas.filter(
-      (v) => v.cliente === mascota && v.area === "grooming"
-    ).length;
+  // El programa de lealtad se cuenta desde las VENTAS (ahí está cada baño real),
+  // no desde las facturas. Solo baños: cortes, uñas y desenredes no suman.
+  function calcGroomingLealtad(mascota) {
+    return contarBanos(mascota, ventas, clientes);
   }
-  // Cuenta SOLO items de grooming en facturas (baño, corte, etc.) + historico CRM 2025
-  // Esta es la fuente de verdad para el programa de lealtad
-  const GROOMING_WORDS = ["baño", "bath", "grooming", "corte", "pelado", "higiénico", "medicado"];
-  function calcGroomingLealtad(mascota, excluirFacturaId) {
-    if (!mascota) return 0;
-    const key = mascota.toLowerCase().trim();
-    // Cuenta FECHAS ÚNICAS con al menos 1 item de grooming (2 facturas mismo día = 1 visita)
-    const fechas = new Set(facturas.filter(fac => {
-      if (excluirFacturaId && fac.id === excluirFacturaId) return false;
-      if ((fac.mascota || "").toLowerCase().trim() !== key) return false;
-      if (!fac.items) return false;
-      return fac.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)));
-    }).map(fac => fac.fecha));
-    const crmCli = clientes.find(c => (c.nombreMascota || "").toLowerCase().trim() === key);
-    const dCRM = crmCli ? parseInt(crmCli.banos2025) || 0 : 0;
-    return fechas.size + dCRM;
+  // Baños que aporta la factura que se está creando/editando ahora mismo.
+  function banosDelFormulario() {
+    return banosDeVenta({ items: form.items.map((it) => ({ nombre: it.descripcion, cantidad: it.cantidad })) });
   }
-  // --- Puente Facturas <-> Ventas -------------------------------------------
-  const normNom = (s) => String(s || "").toLowerCase().trim();
-  // Ventas que componen una factura generada desde el registro de ventas.
-  function ventasDeFactura(f) {
-    if (!f || !String(f.id).startsWith("venta_")) return [];
-    return (ventas || [])
-      .filter((v) => v.fecha === f.fecha && normNom(v.cliente) === normNom(f.mascota))
-      .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-  }
-  // Deduce el area de una venta a partir del nombre del servicio.
-  function areaDeServicio(servicio, fallback) {
-    const s = normNom(servicio);
-    if (/ba[ñn]o|corte|grooming|peluquer|desenred|deslan|u[ñn]as|spa/.test(s)) return "grooming";
-    if (/consulta|vacuna|test|aplicaci|desparasit|cirug|inyecc|refuerzo|muestra|diagn/.test(s)) return "veterinaria";
-    return fallback || "farmacia";
-  }
-  // Reescribe las ventas del grupo para que coincidan con las lineas de la
-  // factura. Devuelve true si habia ventas que actualizar.
-  function volcarFacturaEnVentas(grupoOriginal, datos) {
-    if (!setVentas || grupoOriginal.length === 0) return false;
-
-    const lineas = (datos.items || [])
-      .filter((it) => String(it.descripcion || "").trim())
-      .map((it) => {
-        const precio = parseFloat(it.precio) || 0;
-        const cant = parseInt(it.cantidad) || 1;
-        const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0));
-        return { servicio: String(it.descripcion).trim(), total: Math.round(precio * cant * (1 - desc / 100)) };
-      });
-    if (lineas.length === 0) return false;
-
-    const formaPago = datos.estado === "pendiente" ? "Pago pendiente" : (datos.metodoPago || "Efectivo");
-    const base = grupoOriginal[0];
-    const actualizadas = [];
-    const aBorrar = [];
-
-    for (let i = 0; i < Math.max(grupoOriginal.length, lineas.length); i++) {
-      const v = grupoOriginal[i], l = lineas[i];
-      if (v && l) {
-        // Se conserva area, comision y quien la recibio; solo cambia lo editado.
-        actualizadas.push({ ...v, fecha: datos.fecha, cliente: datos.mascota, servicio: l.servicio, descripcion: l.servicio, total: l.total, formaPago });
-      } else if (l) {
-        actualizadas.push({
-          id: Date.now() + i, fecha: datos.fecha, cliente: datos.mascota,
-          area: areaDeServicio(l.servicio, base.area), servicio: l.servicio, descripcion: l.servicio,
-          total: l.total, comision: 0, formaPago,
-          recibidoPor: base.recibidoPor || base.recibidopor || "", notas: ""
-        });
-      } else if (v) {
-        aBorrar.push(v);
-      }
-    }
-
-    const idsGrupo = new Set(grupoOriginal.map((x) => String(x.id)));
-    setVentas((vs) => [...vs.filter((x) => !idsGrupo.has(String(x.id))), ...actualizadas]);
-    if (deleteVenta) aBorrar.forEach((v) => { try { deleteVenta(v.id); } catch {} });
-    return true;
-  }
-  // Borra una factura. Si viene del registro de ventas, borra tambien esas ventas
-  // (si no, se volveria a generar sola en el siguiente refresco).
-  function borrarFactura(f, alTerminar) {
-    const grupo = ventasDeFactura(f);
-    const aviso = grupo.length > 0
-      ? "\xBFBorrar la factura #" + f.numero + "?\n\n⚠️ Esta factura viene del registro de ventas, as\xED que tambi\xE9n se eliminar\xE1n " +
-        grupo.length + " venta(s) de " + (f.mascota || "este cliente") + " del " + f.fecha +
-        " por RD$ " + grupo.reduce((s, v) => s + (Number(v.total) || 0), 0).toLocaleString("es-DO") +
-        ".\n\nEsta acci\xF3n no se puede deshacer."
-      : "\xBFBorrar la factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.";
-    if (!confirm(aviso)) return;
-    setFacturas((fs) => fs.filter((x) => String(x.id) !== String(f.id)));
-    deleteOne("pc_facturas", f.id).catch(() => {});
-    if (deleteVenta) grupo.forEach((v) => { try { deleteVenta(v.id); } catch {} });
-    if (typeof alTerminar === "function") alTerminar();
-  }
-
-  // Separar o volver a unir las ventas de un mismo cliente y día en facturas.
-  function leerSeparadas() {
-    try { return JSON.parse(localStorage.getItem("pc_fact_separadas") || "{}"); } catch { return {}; }
-  }
-  function separarFactura(f) {
-    const grupo = ventasDeFactura(f);
-    if (grupo.length < 2) { alert("Esta factura tiene una sola venta; no hay nada que separar."); return; }
-    if (!confirm("¿Separar las " + grupo.length + " ventas de " + (f.mascota || "este cliente") + " del " + f.fecha + " en facturas individuales?\n\nCada una tendrá su propio número.")) return;
-    const sep = leerSeparadas();
-    grupo.slice(1).forEach((v) => { sep[String(v.id)] = true; });   // la primera conserva la factura original
-    guardarLocal("pc_fact_separadas", sep);
-    setSepVer((n) => n + 1);
-  }
-  function unirFactura(f) {
-    const grupo = ventasDeFactura(f);
-    const sep = leerSeparadas();
-    grupo.forEach((v) => { delete sep[String(v.id)]; });
-    guardarLocal("pc_fact_separadas", sep);
-    setSepVer((n) => n + 1);
-  }
-  const estaSeparada = (f) => String(f.id).includes("___s");
 
   function crearFactura() {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
     // Esta visita suma 1 solo si tiene grooming Y no hay otra factura de grooming para esa fecha
-    const hayGroomingEnEsteFact = form.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)));
-    const yaHayGroomingEsaFecha = hayGroomingEnEsteFact && facturas.some(fac =>
-      !editandoId || fac.id !== editandoId
-      ? (fac.mascota || "").toLowerCase().trim() === (form.mascota || "").toLowerCase().trim() &&
-        fac.fecha === form.fecha &&
-        fac.items && fac.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)))
-      : false
-    );
-    const estaVisitaGrooming = hayGroomingEnEsteFact && !yaHayGroomingEsaFecha ? 1 : 0;
-    const gCount = calcGroomingLealtad(form.mascota) + estaVisitaGrooming;
+    const banosAqui = banosDelFormulario();
+    // Los baños ya registrados como venta + los que trae esta factura.
+    const gCount = calcGroomingLealtad(form.mascota) + banosAqui;
     const nueva = {
       id: Date.now(),
       numero: nextNumero(),
@@ -3692,7 +3602,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         return `<div style="margin-top:28px;background:#d4edda;border:2px solid #1a6b3a;border-radius:12px;padding:20px;text-align:center;">
             <div style="font-size:28px;margin-bottom:6px;">\u{1F389}</div>
             <div style="font-weight:900;font-size:16px;color:#1a6b3a;">\xA1BA\xD1O GRATIS DISPONIBLE!</div>
-            <div style="font-size:12px;color:#5a6472;margin-top:4px;">Has completado 10 servicios de grooming. \xA1Felicidades!</div>
+            <div style="font-size:12px;color:#5a6472;margin-top:4px;">Ha completado 10 ba\xF1os. \xA1Felicidades!</div>
           </div>`;
       }
       return `<div style="margin-top:28px;background:#fffbea;border:2px solid #f0c030;border-radius:12px;padding:18px;">
@@ -3726,7 +3636,9 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       setFacturas((fs) => fs.map((x) => x.id === f.id ? { ...x, telefono: tel } : x));
       f = { ...f, telefono: tel };
     }
-    enviarPDFWhatsApp(f, clientes);
+    // El PDF necesita el contador de lealtad; antes no se le pasaba y por eso el
+    // bloque de baños nunca salía en la factura enviada por WhatsApp.
+    enviarPDFWhatsApp({ ...f, groomingCount: calcGroomingLealtad(f.mascota) }, clientes);
   }
   const [busqueda, setBusqueda] = useState("");
   const [busqFact, setBusqFact] = useState("");
@@ -3886,21 +3798,14 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         return fs;
     }
   }, [todasFacturas, busqueda, orden]);
+  // Baños por mascota. Antes contaba toda venta de área "grooming" como un baño
+  // (cortes, uñas y desenredes incluidos) y además hacía Math.max con el
+  // histórico 2025 en vez de sumarlo. Ahora usa el mismo contador que el resto.
   const groomingPorCliente = useMemo(() => {
     const mapa = {};
-    ventas.forEach((v) => {
-      if (v.area === "grooming") {
-        const key = (v.cliente || "").toLowerCase().trim();
-        mapa[key] = (mapa[key] || 0) + 1;
-      }
-    });
-    clientes.forEach((c) => {
-      const b25 = parseInt(c.banos2025) || 0;
-      if (b25 > 0) {
-        const key = (c.nombreMascota || "").toLowerCase().trim();
-        mapa[key] = Math.max(mapa[key] || 0, b25);
-      }
-    });
+    const suma = (key) => { if (key && mapa[key] === undefined) mapa[key] = contarBanos(key, ventas, clientes); };
+    ventas.forEach((v) => suma(String(v.cliente || "").toLowerCase().trim()));
+    clientes.forEach((c) => suma(String(c.nombreMascota || "").toLowerCase().trim()));
     return mapa;
   }, [ventas, clientes]);
   const resumenClientes = useMemo(() => {
@@ -3941,15 +3846,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
     // Grooming previo + 1 si esta visita agrega una fecha nueva con grooming
     const gPrevio = form.mascota ? calcGroomingLealtad(form.mascota) : 0;
-    const hayGroomingAqui = form.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)));
-    const fechaYaTieneGrooming = hayGroomingAqui && form.mascota && facturas.some(fac =>
-      (fac.mascota || "").toLowerCase().trim() === form.mascota.toLowerCase().trim() &&
-      fac.fecha === form.fecha &&
-      fac.items && fac.items.some(it => GROOMING_WORDS.some(w => (it.descripcion || "").toLowerCase().includes(w)))
-    );
-    const gEstaFact = hayGroomingAqui && !fechaYaTieneGrooming ? 1 : 0;
-    const gCountLealtad = gPrevio + gEstaFact;
-    const esBanoGratis = gCountLealtad > 0 && gCountLealtad % 10 === 0;
+    const gCountLealtad = gPrevio + banosDelFormulario();
+    const esBanoGratis = gCountLealtad >= 10;
     const yaAgregadoGratis = form.items.some(it => (it.descripcion || "").toLowerCase().includes("gratis"));
     return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro } }, editandoId ? "✏️ Editando Factura #" + (editandoNum || "") : "\u{1F4C4} Nueva Factura #" + nextNumero())), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Buscar cliente registrado"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } },
       /* @__PURE__ */ React.createElement("input", {
@@ -4056,7 +3954,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         }
       },
       "\u2715"
-    ))), esBanoGratis && !yaAgregadoGratis && /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", border: "2px solid #28a745", borderRadius: 10, padding: "12px 16px", marginTop: 12, display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#155724", fontSize: 13 } }, "\xA1Este es el ba\xF1o #" + gCountLealtad + " de " + form.mascota + " \u2014 BA\xD1O GRATIS!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#155724", marginTop: 2 } }, "Programa de lealtad: cada 10 servicios de grooming = 1 ba\xF1o gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => setForm(f => ({ ...f, items: [...f.items, { descripcion: "\uD83C\uDF81 Ba\xF1o gratis (programa de lealtad)", cantidad: 1, precio: 0, descuento: 0 }] })), style: { background: "#28a745", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" } }, "\u2795 Agregar gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const idx = form.items.length; addItem(); setTimeout(() => setSugItem(idx), 0); }, style: { background: C.verdeL, color: C.verde, border: `1px dashed ${C.verde}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, marginTop: 4 } }, "+ Agregar l\xEDnea"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), form.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 18, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total)))))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(
+    ))), esBanoGratis && !yaAgregadoGratis && /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", border: "2px solid #28a745", borderRadius: 10, padding: "12px 16px", marginTop: 12, display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#155724", fontSize: 13 } }, "\xA1" + form.mascota + " lleva " + gCountLealtad + " ba\xF1os \u2014 le toca BA\xD1O GRATIS!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#155724", marginTop: 2 } }, "Programa de lealtad: cada 10 ba\xF1os, el siguiente es gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => setForm(f => ({ ...f, items: [...f.items, { descripcion: "\uD83C\uDF81 Ba\xF1o gratis (programa de lealtad)", cantidad: 1, precio: 0, descuento: 0 }] })), style: { background: "#28a745", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" } }, "\u2795 Agregar gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const idx = form.items.length; addItem(); setTimeout(() => setSugItem(idx), 0); }, style: { background: C.verdeL, color: C.verde, border: `1px dashed ${C.verde}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, marginTop: 4 } }, "+ Agregar l\xEDnea"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), form.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 18, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total)))))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: crearFactura,
@@ -4083,7 +3981,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       fontSize: 11,
       fontWeight: 700,
       display: "inline-block"
-    } }, "\u{1F43E} ", gLealtad, " grooming", gLealtad >= 10 ? " \u2014 \xA1BA\xD1O GRATIS! \u{1F389}" : ` / 10 para ba\xF1o gratis`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, f.propietario), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, f.telefono)), /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Paciente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, "\u{1F43E} ", f.mascota))), /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", marginBottom: 20, fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: C.verde, color: "#fff" } }, /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "left" } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Cant."), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Precio"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Desc.%"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Subtotal"))), /* @__PURE__ */ React.createElement("tbody", null, f.items.map((it, i) => { const precio = parseFloat(it.precio) || 0; const cant = parseInt(it.cantidad) || 1; const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0)); const sub = Math.round(precio * cant * (1 - desc / 100)); return /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: `1px solid ${C.gris}`, background: i % 2 === 0 ? "#fff" : C.gris } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, it.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center" } }, cant), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right" } }, RD(precio)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center", color: desc > 0 ? "#dc2626" : C.grisd, fontWeight: desc > 0 ? 700 : 400 } }, desc > 0 ? `-${desc}%` : "—"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right", fontWeight: 600 } }, RD(sub))); }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 240 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), f.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 20, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total))))), f.notas && f.notas !== "Historial 2026" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: C.gris, borderRadius: 8, padding: 12, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Notas:"), " ", f.notas), (() => {
+    } }, "\u{1F43E} ", gLealtad, " ba\xF1os", gLealtad >= 10 ? " \u2014 \xA1BA\xD1O GRATIS! \u{1F389}" : ` / 10 para ba\xF1o gratis`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, f.propietario), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, f.telefono)), /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Paciente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, "\u{1F43E} ", f.mascota))), /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", marginBottom: 20, fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: C.verde, color: "#fff" } }, /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "left" } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Cant."), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Precio"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Desc.%"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Subtotal"))), /* @__PURE__ */ React.createElement("tbody", null, f.items.map((it, i) => { const precio = parseFloat(it.precio) || 0; const cant = parseInt(it.cantidad) || 1; const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0)); const sub = Math.round(precio * cant * (1 - desc / 100)); return /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: `1px solid ${C.gris}`, background: i % 2 === 0 ? "#fff" : C.gris } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, it.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center" } }, cant), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right" } }, RD(precio)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center", color: desc > 0 ? "#dc2626" : C.grisd, fontWeight: desc > 0 ? 700 : 400 } }, desc > 0 ? `-${desc}%` : "—"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right", fontWeight: 600 } }, RD(sub))); }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 240 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), f.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 20, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total))))), f.notas && f.notas !== "Historial 2026" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: C.gris, borderRadius: 8, padding: 12, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Notas:"), " ", f.notas), (() => {
       // Contar solo items de grooming en facturas (no todas las ventas area=grooming)
       const total_g = calcGroomingLealtad(f.mascota);
       const progreso = Math.min(total_g, 10);
@@ -4120,7 +4018,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       { label: "Total pagado", val: RD(c.totalPagado), color: C.verde },
       { label: "Ticket promedio", val: RD(Math.round(c.totalPagado / c.facturas)), color: C.gold },
       { label: "\xDAltima visita", val: c.ultimaFactura, color: C.grisd }
-    ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: C.gris, borderRadius: 10, padding: 12, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 800, color: k.color } }, k.val)))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12 } }, "\u{1F43E} Programa de Lealtad \u2014 Ba\xF1o Gratis"), libre ? /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", borderRadius: 12, padding: 20, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 36, marginBottom: 8 } }, "\u{1F389}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, color: "#155724" } }, "\xA1", c.mascota, " tiene un ba\xF1o gratis!"), /* @__PURE__ */ React.createElement("div", { style: { color: "#155724", fontSize: 13, marginTop: 4 } }, "Ha completado ", c.grooming, " servicios de grooming")) : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "Servicios de grooming acumulados"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.verde } }, c.grooming, " / 10")), /* @__PURE__ */ React.createElement("div", { style: { background: "#e0e4e8", borderRadius: 20, height: 16, overflow: "hidden", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${pct}%`, height: "100%", background: pct >= 80 ? C.verde : pct >= 50 ? C.gold : C.naranja, borderRadius: 20, transition: "width 0.5s" } })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Faltan ", 10 - c.grooming, " servicio(s) para el ba\xF1o gratis \u{1F381}"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 14 } }, "\u{1F4C4} Historial de Facturas (", factOrd.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, factOrd.map((f) => /* @__PURE__ */ React.createElement("div", { key: f.id, style: { background: C.gris, borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 60 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde, fontSize: 14 } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.fecha)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, f.items?.slice(0, 3).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { fontSize: 12, color: C.negro } }, "\u2022 ", it.descripcion)), f.items?.length > 3 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.azul } }, "+", f.items.length - 3, " m\xE1s")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde } }, RD(f.total)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 6, justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement(
+    ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: C.gris, borderRadius: 10, padding: 12, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 800, color: k.color } }, k.val)))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12 } }, "\u{1F43E} Programa de Lealtad \u2014 Ba\xF1o Gratis"), libre ? /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", borderRadius: 12, padding: 20, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 36, marginBottom: 8 } }, "\u{1F389}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, color: "#155724" } }, "\xA1", c.mascota, " tiene un ba\xF1o gratis!"), /* @__PURE__ */ React.createElement("div", { style: { color: "#155724", fontSize: 13, marginTop: 4 } }, "Ha completado ", c.grooming, " ba\xF1os")) : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, "Ba\xF1os acumulados"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.verde } }, c.grooming, " / 10")), /* @__PURE__ */ React.createElement("div", { style: { background: "#e0e4e8", borderRadius: 20, height: 16, overflow: "hidden", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${pct}%`, height: "100%", background: pct >= 80 ? C.verde : pct >= 50 ? C.gold : C.naranja, borderRadius: 20, transition: "width 0.5s" } })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Faltan ", 10 - c.grooming, " ba\xF1o(s) para el ba\xF1o gratis \u{1F381}"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 14 } }, "\u{1F4C4} Historial de Facturas (", factOrd.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, factOrd.map((f) => /* @__PURE__ */ React.createElement("div", { key: f.id, style: { background: C.gris, borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 60 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde, fontSize: 14 } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.fecha)), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, f.items?.slice(0, 3).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { fontSize: 12, color: C.negro } }, "\u2022 ", it.descripcion)), f.items?.length > 3 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.azul } }, "+", f.items.length - 3, " m\xE1s")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde } }, RD(f.total)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 6, justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => {
@@ -4262,7 +4160,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     /* @__PURE__ */ React.createElement("option", { value: "monto_desc" }, "\u{1F4B0} Mayor monto"),
     /* @__PURE__ */ React.createElement("option", { value: "monto_asc" }, "\u{1F4B0} Menor monto"),
     /* @__PURE__ */ React.createElement("option", { value: "cliente_az" }, "\u{1F524} Cliente A\u2192Z")
-  )))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: busqueda ? C.verde : C.grisd, marginBottom: 10, fontWeight: busqueda ? 600 : 400, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", null, busqueda ? `${facturasFiltradas.length} factura(s) encontrada(s) para "${busqueda}"${facturasFiltradas.length === 0 ? " \u2014 prueba otro t\xE9rmino" : ""}` : `${facturasFiltradas.length} factura(s) en total`), facturasFiltradas.length > FACT_POR_PAG && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.max(1, p - 1)), disabled: pagFact <= 1, style: { background: pagFact <= 1 ? "#f0f0f0" : "#e8f5ee", color: pagFact <= 1 ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: pagFact <= 1 ? "default" : "pointer", fontWeight: 700, fontSize: 13 } }, "\u2190"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: C.grisd } }, "P\xE1g. " + pagFact + " de " + Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))), /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.min(Math.ceil(facturasFiltradas.length / FACT_POR_PAG), p + 1)), disabled: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG), style: { background: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#f0f0f0" : "#e8f5ee", color: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "\u2192"))), facturas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay facturas a\xFAn"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14 } }, 'Crea tu primera factura con el bot\xF3n "+ Nueva Factura"')) : /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: `1px solid #e0e4e8`, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["#", "Fecha", "Mascota / Cliente", "Servicios", "Total", "Grooming", "Acciones"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "12px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: `2px solid #e0e4e8`, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, facturasFiltradas.slice((Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) - 1) * FACT_POR_PAG, Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) * FACT_POR_PAG).map((f) => /* @__PURE__ */ React.createElement("tr", { key: f.id, onClick: () => abrirEditar(f), title: "Tocar para editar esta factura", style: { borderBottom: `1px solid #f4f5f6`, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", color: C.grisd, whiteSpace: "nowrap" } }, f.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, f.mascota), f.propietario && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.propietario)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, f.items?.slice(0, 2).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i }, "\u2022 ", it.descripcion?.slice(0, 30))), f.items?.length > 2 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "+", f.items.length - 2, " m\xE1s"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde, whiteSpace: "nowrap" } }, RD(f.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, (() => { const gL = calcGroomingLealtad(f.mascota); return gL > 0 ? /* @__PURE__ */ React.createElement("div", { style: {
+  )))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: busqueda ? C.verde : C.grisd, marginBottom: 10, fontWeight: busqueda ? 600 : 400, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", null, busqueda ? `${facturasFiltradas.length} factura(s) encontrada(s) para "${busqueda}"${facturasFiltradas.length === 0 ? " \u2014 prueba otro t\xE9rmino" : ""}` : `${facturasFiltradas.length} factura(s) en total`), facturasFiltradas.length > FACT_POR_PAG && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.max(1, p - 1)), disabled: pagFact <= 1, style: { background: pagFact <= 1 ? "#f0f0f0" : "#e8f5ee", color: pagFact <= 1 ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: pagFact <= 1 ? "default" : "pointer", fontWeight: 700, fontSize: 13 } }, "\u2190"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: C.grisd } }, "P\xE1g. " + pagFact + " de " + Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))), /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.min(Math.ceil(facturasFiltradas.length / FACT_POR_PAG), p + 1)), disabled: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG), style: { background: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#f0f0f0" : "#e8f5ee", color: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "\u2192"))), facturas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay facturas a\xFAn"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14 } }, 'Crea tu primera factura con el bot\xF3n "+ Nueva Factura"')) : /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: `1px solid #e0e4e8`, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["#", "Fecha", "Mascota / Cliente", "Servicios", "Total", "Ba\xF1os", "Acciones"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "12px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: `2px solid #e0e4e8`, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, facturasFiltradas.slice((Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) - 1) * FACT_POR_PAG, Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) * FACT_POR_PAG).map((f) => /* @__PURE__ */ React.createElement("tr", { key: f.id, onClick: () => abrirEditar(f), title: "Tocar para editar esta factura", style: { borderBottom: `1px solid #f4f5f6`, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", color: C.grisd, whiteSpace: "nowrap" } }, f.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, f.mascota), f.propietario && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.propietario)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, f.items?.slice(0, 2).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i }, "\u2022 ", it.descripcion?.slice(0, 30))), f.items?.length > 2 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "+", f.items.length - 2, " m\xE1s"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde, whiteSpace: "nowrap" } }, RD(f.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, (() => { const gL = calcGroomingLealtad(f.mascota); return gL > 0 ? /* @__PURE__ */ React.createElement("div", { style: {
     background: gL >= 10 ? "#d4edda" : "#fff3cd",
     color: gL >= 10 ? "#155724" : "#856404",
     borderRadius: 20,
@@ -7872,13 +7770,10 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       || clientes.find(c => { const cn = (c.nombreMascota || "").toLowerCase().trim(); return cn && vN && (cn.includes(vN) || vN.includes(cn)); })
       || null;
   })();
-  const groomingLealtad = (() => {
-    if (!clienteEnCRM) return 0;
-    const base = parseInt(clienteEnCRM.banos2025) || 0;
-    const nombre = (clienteEnCRM.nombreMascota || "").toLowerCase().trim();
-    const fromVentas = nombre ? ventas.filter(v => v.area === "grooming" && (v.cliente || "").toLowerCase().includes(nombre)).length : 0;
-    return base + fromVentas;
-  })();
+  // Mismo contador que usan Facturas y el CRM: SOLO baños, con sus cantidades.
+  // Antes contaba toda venta con área "grooming", así que un corte de uñas o un
+  // desenrede sumaban al programa de lealtad.
+  const groomingLealtad = clienteEnCRM ? contarBanos(clienteEnCRM.nombreMascota, ventas, clientes) : 0;
   const abrirCRM = () => {
     if (!setTab || !setCrmClienteInicial) return;
     setCrmClienteInicial(
@@ -8303,7 +8198,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       onMouseLeave: (e) => e.currentTarget.style.opacity = "1"
     },
     clienteEnCRM ? "\u{1F464} Ver en CRM" : "\u2795 Crear en CRM"
-  )), groomingLealtad > 0 && groomingLealtad % 10 === 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#d1fae5", border: "2px solid #059669", borderRadius: 10, padding: "10px 14px", marginTop: 8, display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#065f46", fontSize: 13 } }, "\u00A1BA\xD1O GRATIS DISPONIBLE!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#047857" } }, groomingLealtad + " servicios de grooming completados \u2014 \u00A1Este ba\xF1o va gratis!"))), groomingLealtad > 0 && groomingLealtad % 10 !== 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fffbea", border: "1.5px solid #f0c030", borderRadius: 8, padding: "6px 12px", marginTop: 6, fontSize: 12, fontWeight: 700, color: "#b8860b", display: "flex", alignItems: "center", gap: 6 } }, "\uD83D\uDC3E Lealtad grooming: " + (groomingLealtad % 10) + "/10 \u2014 " + (10 - groomingLealtad % 10) + " para ba\xF1o gratis")), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#f8f9fa", borderRadius: 12, padding: "14px 16px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 10, color: C.negro } }, "\u{1F6D2} Servicios / productos en esta venta"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, items.map((item) => /* @__PURE__ */ React.createElement("div", { key: item.id, style: {
+  )), groomingLealtad >= 10 && groomingLealtad % 10 === 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#d1fae5", border: "2px solid #059669", borderRadius: 10, padding: "10px 14px", marginTop: 8, display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#065f46", fontSize: 13 } }, "\u00A1BA\xD1O GRATIS DISPONIBLE!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#047857" } }, groomingLealtad + " ba\xF1os acumulados \u2014 \u00A1Este ba\xF1o va gratis!"))), groomingLealtad > 0 && groomingLealtad % 10 !== 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fffbea", border: "1.5px solid #f0c030", borderRadius: 8, padding: "6px 12px", marginTop: 6, fontSize: 12, fontWeight: 700, color: "#b8860b", display: "flex", alignItems: "center", gap: 6 } }, "\uD83D\uDC3E Lealtad: " + (groomingLealtad % 10) + "/10 ba\xF1os \u2014 faltan " + (10 - groomingLealtad % 10) + " para el gratis")), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#f8f9fa", borderRadius: 12, padding: "14px 16px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 10, color: C.negro } }, "\u{1F6D2} Servicios / productos en esta venta"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, items.map((item) => /* @__PURE__ */ React.createElement("div", { key: item.id, style: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
