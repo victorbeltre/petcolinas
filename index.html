@@ -216,23 +216,12 @@ function useSupabase(table, seed = []) {
           // Fecha más frecuente entre ventas reales (no futuras) → fallback inteligente para fechas erróneas
           const dateCounts_ = {}; rows.forEach(r => { if (r.fecha && r.fecha <= HOY) dateCounts_[r.fecha] = (dateCounts_[r.fecha]||0)+1; });
           const modaFecha_ = Object.keys(dateCounts_).length ? Object.keys(dateCounts_).sort((a,b)=>dateCounts_[b]-dateCounts_[a])[0] : HOY;
-          // Antes esto reescribía CUALQUIER fecha futura, así que una venta puesta
-          // para mañana (a propósito o por un dedo) se alteraba sola y en silencio.
-          // Ahora solo se corrigen los errores evidentes: más de 60 días adelante
-          // (típicamente un año mal tecleado). El resto se respeta y solo se avisa.
-          const DIAS_TOLERANCIA = 60;
-          const fixFecha = (f) => {
-            if (!f) return f;
-            if (f <= HOY) return f;
-            const adelanto = Math.floor((new Date(f + "T12:00:00Z") - new Date(HOY + "T12:00:00Z")) / 86400000);
-            if (!(adelanto > DIAS_TOLERANCIA)) return f;   // futuro cercano: se deja tal cual
-            const [fY, fM, fD] = f.split("-");
-            const [hY, hM] = HOY.split("-");
-            if (fY === hY) {
-              const c = `${hY}-${hM}-${fD}`; return c <= HOY ? c : modaFecha_;
-            }
-            const c = `${hY}-${fM}-${fD}`; return c <= HOY ? c : modaFecha_;
-          };
+          // Las fechas futuras YA NO se reescriben al cargar. Antes se cambiaban
+          // solas y en silencio, así que el dato malo seguía en Supabase mientras
+          // la pantalla mostraba otra cosa. Ahora se dejan intactas y el aviso
+          // "Fechas en el futuro" del Dashboard las lista para corregirlas de
+          // verdad, guardando la corrección en la base.
+          const fixFecha = (f) => f;
           let normalized = rows.filter((r) => !deletedIds.current.has(String(r.id))).map((r) => {
             const n = normalizeRow(table, r);
             // Solo corregir fechas futuras en ventas/gastos — las citas futuras son válidas
@@ -6454,7 +6443,7 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
@@ -13295,6 +13284,97 @@ function CierreCaja({ ventas, gastos }) {
         E("div", { style: { fontSize: 12, color: "#166534", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "Resultado del día"),
         E("div", { style: { fontSize: 12.5, color: C.grisd, marginTop: 3 } }, "Cobrado menos gastos registrados")),
       E("div", { style: { fontSize: 26, fontWeight: 900, color: cobrado - totalGastos >= 0 ? C.verde : C.rojo } }, fmt(cobrado - totalGastos)))
+  );
+}
+
+// ─── FECHAS EN EL FUTURO ────────────────────────────────────────────────────
+// Una venta no puede estar fechada mañana. Casi siempre es un dedo al teclear
+// el mes ("10" por "01"). Se detectan, se propone la corrección y Victor decide.
+function sugerirFechaCorregida(f) {
+  const HOY = hoy();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f || ""))) return HOY;
+  const [y, m, d] = String(f).split("-");
+  const valida = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso) && iso <= HOY && !isNaN(new Date(iso + "T12:00:00Z").getTime());
+  // 1) Mes con los dígitos invertidos: 10 → 01, 21 → 12…
+  const inv = m.split("").reverse().join("");
+  if (inv >= "01" && inv <= "12") { const c = `${y}-${inv}-${d}`; if (valida(c)) return c; }
+  // 2) Mismo día del mes actual.
+  const c2 = `${HOY.slice(0, 4)}-${HOY.slice(5, 7)}-${d}`; if (valida(c2)) return c2;
+  // 3) Si falta poco para esa fecha es un desliz pequeño: lo más probable es hoy.
+  //    (Sin esto, una venta puesta "mañana" se iba al año pasado.)
+  const dias = Math.floor((new Date(f + "T12:00:00Z") - new Date(HOY + "T12:00:00Z")) / 86400000);
+  if (dias <= 120) return HOY;
+  // 4) Fecha muy lejana: casi seguro es el año mal tecleado.
+  const c4 = `${Number(y) - 1}-${m}-${d}`; if (valida(c4)) return c4;
+  return HOY;
+}
+
+function AvisoFechasFuturas({ ventas, setVentas }) {
+  const E = React.createElement;
+  const [abierto, setAbierto] = React.useState(false);
+  const [edit, setEdit] = React.useState({});
+  const HOY = hoy();
+
+  const futuras = React.useMemo(() =>
+    (ventas || []).filter((v) => String(v.fecha || "") > HOY)
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))), [ventas, HOY]);
+  if (futuras.length === 0) return null;
+
+  const valorDe = (v) => edit[String(v.id)] ?? sugerirFechaCorregida(v.fecha);
+  const corregir = (lista) => {
+    const cambios = new Map();
+    lista.forEach((v) => { const nf = valorDe(v); if (nf && nf !== v.fecha) cambios.set(String(v.id), nf); });
+    if (cambios.size === 0) return;
+    setVentas((prev) => prev.map((v) => cambios.has(String(v.id)) ? { ...v, fecha: cambios.get(String(v.id)) } : v));
+    setEdit({});
+  };
+
+  const fmt = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO");
+
+  return E("div", { style: {
+      background: "linear-gradient(90deg,#fffbeb,#fffef8)", border: "2px solid #d97706",
+      borderRadius: 14, padding: "14px 18px", marginBottom: 18
+    } },
+    E("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
+      E("div", { style: { fontSize: 26 } }, "📅"),
+      E("div", { style: { flex: 1, minWidth: 0 } },
+        E("div", { style: { fontWeight: 800, fontSize: 14.5, color: "#92400e" } },
+          futuras.length === 1 ? "1 venta está fechada en el futuro" : futuras.length + " ventas están fechadas en el futuro"),
+        E("div", { style: { fontSize: 12.5, color: "#6b7280", marginTop: 3 } },
+          "Desordenan las facturas y los reportes del mes. Casi siempre es un error al teclear el mes.")),
+      E("button", { onClick: () => setAbierto((v) => !v), style: {
+        background: "#d97706", color: "#fff", border: "none", borderRadius: 10,
+        padding: "10px 18px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap"
+      } }, abierto ? "Cerrar" : "Revisar y corregir")),
+
+    abierto && E("div", { style: { marginTop: 14, borderTop: "1px solid #fcd34d", paddingTop: 12 } },
+      E("div", { style: { maxHeight: 340, overflowY: "auto" } },
+        futuras.map((v) => E("div", { key: v.id, style: {
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            padding: "8px 0", borderBottom: "1px solid #fef3c7", fontSize: 13
+          } },
+          E("div", { style: { flex: "1 1 220px", minWidth: 0 } },
+            E("div", { style: { fontWeight: 700, color: "#1f2937" } }, v.cliente || "Sin cliente"),
+            E("div", { style: { fontSize: 11.5, color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } },
+              (v.servicio || v.descripcion || v.area || "—") + " · " + fmt(v.total))),
+          E("span", { style: { color: "#c0392b", fontWeight: 700, textDecoration: "line-through", whiteSpace: "nowrap" } }, v.fecha),
+          E("span", { style: { color: "#9ca3af" } }, "→"),
+          E("input", { type: "date", max: HOY, value: valorDe(v),
+            onChange: (e) => setEdit((p) => ({ ...p, [String(v.id)]: e.target.value })),
+            style: { border: "1.5px solid #d1d5db", borderRadius: 8, padding: "6px 9px", fontSize: 13, fontWeight: 600 } }),
+          E("button", { onClick: () => corregir([v]), style: {
+            background: "#16a34a", color: "#fff", border: "none", borderRadius: 8,
+            padding: "7px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer"
+          } }, "Corregir")
+        ))),
+      E("div", { style: { display: "flex", gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" } },
+        E("button", { onClick: () => { if (confirm("¿Aplicar las " + futuras.length + " fechas propuestas?\n\nPuedes ajustar cualquiera a mano antes de hacerlo.")) corregir(futuras); }, style: {
+          background: "#16a34a", color: "#fff", border: "none", borderRadius: 10,
+          padding: "10px 18px", fontWeight: 800, fontSize: 13, cursor: "pointer"
+        } }, "✓ Corregir todas (" + futuras.length + ")"),
+        E("span", { style: { fontSize: 11.5, color: "#6b7280" } },
+          "La fecha propuesta invierte los dígitos del mes (10 → 01), que es el error más común."))
+    )
   );
 }
 
