@@ -87,6 +87,29 @@ function guardarLocal(clave, valor) {
     return false;
   }
 }
+// Limpieza puntual: unas ventas de la semilla quedaron con fecha 2026-10-31
+// (era el 2026-01-31, un dedo en el mes). Ya está corregido en el código y en
+// Supabase, pero las copias guardadas en el navegador siguen con la fecha mala
+// y empujaban esas facturas al tope de la lista. Se depuran una sola vez.
+(function limpiarFechasMalasLocales() {
+  const MARCA = "pc_limpieza_2026_10_31";
+  try {
+    if (localStorage.getItem(MARCA)) return;
+    ["pc_ventas", "pc_ventas_local", "pc_facturas", "pc_citas_agenda"].forEach((k) => {
+      const crudo = localStorage.getItem(k);
+      if (!crudo) return;
+      const arr = JSON.parse(crudo);
+      if (!Array.isArray(arr)) return;
+      const limpio = arr.filter((r) => String(r && r.fecha || "") !== "2026-10-31");
+      if (limpio.length !== arr.length) {
+        localStorage.setItem(k, JSON.stringify(limpio));
+        console.log("[Limpieza] " + k + ": " + (arr.length - limpio.length) + " fila(s) con fecha 2026-10-31 eliminadas del caché local");
+      }
+    });
+    localStorage.setItem(MARCA, "1");
+  } catch (e) { console.warn("[Limpieza]", e); }
+})();
+
 async function supaFetchTodo(table, params = "?order=id.asc", pagina = 1000, tope = 100000) {
   const sep = params.includes("?") ? "&" : "?";
   const todas = [];
