@@ -18,6 +18,10 @@ jobs:
   validar:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 para que el validador pueda comparar contra origin/main
+      # y verificar que la constante de versión subió.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Validar index.html
         run: node .github/scripts/validate-index.js

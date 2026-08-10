@@ -49,6 +49,34 @@ try {
   errores.push(`SINTAXIS JS INVÁLIDA: ${e.message}`);
 }
 
+// 5) La constante de auto-actualización (pc_app_version) debe subir en cada
+// cambio de index.html. Estuvo congelada en "20260616-v1" desde el 16 de junio
+// mientras la app siguió cambiando: los navegadores del equipo conservaban el
+// HTML viejo en caché y nunca recibían los arreglos ya desplegados.
+const versionActual = (html.match(/var V = "([^"]+)"/) || [])[1];
+if (!versionActual) {
+  errores.push('No se encontró la constante de versión (var V = "...") en index.html.');
+} else {
+  try {
+    const { execSync } = require("child_process");
+    const base = execSync("git show origin/main:index.html", {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const versionBase = (base.match(/var V = "([^"]+)"/) || [])[1];
+    if (versionBase && base !== html && versionBase === versionActual) {
+      errores.push(
+        `index.html cambió pero la versión sigue en "${versionActual}". ` +
+        `Súbela (ej. "${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-v1") ` +
+        `o el equipo seguirá viendo la versión vieja en caché.`
+      );
+    }
+  } catch {
+    // Sin acceso a origin/main (checkout superficial, clon local): no se valida.
+  }
+}
+
 if (errores.length > 0) {
   console.error("❌ Validación de index.html FALLÓ — no mergear esta versión:\n");
   errores.forEach((e) => console.error("  • " + e));
@@ -56,4 +84,4 @@ if (errores.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ index.html válido (${bytes} bytes, ${TABS_OBLIGATORIAS.length} pestañas, ${COMPONENTES.length} componentes, sintaxis JS OK).`);
+console.log(`✓ index.html válido (${bytes} bytes, ${TABS_OBLIGATORIAS.length} pestañas, ${COMPONENTES.length} componentes, versión ${versionActual}, sintaxis JS OK).`);

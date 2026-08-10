@@ -8,12 +8,20 @@
   <meta http-equiv="Expires" content="0">
   <title>🐾 PetColinas — Sistema de Gestión 2026</title>
   <script>
-    // Auto-actualización: si la versión cambió, recarga forzada
+    // Auto-actualización: si la versión cambió, recarga forzada.
+    // OJO: hay que subir esta constante en CADA deploy. Estuvo congelada en
+    // "20260616-v1" desde el 16 de junio mientras la app siguió cambiando, así
+    // que los navegadores que ya tenían el HTML viejo en caché nunca recibían
+    // los arreglos: seguían corriendo una versión de junio.
     (function() {
-      var V = "20260616-v1";
-      var stored = localStorage.getItem("pc_app_version");
+      var V = "20260810-v1";
+      var stored = null;
+      try { stored = localStorage.getItem("pc_app_version"); } catch (e) {}
       if (stored !== V) {
-        localStorage.setItem("pc_app_version", V);
+        // Si localStorage está lleno, setItem lanza excepción. Antes eso cortaba
+        // el script aquí y la recarga nunca ocurría: el equipo se quedaba
+        // clavado en la versión vieja sin ninguna señal de error.
+        try { localStorage.setItem("pc_app_version", V); } catch (e) {}
         if (stored) { window.location.reload(true); }
       }
     })();
