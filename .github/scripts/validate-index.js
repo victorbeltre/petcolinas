@@ -49,6 +49,19 @@ try {
   errores.push(`SINTAXIS JS INVÁLIDA: ${e.message}`);
 }
 
+// 5) La marca de compilación debe coincidir con version.txt, para que el
+// detector de caché vieja del navegador funcione.
+try {
+  const m = html.match(/const PC_BUILD = "([^"]*)";/);
+  const ver = fs.existsSync("version.txt") ? fs.readFileSync("version.txt", "utf8").trim() : "";
+  if (!m) errores.push("Falta la constante PC_BUILD en index.html");
+  else if (m[1] === "pendiente" || m[1] !== ver) {
+    errores.push(`PC_BUILD ("${m[1]}") no coincide con version.txt ("${ver}"). Corre: node .github/scripts/sellar-version.js`);
+  }
+} catch (e) {
+  errores.push("No se pudo verificar la versión: " + e.message);
+}
+
 if (errores.length > 0) {
   console.error("❌ Validación de index.html FALLÓ — no mergear esta versión:\n");
   errores.forEach((e) => console.error("  • " + e));

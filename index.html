@@ -110,6 +110,45 @@ function guardarLocal(clave, valor) {
   } catch (e) { console.warn("[Limpieza]", e); }
 })();
 
+// Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
+// coincidir con version.txt (el validador lo comprueba).
+const PC_BUILD = "2026-08-12 20:48Z";
+
+// GitHub Pages cachea el index.html en el navegador, así que a veces la app
+// sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
+// Se compara con version.txt (que sí se pide sin caché) y se avisa.
+function VigilanteVersion() {
+  const E = React.createElement;
+  const [nueva, setNueva] = React.useState(false);
+  React.useEffect(() => {
+    let vivo = true;
+    const revisar = () => {
+      fetch("version.txt?cb=" + Date.now(), { cache: "no-store" })
+        .then((r) => (r.ok ? r.text() : null))
+        .then((t) => {
+          if (!vivo || !t) return;
+          const remota = t.trim();
+          if (remota && PC_BUILD !== "pendiente" && remota !== PC_BUILD) setNueva(true);
+        })
+        .catch(() => {});
+    };
+    revisar();
+    const t = setInterval(revisar, 120000);
+    window.addEventListener("focus", revisar);
+    return () => { vivo = false; clearInterval(t); window.removeEventListener("focus", revisar); };
+  }, []);
+  if (!nueva) return null;
+  return E("div", {
+    onClick: () => location.reload(true),
+    style: {
+      position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 22, zIndex: 99999,
+      background: "#1a6b3a", color: "#fff", borderRadius: 999, padding: "13px 26px",
+      fontWeight: 800, fontSize: 14, cursor: "pointer", boxShadow: "0 8px 28px rgba(0,0,0,.28)",
+      display: "flex", alignItems: "center", gap: 10
+    }
+  }, "🔄 Hay una versión nueva de la app — toca para actualizar");
+}
+
 async function supaFetchTodo(table, params = "?order=id.asc", pagina = 1000, tope = 100000) {
   const sep = params.includes("?") ? "&" : "?";
   const todas = [];
@@ -6250,7 +6289,7 @@ function PetColinas() {
     citas: citasPortal, setCitas: setCitasPortal
   }));
 
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout }));
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout }));
 }
 const INVENTARIO_SEED = [
   { id: "80001", nombre: "NG Spectra S 3.6 - 7.5 kg", categoria: "farmaco", stock: 0, stockInicial: 8, stockMin: 1, costo: 962, pventa: 1462, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
