@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-12 20:48Z";
+const PC_BUILD = "2026-08-12 20:56Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3691,6 +3691,100 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   function banosDelFormulario() {
     return banosDeVenta({ items: form.items.map((it) => ({ nombre: it.descripcion, cantidad: it.cantidad })) });
   }
+
+  // --- Puente Facturas <-> Ventas -------------------------------------------
+  const normNom = (s) => String(s || "").toLowerCase().trim();
+  // Ventas que componen una factura generada desde el registro de ventas.
+  function ventasDeFactura(f) {
+    if (!f || !String(f.id).startsWith("venta_")) return [];
+    return (ventas || [])
+      .filter((v) => v.fecha === f.fecha && normNom(v.cliente) === normNom(f.mascota))
+      .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+  }
+  // Deduce el area de una venta a partir del nombre del servicio.
+  function areaDeServicio(servicio, fallback) {
+    const t = normNom(servicio);
+    if (/ba[ñn]o|corte|grooming|peluquer|desenred|deslan|u[ñn]as|spa/.test(t)) return "grooming";
+    if (/consulta|vacuna|test|aplicaci|desparasit|cirug|inyecc|refuerzo|muestra|diagn/.test(t)) return "veterinaria";
+    return fallback || "farmacia";
+  }
+  // Reescribe las ventas del grupo para que coincidan con las lineas de la
+  // factura. Devuelve true si habia ventas que actualizar.
+  function volcarFacturaEnVentas(grupoOriginal, datos) {
+    if (!setVentas || grupoOriginal.length === 0) return false;
+    const lineas = (datos.items || [])
+      .filter((it) => String(it.descripcion || "").trim())
+      .map((it) => {
+        const precio = parseFloat(it.precio) || 0;
+        const cant = parseInt(it.cantidad) || 1;
+        const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0));
+        return { servicio: String(it.descripcion).trim(), total: Math.round(precio * cant * (1 - desc / 100)) };
+      });
+    if (lineas.length === 0) return false;
+
+    const formaPago = datos.estado === "pendiente" ? "Pago pendiente" : (datos.metodoPago || "Efectivo");
+    const base = grupoOriginal[0];
+    const actualizadas = [];
+    const aBorrar = [];
+
+    for (let i = 0; i < Math.max(grupoOriginal.length, lineas.length); i++) {
+      const v = grupoOriginal[i], l = lineas[i];
+      if (v && l) {
+        actualizadas.push({ ...v, fecha: datos.fecha, cliente: datos.mascota, servicio: l.servicio, descripcion: l.servicio, total: l.total, formaPago, formapago: formaPago });
+      } else if (l) {
+        actualizadas.push({
+          id: Date.now() + i, fecha: datos.fecha, cliente: datos.mascota,
+          area: areaDeServicio(l.servicio, base.area), servicio: l.servicio, descripcion: l.servicio,
+          total: l.total, comision: 0, formaPago, formapago: formaPago,
+          recibidoPor: base.recibidoPor || base.recibidopor || "", notas: ""
+        });
+      } else if (v) {
+        aBorrar.push(v);
+      }
+    }
+
+    const idsGrupo = new Set(grupoOriginal.map((x) => String(x.id)));
+    setVentas((vs) => [...vs.filter((x) => !idsGrupo.has(String(x.id))), ...actualizadas]);
+    if (deleteVenta) aBorrar.forEach((v) => { try { deleteVenta(v.id); } catch {} });
+    return true;
+  }
+  // Borra una factura. Si viene del registro de ventas, borra tambien esas ventas
+  // (si no, se volveria a generar sola en el siguiente refresco).
+  function borrarFactura(f, alTerminar) {
+    const grupo = ventasDeFactura(f);
+    const aviso = grupo.length > 0
+      ? "\xBFBorrar la factura #" + f.numero + "?\n\n\u26A0\uFE0F Esta factura viene del registro de ventas, as\xED que tambi\xE9n se eliminar\xE1n " +
+        grupo.length + " venta(s) de " + (f.mascota || "este cliente") + " del " + f.fecha +
+        " por RD$ " + grupo.reduce((s2, v) => s2 + (Number(v.total) || 0), 0).toLocaleString("es-DO") +
+        ".\n\nEsta acci\xF3n no se puede deshacer."
+      : "\xBFBorrar la factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.";
+    if (!confirm(aviso)) return;
+    setFacturas((fs) => fs.filter((x) => String(x.id) !== String(f.id)));
+    deleteOne("pc_facturas", f.id).catch(() => {});
+    if (deleteVenta) grupo.forEach((v) => { try { deleteVenta(v.id); } catch {} });
+    if (typeof alTerminar === "function") alTerminar();
+  }
+  // Separar o volver a unir las ventas de un mismo cliente y dia en facturas.
+  function leerSeparadas() {
+    try { return JSON.parse(localStorage.getItem("pc_fact_separadas") || "{}"); } catch { return {}; }
+  }
+  function separarFactura(f) {
+    const grupo = ventasDeFactura(f);
+    if (grupo.length < 2) { alert("Esta factura tiene una sola venta; no hay nada que separar."); return; }
+    if (!confirm("\xBFSeparar las " + grupo.length + " ventas de " + (f.mascota || "este cliente") + " del " + f.fecha + " en facturas individuales?\n\nCada una tendr\xE1 su propio n\xFAmero.")) return;
+    const sep = leerSeparadas();
+    grupo.slice(1).forEach((v) => { sep[String(v.id)] = true; });
+    guardarLocal("pc_fact_separadas", sep);
+    setSepVer((n) => n + 1);
+  }
+  function unirFactura(f) {
+    const grupo = ventasDeFactura(f);
+    const sep = leerSeparadas();
+    grupo.forEach((v) => { delete sep[String(v.id)]; });
+    guardarLocal("pc_fact_separadas", sep);
+    setSepVer((n) => n + 1);
+  }
+  const estaSeparada = (f) => String(f.id).includes("___s");
 
   function crearFactura() {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);

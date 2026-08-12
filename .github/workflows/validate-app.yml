@@ -21,3 +21,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validar index.html
         run: node .github/scripts/validate-index.js
+
+      - name: Renderizar las vistas principales
+        run: node .github/scripts/render-check.js
