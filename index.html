@@ -975,6 +975,19 @@ function normalizeRow(table, r) {
     clienteId: r.clienteid || r.clienteId || "",
     autoGenerada: r.autogenerada === true || r.autogenerada === "true" || false
   };
+  if (table === "pc_depositos") return {
+    id: r.id,
+    fecha: r.fecha || "",
+    mascota: r.mascota || "",
+    propietario: r.propietario || "",
+    telefono: r.telefono || "",
+    tipo: r.tipo || "deposito",
+    monto: Number(r.monto) || 0,
+    facturaId: r.facturaid || "",
+    facturaNumero: r.facturanumero || "",
+    notas: r.notas || "",
+    usuario: r.usuario || ""
+  };
   if (table === "pc_tarifas") return {
     id: r.id,
     nombre: r.nombre,
@@ -1135,6 +1148,19 @@ function denormalizeRow(table, r) {
     notas: r.notas || "",
     clienteid: r.clienteId ? String(r.clienteId) : null,
     autogenerada: !!r.autoGenerada
+  };
+  if (table === "pc_depositos") return {
+    id: r.id,
+    fecha: r.fecha || "",
+    mascota: r.mascota || null,
+    propietario: r.propietario || null,
+    telefono: r.telefono || null,
+    tipo: r.tipo || "deposito",
+    monto: Number(r.monto) || 0,
+    facturaid: r.facturaId || null,
+    facturanumero: r.facturaNumero || null,
+    notas: r.notas || null,
+    usuario: r.usuario || null
   };
   if (table === "pc_tarifas") return {
     id: r.id,
@@ -3296,6 +3322,48 @@ function enviarPDFWhatsApp(f, clientes) {
   }
   window.open(waUrl, "_blank");
 }
+// Panel del fondo del cliente dentro del formulario de factura. El cliente puede
+// dejar dinero adelantado y usarlo en esta o en visitas siguientes.
+function PanelFondo({ saldo, mascota, total, dejar, setDejar, usar, setUsar }) {
+  const E = React.createElement;
+  const nDejar = Math.max(0, parseFloat(dejar) || 0);
+  const nUsar = Math.max(0, Math.min(parseFloat(usar) || 0, saldo, total));
+  const aPagar = Math.max(0, total - nUsar) + nDejar;
+  const fmt = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO");
+  const inp = { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 14, boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 4 };
+
+  if (!mascota) return null;
+  return E("div", { style: { marginTop: 18, background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 12, padding: "14px 16px" } },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 } },
+      E("div", { style: { fontWeight: 800, fontSize: 13.5, color: "#5b21b6" } }, "💰 Fondo de " + mascota),
+      E("div", { style: { fontSize: 13, color: saldo > 0 ? "#16a34a" : "#6b7280", fontWeight: 700 } },
+        saldo > 0 ? "Disponible: " + fmt(saldo) : "Sin dinero en fondo")),
+    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12 } },
+      E("div", null,
+        E("label", { style: lbl }, "➕ Deja en fondo hoy"),
+        E("input", { type: "number", min: "0", value: dejar, placeholder: "0",
+          onChange: (e) => setDejar(e.target.value), style: inp }),
+        E("div", { style: { fontSize: 11, color: "#6b7280", marginTop: 3 } }, "Dinero que abona para próximas visitas")),
+      saldo > 0 && E("div", null,
+        E("label", { style: lbl }, "➖ Usar del fondo"),
+        E("input", { type: "number", min: "0", max: String(Math.min(saldo, total)), value: usar, placeholder: "0",
+          onChange: (e) => setUsar(e.target.value), style: inp }),
+        E("div", { style: { fontSize: 11, color: "#6b7280", marginTop: 3 } }, "Máximo " + fmt(Math.min(saldo, total))))),
+    (nDejar > 0 || nUsar > 0) && E("div", { style: { marginTop: 12, borderTop: "1px solid #ddd6fe", paddingTop: 10 } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "#4b5563", padding: "3px 0" } },
+        E("span", null, "Total de la factura"), E("span", null, fmt(total))),
+      nUsar > 0 && E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "#16a34a", padding: "3px 0" } },
+        E("span", null, "− Usado del fondo"), E("span", null, "− " + fmt(nUsar))),
+      nDejar > 0 && E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b21b6", padding: "3px 0" } },
+        E("span", null, "+ Deja en fondo"), E("span", null, "+ " + fmt(nDejar))),
+      E("div", { style: { display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 16, color: "#5b21b6", borderTop: "2px solid #c4b5fd", marginTop: 6, paddingTop: 8 } },
+        E("span", null, "COBRAR HOY"), E("span", null, fmt(aPagar))),
+      E("div", { style: { fontSize: 11.5, color: "#6b7280", marginTop: 6 } },
+        "Le quedarían " + fmt(saldo - nUsar + nDejar) + " en fondo después de esta factura."))
+  );
+}
+
 function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, tarifasVet, inventario }) {
   const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
     try {
@@ -3310,6 +3378,16 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   const [editandoNum, setEditandoNum] = useState("");
   const [editandoOrig, setEditandoOrig] = useState(null);
   const [sepVer, setSepVer] = useState(0);   // fuerza recalcular al separar/unir facturas
+  // Fondo del cliente: dinero que deja adelantado para gastarlo en visitas futuras.
+  const [depositos, setDepositos] = useSupabase("pc_depositos", []);
+  const [fondoDejar, setFondoDejar] = useState("");   // dinero que deja hoy
+  const [fondoUsar, setFondoUsar] = useState("");     // dinero del fondo que aplica a esta factura
+  const saldoFondo = (mascota) => {
+    const k = String(mascota || "").toLowerCase().trim();
+    if (!k) return 0;
+    return (depositos || []).filter((d) => String(d.mascota || "").toLowerCase().trim() === k)
+      .reduce((n, d) => n + (d.tipo === "uso" ? -1 : 1) * (Number(d.monto) || 0), 0);
+  };
   // Fila del formulario que tiene abierto el autocompletado de servicios
   const [sugItem, setSugItem] = useState(null);
   // Catalogo para el autocompletado: mismas tarifas y productos que usa Ventas
@@ -3407,6 +3485,12 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   function calcGroomingLealtad(mascota) {
     return contarBanos(mascota, ventas, clientes);
   }
+  // ¿Esta factura en concreto incluye algún baño? Una factura de pet shop
+  // (comida, antipulgas, accesorios) NO debe mostrar el programa de lealtad:
+  // el cliente compró un producto, no bañó a la mascota.
+  function facturaTieneBano(f) {
+    return banosDeVenta({ items: (f && f.items) || [] }) > 0;
+  }
   // Baños que aporta la factura que se está creando/editando ahora mismo.
   function banosDelFormulario() {
     return banosDeVenta({ items: form.items.map((it) => ({ nombre: it.descripcion, cantidad: it.cantidad })) });
@@ -3414,6 +3498,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
 
   function crearFactura() {
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
+    const numeroFinalFactura = editandoId ? (editandoNum || nextNumero()) : nextNumero();
     // Esta visita suma 1 solo si tiene grooming Y no hay otra factura de grooming para esa fecha
     const banosAqui = banosDelFormulario();
     // Los baños ya registrados como venta + los que trae esta factura.
@@ -3475,6 +3560,19 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       setFacturas((fs) => [nueva, ...fs]);
       setFacturaActual(nueva);
     }
+    // Movimientos del fondo del cliente (dinero adelantado y uso del mismo).
+    const nDejar = Math.max(0, parseFloat(fondoDejar) || 0);
+    const nUsar = Math.max(0, Math.min(parseFloat(fondoUsar) || 0, saldoFondo(form.mascota), total));
+    if (nDejar > 0 || nUsar > 0) {
+      const base = { fecha: form.fecha, mascota: form.mascota, propietario: form.propietario,
+        telefono: form.telefono, facturaId: String(nueva.id), facturaNumero: numeroFinalFactura,
+        usuario: usuarioActual() };
+      const movs = [];
+      if (nDejar > 0) movs.push({ ...base, id: Date.now(), tipo: "deposito", monto: nDejar, notas: "Dejado en fondo al emitir la factura" });
+      if (nUsar > 0) movs.push({ ...base, id: Date.now() + 1, tipo: "uso", monto: nUsar, notas: "Aplicado a la factura" });
+      setDepositos((prev) => [...prev, ...movs]);
+    }
+    setFondoDejar(""); setFondoUsar("");
     setEditandoId(null);
     setEditandoNum("");
     setEditandoOrig(null);
@@ -3484,7 +3582,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   }
   function imprimirFactura(f) {
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    f = { ...f, groomingCount: calcGroomingLealtad(f.mascota) };
+    f = { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null };
     const clienteData = clientes.find(c => String(c.id) === String(f.clienteId));
     const cedulaCliente = clienteData?.cedula || "";
     const win = window.open("", "_blank");
@@ -3650,7 +3748,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     }
     // El PDF necesita el contador de lealtad; antes no se le pasaba y por eso el
     // bloque de baños nunca salía en la factura enviada por WhatsApp.
-    enviarPDFWhatsApp({ ...f, groomingCount: calcGroomingLealtad(f.mascota) }, clientes);
+    enviarPDFWhatsApp({ ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null }, clientes);
   }
   const [busqueda, setBusqueda] = useState("");
   const [busqFact, setBusqFact] = useState("");
@@ -3966,7 +4064,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         }
       },
       "\u2715"
-    ))), esBanoGratis && !yaAgregadoGratis && /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", border: "2px solid #28a745", borderRadius: 10, padding: "12px 16px", marginTop: 12, display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#155724", fontSize: 13 } }, "\xA1" + form.mascota + " lleva " + gCountLealtad + " ba\xF1os \u2014 le toca BA\xD1O GRATIS!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#155724", marginTop: 2 } }, "Programa de lealtad: cada 10 ba\xF1os, el siguiente es gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => setForm(f => ({ ...f, items: [...f.items, { descripcion: "\uD83C\uDF81 Ba\xF1o gratis (programa de lealtad)", cantidad: 1, precio: 0, descuento: 0 }] })), style: { background: "#28a745", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" } }, "\u2795 Agregar gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const idx = form.items.length; addItem(); setTimeout(() => setSugItem(idx), 0); }, style: { background: C.verdeL, color: C.verde, border: `1px dashed ${C.verde}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, marginTop: 4 } }, "+ Agregar l\xEDnea"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), form.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 18, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total)))))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(
+    ))), esBanoGratis && !yaAgregadoGratis && /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", border: "2px solid #28a745", borderRadius: 10, padding: "12px 16px", marginTop: 12, display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#155724", fontSize: 13 } }, "\xA1" + form.mascota + " lleva " + gCountLealtad + " ba\xF1os \u2014 le toca BA\xD1O GRATIS!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#155724", marginTop: 2 } }, "Programa de lealtad: cada 10 ba\xF1os, el siguiente es gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => setForm(f => ({ ...f, items: [...f.items, { descripcion: "\uD83C\uDF81 Ba\xF1o gratis (programa de lealtad)", cantidad: 1, precio: 0, descuento: 0 }] })), style: { background: "#28a745", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" } }, "\u2795 Agregar gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const idx = form.items.length; addItem(); setTimeout(() => setSugItem(idx), 0); }, style: { background: C.verdeL, color: C.verde, border: `1px dashed ${C.verde}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, marginTop: 4 } }, "+ Agregar l\xEDnea"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), form.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 18, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total)))))), React.createElement(PanelFondo, { saldo: saldoFondo(form.mascota), mascota: form.mascota, total, dejar: fondoDejar, setDejar: setFondoDejar, usar: fondoUsar, setUsar: setFondoUsar }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: crearFactura,
@@ -3979,7 +4077,9 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   if (vista === "ver" && facturaActual) {
     const f = facturaActual;
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    const gLealtad = calcGroomingLealtad(f.mascota);
+    const gLealtad = facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : 0;
+    const movsFondo = (depositos || []).filter((d) => String(d.facturaId || "") === String(f.id));
+    const saldoActualFondo = saldoFondo(f.mascota);
     return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), (() => {
       if (!String(f.id).startsWith("venta_")) return null;
       if (estaSeparada(f)) return React.createElement("button", { onClick: () => unirFactura(f), title: "Volver a juntarla con las demás ventas de ese día", style: { background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "🔗 Unir con las del día");
@@ -3993,7 +4093,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       fontSize: 11,
       fontWeight: 700,
       display: "inline-block"
-    } }, "\u{1F43E} ", gLealtad, " ba\xF1os", gLealtad >= 10 ? " \u2014 \xA1BA\xD1O GRATIS! \u{1F389}" : ` / 10 para ba\xF1o gratis`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, f.propietario), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, f.telefono)), /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Paciente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, "\u{1F43E} ", f.mascota))), /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", marginBottom: 20, fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: C.verde, color: "#fff" } }, /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "left" } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Cant."), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Precio"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Desc.%"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Subtotal"))), /* @__PURE__ */ React.createElement("tbody", null, f.items.map((it, i) => { const precio = parseFloat(it.precio) || 0; const cant = parseInt(it.cantidad) || 1; const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0)); const sub = Math.round(precio * cant * (1 - desc / 100)); return /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: `1px solid ${C.gris}`, background: i % 2 === 0 ? "#fff" : C.gris } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, it.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center" } }, cant), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right" } }, RD(precio)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center", color: desc > 0 ? "#dc2626" : C.grisd, fontWeight: desc > 0 ? 700 : 400 } }, desc > 0 ? `-${desc}%` : "—"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right", fontWeight: 600 } }, RD(sub))); }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 240 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), f.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 20, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total))))), f.notas && f.notas !== "Historial 2026" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: C.gris, borderRadius: 8, padding: 12, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Notas:"), " ", f.notas), (() => {
+    } }, "\u{1F43E} ", gLealtad, " ba\xF1os", gLealtad >= 10 ? " \u2014 \xA1BA\xD1O GRATIS! \u{1F389}" : ` / 10 para ba\xF1o gratis`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, f.propietario), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, f.telefono)), /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Paciente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, "\u{1F43E} ", f.mascota))), /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", marginBottom: 20, fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: C.verde, color: "#fff" } }, /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "left" } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Cant."), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Precio"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Desc.%"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Subtotal"))), /* @__PURE__ */ React.createElement("tbody", null, f.items.map((it, i) => { const precio = parseFloat(it.precio) || 0; const cant = parseInt(it.cantidad) || 1; const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0)); const sub = Math.round(precio * cant * (1 - desc / 100)); return /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: `1px solid ${C.gris}`, background: i % 2 === 0 ? "#fff" : C.gris } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, it.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center" } }, cant), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right" } }, RD(precio)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center", color: desc > 0 ? "#dc2626" : C.grisd, fontWeight: desc > 0 ? 700 : 400 } }, desc > 0 ? `-${desc}%` : "—"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right", fontWeight: 600 } }, RD(sub))); }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 240 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), f.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 20, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total))))), (movsFondo.length > 0 || saldoActualFondo > 0) && React.createElement("div", { style: { marginTop: 16, background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 10, padding: "12px 16px" } }, React.createElement("div", { style: { fontWeight: 800, fontSize: 13, color: "#5b21b6", marginBottom: 8 } }, "💰 Fondo del cliente"), movsFondo.map((d) => React.createElement("div", { key: d.id, style: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0", color: d.tipo === "uso" ? "#16a34a" : "#5b21b6" } }, React.createElement("span", null, d.tipo === "uso" ? "Usado del fondo en esta factura" : "Dejado en fondo en esta factura"), React.createElement("strong", null, (d.tipo === "uso" ? "− " : "+ ") + RD(d.monto)))), React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 800, color: "#5b21b6", borderTop: "1px solid #ddd6fe", marginTop: 6, paddingTop: 8 } }, React.createElement("span", null, "Saldo disponible hoy"), React.createElement("span", null, RD(saldoActualFondo)))), f.notas && f.notas !== "Historial 2026" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: C.gris, borderRadius: 8, padding: 12, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Notas:"), " ", f.notas), (() => {
       // Contar solo items de grooming en facturas (no todas las ventas area=grooming)
       const total_g = calcGroomingLealtad(f.mascota);
       const progreso = Math.min(total_g, 10);
@@ -4172,7 +4272,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     /* @__PURE__ */ React.createElement("option", { value: "monto_desc" }, "\u{1F4B0} Mayor monto"),
     /* @__PURE__ */ React.createElement("option", { value: "monto_asc" }, "\u{1F4B0} Menor monto"),
     /* @__PURE__ */ React.createElement("option", { value: "cliente_az" }, "\u{1F524} Cliente A\u2192Z")
-  )))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: busqueda ? C.verde : C.grisd, marginBottom: 10, fontWeight: busqueda ? 600 : 400, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", null, busqueda ? `${facturasFiltradas.length} factura(s) encontrada(s) para "${busqueda}"${facturasFiltradas.length === 0 ? " \u2014 prueba otro t\xE9rmino" : ""}` : `${facturasFiltradas.length} factura(s) en total`), facturasFiltradas.length > FACT_POR_PAG && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.max(1, p - 1)), disabled: pagFact <= 1, style: { background: pagFact <= 1 ? "#f0f0f0" : "#e8f5ee", color: pagFact <= 1 ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: pagFact <= 1 ? "default" : "pointer", fontWeight: 700, fontSize: 13 } }, "\u2190"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: C.grisd } }, "P\xE1g. " + pagFact + " de " + Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))), /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.min(Math.ceil(facturasFiltradas.length / FACT_POR_PAG), p + 1)), disabled: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG), style: { background: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#f0f0f0" : "#e8f5ee", color: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "\u2192"))), facturas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay facturas a\xFAn"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14 } }, 'Crea tu primera factura con el bot\xF3n "+ Nueva Factura"')) : /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: `1px solid #e0e4e8`, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["#", "Fecha", "Mascota / Cliente", "Servicios", "Total", "Ba\xF1os", "Acciones"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "12px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: `2px solid #e0e4e8`, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, facturasFiltradas.slice((Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) - 1) * FACT_POR_PAG, Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) * FACT_POR_PAG).map((f) => /* @__PURE__ */ React.createElement("tr", { key: f.id, onClick: () => abrirEditar(f), title: "Tocar para editar esta factura", style: { borderBottom: `1px solid #f4f5f6`, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", color: C.grisd, whiteSpace: "nowrap" } }, f.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, f.mascota), f.propietario && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.propietario)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, f.items?.slice(0, 2).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i }, "\u2022 ", it.descripcion?.slice(0, 30))), f.items?.length > 2 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "+", f.items.length - 2, " m\xE1s"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde, whiteSpace: "nowrap" } }, RD(f.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, (() => { const gL = calcGroomingLealtad(f.mascota); return gL > 0 ? /* @__PURE__ */ React.createElement("div", { style: {
+  )))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: busqueda ? C.verde : C.grisd, marginBottom: 10, fontWeight: busqueda ? 600 : 400, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", null, busqueda ? `${facturasFiltradas.length} factura(s) encontrada(s) para "${busqueda}"${facturasFiltradas.length === 0 ? " \u2014 prueba otro t\xE9rmino" : ""}` : `${facturasFiltradas.length} factura(s) en total`), facturasFiltradas.length > FACT_POR_PAG && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.max(1, p - 1)), disabled: pagFact <= 1, style: { background: pagFact <= 1 ? "#f0f0f0" : "#e8f5ee", color: pagFact <= 1 ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: pagFact <= 1 ? "default" : "pointer", fontWeight: 700, fontSize: 13 } }, "\u2190"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: C.grisd } }, "P\xE1g. " + pagFact + " de " + Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))), /* @__PURE__ */ React.createElement("button", { onClick: () => setPagFact(p => Math.min(Math.ceil(facturasFiltradas.length / FACT_POR_PAG), p + 1)), disabled: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG), style: { background: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#f0f0f0" : "#e8f5ee", color: pagFact >= Math.ceil(facturasFiltradas.length / FACT_POR_PAG) ? "#bbb" : C.verde, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "\u2192"))), facturas.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 8 } }, "No hay facturas a\xFAn"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14 } }, 'Crea tu primera factura con el bot\xF3n "+ Nueva Factura"')) : /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 12, border: `1px solid #e0e4e8`, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["#", "Fecha", "Mascota / Cliente", "Servicios", "Total", "Ba\xF1os", "Acciones"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "12px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: `2px solid #e0e4e8`, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, facturasFiltradas.slice((Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) - 1) * FACT_POR_PAG, Math.min(pagFact, Math.max(1, Math.ceil(facturasFiltradas.length / FACT_POR_PAG))) * FACT_POR_PAG).map((f) => /* @__PURE__ */ React.createElement("tr", { key: f.id, onClick: () => abrirEditar(f), title: "Tocar para editar esta factura", style: { borderBottom: `1px solid #f4f5f6`, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", color: C.grisd, whiteSpace: "nowrap" } }, f.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, f.mascota), f.propietario && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, f.propietario)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, f.items?.slice(0, 2).map((it, i) => /* @__PURE__ */ React.createElement("div", { key: i }, "\u2022 ", it.descripcion?.slice(0, 30))), f.items?.length > 2 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "+", f.items.length - 2, " m\xE1s"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px", fontWeight: 700, color: C.verde, whiteSpace: "nowrap" } }, RD(f.total)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 14px" } }, (() => { const gL = facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : 0; return gL > 0 ? /* @__PURE__ */ React.createElement("div", { style: {
     background: gL >= 10 ? "#d4edda" : "#fff3cd",
     color: gL >= 10 ? "#155724" : "#856404",
     borderRadius: 20,
