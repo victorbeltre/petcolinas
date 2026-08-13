@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-12 20:56Z";
+const PC_BUILD = "2026-08-13 20:49Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1105,7 +1105,7 @@ function denormalizeRow(table, r) {
     cobradopor: r.cobradoPor || r.cobradopor || null,
     descuento: Number(r.descuento) || 0,
     banco: r.banco || null,
-    items: JSON.stringify(Array.isArray(r.items) ? r.items : []),
+    items: Array.isArray(r.items) ? r.items : [],
     notas: r.notas
   };
   if (table === "pc_gastos") return {
@@ -3187,13 +3187,23 @@ function banosDeVenta(v) {
     const m = String(txt).match(/(\d+)\s*x/i);
     return m ? (parseInt(m[1], 10) || porDefecto) : porDefecto;
   };
-  if (Array.isArray(v.items) && v.items.length) {
-    return v.items.reduce((n, it) => {
-      const nombre = String(it.nombre || it.descripcion || "");
-      if (!BANO_RE.test(nombre)) return n;
-      const qty = Number(it.qty ?? it.cantidad) || 1;
-      return n + cantEn(nombre, qty);
-    }, 0);
+  // El desglose solo es de fiar si sus subtotales cuadran con el total de la
+  // venta. Hubo filas que conservaron un desglose viejo con servicios que ya
+  // se habían separado en otra venta, y el baño se contaba dos veces.
+  const items = Array.isArray(v.items) ? v.items : [];
+  if (items.length) {
+    const sumaItems = items.reduce((n, it) => n + (Number(it.subtotal ?? it.precio) || 0), 0);
+    const total = Number(v.total) || 0;
+    const cuadra = total <= 0 || Math.abs(sumaItems - total) <= Math.max(2, total * 0.02);
+    if (cuadra) {
+      return items.reduce((n, it) => {
+        const nombre = String(it.nombre || it.descripcion || "");
+        if (!BANO_RE.test(nombre)) return n;
+        const qty = Number(it.qty ?? it.cantidad) || 1;
+        return n + cantEn(nombre, qty);
+      }, 0);
+    }
+    console.warn("[Lealtad] desglose descuadrado en la venta " + v.id + " (items " + sumaItems + " vs total " + total + "): se usa la descripción");
   }
   // Sin desglose: la descripción viene como "2x Baño pequeño + Corte completo".
   return String(v.servicio || v.descripcion || "").split("+")
@@ -3718,7 +3728,10 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         const precio = parseFloat(it.precio) || 0;
         const cant = parseInt(it.cantidad) || 1;
         const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0));
-        return { servicio: String(it.descripcion).trim(), total: Math.round(precio * cant * (1 - desc / 100)) };
+        const nombre = String(it.descripcion).trim();
+        const bruto = precio * cant;
+        return { servicio: nombre, total: Math.round(bruto * (1 - desc / 100)),
+                 qty: cant, descPct: desc, bruto };
       });
     if (lineas.length === 0) return false;
 
@@ -3729,14 +3742,25 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
 
     for (let i = 0; i < Math.max(grupoOriginal.length, lineas.length); i++) {
       const v = grupoOriginal[i], l = lineas[i];
+      // OJO: cada venta se queda con SU propia linea en items. Antes la primera
+      // conservaba el desglose viejo completo (con todos los servicios) mientras
+      // los demas salian como ventas aparte, asi que un mismo bano se contaba
+      // dos veces en el programa de lealtad.
+      const itemDe = (linea, area) => [{
+        nombre: linea.servicio, precio: linea.bruto, descPct: linea.descPct,
+        subtotal: linea.total, area, qty: linea.qty
+      }];
       if (v && l) {
-        actualizadas.push({ ...v, fecha: datos.fecha, cliente: datos.mascota, servicio: l.servicio, descripcion: l.servicio, total: l.total, formaPago, formapago: formaPago });
+        const areaV = v.area || areaDeServicio(l.servicio);
+        actualizadas.push({ ...v, fecha: datos.fecha, cliente: datos.mascota, servicio: l.servicio, descripcion: l.servicio, total: l.total, formaPago, formapago: formaPago, items: itemDe(l, areaV) });
       } else if (l) {
+        const areaN = areaDeServicio(l.servicio, base.area);
         actualizadas.push({
           id: Date.now() + i, fecha: datos.fecha, cliente: datos.mascota,
-          area: areaDeServicio(l.servicio, base.area), servicio: l.servicio, descripcion: l.servicio,
+          area: areaN, servicio: l.servicio, descripcion: l.servicio,
           total: l.total, comision: 0, formaPago, formapago: formaPago,
-          recibidoPor: base.recibidoPor || base.recibidopor || "", notas: ""
+          recibidoPor: base.recibidoPor || base.recibidopor || "", notas: "",
+          items: itemDe(l, areaN)
         });
       } else if (v) {
         aBorrar.push(v);
