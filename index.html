@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-14 15:03Z";
+const PC_BUILD = "2026-08-14 15:28Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3194,9 +3194,11 @@ function esMascotaCasa(nombre) {
   if (!n) return null;
   return MASCOTAS_CASA.find((m) => m.alias.includes(n)) || null;
 }
-// El grooming de la casa no se cobra; lo demás sí.
-const grooomingGratisCasa = (cliente, area) =>
-  !!esMascotaCasa(cliente) && String(area || "").toLowerCase() === "grooming";
+// A las mascotas de la casa no se les cobra grooming NI veterinaria.
+// Solo se les cobra lo del pet shop / farmacia (productos con costo).
+const AREAS_CORTESIA_CASA = ["grooming", "veterinaria"];
+const esCortesiaCasa = (cliente, area) =>
+  !!esMascotaCasa(cliente) && AREAS_CORTESIA_CASA.includes(String(area || "").toLowerCase());
 
 const BANO_RE = /ba[ñn]o/i;
 // Cuenta los baños de UNA venta, respetando cantidades ("2x Baño pequeño" = 2).
@@ -4353,7 +4355,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
           onMouseDown: (e) => {
             e.preventDefault();
             // Mascota de los dueños: el grooming entra en 0 automáticamente.
-            const gratis = grooomingGratisCasa(form.mascota, s.grupo === "Grooming" ? "grooming" : s.grupo);
+            const areaCat = s.grupo === "Grooming" ? "grooming" : s.grupo === "Veterinaria" ? "veterinaria" : "farmacia";
+            const gratis = esCortesiaCasa(form.mascota, areaCat);
             setForm((fm) => { const its = [...fm.items]; its[i] = { ...its[i], descripcion: s.nombre + (gratis ? " (cortesía casa)" : ""), precio: gratis ? 0 : s.precio }; return { ...fm, items: its }; });
             setSugItem(null);
           },
@@ -4410,7 +4413,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         }
       },
       "\u2715"
-    ))), esBanoGratis && !yaAgregadoGratis && /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", border: "2px solid #28a745", borderRadius: 10, padding: "12px 16px", marginTop: 12, display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#155724", fontSize: 13 } }, "\xA1" + form.mascota + " lleva " + gCountLealtad + " ba\xF1os \u2014 le toca BA\xD1O GRATIS!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#155724", marginTop: 2 } }, "Programa de lealtad: cada 10 ba\xF1os, el siguiente es gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => setForm(f => ({ ...f, items: [...f.items, { descripcion: "\uD83C\uDF81 Ba\xF1o gratis (programa de lealtad)", cantidad: 1, precio: 0, descuento: 0 }] })), style: { background: "#28a745", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" } }, "\u2795 Agregar gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const idx = form.items.length; addItem(); setTimeout(() => setSugItem(idx), 0); }, style: { background: C.verdeL, color: C.verde, border: `1px dashed ${C.verde}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, marginTop: 4 } }, "+ Agregar l\xEDnea"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), form.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 18, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total)))))), (esMascotaCasa(form.mascota) ? React.createElement("div", { style: { marginTop: 14, background: "#eef2ff", border: "1.5px solid #6366f1", borderRadius: 10, padding: "11px 15px", fontSize: 13, fontWeight: 700, color: "#3730a3" } }, "\u{1F3E0} " + form.mascota + " es mascota de la casa \u2014 los servicios de grooming se agregan en RD$ 0. Veterinaria y farmacia se cobran normal.") : null), React.createElement(PanelFondo, { saldo: saldoFondo(form.mascota), mascota: form.mascota, total, dejar: fondoDejar, setDejar: setFondoDejar, usar: fondoUsar, setUsar: setFondoUsar }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(
+    ))), esBanoGratis && !yaAgregadoGratis && /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", border: "2px solid #28a745", borderRadius: 10, padding: "12px 16px", marginTop: 12, display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#155724", fontSize: 13 } }, "\xA1" + form.mascota + " lleva " + gCountLealtad + " ba\xF1os \u2014 le toca BA\xD1O GRATIS!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#155724", marginTop: 2 } }, "Programa de lealtad: cada 10 ba\xF1os, el siguiente es gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => setForm(f => ({ ...f, items: [...f.items, { descripcion: "\uD83C\uDF81 Ba\xF1o gratis (programa de lealtad)", cantidad: 1, precio: 0, descuento: 0 }] })), style: { background: "#28a745", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" } }, "\u2795 Agregar gratis")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const idx = form.items.length; addItem(); setTimeout(() => setSugItem(idx), 0); }, style: { background: C.verdeL, color: C.verde, border: `1px dashed ${C.verde}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, marginTop: 4 } }, "+ Agregar l\xEDnea"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20, display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), form.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 18, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total)))))), (esMascotaCasa(form.mascota) ? React.createElement("div", { style: { marginTop: 14, background: "#eef2ff", border: "1.5px solid #6366f1", borderRadius: 10, padding: "11px 15px", fontSize: 13, fontWeight: 700, color: "#3730a3" } }, "\u{1F3E0} " + form.mascota + " es mascota de la casa \u2014 grooming y veterinaria se agregan en RD$ 0. Solo se cobra el pet shop / farmacia.") : null), React.createElement(PanelFondo, { saldo: saldoFondo(form.mascota), mascota: form.mascota, total, dejar: fondoDejar, setDejar: setFondoDejar, usar: fondoUsar, setUsar: setFondoUsar }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: crearFactura,
@@ -8395,9 +8398,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const servSel = esManual ? null : (tarifas.find((t) => t.id === servId) || null);
   const prodSel = inventario.find((p) => String(p.id) === String(prodSelId)) || null;
   const productosInv = inventario.filter((p) => p.pventa > 0);
-  const casaGratis = grooomingGratisCasa(cliente, tipoItem);
+  const casaGratis = esCortesiaCasa(cliente, tipoItem);
   const previewPrecio = (() => {
-    if (casaGratis) return 0;   // mascota de la casa: el grooming no se cobra
+    if (casaGratis) return 0;   // mascota de la casa: grooming y veterinaria no se cobran
     if (tipoItem === "grooming" || tipoItem === "veterinaria") {
       if (esManual) return parseFloat(precioManual) || 0;
       return servSel ? servSel.precio * cantidad : 0;
@@ -8412,7 +8415,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const previewDescuento = Math.round(previewPrecio * pct / 100);
   const previewNeto = previewPrecio - previewDescuento;
   const previewComision = (() => {
-    if (casaGratis) return 0;   // grooming de la casa: no genera comisión
+    if (casaGratis) return 0;   // cortesía de la casa: no genera comisión
     if (tipoItem === "grooming") return esManual ? 0 : (servSel ? servSel.comision * cantidad : 0);
     if (tipoItem === "veterinaria") {
       const pctVet = servicioPor === "e5" ? 0.40 : 0.30;
@@ -8902,7 +8905,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         outline: "none"
       }
     }
-  ), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: "#d97706", fontWeight: 700 } }, "%"))), casaGratis && React.createElement("div", { style: { background: "#eef2ff", border: "1.5px solid #6366f1", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, color: "#3730a3", alignSelf: "center" } }, "\u{1F3E0} Mascota de la casa \u2014 grooming gratis"), previewPrecio > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 8, padding: "8px 14px", fontSize: 12 } }, pct > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, textDecoration: "line-through" } }, RD(previewPrecio)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde, fontSize: 14 } }, RD(previewNeto)), previewComision > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "com. ", RD(previewComision))), /* @__PURE__ */ React.createElement(Btn, { onClick: agregarItem, color: colorArea(tipoItem), small: true }, "\u2795 Agregar")), tipoItem === "farmacia" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, [["catalogo", "\u{1F4E6} Inventario"], ["libre", "\u270F\uFE0F Entrada libre"]].map(([v, l]) => /* @__PURE__ */ React.createElement("button", { key: v, onClick: () => setModoFarmacia(v), style: {
+  ), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: "#d97706", fontWeight: 700 } }, "%"))), casaGratis && React.createElement("div", { style: { background: "#eef2ff", border: "1.5px solid #6366f1", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, color: "#3730a3", alignSelf: "center" } }, "\u{1F3E0} Mascota de la casa \u2014 cortes\xEDa"), previewPrecio > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 8, padding: "8px 14px", fontSize: 12 } }, pct > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, textDecoration: "line-through" } }, RD(previewPrecio)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.verde, fontSize: 14 } }, RD(previewNeto)), previewComision > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.azul } }, "com. ", RD(previewComision))), /* @__PURE__ */ React.createElement(Btn, { onClick: agregarItem, color: colorArea(tipoItem), small: true }, "\u2795 Agregar")), tipoItem === "farmacia" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, [["catalogo", "\u{1F4E6} Inventario"], ["libre", "\u270F\uFE0F Entrada libre"]].map(([v, l]) => /* @__PURE__ */ React.createElement("button", { key: v, onClick: () => setModoFarmacia(v), style: {
     padding: "6px 14px",
     borderRadius: 20,
     border: `2px solid ${modoFarmacia === v ? C.gold : "#e0e4e8"}`,
