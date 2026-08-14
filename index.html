@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-14 15:01Z";
+const PC_BUILD = "2026-08-14 15:03Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3231,6 +3231,8 @@ function banosDeVenta(v) {
 function contarBanos(mascota, ventas, clientes) {
   const key = String(mascota || "").toLowerCase().trim();
   if (!key) return 0;
+  // Las mascotas de los dueños no entran al programa: su baño ya es gratis.
+  if (esMascotaCasa(mascota)) return 0;
   const deVentas = (ventas || [])
     .filter((v) => String(v.cliente || "").toLowerCase().trim() === key)
     .reduce((n, v) => n + banosDeVenta(v), 0);
@@ -3713,6 +3715,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   // (comida, antipulgas, accesorios) NO debe mostrar el programa de lealtad:
   // el cliente compró un producto, no bañó a la mascota.
   function facturaTieneBano(f) {
+    if (esMascotaCasa(f && f.mascota)) return false;   // mascota de la casa: sin lealtad
     return banosDeVenta({ items: (f && f.items) || [] }) > 0;
   }
   // Baños que aporta la factura que se está creando/editando ahora mismo.
@@ -8409,6 +8412,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const previewDescuento = Math.round(previewPrecio * pct / 100);
   const previewNeto = previewPrecio - previewDescuento;
   const previewComision = (() => {
+    if (casaGratis) return 0;   // grooming de la casa: no genera comisión
     if (tipoItem === "grooming") return esManual ? 0 : (servSel ? servSel.comision * cantidad : 0);
     if (tipoItem === "veterinaria") {
       const pctVet = servicioPor === "e5" ? 0.40 : 0.30;
