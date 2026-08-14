@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-13 20:49Z";
+const PC_BUILD = "2026-08-14 00:32Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -6978,18 +6978,49 @@ const MARZO_SEMANAS = [
   { sem: "Semana 3", dias: "16\u201321 mar", meta: _PE_DIA * 7, real: 0, color: C.verde },
   { sem: "Semana 4", dias: "23\u201329 mar", meta: _PE_DIA * 6, real: 0, color: C.gold }
 ];
-const TIPOS_SEGUIMIENTO = [
-  { id: "bano_medicado", label: "Ba\xF1o medicado", color: "#9b59b6", icono: "\u{1F6C1}", frecDefault: 14 },
-  { id: "vacuna_rabia", label: "Vacuna rabia", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365 },
-  { id: "vacuna_quintuple", label: "Vacuna qu\xEDntuple", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365 },
-  { id: "vacuna_giardia", label: "Vacuna giardia", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365 },
-  { id: "vacuna_bordetella", label: "Vacuna bordetella", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365 },
-  { id: "desparasitacion", label: "Desparasitaci\xF3n", color: "#27ae60", icono: "\u{1F41B}", frecDefault: 90 },
-  { id: "bano_regular", label: "Ba\xF1o regular", color: "#2980b9", icono: "\u{1F6BF}", frecDefault: 21 },
-  { id: "control_vet", label: "Control veterinario", color: "#1a4fa0", icono: "\u{1FA7A}", frecDefault: 180 },
-  { id: "antipulgas", label: "Antipulgas/garrapatas", color: "#c0392b", icono: "\u{1F99F}", frecDefault: 30 },
-  { id: "otro", label: "Otro", color: "#7f8c8d", icono: "\u{1F4CB}", frecDefault: 30 }
+// Areas para agrupar los seguimientos en la pestaña.
+const AREAS_SEGUIMIENTO = [
+  { id: "todas",       label: "Todas",       icono: "\u{1F4CB}", color: "#5a6472" },
+  { id: "veterinaria", label: "Veterinaria", icono: "\u{1F489}", color: "#1a4fa0" },
+  { id: "grooming",    label: "Ba\xF1os y grooming", icono: "\u{1F6C1}", color: "#2980b9" },
+  { id: "farmacia",    label: "Farmacia",    icono: "\u{1F48A}", color: "#c0392b" }
 ];
+// "detecta" son las palabras que identifican ese servicio dentro de una venta:
+// si el cliente ya lo compró hace poco, el seguimiento se descarta solo.
+const TIPOS_SEGUIMIENTO = [
+  { id: "bano_medicado", label: "Ba\xF1o medicado", color: "#9b59b6", icono: "\u{1F6C1}", frecDefault: 14, area: "grooming", detecta: /ba[\u00F1n]o.*medicad|medicad.*ba[\u00F1n]o/i },
+  { id: "vacuna_rabia", label: "Vacuna rabia", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /rabia/i },
+  { id: "vacuna_quintuple", label: "Vacuna qu\xEDntuple", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /qu[\u00EDi]ntuple|s[\u00E9e]xtuple/i },
+  { id: "vacuna_giardia", label: "Vacuna giardia", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /giardia/i },
+  { id: "vacuna_bordetella", label: "Vacuna bordetella", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /bordetella/i },
+  { id: "desparasitacion", label: "Desparasitaci\xF3n", color: "#27ae60", icono: "\u{1F41B}", frecDefault: 90, area: "veterinaria", detecta: /desparasit|albendazol|oxantel|panacob|ivermectina/i },
+  { id: "bano_regular", label: "Ba\xF1o regular", color: "#2980b9", icono: "\u{1F6BF}", frecDefault: 21, area: "grooming", detecta: /ba[\u00F1n]o/i },
+  { id: "control_vet", label: "Control veterinario", color: "#1a4fa0", icono: "\u{1FA7A}", frecDefault: 180, area: "veterinaria", detecta: /consulta|control|revisi[\u00F3o]n/i },
+  { id: "antipulgas", label: "Antipulgas/garrapatas", color: "#c0392b", icono: "\u{1F99F}", frecDefault: 30, area: "farmacia", detecta: /nexgard|bravecto|frontline|simparica|pipeta|spot ?on|antipulga|garrapat|fiprostar|protek/i },
+  { id: "otro", label: "Otro", color: "#7f8c8d", icono: "\u{1F4CB}", frecDefault: 30, area: "farmacia", detecta: null }
+];
+// Busca si el cliente ya recibió ese servicio DESPUÉS de la última vez anotada.
+// Devuelve la venta que lo cubre, o null. Así un seguimiento deja de aparecer
+// como pendiente en cuanto se le factura el servicio.
+function ventaQueCubre(seg, ventas) {
+  const tipo = TIPOS_SEGUIMIENTO.find((t) => t.id === seg.tipo);
+  if (!tipo || !tipo.detecta) return null;
+  const mascota = String(seg.mascota || "").toLowerCase().trim();
+  if (!mascota) return null;
+  const desde = String(seg.ultimaFecha || "");
+  let mejor = null;
+  for (const v of ventas || []) {
+    if (String(v.cliente || "").toLowerCase().trim() !== mascota) continue;
+    const f = String(v.fecha || "");
+    if (!f || (desde && f <= desde)) continue;
+    const texto = [v.servicio, v.descripcion,
+      ...(Array.isArray(v.items) ? v.items.map((i) => i && (i.nombre || i.descripcion)) : [])
+    ].filter(Boolean).join(" ");
+    if (!tipo.detecta.test(texto)) continue;
+    if (!mejor || f > mejor.fecha) mejor = v;
+  }
+  return mejor;
+}
 function diasHasta(fechaStr) {
   const hoyDate = /* @__PURE__ */ new Date();
   hoyDate.setHours(0, 0, 0, 0);
@@ -7044,6 +7075,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   const [vista, setVista] = useState("panel");
   const [sel, setSel] = useState(null);
   const [filtro, setFiltro] = useState("pendientes");
+  const [areaSeg, setAreaSeg] = useState("todas");
   const [busq, setBusq] = useState("");
   const [showWaMasivo, setShowWaMasivo] = useState(false);
   const [showCrmLink, setShowCrmLink] = useState(false);
@@ -7077,13 +7109,16 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
       guardarLocal("pc_seg_overrides", overrides);
     } catch {}
   };
-  const marcarHecho = async (id) => {
-    const seg = seguimientos.find((s) => s.id === id);
+  // fechaBase permite reprogramar desde el día en que se le facturó el servicio,
+  // no desde hoy, para que la próxima fecha salga correcta.
+  const marcarHecho = async (id, fechaBase) => {
+    const seg = seguimientos.find((s) => String(s.id) === String(id));
     if (!seg) return;
     if (pushHistorial) pushHistorial(`Hecho: ${seg.mascota}`, { seguimientos: [...seguimientos] });
-    const nueva = sumarDias(hoy(), seg.frecuencia);
-    const updated = { ...seg, ultimaFecha: hoy(), proximaFecha: nueva, completado: false };
-    setSeguimientos(seguimientos.map((s) => s.id === id ? updated : s));
+    const base = fechaBase && /^\d{4}-\d{2}-\d{2}$/.test(String(fechaBase)) ? String(fechaBase) : hoy();
+    const nueva = sumarDias(base, seg.frecuencia);
+    const updated = { ...seg, ultimaFecha: base, proximaFecha: nueva, completado: false };
+    setSeguimientos(seguimientos.map((s) => String(s.id) === String(id) ? updated : s));
     saveSegLocal(updated);
     await upsertOne("pc_seguimientos", updated);
   };
@@ -7154,16 +7189,37 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     setLlamandoMasivo(false);
   };
   const hoyStr = hoy();
+  // Si al cliente ya se le factur\u00F3 ese servicio despu\u00E9s de la \u00FAltima vez anotada,
+  // el seguimiento deja de estar pendiente: se marca como cubierto.
+  const cubiertos = React.useMemo(() => {
+    const m = new Map();
+    (seguimientos || []).forEach((s) => {
+      if (!s.activo || s.completado) return;
+      const v = ventaQueCubre(s, ventas);
+      if (v) m.set(String(s.id), v);
+    });
+    return m;
+  }, [seguimientos, ventas]);
+  const estaCubierto = (s) => cubiertos.has(String(s.id));
+  const areaDe = (s) => (TIPOS_SEGUIMIENTO.find((t) => t.id === s.tipo) || {}).area || "farmacia";
+  const pasaArea = (s) => areaSeg === "todas" || areaDe(s) === areaSeg;
+
   const segsVis = seguimientos.filter((s) => {
+    if (!pasaArea(s)) return false;
     if (filtro === "completados") return s.completado === true;
     if (!s.activo) return false;
-    if (filtro === "pendientes") return !s.completado;
+    if (filtro === "cubiertos") return !s.completado && estaCubierto(s);
+    if (filtro === "pendientes") return !s.completado && !estaCubierto(s);
     return true;
   }).sort((a, b) => diasHasta(a.proximaFecha) - diasHasta(b.proximaFecha));
-  const vencidos = seguimientos.filter((s) => s.activo && !s.completado && diasHasta(s.proximaFecha) < 0).length;
-  const hoyCount = seguimientos.filter((s) => s.activo && !s.completado && diasHasta(s.proximaFecha) === 0).length;
-  const proximos7 = seguimientos.filter((s) => s.activo && !s.completado && diasHasta(s.proximaFecha) > 0 && diasHasta(s.proximaFecha) <= 7).length;
-  const totalActivos = seguimientos.filter((s) => s.activo && !s.completado).length;
+
+  const activo = (s) => s.activo && !s.completado && !estaCubierto(s) && pasaArea(s);
+  const vencidos = seguimientos.filter((s) => activo(s) && diasHasta(s.proximaFecha) < 0).length;
+  const hoyCount = seguimientos.filter((s) => activo(s) && diasHasta(s.proximaFecha) === 0).length;
+  const proximos7 = seguimientos.filter((s) => activo(s) && diasHasta(s.proximaFecha) > 0 && diasHasta(s.proximaFecha) <= 7).length;
+  const totalActivos = seguimientos.filter(activo).length;
+  const nCubiertos = seguimientos.filter((s) => s.activo && !s.completado && estaCubierto(s) && pasaArea(s)).length;
+  const contarArea = (a) => seguimientos.filter((s) => s.activo && !s.completado && !estaCubierto(s) && (a === "todas" || areaDe(s) === a)).length;
   const onTipoChange = (t) => {
     const tipo = TIPOS_SEGUIMIENTO.find((x) => x.id === t);
     const frec = tipo?.frecDefault || 30;
@@ -7287,9 +7343,10 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     { label: "Hoy", val: hoyCount, color: "#e67e22", bg: "#fef9e7", icono: "\u26A1", sub: "Para atender hoy" },
     { label: "Esta semana", val: proximos7, color: "#f39c12", bg: "#fffbea", icono: "\u{1F4C5}", sub: "Pr\xF3ximos 7 d\xEDas" },
     { label: "Total activos", val: totalActivos, color: C.verde, bg: C.verdeL, icono: "\u2705", sub: "En seguimiento" }
-  ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: k.bg, borderRadius: 14, padding: "16px 18px", borderLeft: `4px solid ${k.color}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, marginBottom: 4 } }, k.icono), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: k.color, fontFamily: "Georgia,serif", lineHeight: 1 } }, k.val), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: k.color, marginTop: 4 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#888", marginTop: 2 } }, k.sub)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 18 } }, [
+  ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: k.bg, borderRadius: 14, padding: "16px 18px", borderLeft: `4px solid ${k.color}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, marginBottom: 4 } }, k.icono), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, fontWeight: 800, color: k.color, fontFamily: "Georgia,serif", lineHeight: 1 } }, k.val), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: k.color, marginTop: 4 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#888", marginTop: 2 } }, k.sub)))), React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" } }, AREAS_SEGUIMIENTO.map((a) => React.createElement("button", { key: a.id, onClick: () => setAreaSeg(a.id), style: { padding: "9px 16px", borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1.5px solid " + (areaSeg === a.id ? a.color : "#e0e4e8"), background: areaSeg === a.id ? a.color : "#fff", color: areaSeg === a.id ? "#fff" : "#334155" } }, a.icono + " " + a.label + " (" + contarArea(a.id) + ")"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" } }, [
     { id: "pendientes", label: "\u23F3 Pendientes" },
     { id: "todos", label: "\u{1F4CB} Todos" },
+    { id: "cubiertos", label: "\u{1F4B3} Ya facturados (" + nCubiertos + ")" },
     { id: "completados", label: "\u2705 Completados" }
   ].map((f) => /* @__PURE__ */ React.createElement("button", { key: f.id, onClick: () => setFiltro(f.id), style: {
     background: filtro === f.id ? C.verde : "#fff",
@@ -7303,7 +7360,14 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   } }, f.label)), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", fontSize: 13, color: C.grisd, alignSelf: "center" } }, segsVis.length, " resultado(s)")), segsVis.length === 0 ? /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0", color: C.grisd } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 40, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 6 } }, filtro === "pendientes" ? "\xA1Todo al d\xEDa! No hay seguimientos pendientes." : "No hay seguimientos registrados."), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13 } }, "Crea un seguimiento para empezar a dar seguimiento a tus clientes."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => setVista("nuevo") }, "+ Nuevo seguimiento")))) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, segsVis.map((seg, idx) => {
     const estado = estadoSeguimiento(seg);
     const tipo = TIPOS_SEGUIMIENTO.find((t) => t.id === seg.tipo) || TIPOS_SEGUIMIENTO[TIPOS_SEGUIMIENTO.length - 1];
-    return /* @__PURE__ */ React.createElement(Card, { key: seg.id || idx, style: { borderLeft: `5px solid ${tipo.color}`, padding: "16px 20px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, minWidth: 36, textAlign: "center" } }, tipo.icono), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 800, fontSize: 15 } }, seg.mascota), /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, fontSize: 13 } }, "\u2014"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: C.grisd } }, seg.propietario), seg.telefono && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.azul } }, "\u{1F4F1} ", seg.telefono)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(Badge, { color: tipo.color }, tipo.label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, "Cada ", seg.frecuencia, " d\xEDas"), seg.notas && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, "\xB7 ", seg.notas.slice(0, 40), seg.notas.length > 40 ? "..." : "")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, fontSize: 12, color: C.grisd } }, "\xDAltima vez: ", /* @__PURE__ */ React.createElement("strong", null, seg.ultimaFecha), " \xA0\xB7\xA0 Pr\xF3xima: ", /* @__PURE__ */ React.createElement("strong", null, seg.proximaFecha))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", minWidth: 120 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    const ventaCubre = cubiertos.get(String(seg.id));
+    return /* @__PURE__ */ React.createElement(Card, { key: seg.id || idx, style: { borderLeft: `5px solid ${ventaCubre ? "#16a34a" : tipo.color}`, padding: "16px 20px", background: ventaCubre ? "#f0fdf4" : undefined } },
+      ventaCubre && React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", background: "#dcfce7", borderRadius: 8, padding: "8px 12px", marginBottom: 10 } },
+        React.createElement("div", { style: { fontSize: 12.5, color: "#166534", fontWeight: 600 } },
+          "\u2705 Ya se le factur\u00F3 el " + ventaCubre.fecha + " \u2014 " + (ventaCubre.servicio || ventaCubre.descripcion || "servicio") + " \u00B7 " + RD(ventaCubre.total || 0)),
+        React.createElement("button", { onClick: () => marcarHecho(seg.id, ventaCubre.fecha), style: { background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "6px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } },
+          "\u2713 Reprogramar desde esa fecha")),
+      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, minWidth: 36, textAlign: "center" } }, tipo.icono), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 800, fontSize: 15 } }, seg.mascota), /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, fontSize: 13 } }, "\u2014"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: C.grisd } }, seg.propietario), seg.telefono && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.azul } }, "\u{1F4F1} ", seg.telefono)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(Badge, { color: tipo.color }, tipo.label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, "Cada ", seg.frecuencia, " d\xEDas"), seg.notas && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, "\xB7 ", seg.notas.slice(0, 40), seg.notas.length > 40 ? "..." : "")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, fontSize: 12, color: C.grisd } }, "\xDAltima vez: ", /* @__PURE__ */ React.createElement("strong", null, seg.ultimaFecha), " \xA0\xB7\xA0 Pr\xF3xima: ", /* @__PURE__ */ React.createElement("strong", null, seg.proximaFecha))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", minWidth: 120 } }, /* @__PURE__ */ React.createElement("div", { style: {
       background: estado.bg,
       color: estado.color,
       borderRadius: 20,
