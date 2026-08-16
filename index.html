@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-16 17:52Z";
+const PC_BUILD = "2026-08-16 17:56Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -14008,7 +14008,14 @@ function AvisoCambiosFacturas({ session }) {
     try {
       const r = await supaFetch("pc_auditoria", "GET", null,
         "?tabla=in.(pc_facturas,pc_ventas)&accion=in.(editar,borrar)&order=fecha.desc&limit=120");
-      setMovs((Array.isArray(r) ? r : []).filter((m) => String(m.usuario || "").toLowerCase() !== miEmail));
+      const ajenos = (Array.isArray(r) ? r : []).filter((m) => String(m.usuario || "").toLowerCase() !== miEmail);
+      // Si el blindaje de la base de datos esta instalado (filas con origen "bd"),
+      // esas mandan: las escribe Postgres solo y no se pueden falsear ni evitar.
+      // Las de la app quedarian repetidas, asi que se dejan solo para lo que el
+      // blindaje no cubre (las ediciones de ventas sueltas).
+      const hayBD = ajenos.some((m) => String(m.origen || "") === "bd");
+      setMovs(!hayBD ? ajenos : ajenos.filter((m) =>
+        String(m.origen || "") === "bd" || (m.tabla === "pc_ventas" && m.accion === "editar")));
     } catch { /* sin conexión: no molestar */ }
   }, [miEmail]);
 
@@ -14058,6 +14065,7 @@ function AvisoCambiosFacturas({ session }) {
               E("div", { style: { fontWeight: 800, fontSize: 13.5, color: "#1f2937" } },
                 (m.accion === "borrar" ? "🗑️ BORRÓ · " : "✏️ EDITÓ · ") + (partes[0] || m.tabla)),
               E("div", { style: { fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" } },
+                String(m.origen || "") === "bd" ? "🔒 " : "",
                 String(m.usuario || "?").split("@")[0] + " · " + fh(m.fecha))),
             partes.slice(1).length > 0
               ? E("div", { style: { paddingLeft: 6 } }, partes.slice(1).map((c, k) =>
