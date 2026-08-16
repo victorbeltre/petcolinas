@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-16 03:44Z";
+const PC_BUILD = "2026-08-16 17:34Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -6645,14 +6645,30 @@ function ModalPagosPendientes({ ventas, setVentas, clientes, onClose }) {
 // los números del negocio, ni los datos de contacto de los clientes.
 // Los teléfonos, correos y direcciones se le quitan a los datos ANTES de
 // pasárselos a los componentes, así que ni siquiera llegan a su pantalla.
+const TABS_PORTAL_CAJA = [
+  { id: "ventas", icono: "\u{1F4B0}", label: "Registrar venta" },
+  { id: "facturas", icono: "\u{1F4C4}", label: "Facturas" },
+  { id: "agenda", icono: "\u{1F4C5}", label: "Agenda" },
+  { id: "seguimientos", icono: "\u{1F514}", label: "Seguimientos" },
+  { id: "whatsapp", icono: "\u{1F4AC}", label: "WhatsApp" },
+  { id: "notificaciones", icono: "\u{1F43E}", label: "Clientes nuevos" }
+];
 function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, clientes, setClientes,
                       citas, setCitas, deleteCita, inventario, setInventario, tarifasGrooming, tarifasVet,
                       seguimientos, setSeguimientos, notifLeidas, marcarNotifLeida, marcarNotifLeidas,
                       desmarcarNotif, refetchCitas }) {
   const E = React.createElement;
   const C = { verde: "#1a6b3a", grisd: "#5a6472", fondo: "#f0f4f8" };
-  const [tab, setTab] = React.useState("ventas");
+  const [tab, setTabRaw] = React.useState("ventas");
   const [clienteInicial, setClienteInicial] = React.useState(null);
+  // Los componentes que se reutilizan piden pestañas del panel de administración
+  // ("clientes", "reportes"…) que aquí no existen: eso dejaba la pantalla en
+  // blanco. Se traduce a lo más parecido de este portal y si no, no se mueve.
+  const setTab = (id) => {
+    const equivalencias = { clientes: "ventas", crm: "ventas", dashboard: "ventas", vozia: "whatsapp", llamadas: "whatsapp" };
+    const destino = equivalencias[id] || id;
+    setTabRaw((actual) => TABS_CAJA.some((t) => t.id === destino) ? destino : actual);
+  };
 
   // Necesita el teléfono para que funcionen los botones de WhatsApp, así que sí
   // le llegan. Lo que se le sigue quitando es lo que no usa para atender:
@@ -6661,14 +6677,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
     ...c, direccion: "", instagram: "", cedula: ""
   })), [clientes]);
 
-  const TABS_CAJA = [
-    { id: "ventas", icono: "\u{1F4B0}", label: "Registrar venta" },
-    { id: "facturas", icono: "\u{1F4C4}", label: "Facturas" },
-    { id: "agenda", icono: "\u{1F4C5}", label: "Agenda" },
-    { id: "seguimientos", icono: "\u{1F514}", label: "Seguimientos" },
-    { id: "whatsapp", icono: "\u{1F4AC}", label: "WhatsApp" },
-    { id: "notificaciones", icono: "\u{1F43E}", label: "Clientes nuevos" }
-  ];
+  const TABS_CAJA = TABS_PORTAL_CAJA;
   const pendNotif = (clientes || []).filter((c) => esInscripcionWeb(c) && !notifArchivada(c) &&
     !notifAtendida(c, notifLeidas instanceof Set ? notifLeidas : new Set())).length;
 
@@ -6676,7 +6685,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
     E("div", { style: { background: C.verde, color: "#fff", padding: "16px 24px" } },
       E("div", { style: { maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 } },
         E("div", null,
-          E("div", { style: { fontWeight: 900, fontSize: 19 } }, "\u{1F43E} PetColinas \u00B7 Caja"),
+          E("div", { style: { fontWeight: 900, fontSize: 19 } }, "\u{1F43E} PetColinas"),
           E("div", { style: { fontSize: 12, opacity: .85, marginTop: 2 } }, session?.user?.email || "")),
         E("button", { onClick: onLogout, style: { background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Cerrar sesi\u00F3n"))),
 
@@ -6701,10 +6710,9 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
       tab === "seguimientos" && E(Seguimientos, { seguimientos, setSeguimientos, clientes: clientesCaja, ventas }),
       tab === "whatsapp" && E(WhatsAppInbox, null),
       tab === "notificaciones" && E(TabNotificaciones, { clientes, setClientes, notifLeidas,
-        marcarNotifLeida, marcarNotifLeidas, desmarcarNotif, setTab, setCrmClienteInicial: setClienteInicial })),
+        marcarNotifLeida, marcarNotifLeidas, desmarcarNotif, setTab,
+        setCrmClienteInicial: (d) => setClienteInicial(d ? { ...d, modo: "ventaCliente" } : null) })),
 
-    E("div", { style: { textAlign: "center", padding: "20px", fontSize: 11.5, color: "#9aa7b1" } },
-      "Acceso de caja \u00B7 sin informaci\u00F3n financiera del negocio")
   );
 }
 
