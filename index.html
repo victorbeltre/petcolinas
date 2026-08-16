@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-16 02:54Z";
+const PC_BUILD = "2026-08-16 03:44Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -6654,10 +6654,11 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
   const [tab, setTab] = React.useState("ventas");
   const [clienteInicial, setClienteInicial] = React.useState(null);
 
-  // Clientes sin datos de contacto: solo el nombre de la mascota y el dueño,
-  // que es lo que necesita para registrar la venta.
-  const clientesSinContacto = React.useMemo(() => (clientes || []).map((c) => ({
-    ...c, telefono: "", email: "", direccion: "", instagram: "", cedula: ""
+  // Necesita el teléfono para que funcionen los botones de WhatsApp, así que sí
+  // le llegan. Lo que se le sigue quitando es lo que no usa para atender:
+  // cédula, dirección e Instagram.
+  const clientesCaja = React.useMemo(() => (clientes || []).map((c) => ({
+    ...c, direccion: "", instagram: "", cedula: ""
   })), [clientes]);
 
   const TABS_CAJA = [
@@ -6665,6 +6666,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
     { id: "facturas", icono: "\u{1F4C4}", label: "Facturas" },
     { id: "agenda", icono: "\u{1F4C5}", label: "Agenda" },
     { id: "seguimientos", icono: "\u{1F514}", label: "Seguimientos" },
+    { id: "whatsapp", icono: "\u{1F4AC}", label: "WhatsApp" },
     { id: "notificaciones", icono: "\u{1F43E}", label: "Clientes nuevos" }
   ];
   const pendNotif = (clientes || []).filter((c) => esInscripcionWeb(c) && !notifArchivada(c) &&
@@ -6689,14 +6691,15 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
 
     E("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "24px" } },
       tab === "ventas" && E(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario,
-        clientes: clientesSinContacto, setTab, setCrmClienteInicial: setClienteInicial,
+        clientes: clientesCaja, setTab, setCrmClienteInicial: setClienteInicial,
         clienteVentaInicial: clienteInicial, clearClienteVentaInicial: () => setClienteInicial(null),
         tarifasGrooming, tarifasVet, setSeguimientos }),
-      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesSinContacto,
+      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesCaja,
         tarifasGrooming, tarifasVet, inventario }),
-      tab === "agenda" && E(Agenda, { citas, setCitas, deleteCita, clientes: clientesSinContacto, ventas, setVentas,
+      tab === "agenda" && E(Agenda, { citas, setCitas, deleteCita, clientes: clientesCaja, ventas, setVentas,
         tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }),
-      tab === "seguimientos" && E(Seguimientos, { seguimientos, setSeguimientos, clientes: clientesSinContacto, ventas }),
+      tab === "seguimientos" && E(Seguimientos, { seguimientos, setSeguimientos, clientes: clientesCaja, ventas }),
+      tab === "whatsapp" && E(WhatsAppInbox, null),
       tab === "notificaciones" && E(TabNotificaciones, { clientes, setClientes, notifLeidas,
         marcarNotifLeida, marcarNotifLeidas, desmarcarNotif, setTab, setCrmClienteInicial: setClienteInicial })),
 
