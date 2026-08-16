@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-16 17:34Z";
+const PC_BUILD = "2026-08-16 17:52Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -577,11 +577,38 @@ function usuarioActual() {
     return (s && s.user && s.user.email) || "desconocido";
   } catch { return "desconocido"; }
 }
-function auditar(tabla, accion, fila) {
+// Compara dos versiones de una fila y describe qué cambió, campo por campo.
+const AUD_ETIQUETAS = { total: "Total", precio: "Precio", descuento: "Descuento", comision: "Comisión",
+  servicio: "Servicio", descripcion: "Descripción", cliente: "Cliente", mascota: "Mascota",
+  propietario: "Propietario", fecha: "Fecha", formapago: "Forma de pago", formaPago: "Forma de pago",
+  estado: "Estado", metodoPago: "Método de pago", itbis: "ITBIS", numero: "N.º factura",
+  recibidopor: "Atendido por", cobradopor: "Cobrado por", notas: "Notas", area: "Área" };
+function diffAuditoria(antes, despues) {
+  const a = antes || {}, d = despues || {};
+  const cambios = [];
+  const money = (k) => ["total", "precio", "descuento", "comision", "subtotal", "itbisAmt"].includes(k);
+  Object.keys(AUD_ETIQUETAS).forEach((k) => {
+    if (!(k in a) && !(k in d)) return;
+    const va = a[k], vd = d[k];
+    const sa = va == null ? "" : String(va), sd = vd == null ? "" : String(vd);
+    if (sa === sd) return;
+    const fmt = (x) => x === "" ? "(vacío)" : money(k) ? "RD$ " + (Number(x) || 0).toLocaleString("es-DO") : x;
+    cambios.push(AUD_ETIQUETAS[k] + ": " + fmt(sa) + " → " + fmt(sd));
+  });
+  // Las líneas de servicio se comparan aparte
+  const li = (x) => (Array.isArray(x && x.items) ? x.items : []).map((i) =>
+    (i.nombre || i.descripcion || "?") + " RD$" + (Number(i.subtotal ?? i.precio) || 0)).join(" + ");
+  if (li(a) !== li(d)) cambios.push("Servicios: [" + (li(a) || "vacío") + "] → [" + (li(d) || "vacío") + "]");
+  return cambios;
+}
+
+function auditar(tabla, accion, fila, cambios) {
   if (!AUD_DISPONIBLE || !AUD_TABLAS.has(tabla)) return;
   const r = fila || {};
-  const resumen = [r.cliente, r.nombreMascota, r.mascota, r.numero, r.descripcion, r.servicio, r.nombre]
-    .filter(Boolean).join(" · ").slice(0, 160);
+  const quien = [r.cliente, r.nombreMascota, r.mascota, r.numero && ("factura #" + r.numero)]
+    .filter(Boolean).join(" · ");
+  const detalle = Array.isArray(cambios) && cambios.length ? " || " + cambios.join(" || ") : "";
+  const resumen = (quien + (r.servicio || r.descripcion ? " · " + (r.servicio || r.descripcion) : "") + detalle).slice(0, 1800);
   supaFetch("pc_auditoria", "POST", {
     id: Date.now() + Math.floor(Math.random() * 1000),
     fecha: new Date().toISOString(),
@@ -620,7 +647,7 @@ async function upsertOne(table, row) {
       return false;
     }
     console.log(`[upsertOne] ${table} id=${row.id} OK`);
-    auditar(table, "guardar", row);
+    auditar(table, "guardar", row, row && row.__cambios);
     if (typeof window.__notifSyncOk === "function") window.__notifSyncOk();
     return true;
   } catch (e) {
@@ -3806,6 +3833,11 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
         ".\n\nEsta acci\xF3n no se puede deshacer."
       : "\xBFBorrar la factura #" + f.numero + "?\nEsta acci\xF3n no se puede deshacer.";
     if (!confirm(aviso)) return;
+    try {
+      auditar("pc_facturas", "borrar", f, ["Factura eliminada por RD$ " + (Number(f.total) || 0).toLocaleString("es-DO"),
+        "Serv.: " + ((f.items || []).map((i) => i.descripcion || i.nombre).filter(Boolean).join(" + ") || "sin detalle"),
+        grupo.length ? "Arrastró " + grupo.length + " venta(s)" : "Sin ventas asociadas"]);
+    } catch (e) {}
     setFacturas((fs) => fs.filter((x) => String(x.id) !== String(f.id)));
     deleteOne("pc_facturas", f.id).catch(() => {});
     if (deleteVenta) grupo.forEach((v) => { try { deleteVenta(v.id); } catch {} });
@@ -3887,6 +3919,11 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       }
 
       const editada = { ...nueva, id: idFinal, numero, autoGenerada: false };
+      // Registro de auditoría con el detalle de lo que cambió en la factura.
+      try {
+        const cambios = diffAuditoria(editandoOrig || {}, editada);
+        if (cambios.length) auditar("pc_facturas", "editar", editada, cambios);
+      } catch (e) { console.warn("[Auditoría factura]", e); }
       setFacturas((fs) => {
         const sinViejas = fs.filter((f) => String(f.id) !== String(editandoId) && String(f.id) !== String(idFinal));
         return [editada, ...sinViejas];
@@ -7025,7 +7062,7 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
@@ -9311,7 +9348,7 @@ items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAd
             )
           )
         )
-      ), editandoVenta ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Cliente"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.cliente || "", onChange: e => setVentaEditForm({...ventaEditForm, cliente: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Fecha"), /* @__PURE__ */ React.createElement("input", { type: "date", value: ventaEditForm.fecha || "", onChange: e => setVentaEditForm({...ventaEditForm, fecha: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "\xC1rea"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.area || "grooming", onChange: e => setVentaEditForm({...ventaEditForm, area: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "grooming" }, "Grooming"), /* @__PURE__ */ React.createElement("option", { value: "veterinaria" }, "Veterinaria"), /* @__PURE__ */ React.createElement("option", { value: "farmacia" }, "Farmacia"), /* @__PURE__ */ React.createElement("option", { value: "tienda" }, "Tienda"), /* @__PURE__ */ React.createElement("option", { value: "mixta" }, "Mixta"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Descripci\xF3n / Servicio"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.descripcion || "", onChange: e => setVentaEditForm({...ventaEditForm, descripcion: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), React.createElement(EditorItemsVenta, { items: ventaEditForm.items || [], setItems: (nv) => { const arr = typeof nv === "function" ? nv(ventaEditForm.items || []) : nv; const t = arr.reduce((n, it) => n + (Number(it.subtotal ?? it.precio) || 0), 0); const c = arr.reduce((n, it) => n + (Number(it.comision) || 0), 0); setVentaEditForm({ ...ventaEditForm, items: arr, total: arr.length ? t : ventaEditForm.total, comision: arr.length ? c : ventaEditForm.comision, descripcion: arr.length ? arr.map((it) => it.nombre || it.descripcion || "").filter(Boolean).join(" + ") : ventaEditForm.descripcion }); }, tarifasGrooming, tarifasVet, inventario }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Forma de pago"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.formapago || "", onChange: e => setVentaEditForm({...ventaEditForm, formapago: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "Pago pendiente" }, "\u23F3 Pago pendiente"), /* @__PURE__ */ React.createElement("option", { value: "efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Total (RD$)"), /* @__PURE__ */ React.createElement("input", { type: "number", value: ventaEditForm.total || 0, onChange: e => setVentaEditForm({...ventaEditForm, total: parseFloat(e.target.value) || 0}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => { /* El formulario solo traia formapago en minuscula, asi que formaPago (camelCase) se quedaba con el valor viejo y denormalizeRow lo prefiere al guardar: el cambio de forma de pago se descartaba en silencio. Se escriben ambas. */ const fp = ventaEditForm.formapago || ""; const its = Array.isArray(ventaEditForm.items) ? ventaEditForm.items : []; const updated = { ...ventaDetalle, ...ventaEditForm, items: its, total: its.length ? its.reduce((n, it) => n + (Number(it.subtotal ?? it.precio) || 0), 0) : (Number(ventaEditForm.total) || 0), comision: Number(ventaEditForm.comision) || 0, servicio: ventaEditForm.descripcion, descripcion: ventaEditForm.descripcion, formapago: fp, formaPago: fp }; setVentas(prev => prev.map(v => String(v.id) === String(ventaDetalle.id) ? updated : v)); try { const pc = JSON.parse(localStorage.getItem("pc_pagos_conf") || "{}"); pc[String(ventaDetalle.id)] = fp; guardarLocal("pc_pagos_conf", pc); } catch (e) {} upsertOne("pc_ventas", updated).catch(e => console.error("[editVenta]", e)); setVentaDetalle(updated); setEditandoVenta(false); }, style: { flex: 1, background: C.verde, color: "#fff", border: "none", cursor: "pointer", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700 } }, "\u2714 Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditandoVenta(false), style: { background: "#f1f5f9", color: C.grisd, border: "none", cursor: "pointer", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 } }, "Cancelar"))) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: C.verde } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(ventaDetalle.total)))))));
+      ), editandoVenta ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Cliente"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.cliente || "", onChange: e => setVentaEditForm({...ventaEditForm, cliente: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Fecha"), /* @__PURE__ */ React.createElement("input", { type: "date", value: ventaEditForm.fecha || "", onChange: e => setVentaEditForm({...ventaEditForm, fecha: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "\xC1rea"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.area || "grooming", onChange: e => setVentaEditForm({...ventaEditForm, area: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "grooming" }, "Grooming"), /* @__PURE__ */ React.createElement("option", { value: "veterinaria" }, "Veterinaria"), /* @__PURE__ */ React.createElement("option", { value: "farmacia" }, "Farmacia"), /* @__PURE__ */ React.createElement("option", { value: "tienda" }, "Tienda"), /* @__PURE__ */ React.createElement("option", { value: "mixta" }, "Mixta"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Descripci\xF3n / Servicio"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.descripcion || "", onChange: e => setVentaEditForm({...ventaEditForm, descripcion: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), React.createElement(EditorItemsVenta, { items: ventaEditForm.items || [], setItems: (nv) => { const arr = typeof nv === "function" ? nv(ventaEditForm.items || []) : nv; const t = arr.reduce((n, it) => n + (Number(it.subtotal ?? it.precio) || 0), 0); const c = arr.reduce((n, it) => n + (Number(it.comision) || 0), 0); setVentaEditForm({ ...ventaEditForm, items: arr, total: arr.length ? t : ventaEditForm.total, comision: arr.length ? c : ventaEditForm.comision, descripcion: arr.length ? arr.map((it) => it.nombre || it.descripcion || "").filter(Boolean).join(" + ") : ventaEditForm.descripcion }); }, tarifasGrooming, tarifasVet, inventario }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Forma de pago"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.formapago || "", onChange: e => setVentaEditForm({...ventaEditForm, formapago: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "Pago pendiente" }, "\u23F3 Pago pendiente"), /* @__PURE__ */ React.createElement("option", { value: "efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Total (RD$)"), /* @__PURE__ */ React.createElement("input", { type: "number", value: ventaEditForm.total || 0, onChange: e => setVentaEditForm({...ventaEditForm, total: parseFloat(e.target.value) || 0}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => { /* El formulario solo traia formapago en minuscula, asi que formaPago (camelCase) se quedaba con el valor viejo y denormalizeRow lo prefiere al guardar: el cambio de forma de pago se descartaba en silencio. Se escriben ambas. */ const fp = ventaEditForm.formapago || ""; const its = Array.isArray(ventaEditForm.items) ? ventaEditForm.items : []; const updated = { ...ventaDetalle, ...ventaEditForm, items: its, total: its.length ? its.reduce((n, it) => n + (Number(it.subtotal ?? it.precio) || 0), 0) : (Number(ventaEditForm.total) || 0), comision: Number(ventaEditForm.comision) || 0, servicio: ventaEditForm.descripcion, descripcion: ventaEditForm.descripcion, formapago: fp, formaPago: fp }; setVentas(prev => prev.map(v => String(v.id) === String(ventaDetalle.id) ? updated : v)); try { const pc = JSON.parse(localStorage.getItem("pc_pagos_conf") || "{}"); pc[String(ventaDetalle.id)] = fp; guardarLocal("pc_pagos_conf", pc); } catch (e) {} try { const camb = diffAuditoria(ventaDetalle, updated); if (camb.length) auditar("pc_ventas", "editar", updated, camb); } catch (e) {} upsertOne("pc_ventas", updated).catch(e => console.error("[editVenta]", e)); setVentaDetalle(updated); setEditandoVenta(false); }, style: { flex: 1, background: C.verde, color: "#fff", border: "none", cursor: "pointer", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700 } }, "\u2714 Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditandoVenta(false), style: { background: "#f1f5f9", color: C.grisd, border: "none", cursor: "pointer", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 } }, "Cancelar"))) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: C.verde } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(ventaDetalle.total)))))));
 }
 function InventarioAnalytics({ inventario, ventas }) {
   const [seccion, setSeccion] = React.useState("resumen");
@@ -13957,6 +13994,83 @@ function sugerirFechaCorregida(f) {
   // 4) Fecha muy lejana: casi seguro es el año mal tecleado.
   const c4 = `${Number(y) - 1}-${m}-${d}`; if (valida(c4)) return c4;
   return HOY;
+}
+
+// Aviso para el dueño: cambios en facturas y ventas hechos por OTROS usuarios.
+// Solo aparece en el perfil principal.
+function AvisoCambiosFacturas({ session }) {
+  const E = React.createElement;
+  const [movs, setMovs] = React.useState([]);
+  const [abierto, setAbierto] = React.useState(false);
+  const miEmail = String((session && session.user && session.user.email) || "").toLowerCase();
+
+  const cargar = React.useCallback(async () => {
+    try {
+      const r = await supaFetch("pc_auditoria", "GET", null,
+        "?tabla=in.(pc_facturas,pc_ventas)&accion=in.(editar,borrar)&order=fecha.desc&limit=120");
+      setMovs((Array.isArray(r) ? r : []).filter((m) => String(m.usuario || "").toLowerCase() !== miEmail));
+    } catch { /* sin conexión: no molestar */ }
+  }, [miEmail]);
+
+  React.useEffect(() => {
+    cargar();
+    const t = setInterval(cargar, 90000);
+    return () => clearInterval(t);
+  }, [cargar]);
+
+  let visto = 0; try { visto = Number(localStorage.getItem("pc_aud_visto") || 0); } catch {}
+  const nuevos = movs.filter((m) => Number(m.id) > visto);
+  if (nuevos.length === 0) return null;
+
+  const marcarVisto = () => {
+    try { localStorage.setItem("pc_aud_visto", String(movs.reduce((n, m) => Math.max(n, Number(m.id) || 0), 0))); } catch {}
+    setMovs([]);
+  };
+  const fh = (f) => {
+    const d = new Date(f);
+    return isNaN(d.getTime()) ? String(f || "") :
+      d.toLocaleDateString("es-DO", { day: "2-digit", month: "short" }) + " a las " +
+      d.toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  return E("div", { style: {
+      background: "linear-gradient(90deg,#fef2f2,#fffafa)", border: "2px solid #dc2626",
+      borderRadius: 14, padding: "14px 18px", marginBottom: 18
+    } },
+    E("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
+      E("div", { style: { fontSize: 26 } }, "🔎"),
+      E("div", { style: { flex: 1, minWidth: 0 } },
+        E("div", { style: { fontWeight: 800, fontSize: 14.5, color: "#991b1b" } },
+          nuevos.length === 1 ? "Se modificó 1 factura o venta" : "Se modificaron " + nuevos.length + " facturas o ventas"),
+        E("div", { style: { fontSize: 12.5, color: "#6b7280", marginTop: 3 } },
+          "Cambios hechos por otro usuario. Revísalos y confirma que son correctos.")),
+      E("button", { onClick: () => setAbierto((v) => !v), style: {
+        background: "#dc2626", color: "#fff", border: "none", borderRadius: 10,
+        padding: "10px 18px", fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap"
+      } }, abierto ? "Cerrar" : "Ver el detalle")),
+
+    abierto && E("div", { style: { marginTop: 14, borderTop: "1px solid #fecaca", paddingTop: 12 } },
+      E("div", { style: { maxHeight: 380, overflowY: "auto" } },
+        nuevos.map((m) => {
+          const partes = String(m.resumen || "").split(" || ");
+          return E("div", { key: m.id, style: { padding: "10px 0", borderBottom: "1px solid #fef2f2" } },
+            E("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 4 } },
+              E("div", { style: { fontWeight: 800, fontSize: 13.5, color: "#1f2937" } },
+                (m.accion === "borrar" ? "🗑️ BORRÓ · " : "✏️ EDITÓ · ") + (partes[0] || m.tabla)),
+              E("div", { style: { fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" } },
+                String(m.usuario || "?").split("@")[0] + " · " + fh(m.fecha))),
+            partes.slice(1).length > 0
+              ? E("div", { style: { paddingLeft: 6 } }, partes.slice(1).map((c, k) =>
+                  E("div", { key: k, style: { fontSize: 12.5, color: "#b91c1c", padding: "2px 0" } }, "• " + c)))
+              : E("div", { style: { fontSize: 12, color: "#9ca3af", paddingLeft: 6 } }, "Sin detalle de cambios registrado."),
+            m.monto > 0 && E("div", { style: { fontSize: 12, color: "#6b7280", paddingLeft: 6, marginTop: 2 } },
+              "Monto de la fila: RD$ " + Number(m.monto).toLocaleString("es-DO")));
+        })),
+      E("button", { onClick: marcarVisto, style: {
+        marginTop: 12, background: "#16a34a", color: "#fff", border: "none", borderRadius: 10,
+        padding: "10px 18px", fontWeight: 800, fontSize: 13, cursor: "pointer"
+      } }, "✓ Ya lo revisé"))
+  );
 }
 
 function AvisoFechasFuturas({ ventas, setVentas }) {
