@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-17 19:26Z";
+const PC_BUILD = "2026-08-17 19:52Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -7105,7 +7105,7 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
@@ -7616,7 +7616,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   }
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20 } }, "\u{1F514} Seguimientos"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 2 } }, "Recordatorios de servicios y clientes sin venir")), subTab === "recordatorios" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowWaMasivo(true), style: { background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\uD83D\uDCF2 WA Masivo"), /* @__PURE__ */ React.createElement("button", { onClick: llamarTodosSofia, disabled: llamandoMasivo, style: { background: llamandoMasivo ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: llamandoMasivo ? "not-allowed" : "pointer" } }, llamandoMasivo ? "\uD83D\uDCDE Llamando..." : "\uD83D\uDCDE Llamar vencidos"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setVista("nuevo") }, "+ Nuevo seguimiento"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 0, borderBottom: "2px solid #eef0f2", marginBottom: 24 } }, [
     { id: "recordatorios", label: "\u{1F5D3}\uFE0F Recordatorios de servicio" },
-    { id: "inactivos", label: "\u{1F634} Clientes sin venir" }
+    { id: "inactivos", label: "\u{1F504} Reactivaci\xF3n" }
   ].map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setSubTab(t.id), style: {
     background: "none",
     border: "none",
@@ -7626,7 +7626,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     fontWeight: 700,
     color: subTab === t.id ? C.verde : C.grisd,
     borderBottom: subTab === t.id ? `3px solid ${C.verde}` : "3px solid transparent"
-  } }, t.label))), subTab === "inactivos" && /* @__PURE__ */ React.createElement(ClientesInactivos, { clientes, ventas }), showWaMasivo && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 24, width: "min(90vw, 520px)", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 40px rgba(0,0,0,0.25)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 17 } }, "\uD83D\uDCF2 WhatsApp Masivo"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowWaMasivo(false), style: { background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#888" } }, "\u2715")), (() => { const lista = seguimientos.filter(s => s.activo && !s.completado && s.telefono); if (lista.length === 0) return React.createElement("div", { style: { color: "#888", fontSize: 13, textAlign: "center", padding: "20px 0" } }, "No hay seguimientos pendientes con n\xFAmero de tel\xE9fono."); return React.createElement("div", { style: { overflowY: "auto", flex: 1 } }, React.createElement("div", { style: { fontSize: 12, color: "#888", marginBottom: 10 } }, lista.length + " recordatorio(s) pendientes con WhatsApp"), lista.map((seg, i) => { const t = seg.telefono.replace(/\D/g, ""); const tel = t.length >= 11 ? t : "1" + t; const msg = whatsappMsg(seg); const tipo = TIPOS_SEGUIMIENTO.find(x => x.id === seg.tipo); return React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #f0f0f0" } }, React.createElement("div", { style: { flex: 1 } }, React.createElement("div", { style: { fontWeight: 700, fontSize: 13 } }, seg.mascota + " \u2014 " + seg.propietario), React.createElement("div", { style: { fontSize: 11, color: "#888" } }, (tipo?.label || seg.tipo) + " \xB7 " + seg.telefono + " \xB7 prox. " + seg.proximaFecha)), React.createElement("a", { href: "https://wa.me/" + tel + "?text=" + msg, target: "_blank", rel: "noreferrer", style: { background: "#25d366", color: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" } }, "\uD83D\uDCAC Enviar")); })); })())), subTab === "recordatorios" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { background: "#eaf4ff", border: "1.5px solid #1a4fa044", borderRadius: 12, padding: "12px 18px", marginBottom: 20, display: "flex", gap: 12, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22 } }, "\u{1F4CB}"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.azul, fontSize: 13 } }, "Seguimientos pre-cargados del historial 2025\u20132026"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 2 } }, "Ba\xF1os medicados (Karim, Copito, Shayna, Sodek), vacunas (rabia, qu\xEDntuple, bordetella, giardia), Nexgard/antipulgas y ba\xF1os regulares de clientes frecuentes. Las fechas pueden estar desactualizadas \u2014 marca ", /* @__PURE__ */ React.createElement("strong", null, "\u2713 Hecho"), " cuando atiendas cada mascota para actualizarlas."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 } }, [
+  } }, t.label))), subTab === "inactivos" && /* @__PURE__ */ React.createElement(Reactivacion, { clientes, ventas }), showWaMasivo && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 24, width: "min(90vw, 520px)", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 40px rgba(0,0,0,0.25)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 17 } }, "\uD83D\uDCF2 WhatsApp Masivo"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowWaMasivo(false), style: { background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#888" } }, "\u2715")), (() => { const lista = seguimientos.filter(s => s.activo && !s.completado && s.telefono); if (lista.length === 0) return React.createElement("div", { style: { color: "#888", fontSize: 13, textAlign: "center", padding: "20px 0" } }, "No hay seguimientos pendientes con n\xFAmero de tel\xE9fono."); return React.createElement("div", { style: { overflowY: "auto", flex: 1 } }, React.createElement("div", { style: { fontSize: 12, color: "#888", marginBottom: 10 } }, lista.length + " recordatorio(s) pendientes con WhatsApp"), lista.map((seg, i) => { const t = seg.telefono.replace(/\D/g, ""); const tel = t.length >= 11 ? t : "1" + t; const msg = whatsappMsg(seg); const tipo = TIPOS_SEGUIMIENTO.find(x => x.id === seg.tipo); return React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #f0f0f0" } }, React.createElement("div", { style: { flex: 1 } }, React.createElement("div", { style: { fontWeight: 700, fontSize: 13 } }, seg.mascota + " \u2014 " + seg.propietario), React.createElement("div", { style: { fontSize: 11, color: "#888" } }, (tipo?.label || seg.tipo) + " \xB7 " + seg.telefono + " \xB7 prox. " + seg.proximaFecha)), React.createElement("a", { href: "https://wa.me/" + tel + "?text=" + msg, target: "_blank", rel: "noreferrer", style: { background: "#25d366", color: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" } }, "\uD83D\uDCAC Enviar")); })); })())), subTab === "recordatorios" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { background: "#eaf4ff", border: "1.5px solid #1a4fa044", borderRadius: 12, padding: "12px 18px", marginBottom: 20, display: "flex", gap: 12, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22 } }, "\u{1F4CB}"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: C.azul, fontSize: 13 } }, "Seguimientos pre-cargados del historial 2025\u20132026"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#555", marginTop: 2 } }, "Ba\xF1os medicados (Karim, Copito, Shayna, Sodek), vacunas (rabia, qu\xEDntuple, bordetella, giardia), Nexgard/antipulgas y ba\xF1os regulares de clientes frecuentes. Las fechas pueden estar desactualizadas \u2014 marca ", /* @__PURE__ */ React.createElement("strong", null, "\u2713 Hecho"), " cuando atiendas cada mascota para actualizarlas."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 } }, [
     { label: "Vencidos", val: vencidos, color: "#c0392b", bg: "#fdeaea", icono: "\u{1F6A8}", sub: "Requieren atenci\xF3n ya" },
     { label: "Hoy", val: hoyCount, color: "#e67e22", bg: "#fef9e7", icono: "\u26A1", sub: "Para atender hoy" },
     { label: "Esta semana", val: proximos7, color: "#f39c12", bg: "#fffbea", icono: "\u{1F4C5}", sub: "Pr\xF3ximos 7 d\xEDas" },
@@ -7742,6 +7742,295 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     } }, "\u{1F5D1}"))));
   })), seguimientos.length > 0 && /* @__PURE__ */ React.createElement(Card, { style: { marginTop: 20, background: "#f8f9fa" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 12, color: C.grisd, textTransform: "uppercase", marginBottom: 10 } }, "\u{1F4A1} C\xF3mo usar los seguimientos"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10, fontSize: 12, color: C.grisd } }, /* @__PURE__ */ React.createElement("div", null, "\u2705 ", /* @__PURE__ */ React.createElement("strong", null, "Hecho"), " \u2014 Marca que el servicio fue realizado. La fecha se actualiza autom\xE1ticamente y se calcula la nueva cita."), /* @__PURE__ */ React.createElement("div", null, "\u{1F4AC} ", /* @__PURE__ */ React.createElement("strong", null, "WA"), " \u2014 Env\xEDa un recordatorio pre-redactado al cliente por WhatsApp con un solo clic."), /* @__PURE__ */ React.createElement("div", null, "\u23F8 ", /* @__PURE__ */ React.createElement("strong", null, "Pausar"), " \u2014 Congela el seguimiento sin eliminarlo (ej: mascota en viaje o tratamiento suspendido)."), /* @__PURE__ */ React.createElement("div", null, "\u270F\uFE0F ", /* @__PURE__ */ React.createElement("strong", null, "Editar"), " \u2014 Modifica frecuencia, fechas o notas seg\xFAn indicaci\xF3n veterinaria.")))));
 }
+// ─── REACTIVACION ───────────────────────────────────────────────────────────
+// 278 mascotas llevaban mas de 120 dias sin venir y 357 vinieron una sola vez.
+// Recuperar una cuesta cero; conseguir una nueva cuesta ~RD$760 de publicidad.
+// Esta pantalla ordena a quien escribirle primero: no por antiguedad, sino por
+// cuanto vale ese cliente y que tan tibio sigue.
+const REAC_SEGMENTOS = [
+  { id: "enfriando", label: "Se est\xE1n enfriando", corto: "45-89 d\xEDas", min: 45,  max: 89,
+    color: "#e67e22", bg: "#fef6e7", icono: "🌡️",
+    nota: "Todav\xEDa se acuerdan de ustedes. Estos son los que m\xE1s f\xE1cil vuelven." },
+  { id: "dormidas",  label: "Dormidas",             corto: "90-179 d\xEDas", min: 90,  max: 179,
+    color: "#c0392b", bg: "#fdeaea", icono: "😴",
+    nota: "Ya se les pas\xF3 el ciclo. Necesitan una raz\xF3n concreta para volver." },
+  { id: "perdidas",  label: "Pr\xE1cticamente perdidas", corto: "+180 d\xEDas", min: 180, max: 99999,
+    color: "#7b1113", bg: "#fbe0e0", icono: "🔴",
+    nota: "Probablemente ya usan otro sitio. Vale el intento, pero no esperes mucho." }
+];
+const REAC_LS = "pc_reactivacion";
+
+// El tono y la razon cambian segun que tan fria esta la mascota. El chequeo
+// gratis es la excusa de siempre: no cuesta nada y abre la puerta a la consulta.
+function reacMensaje(x, plantilla) {
+  const dueno = String(x.dueno || "").split(" ")[0];
+  const hola = "Hola" + (dueno ? " " + dueno : "") + "!";
+  const m = x.mascota;
+  if (plantilla === "chequeo") {
+    return hola + " \u{1F43E} Le escribimos de PetColinas. Hace " + x.dias + " d\xEDas que no vemos a *" + m + "*.\n\n" +
+      "Este mes estamos haciendo un *chequeo gratis de 5 puntos* (piel, o\xEDdos, dientes, peso y u\xF1as) con nuestra doctora " +
+      "a toda mascota que venga a ba\xF1o. \xBFSe lo apartamos?";
+  }
+  if (plantilla === "recordatorio") {
+    return hola + " \u{1F43E} Le saludamos de PetColinas. A *" + m + "* le toca su ba\xF1o hace rato — " +
+      "la \xFAltima vez fue el " + x.ultima + ".\n\n\xBFSe lo agendamos esta semana? Tenemos espacio.";
+  }
+  if (plantilla === "extranamos") {
+    return hola + " \u{1F43E} Aqu\xED PetColinas. Hace " + Math.round(x.dias / 30) + " meses que no vemos a *" + m + "* " +
+      "y quer\xEDamos saber c\xF3mo est\xE1.\n\nSi hay algo que podamos mejorar, d\xEDganoslo con confianza. " +
+      "Y si quiere volver a traerlo, aqu\xED lo esperamos con las puertas abiertas.";
+  }
+  return hola + " \u{1F43E} Le escribimos de PetColinas para saber c\xF3mo est\xE1 *" + m + "*. \xBFLe agendamos una visita?";
+}
+const REAC_PLANTILLAS = [
+  { id: "chequeo",      label: "\u{1FA7A} Chequeo gratis", nota: "La mejor. No cuesta nada y abre la consulta veterinaria." },
+  { id: "recordatorio", label: "\u{1F6C1} Le toca el ba\xF1o", nota: "Directa. Funciona con los que se est\xE1n enfriando." },
+  { id: "extranamos",   label: "\u{1F495} Los extra\xF1amos", nota: "Para los fr\xEDos. Pregunta si algo sali\xF3 mal." }
+];
+
+// Saca la reactivacion al dashboard. Vivia como sub-pestana de Seguimientos y
+// nadie entraba: por eso 278 mascotas se enfriaron sin que nadie las llamara.
+function AvisoReactivacion({ clientes, ventas, setTab }) {
+  const E = React.createElement;
+  const [cerrado, setCerrado] = React.useState(() => {
+    try { return localStorage.getItem("pc_reac_visto") === hoy(); } catch { return false; }
+  });
+  const datos = React.useMemo(() => {
+    const ult = new Map();
+    (ventas || []).forEach((v) => {
+      const k = String(v.cliente || "").toLowerCase().trim();
+      const f = String(v.fecha || "").slice(0, 10);
+      if (!k || !f) return;
+      if (!ult.has(k) || f > ult.get(k)) ult.set(k, f);
+    });
+    const base = new Date(); base.setHours(0,0,0,0);
+    let tibias = 0, tibiasTel = 0;
+    (clientes || []).forEach((c) => {
+      const nombre = String(c.nombreMascota || "").trim();
+      if (!nombre || esMascotaCasa(nombre)) return;
+      const f = ult.get(nombre.toLowerCase()) || String(c.ultimaVisita2025 || "").slice(0, 10);
+      if (!f) return;
+      const d = new Date(f + "T00:00:00");
+      if (isNaN(d.getTime())) return;
+      const dias = Math.round((base - d.getTime()) / 864e5);
+      if (dias >= 45 && dias <= 89) {
+        tibias++;
+        if (String(c.telefono || "").replace(/\D/g, "").length >= 10) tibiasTel++;
+      }
+    });
+    return { tibias, tibiasTel };
+  }, [clientes, ventas]);
+
+  if (cerrado || datos.tibiasTel === 0) return null;
+  return E("div", { style: { background: "#fef6e7", border: "2px solid #e67e22", borderRadius: 14,
+                             padding: "15px 18px", marginBottom: 16, display: "flex", gap: 12,
+                             alignItems: "center", flexWrap: "wrap" } },
+    E("span", { style: { fontSize: 26 } }, "🌡️"),
+    E("div", { style: { flex: 1, minWidth: 260 } },
+      E("div", { style: { fontWeight: 800, color: "#a5590f", fontSize: 15 } },
+        datos.tibias + " mascota" + (datos.tibias === 1 ? "" : "s") + " se est\xE1" + (datos.tibias === 1 ? "" : "n") + " enfriando"),
+      E("div", { style: { fontSize: 12.5, color: "#7c4a03", marginTop: 3 } },
+        "Llevan entre 45 y 89 d\xEDas sin venir y " + datos.tibiasTel + " tienen tel\xE9fono. ",
+        "Todav\xEDa se acuerdan de ustedes: es el momento m\xE1s barato de traerlas de vuelta.")),
+    E("button", { onClick: () => setTab && setTab("seguimientos"),
+      style: { background: "#e67e22", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px",
+               fontSize: 12.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" } }, "Ver la lista"),
+    E("button", { onClick: () => { try { guardarLocal("pc_reac_visto", hoy()); } catch (e) {} setCerrado(true); },
+      style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#a5590f" } }, "✕"));
+}
+function Reactivacion({ clientes, ventas }) {
+  const E = React.createElement;
+  const [seg, setSeg] = React.useState("enfriando");
+  const [plantilla, setPlantilla] = React.useState("chequeo");
+  const [busq, setBusq] = React.useState("");
+  const [soloConTel, setSoloConTel] = React.useState(true);
+  const [contactados, setContactados] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(REAC_LS) || "{}"); } catch { return {}; }
+  });
+
+  const marcarContactado = (clave) => {
+    setContactados((prev) => {
+      const n = { ...prev, [clave]: hoy() };
+      try { guardarLocal(REAC_LS, n); } catch (e) {}
+      return n;
+    });
+  };
+  const desmarcar = (clave) => {
+    setContactados((prev) => {
+      const n = { ...prev }; delete n[clave];
+      try { guardarLocal(REAC_LS, n); } catch (e) {}
+      return n;
+    });
+  };
+
+  const hoyMs = React.useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); }, []);
+  const diasDesde = (f) => {
+    const d = new Date(String(f || "").slice(0, 10) + "T00:00:00");
+    if (isNaN(d.getTime())) return 9999;
+    return Math.max(0, Math.round((hoyMs - d.getTime()) / 864e5));
+  };
+
+  // Una fila por mascota, con lo que vale y hace cuanto no viene.
+  const mascotas = React.useMemo(() => {
+    const porMascota = new Map();
+    (ventas || []).forEach((v) => {
+      const k = String(v.cliente || "").toLowerCase().trim();
+      if (!k) return;
+      const f = String(v.fecha || "").slice(0, 10);
+      const cur = porMascota.get(k) || { visitas: 0, gastado: 0, ultima: "" };
+      cur.visitas += 1;
+      cur.gastado += Number(v.total) || 0;
+      if (f > cur.ultima) cur.ultima = f;
+      porMascota.set(k, cur);
+    });
+
+    const filas = [];
+    (clientes || []).forEach((c) => {
+      const nombre = String(c.nombreMascota || "").trim();
+      if (!nombre) return;
+      if (esMascotaCasa(nombre)) return;             // las de la casa no se reactivan
+      const k = nombre.toLowerCase();
+      const d = porMascota.get(k) || { visitas: 0, gastado: 0, ultima: "" };
+      const ultima = d.ultima || String(c.ultimaVisita2025 || c.fechaRegistro || "").slice(0, 10);
+      if (!ultima) return;
+      const dias = diasDesde(ultima);
+      const telCrudo = String(c.telefono || "").replace(/\D/g, "");
+      const tel = telCrudo.length >= 11 ? telCrudo : (telCrudo.length === 10 ? "1" + telCrudo : "");
+      filas.push({
+        clave: k, mascota: nombre, dueno: c.nombrePropietario || "", tel,
+        visitas: d.visitas, gastado: d.gastado, ultima, dias,
+        // Prioridad: lo que ya gastó pesa, pero un cliente frecuente pesa más
+        // todavía — ese es el que se recupera y se queda.
+        valor: d.gastado * (1 + Math.min(d.visitas, 6) * 0.5)
+      });
+    });
+    return filas;
+  }, [clientes, ventas, hoyMs]);
+
+  const delSegmento = (id) => {
+    const s = REAC_SEGMENTOS.find((x) => x.id === id);
+    return mascotas.filter((m) => m.dias >= s.min && m.dias <= s.max);
+  };
+
+  const segActual = REAC_SEGMENTOS.find((s) => s.id === seg) || REAC_SEGMENTOS[0];
+  const visibles = delSegmento(seg)
+    .filter((m) => !soloConTel || m.tel)
+    .filter((m) => !busq.trim() || (m.mascota + " " + m.dueno).toLowerCase().includes(busq.toLowerCase()))
+    .sort((a, b) => b.valor - a.valor);
+
+  // Recuperadas: se les escribió y después volvieron.
+  const recuperadas = mascotas.filter((m) => contactados[m.clave] && m.ultima > contactados[m.clave]);
+  const yaEscritos = visibles.filter((m) => contactados[m.clave]).length;
+
+  const rd = (n) => "RD$ " + Math.round(Number(n) || 0).toLocaleString("es-DO");
+
+  return E("div", null,
+    E("div", { style: { fontWeight: 800, fontSize: 19, marginBottom: 4 } }, "\u{1F504} Reactivaci\xF3n de clientes"),
+    E("div", { style: { fontSize: 13, color: "#5a6472", marginBottom: 18 } },
+      "Recuperar una mascota que ya te conoce cuesta cero. Conseguir una nueva te cuesta cerca de RD$760 de publicidad. ",
+      "La lista sale ordenada por lo que vale cada cliente, no por antig\xFCedad."),
+
+    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12, marginBottom: 18 } },
+      REAC_SEGMENTOS.map((s) => {
+        const g = delSegmento(s.id);
+        const conTel = g.filter((m) => m.tel).length;
+        return E("button", {
+          key: s.id, onClick: () => setSeg(s.id),
+          style: { textAlign: "left", cursor: "pointer", background: s.bg,
+                   border: (seg === s.id ? "2.5px solid " : "1px solid ") + s.color,
+                   borderRadius: 14, padding: "13px 15px" }
+        },
+          E("div", { style: { fontSize: 19 } }, s.icono),
+          E("div", { style: { fontSize: 25, fontWeight: 800, color: s.color, fontFamily: "Georgia,serif", lineHeight: 1.15 } }, g.length),
+          E("div", { style: { fontSize: 12, fontWeight: 800, color: s.color, marginTop: 3 } }, s.label),
+          E("div", { style: { fontSize: 11, color: "#5a6472", marginTop: 2 } }, s.corto + " \xB7 " + conTel + " con tel\xE9fono"));
+      }),
+      E("div", { style: { background: "#eafaf1", border: "1px solid #27ae60", borderRadius: 14, padding: "13px 15px" } },
+        E("div", { style: { fontSize: 19 } }, "✅"),
+        E("div", { style: { fontSize: 25, fontWeight: 800, color: "#1a6b3a", fontFamily: "Georgia,serif", lineHeight: 1.15 } }, recuperadas.length),
+        E("div", { style: { fontSize: 12, fontWeight: 800, color: "#1a6b3a", marginTop: 3 } }, "Recuperadas"),
+        E("div", { style: { fontSize: 11, color: "#5a6472", marginTop: 2 } },
+          recuperadas.length ? "volvieron " + rd(recuperadas.reduce((n, m) => n + (m.gastado / Math.max(m.visitas,1)), 0)) : "les escribiste y volvieron"))),
+
+    E("div", { style: { background: segActual.bg, borderLeft: "4px solid " + segActual.color, borderRadius: 10,
+                        padding: "11px 15px", marginBottom: 14, fontSize: 13, color: "#3a3f4a" } },
+      E("strong", null, segActual.icono + " " + segActual.label + ": "), segActual.nota),
+
+    E("div", { style: { marginBottom: 14 } },
+      E("div", { style: { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 } },
+        "Mensaje que se env\xEDa"),
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+        REAC_PLANTILLAS.map((p) => E("button", {
+          key: p.id, onClick: () => setPlantilla(p.id), title: p.nota,
+          style: { background: plantilla === p.id ? "#1a4fa0" : "#fff", color: plantilla === p.id ? "#fff" : "#5a6472",
+                   border: "1.5px solid " + (plantilla === p.id ? "#1a4fa0" : "#e0e4e8"), borderRadius: 8,
+                   padding: "9px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }
+        }, p.label))),
+      E("div", { style: { fontSize: 11.5, color: "#8a93a0", marginTop: 5 } },
+        (REAC_PLANTILLAS.find((p) => p.id === plantilla) || {}).nota)),
+
+    E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
+      E("input", { value: busq, onChange: (e) => setBusq(e.target.value),
+        placeholder: "\u{1F50D} Buscar mascota o due\xF1o...",
+        style: { flex: 1, minWidth: 200, border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "9px 12px", fontSize: 13, outline: "none" } }),
+      E("label", { style: { display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "#5a6472", fontWeight: 700, cursor: "pointer" } },
+        E("input", { type: "checkbox", checked: soloConTel, onChange: (e) => setSoloConTel(e.target.checked) }),
+        "Solo con tel\xE9fono"),
+      E("div", { style: { fontSize: 12.5, color: "#5a6472" } },
+        visibles.length + " en lista \xB7 " + yaEscritos + " ya contactad" + (yaEscritos === 1 ? "o" : "os"))),
+
+    visibles.length === 0
+      ? E("div", { style: { textAlign: "center", color: "#8a93a0", fontSize: 13, padding: "28px 0" } },
+          "Nadie en este grupo. \u{1F44F}")
+      : visibles.slice(0, 60).map((m) => {
+          const ya = contactados[m.clave];
+          const volvio = ya && m.ultima > ya;
+          return E("div", {
+            key: m.clave,
+            style: { background: volvio ? "#f2fbf5" : "#fff", border: "1px solid " + (volvio ? "#27ae6055" : "#e0e4e8"),
+                     borderLeft: "5px solid " + (volvio ? "#27ae60" : ya ? "#c9c9c9" : segActual.color),
+                     borderRadius: 12, padding: "12px 15px", marginBottom: 9,
+                     display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
+                     opacity: ya && !volvio ? 0.62 : 1 }
+          },
+            E("div", { style: { flex: 1, minWidth: 200 } },
+              E("div", { style: { fontWeight: 800, fontSize: 14.5 } },
+                m.mascota,
+                m.dueno ? E("span", { style: { fontWeight: 500, color: "#5a6472", fontSize: 12.5 } }, "  \xB7 " + m.dueno) : null,
+                volvio ? E("span", { style: { color: "#1a6b3a", fontWeight: 800, fontSize: 12, marginLeft: 8 } }, "✅ volvi\xF3") : null),
+              E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 3 } },
+                "\xDAltima visita " + m.ultima + " \xB7 ",
+                E("strong", { style: { color: segActual.color } }, "hace " + m.dias + " d\xEDas"),
+                " \xB7 " + m.visitas + " visita" + (m.visitas === 1 ? "" : "s") + " \xB7 dej\xF3 " + rd(m.gastado)),
+              ya && !volvio ? E("div", { style: { fontSize: 11.5, color: "#8a93a0", marginTop: 2 } },
+                "Le escribiste el " + ya) : null),
+            E("div", { style: { display: "flex", gap: 7, flexWrap: "wrap" } },
+              m.tel ? E("a", {
+                href: "https://wa.me/" + m.tel + "?text=" + encodeURIComponent(reacMensaje(m, plantilla)),
+                target: "_blank", rel: "noreferrer", onClick: () => marcarContactado(m.clave),
+                style: { background: ya ? "#9dd6b0" : "#25D366", color: "#fff", borderRadius: 8, padding: "9px 15px",
+                         fontSize: 12.5, fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }
+              }, ya ? "\u{1F4AC} Escribir otra vez" : "\u{1F4AC} Escribir")
+                : E("span", { style: { fontSize: 11.5, color: "#c9a227", fontWeight: 700 } }, "⚠️ sin tel\xE9fono"),
+              ya ? E("button", { onClick: () => desmarcar(m.clave),
+                    style: { background: "none", border: "1px solid #d1d5db", color: "#5a6472", borderRadius: 8,
+                             padding: "9px 11px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "Deshacer")
+                 : E("button", { onClick: () => marcarContactado(m.clave),
+                    style: { background: "none", border: "1px solid #d1d5db", color: "#5a6472", borderRadius: 8,
+                             padding: "9px 11px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "Ya le escrib\xED")));
+        }),
+
+    visibles.length > 60
+      ? E("div", { style: { fontSize: 12.5, color: "#5a6472", textAlign: "center", padding: "10px 0" } },
+          "Se muestran las 60 de mayor valor. Contacta estas primero y vuelve ma\xF1ana.")
+      : null,
+
+    E("div", { style: { marginTop: 18, background: "#f8f9fa", borderRadius: 10, padding: "12px 15px", fontSize: 12, color: "#5a6472" } },
+      E("strong", null, "Ojo: "), "la marca de “ya le escrib\xED” se guarda en este navegador. ",
+      "Si haces la campa\xF1a desde el celular y desde la computadora, cada uno lleva su propia cuenta.")
+  );
+}
+
 function ClientesInactivos({ clientes, ventas }) {
   const [umbral, setUmbral] = useState(45);
   const [busq, setBusq] = useState("");

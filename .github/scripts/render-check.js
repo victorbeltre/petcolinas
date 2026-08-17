@@ -98,6 +98,17 @@ render("AvisoCitasProximas", sandbox.AvisoCitasProximas, {
     telefono: "8095551234", servicio: "Baño y corte", estado: "pendiente" }],
   setCitas: () => {}, clientes: []
 }, null, "sin recordatorio enviado");
+render("Reactivacion", sandbox.Reactivacion, {
+  clientes: [{ id: 1, nombreMascota: "Doky Diaz", nombrePropietario: "Ana Diaz",
+    telefono: "8095551234", ultimaVisita2025: "2026-06-01" }],
+  ventas: [{ id: 1, fecha: "2026-06-01", cliente: "Doky Diaz", total: 1289, area: "grooming" }]
+}, null, "Reactivaci");
+render("AvisoReactivacion", sandbox.AvisoReactivacion, {
+  clientes: [{ id: 1, nombreMascota: "Doky Diaz", telefono: "8095551234" }],
+  ventas: [{ id: 1, fecha: new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10),
+    cliente: "Doky Diaz", total: 1289 }],
+  setTab: () => {}
+});
 render("Candidatos", sandbox.Candidatos, {});
 render("WhatsAppInbox", sandbox.WhatsAppInbox, {});
 render("Llamadas", sandbox.Llamadas, {});
@@ -108,4 +119,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (9 comprobadas).`);
+console.log(`✓ Vistas principales renderizan sin errores (11 comprobadas).`);
