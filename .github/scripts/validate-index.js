@@ -17,7 +17,7 @@ if (bytes < 1_000_000) {
 const TABS_OBLIGATORIAS = [
   "dashboard", "agenda", "ventas", "clientes", "seguimientos",
   "inventario", "nomina", "gastos", "reportes", "facturas",
-  "servicios", "importar", "vozia", "notificaciones", "cobros",
+  "servicios", "importar", "vozia", "notificaciones", "cobros", "planes",
 ];
 for (const id of TABS_OBLIGATORIAS) {
   if (!html.includes(`id: "${id}"`)) {

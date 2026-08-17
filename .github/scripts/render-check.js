@@ -98,6 +98,12 @@ render("AvisoCitasProximas", sandbox.AvisoCitasProximas, {
     telefono: "8095551234", servicio: "Baño y corte", estado: "pendiente" }],
   setCitas: () => {}, clientes: []
 }, null, "sin recordatorio enviado");
+render("Planes", sandbox.Planes, {
+  paquetes: [{ id: 1, mascota: "Doky Diaz", nombre: "Plan 6 baños", banostotal: 6,
+    banosusados: 2, precio: 3995, fecha: "2026-08-01", vence: "2027-04-01", estado: "activo" }],
+  setPaquetes: () => {}, clientes: [{ id: 1, nombreMascota: "Doky Diaz" }],
+  ventas: [], setVentas: () => {}
+}, null, "Planes prepagados");
 render("ModalChequeo", sandbox.ModalChequeo, {
   mascota: "Doky Diaz", fecha: "2026-08-17",
   clientes: [{ id: 1, nombreMascota: "Doky Diaz" }],
@@ -124,4 +130,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (12 comprobadas).`);
+console.log(`✓ Vistas principales renderizan sin errores (13 comprobadas).`);

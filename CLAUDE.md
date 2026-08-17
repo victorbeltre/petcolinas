@@ -41,8 +41,8 @@ GitHub Pages desde `main`. El codigo fuente de desarrollo esta en
 completa. Un deploy desde petcolinas-app pisó la version buena con una vieja
 de 10 pestañas (PR #33) — no repetir.
 ANTES de commitear index.html, correr: node .github/scripts/validate-index.js
-Debe tener 15 pestañas: dashboard, agenda, ventas, clientes, seguimientos,
-inventario, nomina, gastos, reportes, facturas, cobros, servicios,
+Debe tener 16 pestañas: dashboard, agenda, ventas, clientes, seguimientos,
+inventario, nomina, gastos, reportes, facturas, cobros, planes, servicios,
 importar(Exportar Excel), vozia, notificaciones. Y los componentes Agenda, PortalVeterinaria,
 PortalGroomer, VozIA, ExportarExcel. Peso >1 MB. El workflow validate-app.yml
 bloquea el merge a main si falla.
