@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-17 19:59Z";
+const PC_BUILD = "2026-08-17 20:07Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -251,6 +251,167 @@ try {
     console.log("[DataEpoch] respaldos locales de ventas limpiados (epoch " + DATA_EPOCH + ")");
   }
 } catch {}
+// ─── SINCRONIZACION EN VIVO ─────────────────────────────────────────────────
+// Antes cada dispositivo cargaba los datos al abrir y se quedaba con esa foto:
+// si la doctora registraba una venta en caja, en la tablet de Victor no
+// aparecia hasta refrescar. Ahora Supabase avisa por WebSocket en cuanto algo
+// cambia y la tabla afectada se vuelve a leer sola.
+//
+// Se habla el protocolo de Realtime directo (Phoenix channels) en vez de cargar
+// supabase-js de un CDN: una dependencia menos que se pueda caer.
+//
+// Si el WebSocket no conecta (red del local, proxy, lo que sea) NO se pierde la
+// sincronizacion: entra el respaldo por sondeo. Peor caso, 60 segundos.
+const PC_TABLAS_VIVAS = ["pc_ventas", "pc_clientes", "pc_citas", "pc_facturas", "pc_paquetes",
+                         "pc_seguimientos", "pc_inventario", "pc_gastos", "pc_pagos",
+                         "pc_historias", "pc_tarifas"];
+const PC_SONDEO_MS = 60000;      // respaldo cuando el WebSocket esta caido
+const PC_REBOTE_MS = 1200;       // espera antes de releer, para agrupar rafagas
+
+const PCRealtime = (function () {
+  const oyentes = new Map();          // tabla -> Set(callback)
+  const pendientes = new Map();       // tabla -> timeout id
+  let ws = null, refN = 0, latido = null, reintento = 0, conectado = false;
+  let alCambiarEstado = null;
+
+  const tokenActual = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem("pc_session") || "null");
+      if (s && s.access_token && (!s.expires_at || Date.now() / 1e3 < s.expires_at)) return s.access_token;
+    } catch (e) {}
+    return SUPA_KEY;
+  };
+
+  function avisar(tabla) {
+    const fns = oyentes.get(tabla);
+    if (!fns || !fns.size) return;
+    // Se agrupan las rafagas: guardar una factura toca varias filas de golpe.
+    clearTimeout(pendientes.get(tabla));
+    pendientes.set(tabla, setTimeout(() => {
+      pendientes.delete(tabla);
+      fns.forEach((f) => { try { f(); } catch (e) {} });
+    }, PC_REBOTE_MS));
+  }
+
+  function estado(v) {
+    if (conectado === v) return;
+    conectado = v;
+    if (alCambiarEstado) { try { alCambiarEstado(v); } catch (e) {} }
+    console.log("[Realtime] " + (v ? "en vivo" : "desconectado — se usa el respaldo por sondeo"));
+  }
+
+  function enviar(obj) {
+    if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(obj)); } catch (e) {} }
+  }
+
+  function conectar() {
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    let url;
+    try {
+      url = SUPA_URL.replace(/^http/, "ws") + "/realtime/v1/websocket?apikey=" +
+            encodeURIComponent(SUPA_KEY) + "&vsn=1.0.0";
+    } catch (e) { return; }
+
+    try { ws = new WebSocket(url); } catch (e) { programarReintento(); return; }
+
+    ws.onopen = function () {
+      reintento = 0;
+      enviar({
+        topic: "realtime:pc",
+        event: "phx_join",
+        payload: {
+          config: {
+            broadcast: { self: false },
+            presence: { key: "" },
+            postgres_changes: PC_TABLAS_VIVAS.map((t) => ({ event: "*", schema: "public", table: t }))
+          },
+          access_token: tokenActual()
+        },
+        ref: String(++refN)
+      });
+      clearInterval(latido);
+      latido = setInterval(function () {
+        enviar({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(++refN) });
+      }, 25000);
+    };
+
+    ws.onmessage = function (ev) {
+      let m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.event === "phx_reply" && m.topic === "realtime:pc") {
+        estado(m.payload && m.payload.status === "ok");
+        return;
+      }
+      if (m.event !== "postgres_changes") return;
+      const d = m.payload && m.payload.data;
+      const tabla = d && d.table;
+      if (tabla) avisar(tabla);
+    };
+
+    ws.onerror = function () { estado(false); };
+    ws.onclose = function () {
+      estado(false);
+      clearInterval(latido);
+      programarReintento();
+    };
+  }
+
+  function programarReintento() {
+    reintento = Math.min(reintento + 1, 6);
+    const espera = Math.min(30000, 1000 * Math.pow(2, reintento));
+    setTimeout(conectar, espera);
+  }
+
+  return {
+    iniciar: function (onEstado) {
+      alCambiarEstado = onEstado || alCambiarEstado;
+      conectar();
+      // Volver de segundo plano o recuperar internet: reconectar y releer.
+      window.addEventListener("online", conectar);
+      window.addEventListener("focus", function () {
+        conectar();
+        oyentes.forEach(function (fns, tabla) { avisar(tabla); });
+      });
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) { conectar(); oyentes.forEach(function (fns, t) { avisar(t); }); }
+      });
+    },
+    enVivo: function () { return conectado; },
+    // Devuelve la funcion para darse de baja (la usa el cleanup del efecto).
+    suscribir: function (tabla, cb) {
+      if (!oyentes.has(tabla)) oyentes.set(tabla, new Set());
+      oyentes.get(tabla).add(cb);
+      conectar();
+      return function () {
+        const s = oyentes.get(tabla);
+        if (s) { s.delete(cb); if (!s.size) oyentes.delete(tabla); }
+      };
+    }
+  };
+})();
+
+// Semaforo de sincronizacion en el header: verde en vivo, amarillo por sondeo.
+function EstadoSync() {
+  const E = React.createElement;
+  const [vivo, setVivo] = React.useState(false);
+  React.useEffect(function () {
+    PCRealtime.iniciar(setVivo);
+    setVivo(PCRealtime.enVivo());
+    const t = setInterval(function () { setVivo(PCRealtime.enVivo()); }, 5000);
+    return function () { clearInterval(t); };
+  }, []);
+  return E("div", {
+    title: vivo
+      ? "Conectado en vivo: los cambios de otros dispositivos entran solos."
+      : "Sin conexi\xF3n en vivo. Se est\xE1 releyendo cada minuto, no se pierde nada.",
+    style: { display: "flex", alignItems: "center", gap: 5, fontSize: 10.5,
+             color: "rgba(255,255,255,0.75)", fontWeight: 700 }
+  },
+    E("span", { style: { width: 7, height: 7, borderRadius: "50%", display: "inline-block",
+                         background: vivo ? "#25D366" : "#f5c542" } }),
+    vivo ? "En vivo" : "Sincronizando");
+}
+
 function useSupabase(table, seed = []) {
   const deletedKey = "pc_deleted_" + table;
   const deletedIdsInit = new Set(
@@ -459,6 +620,14 @@ function useSupabase(table, seed = []) {
       setLoaded(true);
     })();
   }, [refetchTrigger]);
+  // Sincronizacion entre dispositivos: Supabase avisa por WebSocket y se
+  // relee la tabla. Si el WebSocket esta caido, el sondeo cubre el hueco.
+  useEffect(() => {
+    if (PC_TABLAS_VIVAS.indexOf(table) < 0) return;
+    const baja = PCRealtime.suscribir(table, refetch);
+    const t = setInterval(() => { if (!PCRealtime.enVivo() && !document.hidden) refetch(); }, PC_SONDEO_MS);
+    return () => { baja(); clearInterval(t); };
+  }, [table, refetch]);
   const dataRef = useRef(null);
   dataRef.current = data;
   const setDataSync = useCallback(async (newDataOrFn) => {
@@ -6790,7 +6959,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
       E("div", { style: { maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 } },
         E("div", null,
           E("div", { style: { fontWeight: 900, fontSize: 19 } }, "\u{1F43E} PetColinas"),
-          E("div", { style: { fontSize: 12, opacity: .85, marginTop: 2 } }, session?.user?.email || "")),
+          E("div", { style: { fontSize: 12, opacity: .85, marginTop: 2, display: "flex", gap: 10, alignItems: "center" } }, session?.user?.email || "", E(EstadoSync, null))),
         E("button", { onClick: onLogout, style: { background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Cerrar sesi\u00F3n"))),
 
     E("div", { style: { background: "#fff", borderBottom: "1px solid #e0e4e8", padding: "0 24px" } },
@@ -7065,7 +7234,7 @@ function PetColinasApp({ session, onLogout }) {
     alignItems: "center",
     justifyContent: "space-between",
     boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
-  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), React.createElement(EstadoSync, null), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
     background: "rgba(255,255,255,0.15)",
     border: "1px solid rgba(255,255,255,0.3)",
     color: "#fff",
