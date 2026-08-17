@@ -62,6 +62,50 @@ async function pagadito(campos: Record<string, string>) {
   return { httpStatus: resp.status, crudo, datos };
 }
 
+// Rutas conocidas de la APIPG. El diagnostico las prueba todas para no seguir
+// adivinando cual usa la cuenta.
+const CANDIDATOS = [
+  "https://sandbox.pagadito.com/comercios/apipg/charges.php",
+  "https://sandbox.pagadito.com/comercios/apipg/index.php",
+  "https://sandbox.pagadito.com/comercios/apipg/",
+  "https://sandbox.pagadito.com/comercios/wspg/charges.php",
+  "https://comercios.pagadito.com/apipg/charges.php",
+  "https://comercios.pagadito.com/apipg/index.php",
+  "https://comercios.pagadito.com/apipg/",
+  "https://comercios.pagadito.com/wspg/charges.php",
+];
+
+/** Un connect contra una ruta, contando TODO lo que se pueda observar. */
+async function probar(u: string) {
+  const t0 = Date.now();
+  const body = new URLSearchParams({
+    operation: "connect", uid: UID, wsk: WSK, format_return: "json",
+  }).toString();
+  try {
+    const resp = await fetch(u, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "manual",       // para ver la redireccion en vez de seguirla
+    });
+    const cuerpo = await resp.text();
+    let code: string | null = null;
+    try { code = String((JSON.parse(cuerpo) as Record<string, unknown>)?.code ?? "") || null; } catch { /* no era json */ }
+    return {
+      url: u,
+      http: resp.status,
+      tipo: resp.headers.get("content-type"),
+      redirige: resp.headers.get("location"),
+      largo: cuerpo.length,
+      code,
+      muestra: cuerpo.slice(0, 300),
+      ms: Date.now() - t0,
+    };
+  } catch (e) {
+    return { url: u, error: String(e).slice(0, 250), ms: Date.now() - t0 };
+  }
+}
+
 async function conectar() {
   const r = await pagadito({ operation: "connect", uid: UID, wsk: WSK });
   const code = String(r.datos?.code ?? "");
@@ -76,6 +120,10 @@ Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
 
   // ── Modo diagnostico ──────────────────────────────────────────────────────
+  // Prueba TODAS las rutas conocidas de la APIPG con un connect (no cobra ni
+  // escribe nada) y reporta el HTTP de cada una. Un cuerpo vacio no dice nada
+  // por si solo: el status es el que distingue un 404 de una redireccion al
+  // login o de un endpoint que existe pero rechazo el formato.
   if (url.searchParams.get("diagnostico") === "1") {
     if (!UID || !WSK) {
       return json({
@@ -83,21 +131,25 @@ Deno.serve(async (req: Request) => {
         problema: "Faltan los secrets PAGADITO_UID y/o PAGADITO_WSK en Supabase.",
       }, 400);
     }
-    const c = await conectar();
+    const resultados = [];
+    for (const u of CANDIDATOS) resultados.push(await probar(u));
+    const gana = resultados.find((r) => r.code);
     return json({
-      ok: !!c.token,
+      ok: !!gana,
+      endpoint_configurado: ENDPOINT,
       ambiente: SANDBOX ? "SANDBOX (pruebas)" : "PRODUCCION (cobros reales)",
-      endpoint: ENDPOINT,
       moneda_configurada: MONEDA,
       uid_usado: UID.slice(0, 6) + "…" + UID.slice(-4),   // nunca completo
       wsk_configurado: WSK ? "si (" + WSK.length + " caracteres)" : "NO",
-      codigo_pagadito: c.code || "(no vino un campo code)",
-      mensaje_pagadito: c.datos?.message ?? null,
-      token_recibido: c.token ? "si" : "no",
-      respuesta_cruda: c.crudo.slice(0, 1500),
-      que_significa: c.token
-        ? "Todo bien: las credenciales sirven y el formato es el correcto."
-        : "No se obtuvo token. Mira 'respuesta_cruda': ahi dice exactamente que rechazo Pagadito.",
+      endpoint_que_responde: gana ? gana.url : null,
+      codigo_pagadito: gana ? gana.code : null,
+      pruebas: resultados,
+      que_significa: gana
+        ? "Funciona en " + gana.url + " con codigo " + gana.code +
+          (String(gana.code) === "PG1001" ? ". Credenciales OK." : ". Revisa ese codigo: el endpoint sirve pero algo del connect no le gusto.")
+        : "Ninguna ruta contesto un JSON con 'code'. Mira el campo http de cada prueba: " +
+          "404 = la ruta no existe; 301/302 = redirige (mira 'redirige'); 200 con cuerpo vacio = " +
+          "existe pero no acepto los parametros; error = ni resolvio el dominio.",
     });
   }
 
