@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-17 20:07Z";
+const PC_BUILD = "2026-08-17 20:12Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -15185,11 +15185,63 @@ function Planes({ paquetes, setPaquetes, clientes, ventas, setVentas }) {
   );
 }
 
+// ─── COBRO CON TARJETA (Pagadito) ───────────────────────────────────────────
+// La app solo pide el enlace; el WSK vive en la Edge Function, nunca aqui.
+// Si la funcion no esta desplegada todavia, se avisa claro en vez de fallar
+// en silencio.
+async function pedirEnlacePago(venta, cliente) {
+  const detalle = (Array.isArray(venta.items) && venta.items.length ? venta.items : [
+    { nombre: venta.servicio || venta.descripcion || "Servicios PetColinas", cantidad: 1, precio: Number(venta.total) || 0 }
+  ]).map((it) => ({
+    nombre: sinEmoji(String(it.nombre || it.descripcion || "Servicio")),
+    cantidad: Number(it.qty ?? it.cantidad) || 1,
+    precio: Number(it.subtotal ?? it.precio) || 0
+  }));
+  let token = SUPA_KEY;
+  try {
+    const s = JSON.parse(localStorage.getItem("pc_session") || "null");
+    if (s && s.access_token) token = s.access_token;
+  } catch (e) {}
+  const res = await fetch(SUPA_URL + "/functions/v1/pagadito-cobro", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "apikey": SUPA_KEY, "Authorization": "Bearer " + token },
+    body: JSON.stringify({
+      ventaId: String(venta.id || ""),
+      mascota: venta.cliente || "",
+      propietario: (cliente && cliente.nombrePropietario) || "",
+      monto: Number(venta.total) || 0,
+      detalle
+    })
+  });
+  let d = null;
+  try { d = await res.json(); } catch (e) {}
+  if (!res.ok || !d || !d.url) {
+    const motivo = (d && (d.error || d.problema)) || ("HTTP " + res.status);
+    throw new Error(motivo + (d && d.respuesta ? "\n\n" + d.respuesta : ""));
+  }
+  return d;
+}
 function Cobros({ ventas, setVentas, clientes }) {
   const E = React.createElement;
   const [busq, setBusq] = React.useState("");
   const [tramoSel, setTramoSel] = React.useState("todos");
   const [cobrando, setCobrando] = React.useState(null);
+  const [generando, setGenerando] = React.useState(null);
+  async function cobrarConTarjeta(x) {
+    setGenerando(String(x.v.id));
+    try {
+      const d = await pedirEnlacePago(x.v, x.cli);
+      const msg = "Hola" + (x.dueno ? " " + String(x.dueno).split(" ")[0] : "") + "! \u{1F43E} Aqu\xED PetColinas.\n\n" +
+        "Puede pagar sus " + cobRD(x.monto) + " con tarjeta desde este enlace seguro:\n" + d.url +
+        "\n\nEn cuanto pague, se marca solo en nuestro sistema.";
+      if (x.tel) window.open("https://wa.me/" + x.tel + "?text=" + encodeURIComponent(msg), "_blank");
+      else window.open(d.url, "_blank");
+    } catch (e) {
+      alert("No se pudo generar el enlace de pago.\n\n" + e.message +
+        "\n\nSi es la primera vez, revisa que la funci\xF3n pagadito-cobro est\xE9 desplegada y con sus secrets.");
+    }
+    setGenerando(null);
+  }
   const [metodo, setMetodo] = React.useState("Efectivo");
 
   const hoyMs = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }, []);
@@ -15346,6 +15398,13 @@ function Cobros({ ventas, setVentas, clientes }) {
               style: { background: "#25d366", color: "#fff", borderRadius: 8, padding: "9px 14px", fontSize: 12.5,
                        fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }
             }, "\u{1F4AC} Cobrar por WhatsApp") : null,
+            E("button", {
+              onClick: () => cobrarConTarjeta(x), disabled: generando === String(v.id),
+              title: "Genera un enlace de pago con tarjeta y lo manda por WhatsApp",
+              style: { background: generando === String(v.id) ? "#9aa4b2" : "#5b3fd6", color: "#fff", border: "none",
+                       borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 800,
+                       cursor: generando === String(v.id) ? "wait" : "pointer", whiteSpace: "nowrap" }
+            }, generando === String(v.id) ? "Generando..." : "\u{1F4B3} Cobrar con tarjeta"),
             E("button", {
               onClick: () => { setMetodo("Efectivo"); setCobrando(abierto ? null : v.id); },
               style: { background: abierto ? "#5a6472" : "#1a6b3a", color: "#fff", border: "none", borderRadius: 8,
