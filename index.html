@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-17 14:50Z";
+const PC_BUILD = "2026-08-17 19:26Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3362,6 +3362,17 @@ function generarFacturaPDFDoc(f) {
     doc.text("Programa de Lealtad: "+grm+" de 10 ba\xF1os acumulados", M+4, y+2);
     doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...gr);
     doc.text(grm>=10?"\xA1BA\xD1O GRATIS DISPONIBLE en su pr\xF3xima visita!":"Faltan "+(10-grm)+" ba\xF1o(s) para el ba\xF1o gratis", M+4, y+9);}
+  // Proxima cita: llevarla impresa es lo que convierte "vuelva cuando quiera"
+  // en una fecha concreta. Sale la cita agendada de verdad si existe; si no,
+  // la sugerida por el tipo de servicio.
+  if(f.proximaCita && f.proximaCita.fecha){
+    const pc=f.proximaCita;
+    y+=20;doc.setFillColor(238,244,255);doc.rect(M,y-4,W-2*M,16,"F");
+    doc.setDrawColor(26,79,160);doc.rect(M,y-4,W-2*M,16,"S");
+    doc.setTextColor(26,79,160);doc.setFont("helvetica","bold");doc.setFontSize(9);
+    doc.text("Su pr\xF3xima cita: "+sinEmoji(fechaLargaRD(pc.fecha))+(pc.hora?" a las "+pc.hora:""), M+4, y+2);
+    doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...gr);
+    doc.text((pc.agendada?"Ya est\xE1 apartada. ":"")+sinEmoji(String(pc.label||"Pr\xF3ximo servicio"))+" - Le escribimos un d\xEDa antes para recordarle.", M+4, y+9);}
   // Notas
   if(f.notas){y+=20;doc.setFillColor(248,249,250);doc.rect(M,y-4,W-2*M,12,"F");
     doc.setTextColor(...ng);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("Notas:", M+3, y);
@@ -3627,7 +3638,7 @@ function PanelFondo({ saldo, mascota, total, dejar, setDejar, usar, setUsar }) {
   );
 }
 
-function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, tarifasVet, inventario }) {
+function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], tarifasGrooming, tarifasVet, inventario }) {
   const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
     try {
       const stored = JSON.parse(localStorage.getItem("pc_facturas") || "null");
@@ -3909,7 +3920,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
       metodoPago: form.metodoPago || "Efectivo",
       estado: form.estado || "pagada",
       notas: form.notas,
-      groomingCount: gCount
+      groomingCount: gCount,
+      proximaCita: proximaCitaDeFactura({ mascota: form.mascota, fecha: form.fecha, items: form.items }, citas)
     };
     if (editandoId) {
       const esDeVentas = String(editandoId).startsWith("venta_");
@@ -3977,7 +3989,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
   }
   function imprimirFactura(f) {
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    f = { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null };
+    f = { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas) };
     const clienteData = clientes.find(c => String(c.id) === String(f.clienteId));
     const cedulaCliente = clienteData?.cedula || "";
     const win = window.open("", "_blank");
@@ -4097,6 +4109,11 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
 
       ${f.notas ? `<div style="margin-top:24px;background:#f8f9fa;border-radius:8px;padding:14px;font-size:12px;"><strong>Notas:</strong> ${f.notas}</div>` : ""}
 
+      ${f.proximaCita && f.proximaCita.fecha ? `<div style="margin-top:24px;background:#eef4ff;border:2px solid #1a4fa0;border-radius:12px;padding:16px 18px;">
+        <div style="font-weight:800;color:#1a4fa0;font-size:15px;">🗓️ Su próxima cita: ${fechaLargaRD(f.proximaCita.fecha)}${f.proximaCita.hora ? " a las " + f.proximaCita.hora : ""}</div>
+        <div style="font-size:12.5px;color:#3a4a63;margin-top:4px;">${f.proximaCita.agendada ? "Ya está apartada a su nombre. " : ""}${f.proximaCita.label} — le escribimos un día antes para recordarle.</div>
+      </div>` : ""}
+
       ${(() => {
       const grm = f.groomingCount || 0;
       const faltan = Math.max(0, 10 - grm);
@@ -4143,7 +4160,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, tarifasGrooming, t
     }
     // El PDF necesita el contador de lealtad; antes no se le pasaba y por eso el
     // bloque de baños nunca salía en la factura enviada por WhatsApp.
-    enviarPDFWhatsApp({ ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null }, clientes);
+    enviarPDFWhatsApp({ ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas) }, clientes);
   }
   const [busqueda, setBusqueda] = useState("");
   const [busqFact, setBusqFact] = useState("");
@@ -6758,10 +6775,10 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
 
     E("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "24px" } },
       tab === "ventas" && E(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario,
-        clientes: clientesCaja, setClientes, setTab, setCrmClienteInicial: setClienteInicial,
+        clientes: clientesCaja, setClientes, citas, setCitas, setTab, setCrmClienteInicial: setClienteInicial,
         clienteVentaInicial: clienteInicial, clearClienteVentaInicial: () => setClienteInicial(null),
         tarifasGrooming, tarifasVet, setSeguimientos }),
-      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesCaja,
+      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesCaja, citas,
         tarifasGrooming, tarifasVet, inventario }),
       tab === "agenda" && E(Agenda, { citas, setCitas, deleteCita, clientes: clientesCaja, ventas, setVentas,
         tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }),
@@ -7088,8 +7105,8 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
@@ -7183,6 +7200,81 @@ const AREAS_SEGUIMIENTO = [
 ];
 // "detecta" son las palabras que identifican ese servicio dentro de una venta:
 // si el cliente ya lo compró hace poco, el seguimiento se descarta solo.
+// ─── PROXIMA CITA AUTOMATICA ────────────────────────────────────────────────
+// El 62% de las mascotas venia una sola vez y no volvia. La causa no era el
+// precio: era que nadie les daba una fecha concreta para regresar. Cada
+// servicio tiene su ritmo natural; al facturar se propone la proxima cita con
+// esa cadencia y se agenda antes de que el cliente salga del local.
+const CADENCIA_SERVICIO = [
+  { re: /ba[ñn]o.*medicad|medicad.*ba[ñn]o/i,                 dias: 14,  tipo: "grooming", label: "Ba\xF1o medicado" },
+  { re: /bravecto/i,                                                     dias: 90,  tipo: "consulta", label: "Refuerzo de Bravecto" },
+  { re: /nexgard|frontline|simparica|pipeta|spot ?on|antipulga|garrapat|fiprostar|protek/i,
+                                                                          dias: 30,  tipo: "consulta", label: "Refuerzo antipulgas" },
+  { re: /rabia|qu[íi]ntuple|s[ée]xtuple|giardia|bordetella|vacuna/i,
+                                                                          dias: 365, tipo: "consulta", label: "Refuerzo de vacuna" },
+  { re: /desparasit|albendazol|oxantel|panacob|ivermectina/i,             dias: 90,  tipo: "consulta", label: "Desparasitaci\xF3n" },
+  { re: /consulta|control|revisi[óo]n/i,                            dias: 30,  tipo: "consulta", label: "Control veterinario" },
+  { re: /ba[ñn]o|corte|grooming|pulido|u[ñn]as|spa/i,          dias: 28,  tipo: "grooming", label: "Ba\xF1o y corte" }
+];
+function sumarDias(fechaISO, n) {
+  const base = String(fechaISO || "").slice(0, 10);
+  const d = new Date(base + "T12:00:00");
+  if (isNaN(d.getTime())) return base;
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+// Evita proponer domingo (cerrado): lo corre al lunes.
+function evitarDomingo(fechaISO) {
+  const d = new Date(String(fechaISO).slice(0, 10) + "T12:00:00");
+  if (isNaN(d.getTime())) return fechaISO;
+  if (d.getDay() === 0) return sumarDias(fechaISO, 1);
+  return fechaISO;
+}
+function fechaLargaRD(fechaISO) {
+  const d = new Date(String(fechaISO || "").slice(0, 10) + "T12:00:00");
+  if (isNaN(d.getTime())) return String(fechaISO || "");
+  return d.toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" });
+}
+// Del texto de la venta saca cual es el servicio que marca el ritmo. Gana el
+// intervalo MAS CORTO: si le hicieron bano y vacuna, vuelve por el bano.
+function proximaCitaSugerida(descripcion, fechaBase) {
+  const txt = String(descripcion || "");
+  if (!txt.trim()) return null;
+  let mejor = null;
+  for (const c of CADENCIA_SERVICIO) {
+    if (!c.re.test(txt)) continue;
+    if (!mejor || c.dias < mejor.dias) mejor = c;
+  }
+  if (!mejor) return null;
+  return {
+    fecha: evitarDomingo(sumarDias(fechaBase || hoy(), mejor.dias)),
+    dias: mejor.dias,
+    tipo: mejor.tipo,
+    label: mejor.label
+  };
+}
+
+// Para la factura: la cita YA agendada de esa mascota (la que se creo al
+// facturar). Si no hay ninguna, se propone la que le tocaria por el servicio.
+function proximaCitaDeFactura(f, citas) {
+  const mascota = String((f && (f.mascota || f.cliente)) || "").toLowerCase().trim();
+  const desde = String((f && f.fecha) || hoy()).slice(0, 10);
+  if (mascota) {
+    const agendadas = (citas || [])
+      .filter((c) => String(c.nombreMascota || "").toLowerCase().trim() === mascota)
+      .filter((c) => String(c.fecha || "") > desde)
+      .filter((c) => c.estado !== "cancelada" && c.estado !== "noshow")
+      .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    if (agendadas.length) {
+      const c = agendadas[0];
+      return { fecha: c.fecha, hora: c.hora || "", label: c.servicio || "Pr\xF3ximo servicio", agendada: true };
+    }
+  }
+  const txt = ((f && f.items) || []).map((i) => i.descripcion || i.nombre || "").join(" + ")
+    || String((f && (f.servicio || f.descripcion)) || "");
+  const sug = proximaCitaSugerida(txt, desde);
+  return sug ? { fecha: sug.fecha, hora: "", label: sug.label, agendada: false } : null;
+}
 const TIPOS_SEGUIMIENTO = [
   { id: "bano_medicado", label: "Ba\xF1o medicado", color: "#9b59b6", icono: "\u{1F6C1}", frecDefault: 14, area: "grooming", detecta: /ba[\u00F1n]o.*medicad|medicad.*ba[\u00F1n]o/i },
   { id: "vacuna_rabia", label: "Vacuna rabia", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /rabia/i },
@@ -8486,7 +8578,7 @@ function EditorItemsVenta({ items, setItems, tarifasGrooming, tarifasVet, invent
   );
 }
 
-function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setClientes, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial, tarifasGrooming = TARIFAS_GROOMING, tarifasVet = TARIFAS_VET, setSeguimientos }) {
+function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setClientes, citas, setCitas, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial, tarifasGrooming = TARIFAS_GROOMING, tarifasVet = TARIFAS_VET, setSeguimientos }) {
   const [fecha, setFecha] = useState(hoy());
   const clienteVentaRef = useRef(null);
   useEffect(() => {
@@ -8545,7 +8637,10 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     );
     setTab("clientes");
   };
-  const [formaPago, setFormaPago] = useState("pendiente");
+  // Arranca en efectivo, no en pendiente. Como el pendiente era el valor por
+  // defecto, se quedaban ventas marcadas así aunque el cliente hubiera pagado
+  // antes de salir, y el cierre de caja no cuadraba.
+  const [formaPago, setFormaPago] = useState("efectivo");
   const [bancoOtro, setBancoOtro] = useState("");
   const [banco, setBanco] = useState("");
   const [cobradoPor, setCobradoPor] = useState("e4");
@@ -8687,6 +8782,41 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const quitarItem = (id) => setItems(items.filter((i) => i.id !== id));
   const [notifDuplicado, setNotifDuplicado] = useState(null);
   const [notifExito, setNotifExito] = useState(null);
+  const [proxCita, setProxCita] = useState(null);
+  const [proxCitaOk, setProxCitaOk] = useState("");
+  const HORAS_CITA = (() => { const a = []; for (let x = 8; x <= 18; x++) { a.push(String(x).padStart(2,"0") + ":00"); a.push(String(x).padStart(2,"0") + ":30"); } return a; })();
+  // Crea la cita de verdad en la Agenda. Es el paso que convierte "vuelva
+  // cuando quiera" en una fecha concreta, que es lo que hace que vuelvan.
+  function agendarProxima(conWhatsApp) {
+    if (!proxCita) return;
+    const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === String(proxCita.mascota || "").toLowerCase().trim());
+    const tel = String((cli && cli.telefono) || proxCita.telefono || "").replace(/\D/g, "");
+    const cita = {
+      id: Date.now(),
+      fecha: proxCita.fecha,
+      hora: proxCita.hora,
+      nombreMascota: proxCita.mascota,
+      nombreCliente: (cli && cli.nombrePropietario) || "",
+      telefono: tel,
+      servicio: proxCita.label,
+      tipo: proxCita.tipo,
+      empleado: proxCita.tipo === "grooming" ? "Alexander" : "Valentina",
+      estado: "pendiente",
+      precio: 0,
+      notas: "Agendada autom\xE1ticamente al facturar el " + (proxCita.desde || hoy())
+    };
+    if (typeof setCitas === "function") setCitas((prev) => [...(prev || []), cita]);
+    upsertOne("pc_citas", cita).catch((e) => console.warn("[agendarProxima]", e));
+    if (conWhatsApp) {
+      const quien = String(cita.nombreCliente || "").split(" ")[0] || "";
+      const msg = "\xA1Hola" + (quien ? " " + quien : "") + "! \u{1F43E} Le dejamos apartada la pr\xF3xima cita de *" + proxCita.mascota +
+        "* en *PetColinas* para el *" + fechaLargaRD(proxCita.fecha) + "* a las *" + proxCita.hora + "*.\n\n" +
+        "\u{1F527} " + proxCita.label + "\n\nLe escribimos un d\xEDa antes para recordarle. \xA1Cualquier cambio nos avisa! \u{1F436}";
+      abrirWA(tel, msg);
+    }
+    setProxCitaOk("Cita agendada para el " + fechaLargaRD(proxCita.fecha) + " a las " + proxCita.hora + ". Ya aparece en la Agenda.");
+    setTimeout(() => { setProxCita(null); setProxCitaOk(""); }, 6e3);
+  }
   // Devuelve false solo si el usuario decide abortar la venta. Nunca traba la
   // caja: si insiste sin numero, se registra igual pero con la advertencia.
   function pedirTelefonoSiFalta() {
@@ -8805,6 +8935,10 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     }
     const notifTel = clientes ? ((clientes.find(c => (c.nombreMascota||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || clientes.find(c => (c.nombrePropietario||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || {}).telefono || "") : "";
     setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area, items: nueva.items, servicio: descripcion, fecha, telefono: notifTel });
+    // BAM FAM: nadie sale del local sin la proxima cita puesta.
+    const sug = proximaCitaSugerida(descripcion, fecha);
+    setProxCita(sug ? { ...sug, mascota: cliente || "", hora: "10:00", telefono: notifTel, desde: fecha } : null);
+    setProxCitaOk("");
     setTimeout(() => setNotifExito(null), 6e3);
   };
   const handleDelete = (id) => {
@@ -8842,7 +8976,44 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#92400e" }
     },
     "\u2715"
-  )), notifExito && /* @__PURE__ */ React.createElement("div", { style: {
+  )), proxCita && React.createElement("div", { style: {
+    background: "#eef4ff", border: "2px solid #1a4fa0", borderRadius: 12,
+    padding: "16px 18px", marginBottom: 16
+  } },
+    React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12 } },
+      React.createElement("span", { style: { fontSize: 24 } }, "\u{1F5D3}️"),
+      React.createElement("div", { style: { flex: 1 } },
+        React.createElement("div", { style: { fontWeight: 800, fontSize: 15, color: "#1a4fa0" } },
+          "\xBFCu\xE1ndo vuelve " + proxCita.mascota + "?"),
+        React.createElement("div", { style: { fontSize: 12.5, color: "#3a4a63", marginTop: 3 } },
+          "Por " + proxCita.label.toLowerCase() + ", le toca en " + proxCita.dias + " d\xEDas: ",
+          React.createElement("strong", null, fechaLargaRD(proxCita.fecha)),
+          ". Agendarla ahora es la forma m\xE1s barata de que regrese.")),
+      React.createElement("button", { onClick: () => setProxCita(null),
+        style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#1a4fa0" } }, "✕")),
+    React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" } },
+      React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Fecha"),
+        React.createElement("input", { type: "date", value: proxCita.fecha,
+          onChange: (e) => setProxCita((p) => ({ ...p, fecha: e.target.value })),
+          style: { padding: "9px 12px", borderRadius: 8, border: "1.5px solid #93b4e8", fontSize: 13, fontWeight: 600 } })),
+      React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+        React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Hora"),
+        React.createElement("select", { value: proxCita.hora,
+          onChange: (e) => setProxCita((p) => ({ ...p, hora: e.target.value })),
+          style: { padding: "9px 12px", borderRadius: 8, border: "1.5px solid #93b4e8", fontSize: 13, fontWeight: 600, background: "#fff" } },
+          HORAS_CITA.map((hh) => React.createElement("option", { key: hh, value: hh }, hh)))),
+      React.createElement("button", { onClick: () => agendarProxima(true),
+        style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "11px 16px",
+                 fontSize: 13, fontWeight: 800, cursor: "pointer" } }, "\u{1F4C5} Agendar y avisar por WhatsApp"),
+      React.createElement("button", { onClick: () => agendarProxima(false),
+        style: { background: "#1a4fa0", color: "#fff", border: "none", borderRadius: 8, padding: "11px 16px",
+                 fontSize: 13, fontWeight: 800, cursor: "pointer" } }, "\u{1F4C5} Solo agendar"),
+      React.createElement("button", { onClick: () => setProxCita(null),
+        style: { background: "none", color: C.grisd, border: "1.5px solid #d1d5db", borderRadius: 8,
+                 padding: "11px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" } }, "Ahora no")),
+    proxCitaOk && React.createElement("div", { style: { marginTop: 10, fontSize: 12.5, color: "#065f46", fontWeight: 700 } },
+      "✅ " + proxCitaOk)), notifExito && /* @__PURE__ */ React.createElement("div", { style: {
     background: "#d1fae5",
     border: "2px solid #059669",
     borderRadius: 12,
@@ -13986,6 +14157,92 @@ function cobMensaje(v, dueno, dias) {
   }
   return "Hola " + nombre + ", le escribimos de PetColinas sobre el saldo pendiente de " + monto +
     " por " + serv + " de " + mascota + " (" + fecha + "). Ya lleva un tiempo y nos gustar\xEDa cerrarlo. Si le queda m\xE1s c\xF3modo lo podemos dividir en dos pagos. \xBFC\xF3mo lo coordinamos?";
+}
+
+// Aviso de recordatorios en el dashboard. La Agenda ya tenia esta lista, pero
+// estaba dentro de la Agenda: nadie entraba a diario y las citas se enfriaban.
+// Aqui sale donde si se mira todos los dias.
+function AvisoCitasProximas({ citas, setCitas, clientes }) {
+  const E = React.createElement;
+  const [enviados, setEnviados] = React.useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("pc_recordatorios_wa") || "[]")); }
+    catch { return new Set(); }
+  });
+  const marcar = (id) => {
+    setEnviados((prev) => {
+      const s = new Set(prev); s.add(String(id));
+      try { guardarLocal("pc_recordatorios_wa", [...s]); } catch (e) {}
+      return s;
+    });
+    if (typeof setCitas === "function") {
+      setCitas((prev) => (prev || []).map((c) => String(c.id) === String(id)
+        ? { ...c, mensajesEnviados: [...(c.mensajesEnviados || []), { tipo: "recordatorio", fecha: new Date().toISOString() }] }
+        : c));
+    }
+  };
+
+  const dia = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const hoyISO = dia(0), mananaISO = dia(1);
+
+  const pendientes = (citas || [])
+    .filter((c) => c.fecha === hoyISO || c.fecha === mananaISO)
+    .filter((c) => c.estado !== "cancelada" && c.estado !== "noshow" && c.estado !== "completada")
+    .filter((c) => !enviados.has(String(c.id)))
+    .filter((c) => !(c.mensajesEnviados || []).some((m) => m.tipo === "recordatorio"))
+    .sort((a, b) => String(a.fecha + (a.hora || "")).localeCompare(String(b.fecha + (b.hora || ""))));
+
+  if (pendientes.length === 0) return null;
+
+  const telDe = (c) => {
+    const t = String(c.telefono || "").replace(/\D/g, "");
+    if (t.length >= 10) return t.length >= 11 ? t : "1" + t;
+    const cli = (clientes || []).find((x) => String(x.nombreMascota || "").toLowerCase().trim() === String(c.nombreMascota || "").toLowerCase().trim());
+    const t2 = String((cli && cli.telefono) || "").replace(/\D/g, "");
+    return t2.length >= 11 ? t2 : (t2.length === 10 ? "1" + t2 : "");
+  };
+  const mensaje = (c) => {
+    const quien = String(c.nombreCliente || "").split(" ")[0];
+    const cuando = c.fecha === hoyISO ? "*hoy*" : "*ma\xF1ana*";
+    return "\xA1Hola" + (quien ? " " + quien : "") + "! \u{1F43E} Le recordamos que " + cuando + " tiene cita de *" +
+      (c.nombreMascota || "su mascota") + "* en *PetColinas*" + (c.hora ? " a las *" + c.hora + "*" : "") + ".\n\n" +
+      (c.servicio ? "\u{1F527} " + c.servicio + "\n\n" : "") + "\xA1Le esperamos! Si necesita cambiarla, escr\xEDbanos \u{1F64F}";
+  };
+
+  return E("div", {
+    style: { background: "#fff7ed", border: "2px solid #f59e0b", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }
+  },
+    E("div", { style: { fontWeight: 800, color: "#b45309", fontSize: 15, marginBottom: 3 } },
+      "⏰ " + pendientes.length + " cita" + (pendientes.length === 1 ? "" : "s") + " sin recordatorio enviado"),
+    E("div", { style: { fontSize: 12.5, color: "#7c4a03", marginBottom: 12 } },
+      "El recordatorio del d\xEDa antes es lo que evita que no aparezcan. Un clic por cliente."),
+    pendientes.slice(0, 12).map((c) => {
+      const tel = telDe(c);
+      return E("div", {
+        key: c.id,
+        style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                 background: "#fffbeb", borderRadius: 8, padding: "9px 12px", marginBottom: 5, flexWrap: "wrap" }
+      },
+        E("div", { style: { fontSize: 13 } },
+          E("strong", null, c.nombreMascota || "(sin nombre)"),
+          E("span", { style: { color: "#7c4a03" } },
+            " \xB7 " + (c.fecha === hoyISO ? "hoy" : "ma\xF1ana") + (c.hora ? " " + c.hora : "") +
+            (c.servicio ? " \xB7 " + c.servicio : ""))),
+        E("div", { style: { display: "flex", gap: 6 } },
+          tel ? E("a", {
+            href: "https://wa.me/" + tel + "?text=" + encodeURIComponent(mensaje(c)),
+            target: "_blank", rel: "noreferrer", onClick: () => marcar(c.id),
+            style: { background: "#25D366", color: "#fff", borderRadius: 8, padding: "7px 13px",
+                     fontSize: 12, fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }
+          }, "\u{1F4AC} Recordar")
+            : E("span", { style: { fontSize: 11.5, color: "#b45309", fontWeight: 700 } }, "sin tel\xE9fono"),
+          E("button", { onClick: () => marcar(c.id),
+            style: { background: "none", border: "1px solid #f59e0b", color: "#b45309", borderRadius: 8,
+                     padding: "7px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "Listo")));
+    }),
+    pendientes.length > 12
+      ? E("div", { style: { fontSize: 12, color: "#7c4a03", marginTop: 6 } },
+          "y " + (pendientes.length - 12) + " m\xE1s en la Agenda.")
+      : null);
 }
 
 function Cobros({ ventas, setVentas, clientes }) {
