@@ -62,47 +62,98 @@ async function pagadito(campos: Record<string, string>) {
   return { httpStatus: resp.status, crudo, datos };
 }
 
-// Rutas conocidas de la APIPG. El diagnostico las prueba todas para no seguir
-// adivinando cual usa la cuenta.
-const CANDIDATOS = [
-  "https://sandbox.pagadito.com/comercios/apipg/charges.php",
-  "https://sandbox.pagadito.com/comercios/apipg/index.php",
-  "https://sandbox.pagadito.com/comercios/apipg/",
-  "https://sandbox.pagadito.com/comercios/wspg/charges.php",
-  "https://comercios.pagadito.com/apipg/charges.php",
-  "https://comercios.pagadito.com/apipg/index.php",
-  "https://comercios.pagadito.com/apipg/",
-  "https://comercios.pagadito.com/wspg/charges.php",
+// La ruta ya quedo confirmada por el diagnostico anterior: charges.php
+// contesta 200 en los dos ambientes; index.php y el directorio dan 404.
+// Lo que falta es acertar como se llama el parametro de la operacion, porque
+// un 200 con cuerpo vacio es PHP que corrio y no reconocio lo que le mandamos.
+const VARIANTES: Array<{ nombre: string; envio: "form" | "json" | "get"; campos: Record<string, string> }> = [
+  { nombre: "operation + form",      envio: "form", campos: { operation: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "f + form",              envio: "form", campos: { f: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "op + form",             envio: "form", campos: { op: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "action + form",         envio: "form", campos: { action: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "method + form",         envio: "form", campos: { method: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "operation sin format",  envio: "form", campos: { operation: "connect", uid: UID, wsk: WSK } },
+  { nombre: "f sin format",          envio: "form", campos: { f: "connect", uid: UID, wsk: WSK } },
+  { nombre: "operation + json",      envio: "json", campos: { operation: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "f + json",              envio: "json", campos: { f: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "operation + GET",       envio: "get",  campos: { operation: "connect", uid: UID, wsk: WSK, format_return: "json" } },
+  { nombre: "f + GET",               envio: "get",  campos: { f: "connect", uid: UID, wsk: WSK, format_return: "json" } },
 ];
 
-/** Un connect contra una ruta, contando TODO lo que se pueda observar. */
-async function probar(u: string) {
+/** Prueba una variante de nombres/formato contra la ruta buena. */
+async function probarVariante(base: string, v: typeof VARIANTES[number]) {
   const t0 = Date.now();
-  const body = new URLSearchParams({
-    operation: "connect", uid: UID, wsk: WSK, format_return: "json",
-  }).toString();
   try {
-    const resp = await fetch(u, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-      redirect: "manual",       // para ver la redireccion en vez de seguirla
-    });
+    let resp: Response;
+    if (v.envio === "get") {
+      resp = await fetch(base + "?" + new URLSearchParams(v.campos).toString(), { method: "GET" });
+    } else if (v.envio === "json") {
+      resp = await fetch(base, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(v.campos),
+      });
+    } else {
+      resp = await fetch(base, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(v.campos).toString(),
+      });
+    }
     const cuerpo = await resp.text();
     let code: string | null = null;
     try { code = String((JSON.parse(cuerpo) as Record<string, unknown>)?.code ?? "") || null; } catch { /* no era json */ }
     return {
-      url: u,
-      http: resp.status,
-      tipo: resp.headers.get("content-type"),
-      redirige: resp.headers.get("location"),
-      largo: cuerpo.length,
-      code,
-      muestra: cuerpo.slice(0, 300),
-      ms: Date.now() - t0,
+      variante: v.nombre, http: resp.status, largo: cuerpo.length, code,
+      muestra: cuerpo.slice(0, 400), ms: Date.now() - t0,
     };
   } catch (e) {
-    return { url: u, error: String(e).slice(0, 250), ms: Date.now() - t0 };
+    return { variante: v.nombre, error: String(e).slice(0, 200), ms: Date.now() - t0 };
+  }
+}
+
+/**
+ * Trae el WSDL del servicio SOAP y saca los nombres de operaciones y de
+ * parametros. Esto es la verdad de la fuente: con esto no hay que adivinar.
+ */
+async function leerWsdl(base: string) {
+  const u = base.replace("/apipg/", "/wspg/") + "?wsdl";
+  try {
+    const resp = await fetch(u);
+    const xml = await resp.text();
+    const saca = (re: RegExp) => [...new Set([...xml.matchAll(re)].map((m) => m[1]))];
+    return {
+      url: u,
+      http: resp.status,
+      largo: xml.length,
+      operaciones: saca(/<(?:wsdl:)?operation\s+name="([^"]+)"/g),
+      mensajes: saca(/<(?:wsdl:)?message\s+name="([^"]+)"/g),
+      partes: saca(/<(?:wsdl:)?part\s+name="([^"]+)"/g),
+      elementos: saca(/<(?:xsd?|xs):element\s+name="([^"]+)"/g),
+      direccion: (xml.match(/<(?:soap:)?address\s+location="([^"]+)"/) || [])[1] ?? null,
+      crudo: xml.slice(0, 6000),
+    };
+  } catch (e) {
+    return { url: u, error: String(e).slice(0, 250) };
+  }
+}
+
+/** Trae la pagina de documentacion de la APIPG como texto plano. */
+async function leerDocs() {
+  const u = "https://dev.pagadito.com/index.php?mod=docs&hac=mostrar&tema=APIPG";
+  try {
+    const resp = await fetch(u);
+    const html = await resp.text();
+    const texto = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+    return { url: u, http: resp.status, largo: html.length, texto: texto.slice(0, 18000) };
+  } catch (e) {
+    return { url: u, error: String(e).slice(0, 250) };
   }
 }
 
@@ -131,9 +182,10 @@ Deno.serve(async (req: Request) => {
         problema: "Faltan los secrets PAGADITO_UID y/o PAGADITO_WSK en Supabase.",
       }, 400);
     }
-    const resultados = [];
-    for (const u of CANDIDATOS) resultados.push(await probar(u));
-    const gana = resultados.find((r) => r.code);
+    const variantes = [];
+    for (const v of VARIANTES) variantes.push(await probarVariante(ENDPOINT, v));
+    const gana = variantes.find((r) => r.code);
+    const [wsdl, docs] = await Promise.all([leerWsdl(ENDPOINT), leerDocs()]);
     return json({
       ok: !!gana,
       endpoint_configurado: ENDPOINT,
@@ -141,15 +193,15 @@ Deno.serve(async (req: Request) => {
       moneda_configurada: MONEDA,
       uid_usado: UID.slice(0, 6) + "…" + UID.slice(-4),   // nunca completo
       wsk_configurado: WSK ? "si (" + WSK.length + " caracteres)" : "NO",
-      endpoint_que_responde: gana ? gana.url : null,
+      variante_que_funciona: gana ? gana.variante : null,
       codigo_pagadito: gana ? gana.code : null,
-      pruebas: resultados,
+      variantes,
+      wsdl,
+      docs,
       que_significa: gana
-        ? "Funciona en " + gana.url + " con codigo " + gana.code +
-          (String(gana.code) === "PG1001" ? ". Credenciales OK." : ". Revisa ese codigo: el endpoint sirve pero algo del connect no le gusto.")
-        : "Ninguna ruta contesto un JSON con 'code'. Mira el campo http de cada prueba: " +
-          "404 = la ruta no existe; 301/302 = redirige (mira 'redirige'); 200 con cuerpo vacio = " +
-          "existe pero no acepto los parametros; error = ni resolvio el dominio.",
+        ? "La variante '" + gana.variante + "' funciona, codigo " + gana.code + "."
+        : "Ninguna variante contesto JSON. Mira 'wsdl.operaciones' y 'docs.texto': " +
+          "ahi esta como se llaman de verdad las operaciones y los parametros.",
     });
   }
 
