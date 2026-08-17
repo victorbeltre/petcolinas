@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-17 19:52Z";
+const PC_BUILD = "2026-08-17 19:55Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3362,6 +3362,23 @@ function generarFacturaPDFDoc(f) {
     doc.text("Programa de Lealtad: "+grm+" de 10 ba\xF1os acumulados", M+4, y+2);
     doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...gr);
     doc.text(grm>=10?"\xA1BA\xD1O GRATIS DISPONIBLE en su pr\xF3xima visita!":"Faltan "+(10-grm)+" ba\xF1o(s) para el ba\xF1o gratis", M+4, y+9);}
+  // Chequeo de 5 puntos: el regalo que abre la consulta. Si hay hallazgos, van
+  // impresos para que el dueno los lea en su casa y llame.
+  if(f.chequeo && f.chequeo.detalle && f.chequeo.detalle.length){
+    const ch=f.chequeo; const alto=18+ch.detalle.length*4.5+(ch.reco.length?6+ch.reco.length*4.5:0);
+    y+=20;doc.setFillColor(245,240,255);doc.rect(M,y-4,W-2*M,alto,"F");
+    doc.setDrawColor(124,58,237);doc.rect(M,y-4,W-2*M,alto,"S");
+    doc.setTextColor(91,33,182);doc.setFont("helvetica","bold");doc.setFontSize(9);
+    doc.text("Chequeo gratis de 5 puntos"+(ch.doctora?" - "+sinEmoji(ch.doctora):""), M+4, y+2);
+    doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(...gr);
+    let yy=y+8;
+    ch.detalle.forEach((d)=>{doc.text("- "+sinEmoji(d).slice(0,95), M+4, yy);yy+=4.5;});
+    if(ch.reco.length){
+      doc.setFont("helvetica","bold");doc.setTextColor(180,83,9);
+      doc.text("Le recomendamos:", M+4, yy+2);yy+=6.5;
+      doc.setFont("helvetica","normal");
+      ch.reco.forEach((r)=>{doc.text("- "+sinEmoji(r).slice(0,95), M+4, yy);yy+=4.5;});}
+    y+=alto-16;}
   // Proxima cita: llevarla impresa es lo que convierte "vuelva cuando quiera"
   // en una fecha concreta. Sale la cita agendada de verdad si existe; si no,
   // la sugerida por el tipo de servicio.
@@ -3638,7 +3655,7 @@ function PanelFondo({ saldo, mascota, total, dejar, setDejar, usar, setUsar }) {
   );
 }
 
-function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], tarifasGrooming, tarifasVet, inventario }) {
+function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], historias = [], tarifasGrooming, tarifasVet, inventario }) {
   const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
     try {
       const stored = JSON.parse(localStorage.getItem("pc_facturas") || "null");
@@ -3921,7 +3938,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], tarifa
       estado: form.estado || "pagada",
       notas: form.notas,
       groomingCount: gCount,
-      proximaCita: proximaCitaDeFactura({ mascota: form.mascota, fecha: form.fecha, items: form.items }, citas)
+      proximaCita: proximaCitaDeFactura({ mascota: form.mascota, fecha: form.fecha, items: form.items }, citas),
+      chequeo: chequeoDeFactura({ mascota: form.mascota, fecha: form.fecha }, historias, clientes)
     };
     if (editandoId) {
       const esDeVentas = String(editandoId).startsWith("venta_");
@@ -3989,7 +4007,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], tarifa
   }
   function imprimirFactura(f) {
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    f = { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas) };
+    f = { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas), chequeo: f.chequeo || chequeoDeFactura(f, historias, clientes) };
     const clienteData = clientes.find(c => String(c.id) === String(f.clienteId));
     const cedulaCliente = clienteData?.cedula || "";
     const win = window.open("", "_blank");
@@ -4109,6 +4127,13 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], tarifa
 
       ${f.notas ? `<div style="margin-top:24px;background:#f8f9fa;border-radius:8px;padding:14px;font-size:12px;"><strong>Notas:</strong> ${f.notas}</div>` : ""}
 
+      ${f.chequeo && f.chequeo.detalle && f.chequeo.detalle.length ? `<div style="margin-top:24px;background:#f5f0ff;border:2px solid #7c3aed;border-radius:12px;padding:16px 18px;">
+        <div style="font-weight:800;color:#5b21b6;font-size:15px;">\u{1FA7A} Chequeo gratis de 5 puntos${f.chequeo.doctora ? " — " + f.chequeo.doctora : ""}</div>
+        <ul style="margin:8px 0 0;padding-left:18px;font-size:12.5px;color:#4c1d95;">${f.chequeo.detalle.map((d) => `<li>${d}</li>`).join("")}</ul>
+        ${f.chequeo.reco.length ? `<div style="margin-top:10px;padding-top:9px;border-top:1px dashed #c4b5fd;"><div style="font-weight:800;color:#b45309;font-size:12.5px;">Le recomendamos:</div><ul style="margin:5px 0 0;padding-left:18px;font-size:12.5px;color:#7c4a03;">${f.chequeo.reco.map((r) => `<li>${r}</li>`).join("")}</ul></div>` : ""}
+        ${f.chequeo.nota ? `<div style="margin-top:8px;font-size:12px;color:#5f4b8b;font-style:italic;">${f.chequeo.nota}</div>` : ""}
+      </div>` : ""}
+
       ${f.proximaCita && f.proximaCita.fecha ? `<div style="margin-top:24px;background:#eef4ff;border:2px solid #1a4fa0;border-radius:12px;padding:16px 18px;">
         <div style="font-weight:800;color:#1a4fa0;font-size:15px;">🗓️ Su próxima cita: ${fechaLargaRD(f.proximaCita.fecha)}${f.proximaCita.hora ? " a las " + f.proximaCita.hora : ""}</div>
         <div style="font-size:12.5px;color:#3a4a63;margin-top:4px;">${f.proximaCita.agendada ? "Ya está apartada a su nombre. " : ""}${f.proximaCita.label} — le escribimos un día antes para recordarle.</div>
@@ -4160,7 +4185,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], tarifa
     }
     // El PDF necesita el contador de lealtad; antes no se le pasaba y por eso el
     // bloque de baños nunca salía en la factura enviada por WhatsApp.
-    enviarPDFWhatsApp({ ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas) }, clientes);
+    enviarPDFWhatsApp({ ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas), chequeo: f.chequeo || chequeoDeFactura(f, historias, clientes) }, clientes);
   }
   const [busqueda, setBusqueda] = useState("");
   const [busqFact, setBusqFact] = useState("");
@@ -6778,7 +6803,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
         clientes: clientesCaja, setClientes, citas, setCitas, setTab, setCrmClienteInicial: setClienteInicial,
         clienteVentaInicial: clienteInicial, clearClienteVentaInicial: () => setClienteInicial(null),
         tarifasGrooming, tarifasVet, setSeguimientos }),
-      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesCaja, citas,
+      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesCaja, citas, historias,
         tarifasGrooming, tarifasVet, inventario }),
       tab === "agenda" && E(Agenda, { citas, setCitas, deleteCita, clientes: clientesCaja, ventas, setVentas,
         tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }),
@@ -7106,7 +7131,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
@@ -7790,6 +7815,166 @@ const REAC_PLANTILLAS = [
 
 // Saca la reactivacion al dashboard. Vivia como sub-pestana de Seguimientos y
 // nadie entraba: por eso 278 mascotas se enfriaron sin que nadie las llamara.
+// ─── CHEQUEO DE 5 PUNTOS ────────────────────────────────────────────────────
+// 517 mascotas pasaron por grooming y solo 43 usaron alguna vez la veterinaria
+// (8.3%). El perro ya esta aqui, desnudo y en las manos del equipo durante una
+// hora: es el mejor momento de venta que existe, y nadie ofrecia nada.
+// El chequeo es gratis a proposito. Resuelve un problema chiquito (saber como
+// esta) y destapa el siguiente, que si se cobra.
+const CHEQUEO_PUNTOS = [
+  { id: "piel", label: "Piel y pelaje", icono: "\u{1F415}", hallazgos: [
+    { t: "Todo bien",                ok: true },
+    { t: "Piel reseca o con caspa",  ok: false, sugiere: "Ba\xF1o hidratante y consulta de piel" },
+    { t: "Enrojecida o con ronchas", ok: false, sugiere: "Consulta veterinaria — puede ser alergia" },
+    { t: "Pulgas o garrapatas",      ok: false, sugiere: "Ba\xF1o medicado + antipulgas (Nexgard o Bravecto)" },
+    { t: "Zonas sin pelo",           ok: false, sugiere: "Consulta veterinaria — revisar hongos o \xE1caros" }
+  ]},
+  { id: "oidos", label: "O\xEDdos", icono: "\u{1F442}", hallazgos: [
+    { t: "Limpios",                  ok: true },
+    { t: "Cerilla excesiva",         ok: false, sugiere: "Limpieza de o\xEDdos" },
+    { t: "Mal olor",                 ok: false, sugiere: "Consulta veterinaria — posible infecci\xF3n" },
+    { t: "Enrojecidos o con dolor",  ok: false, sugiere: "Consulta veterinaria hoy mismo" }
+  ]},
+  { id: "dientes", label: "Dientes y enc\xEDas", icono: "\u{1F9B7}", hallazgos: [
+    { t: "Limpios",                  ok: true },
+    { t: "Sarro leve",               ok: false, sugiere: "Snacks dentales y revisi\xF3n en 3 meses" },
+    { t: "Sarro avanzado",           ok: false, sugiere: "Limpieza dental con la doctora" },
+    { t: "Enc\xEDas inflamadas",     ok: false, sugiere: "Consulta veterinaria — puede doler al comer" }
+  ]},
+  { id: "peso", label: "Peso y condici\xF3n", icono: "⚖️", hallazgos: [
+    { t: "Peso ideal",               ok: true },
+    { t: "Por debajo del peso",      ok: false, sugiere: "Consulta — revisar par\xE1sitos y alimentaci\xF3n" },
+    { t: "Sobrepeso",                ok: false, sugiere: "Plan de alimento y control de peso" },
+    { t: "Obesidad",                 ok: false, sugiere: "Consulta veterinaria — riesgo para articulaciones" }
+  ]},
+  { id: "unas", label: "U\xF1as y almohadillas", icono: "\u{1F43E}", hallazgos: [
+    { t: "Bien",                     ok: true },
+    { t: "U\xF1as largas",           ok: false, sugiere: "Corte de u\xF1as m\xE1s pulido" },
+    { t: "Almohadillas resecas",     ok: false, sugiere: "Crema para almohadillas" },
+    { t: "U\xF1a encarnada",         ok: false, sugiere: "Atenci\xF3n veterinaria hoy" }
+  ]}
+];
+// Resume el chequeo en dos lineas: lo que se vio y lo que se recomienda.
+function resumirChequeo(res) {
+  const detalle = [], reco = [];
+  CHEQUEO_PUNTOS.forEach((p) => {
+    const idx = res && res[p.id];
+    if (idx == null) return;
+    const h = p.hallazgos[idx];
+    if (!h) return;
+    detalle.push(p.label + ": " + h.t);
+    if (!h.ok && h.sugiere) reco.push(p.label + " — " + h.sugiere);
+  });
+  return { detalle, reco, todoBien: reco.length === 0 && detalle.length > 0 };
+}
+// Busca el chequeo hecho a esa mascota ese dia, para imprimirlo en la factura.
+// Se resuelve por clienteid para no tener que agregar columnas a pc_historias.
+function chequeoDeFactura(f, historias, clientes) {
+  const mascota = String((f && (f.mascota || f.cliente)) || "").toLowerCase().trim();
+  const fecha = String((f && f.fecha) || "").slice(0, 10);
+  if (!mascota || !fecha) return null;
+  const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === mascota);
+  if (!cli) return null;
+  const h = (historias || []).find((x) =>
+    String(x.tipo || "") === "Chequeo" &&
+    String(x.clienteId ?? x.clienteid ?? "") === String(cli.id) &&
+    String(x.fecha || "").slice(0, 10) === fecha);
+  if (!h) return null;
+  return {
+    detalle: String(h.diagnostico || "").split(" \xB7 ").filter(Boolean),
+    reco: String(h.tratamiento || "").startsWith("Sin hallazgos")
+      ? [] : String(h.tratamiento || "").split(" \xB7 ").filter(Boolean),
+    nota: h.notas || "",
+    doctora: h.veterinario || ""
+  };
+}
+
+function ModalChequeo({ mascota, fecha, clientes, veterinario, onCerrar, onGuardado }) {
+  const E = React.createElement;
+  const [res, setRes] = React.useState({});
+  const [nota, setNota] = React.useState("");
+  const [guardando, setGuardando] = React.useState(false);
+  const resumen = resumirChequeo(res);
+  const completo = CHEQUEO_PUNTOS.every((p) => res[p.id] != null);
+
+  async function guardar() {
+    if (!completo) return;
+    setGuardando(true);
+    const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === String(mascota || "").toLowerCase().trim());
+    const fila = {
+      id: String(Date.now()),
+      clienteid: String((cli && cli.id) || ""),
+      fecha: String(fecha || hoy()).slice(0, 10),
+      tipo: "Chequeo",
+      veterinario: veterinario || "",
+      descripcion: "Chequeo gratis de 5 puntos",
+      diagnostico: resumen.detalle.join(" \xB7 "),
+      tratamiento: resumen.reco.length ? resumen.reco.join(" \xB7 ") : "Sin hallazgos. Todo en orden.",
+      notas: nota,
+      creadoen: hoy()
+    };
+    await upsertOne("pc_historias", fila);
+    setGuardando(false);
+    if (onGuardado) onGuardado(fila, resumen);
+    onCerrar();
+  }
+
+  return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999,
+                             overflowY: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20 } },
+    E("div", { style: { background: "#fff", borderRadius: 16, maxWidth: 660, width: "100%", padding: 26,
+                        marginTop: 30, marginBottom: 30, boxShadow: "0 20px 60px rgba(0,0,0,0.28)" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 } },
+        E("div", null,
+          E("div", { style: { fontFamily: "Georgia,serif", fontSize: 21, fontWeight: 800 } }, "\u{1FA7A} Chequeo de 5 puntos"),
+          E("div", { style: { fontSize: 13, color: "#5a6472", marginTop: 3 } },
+            mascota + " \xB7 " + String(fecha || hoy()).slice(0, 10) + " \xB7 gratis")),
+        E("button", { onClick: onCerrar, style: { background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#8a93a0" } }, "✕")),
+      E("div", { style: { fontSize: 12.5, color: "#5a6472", background: "#f8f9fa", borderRadius: 8,
+                          padding: "10px 13px", margin: "12px 0 18px" } },
+        "Toma un minuto mientras la mascota est\xE1 aqu\xED. Lo que salga sale impreso en la factura, ",
+        "y lo que necesite atenci\xF3n queda como recomendaci\xF3n de la doctora."),
+
+      CHEQUEO_PUNTOS.map((p) => E("div", { key: p.id, style: { marginBottom: 16 } },
+        E("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 7 } }, p.icono + "  " + p.label),
+        E("div", { style: { display: "flex", gap: 7, flexWrap: "wrap" } },
+          p.hallazgos.map((h, i) => {
+            const sel = res[p.id] === i;
+            const color = h.ok ? "#1a6b3a" : "#c0392b";
+            return E("button", {
+              key: i, onClick: () => setRes((r) => ({ ...r, [p.id]: i })),
+              style: { background: sel ? color : "#fff", color: sel ? "#fff" : "#5a6472",
+                       border: "1.5px solid " + (sel ? color : "#e0e4e8"), borderRadius: 8,
+                       padding: "8px 13px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }
+            }, h.t);
+          })))),
+
+      E("div", { style: { marginBottom: 16 } },
+        E("label", { style: { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 } }, "Nota para el due\xF1o (opcional)"),
+        E("input", { value: nota, onChange: (e) => setNota(e.target.value),
+          placeholder: "Ej: traerlo en 3 meses para revisar el sarro",
+          style: { width: "100%", boxSizing: "border-box", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "9px 12px", fontSize: 13, outline: "none" } })),
+
+      resumen.reco.length > 0 ? E("div", { style: { background: "#fff7ed", border: "1.5px solid #f59e0b",
+                                                    borderRadius: 10, padding: "12px 15px", marginBottom: 16 } },
+        E("div", { style: { fontWeight: 800, color: "#b45309", fontSize: 13, marginBottom: 6 } },
+          "\u{1F4A1} " + resumen.reco.length + " cosa" + (resumen.reco.length === 1 ? "" : "s") + " que ofrecerle hoy"),
+        resumen.reco.map((r, i) => E("div", { key: i, style: { fontSize: 12.5, color: "#7c4a03", marginBottom: 3 } }, "• " + r)))
+        : (completo ? E("div", { style: { background: "#eafaf1", border: "1.5px solid #27ae60", borderRadius: 10,
+                                          padding: "12px 15px", marginBottom: 16, fontSize: 13, color: "#1a6b3a", fontWeight: 700 } },
+            "✅ Todo en orden. Eso tambi\xE9n vale: el due\xF1o se va tranquilo y con la factura que lo dice.") : null),
+
+      E("div", { style: { display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" } },
+        E("button", { onClick: onCerrar,
+          style: { background: "none", border: "1.5px solid #d1d5db", color: "#5a6472", borderRadius: 8,
+                   padding: "11px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Cancelar"),
+        E("button", { onClick: guardar, disabled: !completo || guardando,
+          title: completo ? "" : "Marca los 5 puntos",
+          style: { background: completo && !guardando ? "#1a6b3a" : "#c8cdd4", color: "#fff", border: "none",
+                   borderRadius: 8, padding: "11px 20px", fontSize: 13, fontWeight: 800,
+                   cursor: completo && !guardando ? "pointer" : "not-allowed" } },
+          guardando ? "Guardando..." : "✓ Guardar chequeo"))));
+}
+
 function AvisoReactivacion({ clientes, ventas, setTab }) {
   const E = React.createElement;
   const [cerrado, setCerrado] = React.useState(() => {
@@ -9071,6 +9256,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const quitarItem = (id) => setItems(items.filter((i) => i.id !== id));
   const [notifDuplicado, setNotifDuplicado] = useState(null);
   const [notifExito, setNotifExito] = useState(null);
+  const [chequeoDe, setChequeoDe] = useState(null);
+  const [chequeoHecho, setChequeoHecho] = useState(null);
   const [proxCita, setProxCita] = useState(null);
   const [proxCitaOk, setProxCitaOk] = useState("");
   const HORAS_CITA = (() => { const a = []; for (let x = 8; x <= 18; x++) { a.push(String(x).padStart(2,"0") + ":00"); a.push(String(x).padStart(2,"0") + ":30"); } return a; })();
@@ -9225,6 +9412,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     const notifTel = clientes ? ((clientes.find(c => (c.nombreMascota||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || clientes.find(c => (c.nombrePropietario||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || {}).telefono || "") : "";
     setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area, items: nueva.items, servicio: descripcion, fecha, telefono: notifTel });
     // BAM FAM: nadie sale del local sin la proxima cita puesta.
+    // El chequeo solo tiene sentido si la mascota estuvo aqui fisicamente.
+    setChequeoHecho(null);
+    setChequeoDe(area === "grooming" && cliente ? { mascota: cliente, fecha } : null);
     const sug = proximaCitaSugerida(descripcion, fecha);
     setProxCita(sug ? { ...sug, mascota: cliente || "", hora: "10:00", telefono: notifTel, desde: fecha } : null);
     setProxCitaOk("");
@@ -9265,7 +9455,40 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#92400e" }
     },
     "\u2715"
-  )), proxCita && React.createElement("div", { style: {
+  )), chequeoDe && !chequeoHecho && React.createElement("div", { style: {
+    background: "#f3e8ff", border: "2px solid #7c3aed", borderRadius: 12, padding: "14px 18px",
+    marginBottom: 16, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap"
+  } },
+    React.createElement("span", { style: { fontSize: 24 } }, "\u{1FA7A}"),
+    React.createElement("div", { style: { flex: 1, minWidth: 240 } },
+      React.createElement("div", { style: { fontWeight: 800, fontSize: 14.5, color: "#5b21b6" } },
+        "\xBFLe hacemos el chequeo gratis a " + chequeoDe.mascota + "?"),
+      React.createElement("div", { style: { fontSize: 12.5, color: "#5f4b8b", marginTop: 3 } },
+        "Un minuto mientras est\xE1 aqu\xED. Sale impreso en la factura y es lo que abre la consulta veterinaria.")),
+    React.createElement("button", { onClick: () => setChequeoDe((c) => c && { ...c, abierto: true }),
+      style: { background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "11px 17px",
+               fontSize: 13, fontWeight: 800, cursor: "pointer" } }, "\u{1FA7A} Hacer el chequeo"),
+    React.createElement("button", { onClick: () => setChequeoDe(null),
+      style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#5b21b6" } }, "✕")),
+  chequeoHecho && React.createElement("div", { style: {
+    background: "#f3e8ff", border: "2px solid #7c3aed", borderRadius: 12, padding: "14px 18px", marginBottom: 16
+  } },
+    React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#5b21b6", marginBottom: 4 } },
+      "\u{1FA7A} Chequeo guardado \xB7 " + chequeoHecho.mascota),
+    chequeoHecho.reco.length
+      ? React.createElement("div", null,
+          React.createElement("div", { style: { fontSize: 12.5, color: "#5f4b8b", marginBottom: 5 } },
+            "Ofr\xE9cele esto antes de que se vaya:"),
+          chequeoHecho.reco.map((r, i) => React.createElement("div", { key: i,
+            style: { fontSize: 12.5, color: "#4c1d95", fontWeight: 700, marginBottom: 2 } }, "\u2022 " + r)))
+      : React.createElement("div", { style: { fontSize: 12.5, color: "#5f4b8b" } },
+          "Todo en orden. Sale en la factura firmado por la doctora."))
+  , chequeoDe && chequeoDe.abierto && React.createElement(ModalChequeo, {
+      mascota: chequeoDe.mascota, fecha: chequeoDe.fecha, clientes,
+      veterinario: "Doctora PetColinas",
+      onCerrar: () => setChequeoDe((c) => c && { ...c, abierto: false }),
+      onGuardado: (fila, resumen) => { setChequeoHecho({ mascota: chequeoDe.mascota, reco: resumen.reco }); setChequeoDe(null); }
+    }), proxCita && React.createElement("div", { style: {
     background: "#eef4ff", border: "2px solid #1a4fa0", borderRadius: 12,
     padding: "16px 18px", marginBottom: 16
   } },

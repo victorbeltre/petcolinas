@@ -98,6 +98,11 @@ render("AvisoCitasProximas", sandbox.AvisoCitasProximas, {
     telefono: "8095551234", servicio: "Baño y corte", estado: "pendiente" }],
   setCitas: () => {}, clientes: []
 }, null, "sin recordatorio enviado");
+render("ModalChequeo", sandbox.ModalChequeo, {
+  mascota: "Doky Diaz", fecha: "2026-08-17",
+  clientes: [{ id: 1, nombreMascota: "Doky Diaz" }],
+  veterinario: "Doctora", onCerrar: () => {}, onGuardado: () => {}
+}, null, "Chequeo de 5 puntos");
 render("Reactivacion", sandbox.Reactivacion, {
   clientes: [{ id: 1, nombreMascota: "Doky Diaz", nombrePropietario: "Ana Diaz",
     telefono: "8095551234", ultimaVisita2025: "2026-06-01" }],
@@ -119,4 +124,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (11 comprobadas).`);
+console.log(`✓ Vistas principales renderizan sin errores (12 comprobadas).`);
