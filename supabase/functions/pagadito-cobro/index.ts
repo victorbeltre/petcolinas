@@ -104,6 +104,13 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405, headers: cors });
   }
+  // Esta funcion se despliega SIN verificacion de JWT, porque el modo
+  // diagnostico se abre desde el navegador. Para que nadie pueda generar
+  // cobros a lo loco, el POST si exige que venga la cabecera de la app.
+  const auth = req.headers.get("authorization") ?? "";
+  if (!auth.toLowerCase().startsWith("bearer ") || auth.length < 30) {
+    return json({ error: "Falta la autorizacion. Este endpoint solo se llama desde la app." }, 401);
+  }
   if (!UID || !WSK) {
     return json({ error: "Faltan los secrets PAGADITO_UID / PAGADITO_WSK." }, 500);
   }
