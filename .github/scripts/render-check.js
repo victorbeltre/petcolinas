@@ -86,6 +86,12 @@ render("Facturas (nueva factura)", sandbox.Facturas, propsFact, (h) => {
   const i = h.indexOf("lista"); if (i >= 0) h[i] = "nueva";
 }, "Servicios / Productos");
 render("CierreCaja", sandbox.CierreCaja, { ventas, gastos: [] });
+render("Cobros", sandbox.Cobros, {
+  ventas: ventas.concat([{ id: 99991, fecha: "2026-01-05", cliente: "Doky Diaz",
+    servicio: "Baño pequeño", total: 1289, formapago: "Pago pendiente" }]),
+  setVentas: () => {},
+  clientes: [{ id: 1, nombreMascota: "Doky Diaz", nombrePropietario: "Ana Diaz", telefono: "8095551234" }]
+}, null, "Total por cobrar");
 render("Candidatos", sandbox.Candidatos, {});
 render("WhatsAppInbox", sandbox.WhatsAppInbox, {});
 render("Llamadas", sandbox.Llamadas, {});
@@ -96,4 +102,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (7 comprobadas).`);
+console.log(`✓ Vistas principales renderizan sin errores (8 comprobadas).`);
