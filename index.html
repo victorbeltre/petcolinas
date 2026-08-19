@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-19 20:00Z";
+const PC_BUILD = "2026-08-19 20:17Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1562,6 +1562,22 @@ const esPagoPendiente = (v) => {
 };
 // Lo que falta por cobrar de una venta (0 si ya esta saldada).
 const montoPorCobrar = (v) => (esPagoPendiente(v) ? saldoDe(v) : 0);
+// Resumen de pagos para IMPRIMIR o ENVIAR una factura. El total de la factura
+// puede traer ITBIS, que no está en las ventas, así que el saldo se saca del
+// total de la factura y no de la suma de las ventas.
+function pagosFactura(f, totalFactura) {
+  const abonos = (Array.isArray(f && f.abonos) ? f.abonos : []).filter((a) => (Number(a && a.monto) || 0) > 0);
+  const abonado = abonos.length
+    ? redondeo2(abonos.reduce((n, a) => n + (Number(a.monto) || 0), 0))
+    : redondeo2(f && f.abonado);
+  const saldo = Math.max(0, redondeo2((Number(totalFactura) || 0) - abonado));
+  return { abonos, abonado, saldo, hay: abonos.length > 0 || abonado > 0 };
+}
+const FORMA_LARGA = { efectivo: "Efectivo", transferencia: "Transferencia", tarjeta: "Tarjeta" };
+function nombreForma(a) {
+  const base = FORMA_LARGA[String((a && a.forma) || "").toLowerCase()] || (a && a.forma) || "Pago";
+  return a && a.banco ? base + " " + a.banco : base;
+}
 // ¿Ya toca escribirle al cliente para que termine de saldar?
 function tocaRecordar(v, hoyStr) {
   const f = String((v && (v.fechaRecordatorio || v.fecharecordatorio)) || "").slice(0, 10);
@@ -4056,6 +4072,39 @@ function generarFacturaPDFDoc(f) {
   y+=6; doc.setFillColor(...verde); doc.rect(130,y-4,W-M-130,9,"F");
   doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(11);
   doc.text("TOTAL", 134, y+1.5); doc.text("RD$ "+total.toLocaleString("es-DO"), W-M-2, y+1.5, {align:"right"});
+  // Pagos recibidos. Va impreso para que el cliente vea de una lo que ya pagó,
+  // cuándo lo pagó y cuánto le falta, sin tener que preguntar.
+  const pg = pagosFactura(f, total);
+  if (pg.hay) {
+    y += 12;
+    doc.setTextColor(...ng); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+    doc.text("PAGOS RECIBIDOS", 134, y);
+    doc.setFont("helvetica","normal");
+    pg.abonos.forEach((a) => {
+      y += 5.5;
+      doc.setTextColor(...gr);
+      doc.text((a.fecha || "") + " \xB7 " + nombreForma(a), 134, y);
+      doc.setTextColor(...ng);
+      doc.text("RD$ "+Math.round(a.monto).toLocaleString("es-DO"), W-M-2, y, {align:"right"});
+    });
+    y += 6;
+    doc.setDrawColor(...gr); doc.setLineWidth(0.2); doc.line(130, y-3.5, W-M, y-3.5);
+    doc.setFont("helvetica","bold"); doc.setTextColor(...ng); doc.setFontSize(9);
+    doc.text("Abonado:", 134, y);
+    doc.text("RD$ "+Math.round(pg.abonado).toLocaleString("es-DO"), W-M-2, y, {align:"right"});
+    y += 8;
+    if (pg.saldo > 0) {
+      doc.setFillColor(253,234,234); doc.rect(130, y-4.5, W-M-130, 9, "F");
+      doc.setDrawColor(184,35,42); doc.setLineWidth(0.3); doc.rect(130, y-4.5, W-M-130, 9, "S");
+      doc.setTextColor(184,35,42); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+      doc.text("SALDO PENDIENTE", 134, y+1.5);
+      doc.text("RD$ "+Math.round(pg.saldo).toLocaleString("es-DO"), W-M-2, y+1.5, {align:"right"});
+    } else {
+      doc.setFillColor(209,250,229); doc.rect(130, y-4.5, W-M-130, 9, "F");
+      doc.setTextColor(6,95,70); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+      doc.text("PAGADA EN SU TOTALIDAD", 134, y+1.5);
+    }
+  }
   // Lealtad grooming
   const grm=Number(f.groomingCount)||0;
   if(grm>=0 && f.groomingCount!=null){y+=16;doc.setFillColor(255,251,234);doc.rect(M,y-4,W-2*M,16,"F");
@@ -4133,9 +4182,19 @@ function enviarPDFWhatsApp(f, clientes) {
   const telRaw = resolverTelFactura(f, clientes);
   const tel = telRaw ? (telRaw.length >= 11 ? telRaw : "1" + telRaw) : "";
   const saludo = f.propietario ? "Hola " + String(f.propietario).split(" ")[0] + ", " : "Hola, ";
+  // Si el cliente abonó, el mensaje lo dice: cuánto lleva pagado y cuánto
+  // falta. Mandar solo el total haría que pareciera que no ha pagado nada.
+  const pgWA = pagosFactura(f, f.total || 0);
+  const lineasPago = pgWA.hay
+    ? "\nAbonado: RD$ " + Math.round(pgWA.abonado).toLocaleString("es-DO") +
+      (pgWA.saldo > 0
+        ? "\n*Saldo pendiente: RD$ " + Math.round(pgWA.saldo).toLocaleString("es-DO") + "*"
+        : "\n✅ *Pagada en su totalidad*")
+    : "";
   const msgText = saludo + "le anexamos su factura de PetColinas 🐾\n\n*Factura #" + f.numero + "* \xB7 " + f.fecha +
     (f.mascota ? "\n🐾 " + f.mascota : "") +
-    "\n*Total: RD$ " + (f.total || 0).toLocaleString("es-DO") + "*\n\n\xA1Gracias por la visita!";
+    "\n*Total: RD$ " + (f.total || 0).toLocaleString("es-DO") + "*" + lineasPago +
+    "\n\n\xA1Gracias por la visita!";
   const waUrl = tel
     ? "https://wa.me/" + tel + "?text=" + encodeURIComponent(msgText)
     : "https://wa.me/?text=" + encodeURIComponent(msgText);
@@ -4824,6 +4883,19 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
           <div class="totales-row"><span>Subtotal</span><span>RD$ ${subtotal.toLocaleString("es-DO")}</span></div>
           ${f.itbis ? `<div class="totales-row"><span>ITBIS (18%)</span><span>RD$ ${itbisAmt.toLocaleString("es-DO")}</span></div>` : ""}
           <div class="totales-row total"><span>TOTAL</span><span>RD$ ${total.toLocaleString("es-DO")}</span></div>
+          ${(() => {
+            // Pagos recibidos: el cliente ve lo que ya abonó y lo que falta.
+            const pg = pagosFactura(f, total);
+            if (!pg.hay) return "";
+            return `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;">
+              <div style="font-size:11px;font-weight:800;color:#5a6472;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Pagos recibidos</div>
+              ${pg.abonos.map((a) => `<div class="totales-row" style="font-size:12px;color:#5a6472;"><span>${a.fecha || ""} · ${nombreForma(a)}</span><span>RD$ ${Math.round(a.monto).toLocaleString("es-DO")}</span></div>`).join("")}
+              <div class="totales-row" style="font-weight:700;border-top:1px solid #e2e8f0;"><span>Abonado</span><span>RD$ ${Math.round(pg.abonado).toLocaleString("es-DO")}</span></div>
+              ${pg.saldo > 0
+                ? `<div class="totales-row" style="font-size:15px;font-weight:800;color:#b8232a;background:#fdeaea;border:1.5px solid #b8232a;border-radius:6px;padding:8px 10px;margin-top:6px;"><span>SALDO PENDIENTE</span><span>RD$ ${Math.round(pg.saldo).toLocaleString("es-DO")}</span></div>`
+                : `<div style="font-size:14px;font-weight:800;color:#065f46;background:#d1fae5;border-radius:6px;padding:8px 10px;margin-top:6px;text-align:center;">PAGADA EN SU TOTALIDAD</div>`}
+            </div>`;
+          })()}
         </div>
       </div>
 
@@ -4951,7 +5023,10 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
         // OJO: normalizeRow devuelve formaPago en camelCase; antes se leia
         // "formapago" y por eso toda factura salia como Efectivo/PAGADA.
         metodoPago: (() => { const fp = g.items[0]?.formaPago || g.items[0]?.formapago || ""; return fp && fp !== "Pago pendiente" ? fp : "Efectivo"; })(),
-        estado: g.items.some(v => (v.formaPago || v.formapago || "") === "Pago pendiente") ? "pendiente" : "pagada",
+        // Misma regla que el resto de la app (esPagoPendiente): así una factura
+        // que se saldó a punta de abonos deja de salir como PENDIENTE, y las
+        // variantes del texto ("pendiente", "Pendiente de pago") también cuentan.
+        estado: g.items.some((v) => esPagoPendiente(v)) ? "pendiente" : "pagada",
         itbis: false,
         subtotal,
         itbisAmt: 0,
@@ -4961,6 +5036,15 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
         // se escribe en las ventas, no en la factura, y así Cobros, el botón de
         // "por cobrar" y el cierre de caja ven lo mismo.
         ventaIds: g.items.map((v) => String(v.id)),
+        // Los abonos viajan CON la factura para que salgan impresos y en el
+        // WhatsApp. Se juntan los de todas las ventas del grupo y se ordenan
+        // por fecha: para el cliente es un solo recibo, no una venta por linea.
+        abonos: g.items
+          .flatMap((v) => abonosDe(v))
+          .map((a) => ({ fecha: String(a.fecha || "").slice(0, 10), monto: Number(a.monto) || 0,
+                         forma: a.forma || "", banco: a.banco || "" }))
+          .sort((a, b) => a.fecha.localeCompare(b.fecha)),
+        abonado: redondeo2(g.items.reduce((n, v) => n + abonadoDe(v), 0)),
         autoGenerada: true
       };
     });
@@ -4993,6 +5077,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
         telefono: f.telefono || fresh.telefono,
         clienteId: f.clienteId || fresh.clienteId || "",
         ventaIds: fresh.ventaIds || [],
+        abonos: fresh.abonos || [],
+        abonado: fresh.abonado || 0,
         autoGenerada: f.autoGenerada
       };
     });
@@ -5281,7 +5367,23 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
       fontSize: 11,
       fontWeight: 700,
       display: "inline-block"
-    } }, "\u{1F43E} ", gLealtad, " ba\xF1os", gLealtad >= 10 ? " \u2014 \xA1BA\xD1O GRATIS! \u{1F389}" : ` / 10 para ba\xF1o gratis`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, f.propietario), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, f.telefono)), /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Paciente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, "\u{1F43E} ", f.mascota))), /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", marginBottom: 20, fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: C.verde, color: "#fff" } }, /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "left" } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Cant."), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Precio"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Desc.%"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Subtotal"))), /* @__PURE__ */ React.createElement("tbody", null, f.items.map((it, i) => { const precio = parseFloat(it.precio) || 0; const cant = parseInt(it.cantidad) || 1; const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0)); const sub = Math.round(precio * cant * (1 - desc / 100)); return /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: `1px solid ${C.gris}`, background: i % 2 === 0 ? "#fff" : C.gris } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, it.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center" } }, cant), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right" } }, RD(precio)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center", color: desc > 0 ? "#dc2626" : C.grisd, fontWeight: desc > 0 ? 700 : 400 } }, desc > 0 ? `-${desc}%` : "—"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right", fontWeight: 600 } }, RD(sub))); }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 240 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), f.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 20, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total))))), (movsFondo.length > 0 || saldoActualFondo > 0) && React.createElement("div", { style: { marginTop: 16, background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 10, padding: "12px 16px" } }, React.createElement("div", { style: { fontWeight: 800, fontSize: 13, color: "#5b21b6", marginBottom: 8 } }, "💰 Fondo del cliente"), movsFondo.map((d) => React.createElement("div", { key: d.id, style: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0", color: d.tipo === "uso" ? "#16a34a" : "#5b21b6" } }, React.createElement("span", null, d.tipo === "uso" ? "Usado del fondo en esta factura" : "Dejado en fondo en esta factura"), React.createElement("strong", null, (d.tipo === "uso" ? "− " : "+ ") + RD(d.monto)))), React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 800, color: "#5b21b6", borderTop: "1px solid #ddd6fe", marginTop: 6, paddingTop: 8 } }, React.createElement("span", null, "Saldo disponible hoy"), React.createElement("span", null, RD(saldoActualFondo)))), f.notas && f.notas !== "Historial 2026" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: C.gris, borderRadius: 8, padding: 12, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Notas:"), " ", f.notas), (() => {
+    } }, "\u{1F43E} ", gLealtad, " ba\xF1os", gLealtad >= 10 ? " \u2014 \xA1BA\xD1O GRATIS! \u{1F389}" : ` / 10 para ba\xF1o gratis`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Cliente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, f.propietario), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, f.telefono)), /* @__PURE__ */ React.createElement("div", { style: { background: C.gris, borderRadius: 8, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 8 } }, "Paciente"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, "\u{1F43E} ", f.mascota))), /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", marginBottom: 20, fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: C.verde, color: "#fff" } }, /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "left" } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Cant."), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Precio"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "center" } }, "Desc.%"), /* @__PURE__ */ React.createElement("th", { style: { padding: "10px 12px", textAlign: "right" } }, "Subtotal"))), /* @__PURE__ */ React.createElement("tbody", null, f.items.map((it, i) => { const precio = parseFloat(it.precio) || 0; const cant = parseInt(it.cantidad) || 1; const desc = Math.min(100, Math.max(0, parseFloat(it.descuento) || 0)); const sub = Math.round(precio * cant * (1 - desc / 100)); return /* @__PURE__ */ React.createElement("tr", { key: i, style: { borderBottom: `1px solid ${C.gris}`, background: i % 2 === 0 ? "#fff" : C.gris } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, it.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center" } }, cant), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right" } }, RD(precio)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "center", color: desc > 0 ? "#dc2626" : C.grisd, fontWeight: desc > 0 ? 700 : 400 } }, desc > 0 ? `-${desc}%` : "—"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textAlign: "right", fontWeight: 600 } }, RD(sub))); }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 240 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "Subtotal"), /* @__PURE__ */ React.createElement("span", null, RD(subtotal))), f.itbis && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "ITBIS (18%)"), /* @__PURE__ */ React.createElement("span", null, RD(itbisAmt))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 20, fontWeight: 800, color: C.verde, borderTop: `2px solid ${C.verde}`, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(total))), (() => {
+      // Lo mismo que sale impreso y por WhatsApp, para que lo que ve en
+      // pantalla y lo que recibe el cliente digan siempre lo mismo.
+      const pg = pagosFactura(f, total);
+      if (!pg.hay) return null;
+      return React.createElement("div", { style: { marginTop: 10, paddingTop: 10, borderTop: "1px dashed #cbd5e1" } },
+        React.createElement("div", { style: { fontSize: 11, fontWeight: 800, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 } }, "Pagos recibidos"),
+        pg.abonos.map((a, i) => React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: C.grisd, padding: "3px 0" } },
+          React.createElement("span", null, (a.fecha || "") + " \xB7 " + nombreForma(a)),
+          React.createElement("span", null, RD(a.monto)))),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 700, borderTop: "1px solid #e2e8f0", padding: "6px 0" } },
+          React.createElement("span", null, "Abonado"), React.createElement("span", null, RD(pg.abonado))),
+        pg.saldo > 0
+          ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 900, color: C.rojo, background: C.rojoL, border: "1.5px solid " + C.rojo, borderRadius: 8, padding: "9px 12px", marginTop: 6 } },
+              React.createElement("span", null, "SALDO PENDIENTE"), React.createElement("span", null, RD(pg.saldo)))
+          : React.createElement("div", { style: { fontSize: 14, fontWeight: 800, color: "#065f46", background: "#d1fae5", borderRadius: 8, padding: "9px 12px", marginTop: 6, textAlign: "center" } }, "PAGADA EN SU TOTALIDAD"));
+    })())), (movsFondo.length > 0 || saldoActualFondo > 0) && React.createElement("div", { style: { marginTop: 16, background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 10, padding: "12px 16px" } }, React.createElement("div", { style: { fontWeight: 800, fontSize: 13, color: "#5b21b6", marginBottom: 8 } }, "💰 Fondo del cliente"), movsFondo.map((d) => React.createElement("div", { key: d.id, style: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0", color: d.tipo === "uso" ? "#16a34a" : "#5b21b6" } }, React.createElement("span", null, d.tipo === "uso" ? "Usado del fondo en esta factura" : "Dejado en fondo en esta factura"), React.createElement("strong", null, (d.tipo === "uso" ? "− " : "+ ") + RD(d.monto)))), React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, fontWeight: 800, color: "#5b21b6", borderTop: "1px solid #ddd6fe", marginTop: 6, paddingTop: 8 } }, React.createElement("span", null, "Saldo disponible hoy"), React.createElement("span", null, RD(saldoActualFondo)))), f.notas && f.notas !== "Historial 2026" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: C.gris, borderRadius: 8, padding: 12, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", null, "Notas:"), " ", f.notas), (() => {
       // Contar solo items de grooming en facturas (no todas las ventas area=grooming)
       const total_g = calcGroomingLealtad(f.mascota);
       const progreso = Math.min(total_g, 10);
