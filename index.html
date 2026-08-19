@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-19 17:56Z";
+const PC_BUILD = "2026-08-19 19:06Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -15371,6 +15371,15 @@ async function pedirEnlacePago(venta, cliente) {
     cantidad: Number(it.qty ?? it.cantidad) || 1,
     precio: Number(it.subtotal ?? it.precio) || 0
   }));
+  // El cliente pide que en la pantalla de pago se vea de quien es el cobro:
+  // se antepone al nombre de la primera linea, sin tocar precios ni sumar
+  // lineas nuevas (eso mantendria el total cuadrado con Pagadito).
+  if (detalle.length) {
+    const dueno = (cliente && cliente.nombrePropietario) || "";
+    const fecha = String(venta.fecha || "").slice(0, 10);
+    const prefijo = [venta.cliente, dueno, fecha].filter(Boolean).join(" · ");
+    detalle[0] = { ...detalle[0], nombre: (prefijo ? prefijo + ": " : "") + detalle[0].nombre };
+  }
   let token = SUPA_KEY;
   try {
     const s = JSON.parse(localStorage.getItem("pc_session") || "null");
@@ -15405,8 +15414,14 @@ function Cobros({ ventas, setVentas, clientes }) {
     setGenerando(String(x.v.id));
     try {
       const d = await pedirEnlacePago(x.v, x.cli);
+      // El total que se cobra ya trae el 6% que cobra Pagadito por la
+      // transaccion: eso se lo explicamos al cliente para que el monto que
+      // ve en la tarjeta no le sorprenda.
+      const detalleRecargo = d.recargo > 0
+        ? " (" + cobRD(d.subtotal) + " + " + cobRD(d.recargo) + " de cargo por pago con tarjeta)"
+        : "";
       const msg = "Hola" + (x.dueno ? " " + String(x.dueno).split(" ")[0] : "") + "! \u{1F43E} Aqu\xED PetColinas.\n\n" +
-        "Puede pagar sus " + cobRD(x.monto) + " con tarjeta desde este enlace seguro:\n" + d.url +
+        "Puede pagar " + cobRD(d.monto) + detalleRecargo + " con tarjeta desde este enlace seguro:\n" + d.url +
         "\n\nEn cuanto pague, se marca solo en nuestro sistema.";
       if (x.tel) window.open("https://wa.me/" + x.tel + "?text=" + encodeURIComponent(msg), "_blank");
       else window.open(d.url, "_blank");
