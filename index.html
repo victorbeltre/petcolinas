@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-19 19:47Z";
+const PC_BUILD = "2026-08-19 20:00Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3840,6 +3840,157 @@ function AvisoAbonosPorCobrar({ ventas = [], clientes = [], setTab }) {
                padding: "8px 16px", fontSize: 12.5, fontWeight: 800, cursor: "pointer" } },
       "Ver todo en Cobros"));
 }
+
+// Reparte un cobro entre las ventas que forman una factura. Una factura puede
+// agrupar varias ventas del mismo cliente y día (baño + medicamento, por
+// ejemplo); el dinero se va aplicando a cada una hasta agotarse, para que el
+// saldo de cada venta quede bien y no solo el de la factura.
+function repartirCobro(ventasFactura, monto, forma, fechaRec, quien) {
+  let restante = redondeo2(monto);
+  const fechaHoy = hoy();
+  return ventasFactura.map((v) => {
+    // OJO: montoPorCobrar y NO saldoDe. Una venta pagada completa el mismo día
+    // no tiene abonos, así que saldoDe daría el total y le cargaríamos al
+    // cliente un pago que ya hizo.
+    const saldo = montoPorCobrar(v);
+    if (restante <= 0 || saldo <= 0) return v;
+    const aplica = redondeo2(Math.min(saldo, restante));
+    restante = redondeo2(restante - aplica);
+    const abonos = abonosDe(v).concat([{ fecha: fechaHoy, monto: aplica, forma, banco: "", por: quien }]);
+    const abonado = abonadoDe({ abonos });
+    const quedaSaldo = redondeo2((Number(v.total) || 0) - abonado) > 0.5;
+    return Object.assign({}, v, {
+      abonos, abonado,
+      formaPago: quedaSaldo ? "Pago pendiente" : forma,
+      formapago: quedaSaldo ? "Pago pendiente" : forma,
+      fechaRecordatorio: quedaSaldo ? (fechaRec || "") : "",
+      fecharecordatorio: quedaSaldo ? (fechaRec || "") : ""
+    });
+  });
+}
+
+// Panel de cobro dentro de la factura. Muestra lo que el cliente ya pagó y lo
+// que falta, y permite registrar el pago completo o un abono, con la devuelta
+// en efectivo y la fecha para recordarle.
+function PagoDeFactura({ factura, ventas, setVentas }) {
+  const E = React.createElement;
+  const [modo, setModo] = React.useState("total");      // "total" o "abono"
+  const [forma, setForma] = React.useState("efectivo");
+  const [recibido, setRecibido] = React.useState("");
+  const [montoAbono, setMontoAbono] = React.useState("");
+  const [fechaRec, setFechaRec] = React.useState("");
+  const [guardado, setGuardado] = React.useState(null);
+
+  const ids = (factura && factura.ventaIds) || [];
+  const misVentas = React.useMemo(
+    () => (ventas || []).filter((v) => ids.indexOf(String(v.id)) >= 0),
+    [ventas, ids.join(",")]);
+
+  // Sin ventas detrás no hay nada que cobrar aquí: es una factura suelta.
+  if (!misVentas.length) return null;
+
+  const totalFactura = misVentas.reduce((n, v) => n + (Number(v.total) || 0), 0);
+  const yaAbonado = misVentas.reduce((n, v) => n + abonadoDe(v), 0);
+  // Lo que falta de verdad. Con montoPorCobrar una venta ya pagada suma 0,
+  // aunque no tenga abonos registrados.
+  const saldo = redondeo2(misVentas.reduce((n, v) => n + montoPorCobrar(v), 0));
+  const recDe = misVentas.map((v) => String(v.fechaRecordatorio || v.fecharecordatorio || "")).filter(Boolean)[0] || "";
+
+  function registrar() {
+    const esAbono = modo === "abono";
+    const monto = esAbono ? redondeo2(parseFloat(montoAbono)) : saldo;
+    if (esAbono) {
+      if (!(monto > 0)) return alert("Escribe cu\xE1nto est\xE1 abonando el cliente.");
+      if (monto > saldo) return alert("El abono (" + RD(monto) + ") es mayor que lo que falta por pagar (" + RD(saldo) + ").");
+      if (monto < saldo && !fechaRec) return alert("Falta la fecha para recordarle al cliente que termine de pagar.");
+    }
+    if (!(monto > 0)) return alert("Esta factura ya est\xE1 saldada.");
+    const actualizadas = repartirCobro(misVentas, monto, forma, esAbono ? fechaRec : "", usuarioActual());
+    const porId = new Map(actualizadas.map((v) => [String(v.id), v]));
+    setVentas((prev) => (prev || []).map((v) => porId.get(String(v.id)) || v));
+    actualizadas.forEach((v) => { upsertOne("pc_ventas", v).catch((e) => console.error("[PagoDeFactura]", e)); });
+    setGuardado({ monto, queda: redondeo2(saldo - monto) });
+    setMontoAbono(""); setRecibido("");
+  }
+
+  if (saldo <= 0) {
+    return E("div", { style: { background: "#d1fae5", border: "2px solid #059669", borderRadius: 10,
+      padding: "12px 14px", marginTop: 14 } },
+      E("div", { style: { fontWeight: 800, color: "#065f46", fontSize: 13.5 } },
+        "✅ Factura saldada \xB7 " + RD(totalFactura)),
+      yaAbonado > 0 && misVentas.some((v) => abonosDe(v).length > 1)
+        ? E("div", { style: { fontSize: 11.5, color: "#065f46", marginTop: 3 } }, "Se pag\xF3 en varias partes.")
+        : null);
+  }
+
+  return E("div", { style: { background: "#fff7ed", border: "2px solid #d97706", borderRadius: 10,
+    padding: "12px 14px", marginTop: 14, display: "flex", flexDirection: "column", gap: 10 } },
+    E("div", { style: { fontWeight: 800, fontSize: 13, color: "#92400e", textTransform: "uppercase",
+      letterSpacing: 1 } }, "\u{1F4B0} Registrar el pago del cliente"),
+
+    E("div", { style: { background: "#fff", borderRadius: 8, padding: "9px 12px", border: "1px solid #fed7aa" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } },
+        E("span", { style: { color: C.grisd } }, "Total de la factura"),
+        E("span", { style: { fontWeight: 700 } }, RD(totalFactura))),
+      yaAbonado > 0 ? E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginTop: 2 } },
+        E("span", { style: { color: C.grisd } }, "Ya abonado"),
+        E("span", { style: { fontWeight: 700, color: "#059669" } }, "− " + RD(yaAbonado))) : null,
+      E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, marginTop: 4,
+        borderTop: "1px solid #fed7aa", paddingTop: 4 } },
+        E("span", { style: { fontWeight: 800, color: "#92400e" } }, "Falta por pagar"),
+        E("span", { style: { fontWeight: 900, color: C.rojo } }, RD(saldo))),
+      recDe ? E("div", { style: { fontSize: 11.5, color: C.grisd, marginTop: 4 } },
+        "\u{1F4C5} Quedaron en que le recordar\xEDamos el " + recDe) : null),
+
+    E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+      [["total", "Pag\xF3 todo (" + RD(saldo) + ")"], ["abono", "\u{1F91D} Abon\xF3 una parte"]].map((op) =>
+        E("button", { key: op[0], onClick: () => setModo(op[0]),
+          style: { background: modo === op[0] ? "#92400e" : "#fff", color: modo === op[0] ? "#fff" : "#92400e",
+            border: "1.5px solid #d97706", borderRadius: 8, padding: "8px 14px", fontSize: 12.5,
+            fontWeight: 800, cursor: "pointer" } }, op[1]))),
+
+    E("div", null,
+      E("label", { style: COBRO_LABEL }, "\xBFC\xF3mo pag\xF3?"),
+      E("select", { value: forma, onChange: (e) => setForma(e.target.value), style: COBRO_INPUT },
+        E("option", { value: "efectivo" }, "\u{1F4B5} Efectivo"),
+        E("option", { value: "transferencia" }, "\u{1F3E6} Transferencia"),
+        E("option", { value: "tarjeta" }, "\u{1F4B3} Tarjeta"))),
+
+    modo === "abono" ? E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+      E("div", { style: { flex: "1 1 150px" } },
+        E("label", { style: COBRO_LABEL }, "\xBFCu\xE1nto abona?"),
+        E("input", { type: "number", inputMode: "decimal", min: "0", step: "1", value: montoAbono,
+          onChange: (e) => setMontoAbono(e.target.value), placeholder: "Ej: " + Math.round(saldo / 2),
+          style: COBRO_INPUT })),
+      E("div", { style: { flex: "1 1 150px" } },
+        E("label", { style: COBRO_LABEL }, "\u{1F4C5} Recordarle el"),
+        E("input", { type: "date", value: fechaRec, min: hoy(),
+          onChange: (e) => setFechaRec(e.target.value), style: COBRO_INPUT }))) : null,
+
+    forma === "efectivo" && (modo === "total" || parseFloat(montoAbono) > 0)
+      ? E(BloqueEfectivo, { aCobrar: modo === "abono" ? parseFloat(montoAbono) : saldo,
+          recibido, setRecibido,
+          titulo: modo === "abono" ? "\xBFCon cu\xE1nto paga el abono?" : "\xBFCon cu\xE1nto paga?" })
+      : null,
+
+    modo === "abono" && parseFloat(montoAbono) > 0
+      ? E("div", { style: { fontSize: 13, fontWeight: 800,
+          color: redondeo2(saldo - parseFloat(montoAbono)) > 0 ? C.rojo : "#059669" } },
+          "Despu\xE9s de este abono queda debiendo " +
+          RD(Math.max(0, redondeo2(saldo - parseFloat(montoAbono)))))
+      : null,
+
+    E("button", { onClick: registrar,
+      style: { background: "#92400e", color: "#fff", border: "none", borderRadius: 8,
+        padding: "11px 18px", fontSize: 13.5, fontWeight: 800, cursor: "pointer" } },
+      modo === "abono" ? "\u{1F91D} Guardar abono de " + RD(parseFloat(montoAbono) || 0)
+                       : "✅ Guardar pago de " + RD(saldo)),
+
+    guardado ? E("div", { style: { background: "#d1fae5", border: "1.5px solid #059669", borderRadius: 8,
+      padding: "9px 12px", fontSize: 12.5, fontWeight: 700, color: "#065f46" } },
+      "Guardado: " + RD(guardado.monto) +
+      (guardado.queda > 0 ? " \xB7 queda debiendo " + RD(guardado.queda) : " \xB7 factura saldada")) : null);
+}
 // jsPDF con las fuentes estándar no dibuja emojis: salían como "Ø=Ü>".
 const sinEmoji = (t) => String(t || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, "").replace(/\s{2,}/g, " ").trim();
 
@@ -4805,6 +4956,11 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
         subtotal,
         itbisAmt: 0,
         total: subtotal,
+        // Los ids de las ventas que forman esta factura. La venta es la fuente
+        // de verdad del cobro: al registrar un pago o un abono desde la factura
+        // se escribe en las ventas, no en la factura, y así Cobros, el botón de
+        // "por cobrar" y el cierre de caja ven lo mismo.
+        ventaIds: g.items.map((v) => String(v.id)),
         autoGenerada: true
       };
     });
@@ -4836,6 +4992,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
         propietario: f.propietario || fresh.propietario,
         telefono: f.telefono || fresh.telefono,
         clienteId: f.clienteId || fresh.clienteId || "",
+        ventaIds: fresh.ventaIds || [],
         autoGenerada: f.autoGenerada
       };
     });
@@ -5011,7 +5168,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
           )
         )
       )
-    )), /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota", value: form.mascota, onChange: (v) => setField("mascota", v) }), form.mascota && /* @__PURE__ */ React.createElement("button", { onClick: () => { const c = resumenClientes.find(r => r.mascota.toLowerCase() === form.mascota.toLowerCase()); if (c) setClienteDetalle(c); else alert("No hay facturas previas para " + form.mascota + " todav\xEDa."); }, style: { background: C.azulL, color: C.azul, border: "1px solid " + C.azul, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 6, width: "100%" } }, "📋 Ver historial de " + form.mascota), /* @__PURE__ */ React.createElement(AlertaMedica, { nombre: form.mascota, clientes, compacto: true }), /* @__PURE__ */ React.createElement(Input, { label: "Propietario", value: form.propietario, onChange: (v) => setField("propietario", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono", value: form.telefono, onChange: (v) => setField("telefono", v) })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Factura"), /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: form.fecha, onChange: (v) => setField("fecha", v) }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "M\xE9todo de pago *"), /* @__PURE__ */ React.createElement("select", { value: form.metodoPago || "Efectivo", onChange: (e) => setField("metodoPago", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #1a6b3a", fontSize: 13, fontWeight: 600 } }, /* @__PURE__ */ React.createElement("option", { value: "Efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "Tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Estado de pago"), /* @__PURE__ */ React.createElement("select", { value: form.estado || "pagada", onChange: (e) => setField("estado", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, fontWeight: 600, color: form.estado === "pendiente" ? "#dc2626" : "#1a6b3a" } }, /* @__PURE__ */ React.createElement("option", { value: "pagada" }, "\u2705 PAGADA"), /* @__PURE__ */ React.createElement("option", { value: "pendiente" }, "\u23F3 PENDIENTE"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "itbis", checked: form.itbis, onChange: (e) => setField("itbis", e.target.checked), style: { width: 16, height: 16, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "itbis", style: { fontSize: 13, cursor: "pointer" } }, "Aplicar ITBIS (18%)")), /* @__PURE__ */ React.createElement(Input, { label: "Notas (opcional)", value: form.notas, onChange: (v) => setField("notas", v) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Servicios / Productos"), form.items.map((item, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "3fr 80px 100px 80px auto", gap: 10, marginBottom: 10, alignItems: "end" } }, /* @__PURE__ */ React.createElement("div", null, i === 0 && /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota", value: form.mascota, onChange: (v) => setField("mascota", v) }), form.mascota && /* @__PURE__ */ React.createElement("button", { onClick: () => { const c = resumenClientes.find(r => r.mascota.toLowerCase() === form.mascota.toLowerCase()); if (c) setClienteDetalle(c); else alert("No hay facturas previas para " + form.mascota + " todav\xEDa."); }, style: { background: C.azulL, color: C.azul, border: "1px solid " + C.azul, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 6, width: "100%" } }, "📋 Ver historial de " + form.mascota), /* @__PURE__ */ React.createElement(AlertaMedica, { nombre: form.mascota, clientes, compacto: true }), /* @__PURE__ */ React.createElement(Input, { label: "Propietario", value: form.propietario, onChange: (v) => setField("propietario", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono", value: form.telefono, onChange: (v) => setField("telefono", v) })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Factura"), /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: form.fecha, onChange: (v) => setField("fecha", v) }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "M\xE9todo de pago *"), /* @__PURE__ */ React.createElement("select", { value: form.metodoPago || "Efectivo", onChange: (e) => setField("metodoPago", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #1a6b3a", fontSize: 13, fontWeight: 600 } }, /* @__PURE__ */ React.createElement("option", { value: "Efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "Tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Estado de pago"), /* @__PURE__ */ React.createElement("select", { value: form.estado || "pagada", onChange: (e) => setField("estado", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, fontWeight: 600, color: form.estado === "pendiente" ? "#dc2626" : "#1a6b3a" } }, /* @__PURE__ */ React.createElement("option", { value: "pagada" }, "\u2705 PAGADA"), /* @__PURE__ */ React.createElement("option", { value: "pendiente" }, "\u23F3 PENDIENTE"))), editandoId && editandoOrig && /* @__PURE__ */ React.createElement(PagoDeFactura, { factura: editandoOrig, ventas, setVentas }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "itbis", checked: form.itbis, onChange: (e) => setField("itbis", e.target.checked), style: { width: 16, height: 16, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "itbis", style: { fontSize: 13, cursor: "pointer" } }, "Aplicar ITBIS (18%)")), /* @__PURE__ */ React.createElement(Input, { label: "Notas (opcional)", value: form.notas, onChange: (v) => setField("notas", v) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Servicios / Productos"), form.items.map((item, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "3fr 80px 100px 80px auto", gap: 10, marginBottom: 10, alignItems: "end" } }, /* @__PURE__ */ React.createElement("div", null, i === 0 && /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         value: item.descripcion,
