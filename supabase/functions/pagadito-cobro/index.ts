@@ -25,6 +25,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const UID = Deno.env.get("PAGADITO_UID") ?? "";
 const WSK = Deno.env.get("PAGADITO_WSK") ?? "";
 const MONEDA = Deno.env.get("PAGADITO_MONEDA") ?? "DOP";
+// Lo que cobra Pagadito por procesar la transaccion. Se lo pasa al cliente
+// como recargo visible, no lo absorbe PetColinas. Se calcula aqui, nunca en
+// el navegador, para que no se pueda manipular desde la app.
+const RECARGO_PCT = Number(Deno.env.get("PAGADITO_RECARGO_PCT") ?? "6") / 100;
 
 const SOAP_URL = "https://comercios.pagadito.com/wspg/charges.php?utf8_enc";
 const NS = "urn:https://comercios.pagadito.com/wspg/charges";
@@ -85,9 +89,16 @@ Deno.serve(async (req: Request) => {
   const ventaId = String(body.ventaId ?? "").trim();
   const mascota = String(body.mascota ?? "").trim();
   const propietario = String(body.propietario ?? "").trim();
-  const monto = Number(body.monto ?? 0);
+  const subtotal = Number(body.monto ?? 0);
   const detalle = Array.isArray(body.detalle) ? body.detalle : [];
-  if (!(monto > 0)) return json({ error: "El monto debe ser mayor que cero." }, 400);
+  if (!(subtotal > 0)) return json({ error: "El monto debe ser mayor que cero." }, 400);
+
+  // El 6% de Pagadito lo paga el cliente que usa la tarjeta, no PetColinas.
+  // Se calcula sobre el subtotal y se manda como una linea de detalle mas,
+  // asi la suma de lineas siempre cuadra con el "amount" que se le manda a
+  // Pagadito (un descuadre ahi fue justo lo que tumbo la primera prueba).
+  const recargo = Math.round(subtotal * RECARGO_PCT * 100) / 100;
+  const monto = Math.round((subtotal + recargo) * 100) / 100;
 
   // ERN: la referencia con la que Pagadito identifica el cobro. Se le pega el
   // reloj para que un reintento no choque con el intento anterior.
@@ -98,7 +109,7 @@ Deno.serve(async (req: Request) => {
   const pagoId = Date.now();
   await supabase.from("pc_pagos_online").insert({
     id: pagoId, ern, ventaid: ventaId || null, mascota: mascota || null,
-    propietario: propietario || null, monto, moneda: MONEDA,
+    propietario: propietario || null, monto, subtotal, recargo, moneda: MONEDA,
     estado: "iniciado", creadoen: new Date().toISOString(),
   });
 
@@ -110,13 +121,21 @@ Deno.serve(async (req: Request) => {
   }
   const token = c.valor;
 
-  const lineas = (detalle.length ? detalle : [{ nombre: "Servicios PetColinas", cantidad: 1, precio: monto }])
+  const lineas = (detalle.length ? detalle : [{ nombre: "Servicios PetColinas", cantidad: 1, precio: subtotal }])
     .map((it: Record<string, unknown>) => ({
       quantity: Number(it.cantidad ?? 1) || 1,
-      description: String(it.nombre ?? "Servicio").slice(0, 60),
+      description: String(it.nombre ?? "Servicio").slice(0, 120),
       price: Number(it.precio ?? 0),
       url_product: "https://victorbeltre.github.io/petcolinas/",
     }));
+  if (recargo > 0) {
+    lineas.push({
+      quantity: 1,
+      description: "Cargo por procesamiento con tarjeta (" + (RECARGO_PCT * 100).toFixed(0) + "%)",
+      price: recargo,
+      url_product: "https://victorbeltre.github.io/petcolinas/",
+    });
+  }
 
   const t = await soap("exec_trans", [
     ["token", token], ["ern", ern], ["amount", monto.toFixed(2)],
@@ -135,7 +154,7 @@ Deno.serve(async (req: Request) => {
   await supabase.from("pc_pagos_online")
     .update({ estado: "pendiente", url: t.valor, tokentrans: token }).eq("id", pagoId);
 
-  return json({ url: t.valor, ern, pagoId, moneda: MONEDA, monto });
+  return json({ url: t.valor, ern, pagoId, moneda: MONEDA, subtotal, recargo, monto });
 });
 
 function json(data: unknown, status = 200) {
