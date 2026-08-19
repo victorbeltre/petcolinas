@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-17 20:12Z";
+const PC_BUILD = "2026-08-19 12:50Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -267,12 +267,20 @@ const PC_TABLAS_VIVAS = ["pc_ventas", "pc_clientes", "pc_citas", "pc_facturas", 
                          "pc_historias", "pc_tarifas"];
 const PC_SONDEO_MS = 60000;      // respaldo cuando el WebSocket esta caido
 const PC_REBOTE_MS = 1200;       // espera antes de releer, para agrupar rafagas
+// Al volver a la pestana se releia TODO de golpe (11 tablas x 2 peticiones cada
+// una) y encima se repetia una vez por cada listener acumulado. Eso era lo que
+// dejaba la app congelada. Ahora la relectura global tiene un tiempo minimo
+// entre pasadas: si acabas de volver hace poco, no se vuelve a disparar.
+const PC_RELEER_MIN_MS = 20000;
 
 const PCRealtime = (function () {
   const oyentes = new Map();          // tabla -> Set(callback)
   const pendientes = new Map();       // tabla -> timeout id
   let ws = null, refN = 0, latido = null, reintento = 0, conectado = false;
   let alCambiarEstado = null;
+  let listenersPuestos = false;   // los listeners de ventana se ponen UNA sola vez
+  let reconexionPend = null;      // evita apilar reintentos de conexion
+  let ultimaRelectura = 0;        // throttle de la relectura global
 
   const tokenActual = () => {
     try {
@@ -305,6 +313,7 @@ const PCRealtime = (function () {
   }
 
   function conectar() {
+    if (reconexionPend) { clearTimeout(reconexionPend); reconexionPend = null; }
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
     let url;
     try {
@@ -357,23 +366,37 @@ const PCRealtime = (function () {
   }
 
   function programarReintento() {
+    // Solo un reintento en vuelo: antes cada onclose apilaba otro setTimeout y
+    // tras unas horas habia decenas de reconexiones disparando a la vez.
+    if (reconexionPend) return;
     reintento = Math.min(reintento + 1, 6);
     const espera = Math.min(30000, 1000 * Math.pow(2, reintento));
-    setTimeout(conectar, espera);
+    reconexionPend = setTimeout(function () { reconexionPend = null; conectar(); }, espera);
+  }
+
+  // Relectura de todas las tablas, con un minimo de tiempo entre pasadas.
+  function releerTodo() {
+    const ahora = Date.now();
+    if (ahora - ultimaRelectura < PC_RELEER_MIN_MS) return;
+    ultimaRelectura = ahora;
+    oyentes.forEach(function (fns, tabla) { avisar(tabla); });
   }
 
   return {
     iniciar: function (onEstado) {
       alCambiarEstado = onEstado || alCambiarEstado;
       conectar();
+      // Los listeners se ponen UNA sola vez por carga de pagina. Antes se
+      // volvian a poner en cada montaje de EstadoSync (esta en dos cabeceras) y
+      // en cada re-login: se acumulaban y un solo "focus" disparaba la
+      // relectura de todas las tablas tantas veces como listeners hubiera.
+      if (listenersPuestos) return;
+      listenersPuestos = true;
       // Volver de segundo plano o recuperar internet: reconectar y releer.
-      window.addEventListener("online", conectar);
-      window.addEventListener("focus", function () {
-        conectar();
-        oyentes.forEach(function (fns, tabla) { avisar(tabla); });
-      });
+      window.addEventListener("online", function () { conectar(); releerTodo(); });
+      window.addEventListener("focus", function () { conectar(); releerTodo(); });
       document.addEventListener("visibilitychange", function () {
-        if (!document.hidden) { conectar(); oyentes.forEach(function (fns, t) { avisar(t); }); }
+        if (!document.hidden) { conectar(); releerTodo(); }
       });
     },
     enVivo: function () { return conectado; },
@@ -4472,12 +4495,19 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
   }, [facturas, facturasDeVentas]);
   // Auto-guardar TODAS las facturas (manuales + auto-generadas) en localStorage
   // Esto garantiza persistencia entre sesiones sin depender solo de ventas en Supabase
+  // Se escribe con un respiro de 1,5 s. Son ~1.000 facturas: serializarlas y
+  // escribirlas en localStorage bloquea la pantalla, y antes se hacia de nuevo
+  // en CADA sondeo (la lista se recalcula y cambia de identidad aunque el
+  // contenido sea el mismo). Con el retardo, varias recalculadas seguidas
+  // terminan en una sola escritura.
   useEffect(() => {
-    if (todasFacturas.length > 0) {
+    if (todasFacturas.length === 0) return;
+    const t = setTimeout(() => {
       try {
         guardarLocal("pc_facturas", todasFacturas);
       } catch(e) { console.warn("Error guardando facturas:", e); }
-    }
+    }, 1500);
+    return () => clearTimeout(t);
   }, [todasFacturas]);
   const facturas_contains = (q, btn) => false;
   const facturasFiltradas = useMemo(() => {
@@ -4518,11 +4548,31 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
   // Baños por mascota. Antes contaba toda venta de área "grooming" como un baño
   // (cortes, uñas y desenredes incluidos) y además hacía Math.max con el
   // histórico 2025 en vez de sumarlo. Ahora usa el mismo contador que el resto.
+  // Antes se llamaba a contarBanos() una vez por mascota, y cada llamada
+  // recorria las ventas Y los clientes completos: ~900 mascotas x ~1.200
+  // ventas = mas de un millon de vueltas con comparacion de textos, y se
+  // repetia cada vez que llegaba una venta nueva o un sondeo. Ahi se trababa
+  // la pestana. Ahora se recorre cada lista UNA sola vez; el resultado es
+  // exactamente el mismo (mismas reglas de mascota de la casa y de banos2025).
   const groomingPorCliente = useMemo(() => {
     const mapa = {};
-    const suma = (key) => { if (key && mapa[key] === undefined) mapa[key] = contarBanos(key, ventas, clientes); };
-    ventas.forEach((v) => suma(String(v.cliente || "").toLowerCase().trim()));
-    clientes.forEach((c) => suma(String(c.nombreMascota || "").toLowerCase().trim()));
+    const casa = {};                                    // cache de esMascotaCasa
+    const esCasa = (k) => (k in casa ? casa[k] : (casa[k] = !!esMascotaCasa(k)));
+    const yaConto2025 = {};                             // solo el primer cliente con ese nombre
+    ventas.forEach((v) => {
+      const k = String(v.cliente || "").toLowerCase().trim();
+      if (!k) return;
+      if (mapa[k] === undefined) mapa[k] = 0;
+      if (!esCasa(k)) mapa[k] += banosDeVenta(v);
+    });
+    clientes.forEach((c) => {
+      const k = String(c.nombreMascota || "").toLowerCase().trim();
+      if (!k) return;
+      if (mapa[k] === undefined) mapa[k] = 0;
+      if (yaConto2025[k]) return;
+      yaConto2025[k] = true;
+      if (!esCasa(k)) mapa[k] += parseInt(c.banos2025) || 0;
+    });
     return mapa;
   }, [ventas, clientes]);
   const resumenClientes = useMemo(() => {
@@ -5133,7 +5183,7 @@ function AvisoCandidatosNuevos({ setTab }) {
   }, []);
   React.useEffect(() => {
     cargar();
-    const t = setInterval(cargar, 60000);
+    const t = setInterval(() => { if (!document.hidden) cargar(); }, 60000);
     const h = () => cargar();
     window.addEventListener("pc-cand-nuevos", h);
     return () => { clearInterval(t); window.removeEventListener("pc-cand-nuevos", h); };
@@ -5337,7 +5387,7 @@ function Candidatos() {
     setSheetUrl(u); setSheetStatus("");
     if (!loaded) return;
     importarSheet(u, true, puesto);
-    const t = setInterval(() => importarSheet(u, true, puesto), CAND_SHEET_MS);
+    const t = setInterval(() => { if (!document.hidden) importarSheet(u, true, puesto); }, CAND_SHEET_MS);
     return () => clearInterval(t);
   }, [puesto, loaded]);
 
@@ -5540,7 +5590,7 @@ function AvisoLlamadasSofia({ setTab }) {
       } catch {}
     };
     cargar();
-    const t = setInterval(cargar, 60000);
+    const t = setInterval(() => { if (!document.hidden) cargar(); }, 60000);
     return () => { vivo = false; clearInterval(t); };
   }, []);
   let visto = 0; try { visto = Number(localStorage.getItem("pc_llamadas_visto") || 0); } catch {}
@@ -5726,7 +5776,7 @@ function WhatsAppInbox() {
 
   // Refresco automático cada 7 s mientras la pestaña está abierta.
   React.useEffect(() => {
-    const t = setInterval(() => { cargarChats(); if (sel) cargarMsgs(sel); }, 7000);
+    const t = setInterval(() => { if (document.hidden) return; cargarChats(); if (sel) cargarMsgs(sel); }, 7000);
     return () => clearInterval(t);
   }, [sel, cargarChats, cargarMsgs]);
 
@@ -6650,9 +6700,12 @@ function PetColinas() {
     // Exponer setVentas para portales
     window.__setVentasGlobal = setVentasVet;
   }, []);
-  // Polling cada 30s — sincroniza citas, ventas y clientes con Supabase
+  // Sondeo del portal. Se salta cuando la pestana esta en segundo plano: antes
+  // se bajaban pc_ventas y pc_clientes enteras cada 30 s aunque nadie estuviera
+  // mirando, y al volver a la pestana entraban todas de golpe.
   React.useEffect(() => {
     const poll = setInterval(async () => {
+      if (document.hidden) return;
       refetchCitasPortal();
       // Sincronizar ventas nuevas de otros usuarios
       try {
@@ -6673,7 +6726,7 @@ function PetColinas() {
           setClientesVet(clRows.map(r => normalizeRow("pc_clientes", r)));
         }
       } catch(e) {}
-    }, 30000);
+    }, 60000);
     return () => clearInterval(poll);
   }, []);
 
@@ -7006,7 +7059,7 @@ function PetColinasApp({ session, onLogout }) {
         .catch((e) => console.warn("[Candidatos] no se pudo leer la hoja:", e.message || e));
     };
     const t0 = setTimeout(correr, 4000);            // esperar a que cargue la app
-    const t = setInterval(correr, CAND_SHEET_MS);
+    const t = setInterval(() => { if (!document.hidden) correr(); }, CAND_SHEET_MS);
     return () => { vivo = false; clearTimeout(t0); clearInterval(t); };
   }, []);
   // IDs de notificaciones marcadas como "listas/vistas" — persiste en localStorage
@@ -7061,9 +7114,14 @@ function PetColinasApp({ session, onLogout }) {
   const [lastSync, setLastSync] = useState(null);
   const [pollingSync, setPollingSync] = useState(false);
   const [virtualFusionVer, setVirtualFusionVer] = useState(0);
-  // Polling: re-fetch todos los datos cada 30 segundos
+  // Sondeo de respaldo. Cada tabla YA se relee sola cada 60 s (useSupabase) y
+  // ademas Realtime empuja los cambios al momento, asi que este de aqui solo
+  // existe para refrescar el reloj de "Sincronizado: hh:mm". Antes corria cada
+  // 30 s y ademas con la pestana en segundo plano: cinco relecturas completas
+  // encimadas sobre las que ya hacia cada tabla. Eso trababa la app.
   useEffect(() => {
     const poll = setInterval(() => {
+      if (document.hidden) return;   // en segundo plano no se gasta nada
       setPollingSync(true);
       refetchVentas();
       refetchCitas();
@@ -7072,7 +7130,7 @@ function PetColinasApp({ session, onLogout }) {
       refetchSeguimientos();
       setLastSync(new Date());
       setTimeout(() => setPollingSync(false), 2000);
-    }, 30000);
+    }, 120000);
     return () => clearInterval(poll);
   }, []);
   async function sincronizarAhora() {
@@ -9245,7 +9303,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       setCliente(nom);
     }
     if (clearClienteVentaInicial) clearClienteVentaInicial();
-  });
+  }, [clienteVentaInicial, clearClienteVentaInicial]);
   const [cliente, setCliente] = useState("");
   const [showSug, setShowSug] = useState(false);
   const [filtromes, setFiltroMes] = useState((/* @__PURE__ */ new Date()).toISOString().slice(0, 7));
@@ -15570,7 +15628,7 @@ function AvisoCambiosFacturas({ session }) {
 
   React.useEffect(() => {
     cargar();
-    const t = setInterval(cargar, 90000);
+    const t = setInterval(() => { if (!document.hidden) cargar(); }, 90000);
     return () => clearInterval(t);
   }, [cargar]);
 
