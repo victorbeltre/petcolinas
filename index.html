@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-19 01:26Z";
+const PC_BUILD = "2026-08-19 19:06Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -267,12 +267,20 @@ const PC_TABLAS_VIVAS = ["pc_ventas", "pc_clientes", "pc_citas", "pc_facturas", 
                          "pc_historias", "pc_tarifas"];
 const PC_SONDEO_MS = 60000;      // respaldo cuando el WebSocket esta caido
 const PC_REBOTE_MS = 1200;       // espera antes de releer, para agrupar rafagas
+// Al volver a la pestana se releia TODO de golpe (11 tablas x 2 peticiones cada
+// una) y encima se repetia una vez por cada listener acumulado. Eso era lo que
+// dejaba la app congelada. Ahora la relectura global tiene un tiempo minimo
+// entre pasadas: si acabas de volver hace poco, no se vuelve a disparar.
+const PC_RELEER_MIN_MS = 20000;
 
 const PCRealtime = (function () {
   const oyentes = new Map();          // tabla -> Set(callback)
   const pendientes = new Map();       // tabla -> timeout id
   let ws = null, refN = 0, latido = null, reintento = 0, conectado = false;
   let alCambiarEstado = null;
+  let listenersPuestos = false;   // los listeners de ventana se ponen UNA sola vez
+  let reconexionPend = null;      // evita apilar reintentos de conexion
+  let ultimaRelectura = 0;        // throttle de la relectura global
 
   const tokenActual = () => {
     try {
@@ -305,6 +313,7 @@ const PCRealtime = (function () {
   }
 
   function conectar() {
+    if (reconexionPend) { clearTimeout(reconexionPend); reconexionPend = null; }
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
     let url;
     try {
@@ -357,23 +366,37 @@ const PCRealtime = (function () {
   }
 
   function programarReintento() {
+    // Solo un reintento en vuelo: antes cada onclose apilaba otro setTimeout y
+    // tras unas horas habia decenas de reconexiones disparando a la vez.
+    if (reconexionPend) return;
     reintento = Math.min(reintento + 1, 6);
     const espera = Math.min(30000, 1000 * Math.pow(2, reintento));
-    setTimeout(conectar, espera);
+    reconexionPend = setTimeout(function () { reconexionPend = null; conectar(); }, espera);
+  }
+
+  // Relectura de todas las tablas, con un minimo de tiempo entre pasadas.
+  function releerTodo() {
+    const ahora = Date.now();
+    if (ahora - ultimaRelectura < PC_RELEER_MIN_MS) return;
+    ultimaRelectura = ahora;
+    oyentes.forEach(function (fns, tabla) { avisar(tabla); });
   }
 
   return {
     iniciar: function (onEstado) {
       alCambiarEstado = onEstado || alCambiarEstado;
       conectar();
+      // Los listeners se ponen UNA sola vez por carga de pagina. Antes se
+      // volvian a poner en cada montaje de EstadoSync (esta en dos cabeceras) y
+      // en cada re-login: se acumulaban y un solo "focus" disparaba la
+      // relectura de todas las tablas tantas veces como listeners hubiera.
+      if (listenersPuestos) return;
+      listenersPuestos = true;
       // Volver de segundo plano o recuperar internet: reconectar y releer.
-      window.addEventListener("online", conectar);
-      window.addEventListener("focus", function () {
-        conectar();
-        oyentes.forEach(function (fns, tabla) { avisar(tabla); });
-      });
+      window.addEventListener("online", function () { conectar(); releerTodo(); });
+      window.addEventListener("focus", function () { conectar(); releerTodo(); });
       document.addEventListener("visibilitychange", function () {
-        if (!document.hidden) { conectar(); oyentes.forEach(function (fns, t) { avisar(t); }); }
+        if (!document.hidden) { conectar(); releerTodo(); }
       });
     },
     enVivo: function () { return conectado; },
@@ -723,7 +746,7 @@ function useSupabase(table, seed = []) {
 // corrió el SQL que las crea, PostgREST rechaza el INSERT entero y se perdería
 // la venta completa. Este respaldo detecta ese error, quita las columnas que no
 // existen y reintenta, para que el guardado nunca se caiga por eso.
-const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"] };
+const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"], pc_clientes: ["alertamedica"] };
 function faltaColumna(msg, table) {
   const m = String(msg || "").toLowerCase();
   if (!/column|schema cache|pgrst204|42703/.test(m)) return null;
@@ -1079,6 +1102,7 @@ function normalizeRow(table, r) {
     alergias: r.alergias,
     medicamentos: r.medicamentos,
     condiciones: r.condiciones,
+    alertaMedica: r.alertamedica || "",
     veterinarioExterno: r.veterinarioexterno,
     notas: r.notas,
     fechaRegistro: r.fecharegistro,
@@ -1265,6 +1289,7 @@ function denormalizeRow(table, r) {
     alergias: r.alergias,
     medicamentos: r.medicamentos,
     condiciones: r.condiciones,
+    alertamedica: r.alertaMedica || null,
     veterinarioexterno: r.veterinarioExterno,
     notas: r.notas,
     fecharegistro: r.fechaRegistro,
@@ -3459,6 +3484,115 @@ function contarBanos(mascota, ventas, clientes) {
   const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === key);
   return deVentas + (cli ? parseInt(cli.banos2025) || 0 : 0);
 }
+
+// ─── ALERTA MÉDICA ──────────────────────────────────────────────────────────
+// Condición de la mascota que quien factura o registra un servicio TIENE que
+// ver antes de tocarla (ej: "es epiléptico"). Se escribe en la ficha del CRM y
+// aparece sola en Ventas, Facturas, Agenda, el CRM y los portales de empleado.
+// Además de la alerta escrita a mano se muestran las alergias y las condiciones
+// crónicas que ya estaban en la ficha, porque son igual de importantes.
+
+// Nombre comparable: sin acentos, sin signos, en minúscula y con un solo espacio.
+function normNombreMascota(s) {
+  return String(s || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Busca la ficha del CRM a partir del nombre que se escribió en la venta.
+// En las ventas el nombre viene con apellido pegado ("Nicky De los Santos")
+// y en el CRM puede estar solo ("Nicky"), así que además del calce exacto se
+// admite que uno sea el principio del otro, siempre cortando en palabra entera
+// para que "Lu" no calce con "Luna". Devuelve { fichas, exacto }: cuando el
+// calce NO es exacto se avisa en pantalla de qué ficha salió la alerta, porque
+// hay varias mascotas que comparten nombre y equivocarse aquí es grave.
+// El CRM guarda el nombre en nombreMascota; los portales de empleado normalizan
+// la misma ficha a .nombre. Se aceptan las dos para que la alerta salga igual
+// en todas las pantallas.
+function nombreDeFicha(c) {
+  return (c && (c.nombreMascota || c.nombre)) || "";
+}
+function buscarFichasCRM(nombre, clientes) {
+  const n = normNombreMascota(nombre);
+  if (!n || !Array.isArray(clientes)) return { fichas: [], exacto: false };
+  const exactas = clientes.filter((c) => normNombreMascota(nombreDeFicha(c)) === n);
+  if (exactas.length) return { fichas: exactas, exacto: true };
+  const empiezaPor = (a, b) => a === b || a.startsWith(b + " ");
+  const parciales = clientes.filter((c) => {
+    const m = normNombreMascota(nombreDeFicha(c));
+    return m && (empiezaPor(n, m) || empiezaPor(m, n));
+  });
+  return { fichas: parciales, exacto: false };
+}
+
+// Lo que hay que avisar de UNA ficha. Devuelve [] si no hay nada que avisar.
+function alertasMedicasDe(cliente) {
+  if (!cliente) return [];
+  const avisos = [];
+  const limpio = (v) => String(v || "").trim();
+  // "no", "ninguna", "n/a" y demás se escribieron como "no tiene nada": no son alertas.
+  // "no", "ninguna", "n/a"... se escribieron queriendo decir "no tiene nada":
+  // no son alertas. El \\b es necesario: sin el, "Nodulos" empieza por "no" y
+  // se habria ocultado una condicion real.
+  const vacio = (v) => !v || (/^(no|ningun[oa]?|ningunas?|n\/?a|nada|sin)\b/i.test(v) && v.length <= 14);
+  const a = limpio(cliente.alertaMedica);
+  const al = limpio(cliente.alergias);
+  const co = limpio(cliente.condiciones);
+  const me = limpio(cliente.medicamentos);
+  if (a) avisos.push({ etiqueta: "", texto: a });
+  if (al && !vacio(al)) avisos.push({ etiqueta: "Alergias", texto: al });
+  if (co && !vacio(co)) avisos.push({ etiqueta: "Condiciones", texto: co });
+  if (me && !vacio(me)) avisos.push({ etiqueta: "Medicamentos", texto: me });
+  return avisos;
+}
+
+// Banner rojo. Se le pasa una ficha ya resuelta (cliente) o un nombre suelto
+// (nombre + clientes) y él busca la ficha. Si no hay nada que avisar no pinta
+// nada, así que se puede dejar puesto en cualquier pantalla sin ensuciarla.
+function AlertaMedica({ cliente, nombre, clientes, compacto = false, style = {} }) {
+  const E = React.createElement;
+  let fichas = [], exacto = true;
+  if (cliente) fichas = [cliente];
+  else { const r = buscarFichasCRM(nombre, clientes); fichas = r.fichas; exacto = r.exacto; }
+
+  const conAviso = fichas
+    .map((f) => ({ ficha: f, avisos: alertasMedicasDe(f) }))
+    .filter((x) => x.avisos.length > 0);
+  if (!conAviso.length) return null;
+
+  // Si el calce fue por parecido, o si hay varias mascotas con ese nombre, se
+  // dice de qué ficha salió cada alerta para que nadie la aplique a la mascota
+  // equivocada.
+  const mostrarDeQuien = !exacto || conAviso.length > 1;
+
+  return E("div", {
+    role: "alert",
+    style: {
+      background: C.rojoL, border: "2px solid " + C.rojo, borderLeft: "6px solid " + C.rojo,
+      borderRadius: 10, padding: compacto ? "8px 12px" : "12px 16px",
+      margin: compacto ? "8px 0" : "12px 0", ...style
+    }
+  },
+    E("div", { style: { fontWeight: 800, color: C.rojo, fontSize: compacto ? 12 : 13,
+                        textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6,
+                        display: "flex", alignItems: "center", gap: 6 } },
+      "⚠️ Alerta m\xE9dica"),
+    conAviso.map((x, i) => E("div", { key: x.ficha.id ?? i, style: { marginTop: i ? 8 : 0 } },
+      mostrarDeQuien && E("div", { style: { fontSize: 11, color: C.rojo, fontWeight: 700, marginBottom: 2 } },
+        "Ficha de " + (nombreDeFicha(x.ficha) || "?") +
+        ((x.ficha.nombrePropietario || x.ficha.dueno) ? " (" + (x.ficha.nombrePropietario || x.ficha.dueno) + ")" : "") +
+        (exacto ? "" : " — calce por parecido de nombre, verificar")),
+      x.avisos.map((av, j) => E("div", {
+        key: j,
+        style: { fontSize: compacto ? 12.5 : 13.5, color: C.negro, fontWeight: av.etiqueta ? 500 : 700,
+                 lineHeight: 1.45 }
+      }, av.etiqueta ? E("strong", { style: { color: C.rojo } }, av.etiqueta + ": ") : null, av.texto))
+    ))
+  );
+}
 // jsPDF con las fuentes estándar no dibuja emojis: salían como "Ø=Ü>".
 const sinEmoji = (t) => String(t || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, "").replace(/\s{2,}/g, " ").trim();
 
@@ -4472,12 +4606,19 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
   }, [facturas, facturasDeVentas]);
   // Auto-guardar TODAS las facturas (manuales + auto-generadas) en localStorage
   // Esto garantiza persistencia entre sesiones sin depender solo de ventas en Supabase
+  // Se escribe con un respiro de 1,5 s. Son ~1.000 facturas: serializarlas y
+  // escribirlas en localStorage bloquea la pantalla, y antes se hacia de nuevo
+  // en CADA sondeo (la lista se recalcula y cambia de identidad aunque el
+  // contenido sea el mismo). Con el retardo, varias recalculadas seguidas
+  // terminan en una sola escritura.
   useEffect(() => {
-    if (todasFacturas.length > 0) {
+    if (todasFacturas.length === 0) return;
+    const t = setTimeout(() => {
       try {
         guardarLocal("pc_facturas", todasFacturas);
       } catch(e) { console.warn("Error guardando facturas:", e); }
-    }
+    }, 1500);
+    return () => clearTimeout(t);
   }, [todasFacturas]);
   const facturas_contains = (q, btn) => false;
   const facturasFiltradas = useMemo(() => {
@@ -4518,11 +4659,31 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
   // Baños por mascota. Antes contaba toda venta de área "grooming" como un baño
   // (cortes, uñas y desenredes incluidos) y además hacía Math.max con el
   // histórico 2025 en vez de sumarlo. Ahora usa el mismo contador que el resto.
+  // Antes se llamaba a contarBanos() una vez por mascota, y cada llamada
+  // recorria las ventas Y los clientes completos: ~900 mascotas x ~1.200
+  // ventas = mas de un millon de vueltas con comparacion de textos, y se
+  // repetia cada vez que llegaba una venta nueva o un sondeo. Ahi se trababa
+  // la pestana. Ahora se recorre cada lista UNA sola vez; el resultado es
+  // exactamente el mismo (mismas reglas de mascota de la casa y de banos2025).
   const groomingPorCliente = useMemo(() => {
     const mapa = {};
-    const suma = (key) => { if (key && mapa[key] === undefined) mapa[key] = contarBanos(key, ventas, clientes); };
-    ventas.forEach((v) => suma(String(v.cliente || "").toLowerCase().trim()));
-    clientes.forEach((c) => suma(String(c.nombreMascota || "").toLowerCase().trim()));
+    const casa = {};                                    // cache de esMascotaCasa
+    const esCasa = (k) => (k in casa ? casa[k] : (casa[k] = !!esMascotaCasa(k)));
+    const yaConto2025 = {};                             // solo el primer cliente con ese nombre
+    ventas.forEach((v) => {
+      const k = String(v.cliente || "").toLowerCase().trim();
+      if (!k) return;
+      if (mapa[k] === undefined) mapa[k] = 0;
+      if (!esCasa(k)) mapa[k] += banosDeVenta(v);
+    });
+    clientes.forEach((c) => {
+      const k = String(c.nombreMascota || "").toLowerCase().trim();
+      if (!k) return;
+      if (mapa[k] === undefined) mapa[k] = 0;
+      if (yaConto2025[k]) return;
+      yaConto2025[k] = true;
+      if (!esCasa(k)) mapa[k] += parseInt(c.banos2025) || 0;
+    });
     return mapa;
   }, [ventas, clientes]);
   const resumenClientes = useMemo(() => {
@@ -4603,7 +4764,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
           )
         )
       )
-    )), /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota", value: form.mascota, onChange: (v) => setField("mascota", v) }), form.mascota && /* @__PURE__ */ React.createElement("button", { onClick: () => { const c = resumenClientes.find(r => r.mascota.toLowerCase() === form.mascota.toLowerCase()); if (c) setClienteDetalle(c); else alert("No hay facturas previas para " + form.mascota + " todav\xEDa."); }, style: { background: C.azulL, color: C.azul, border: "1px solid " + C.azul, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 6, width: "100%" } }, "📋 Ver historial de " + form.mascota), /* @__PURE__ */ React.createElement(Input, { label: "Propietario", value: form.propietario, onChange: (v) => setField("propietario", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono", value: form.telefono, onChange: (v) => setField("telefono", v) })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Factura"), /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: form.fecha, onChange: (v) => setField("fecha", v) }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "M\xE9todo de pago *"), /* @__PURE__ */ React.createElement("select", { value: form.metodoPago || "Efectivo", onChange: (e) => setField("metodoPago", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #1a6b3a", fontSize: 13, fontWeight: 600 } }, /* @__PURE__ */ React.createElement("option", { value: "Efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "Tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Estado de pago"), /* @__PURE__ */ React.createElement("select", { value: form.estado || "pagada", onChange: (e) => setField("estado", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, fontWeight: 600, color: form.estado === "pendiente" ? "#dc2626" : "#1a6b3a" } }, /* @__PURE__ */ React.createElement("option", { value: "pagada" }, "\u2705 PAGADA"), /* @__PURE__ */ React.createElement("option", { value: "pendiente" }, "\u23F3 PENDIENTE"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "itbis", checked: form.itbis, onChange: (e) => setField("itbis", e.target.checked), style: { width: 16, height: 16, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "itbis", style: { fontSize: 13, cursor: "pointer" } }, "Aplicar ITBIS (18%)")), /* @__PURE__ */ React.createElement(Input, { label: "Notas (opcional)", value: form.notas, onChange: (v) => setField("notas", v) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Servicios / Productos"), form.items.map((item, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "3fr 80px 100px 80px auto", gap: 10, marginBottom: 10, alignItems: "end" } }, /* @__PURE__ */ React.createElement("div", null, i === 0 && /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota", value: form.mascota, onChange: (v) => setField("mascota", v) }), form.mascota && /* @__PURE__ */ React.createElement("button", { onClick: () => { const c = resumenClientes.find(r => r.mascota.toLowerCase() === form.mascota.toLowerCase()); if (c) setClienteDetalle(c); else alert("No hay facturas previas para " + form.mascota + " todav\xEDa."); }, style: { background: C.azulL, color: C.azul, border: "1px solid " + C.azul, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 6, width: "100%" } }, "📋 Ver historial de " + form.mascota), /* @__PURE__ */ React.createElement(AlertaMedica, { nombre: form.mascota, clientes, compacto: true }), /* @__PURE__ */ React.createElement(Input, { label: "Propietario", value: form.propietario, onChange: (v) => setField("propietario", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono", value: form.telefono, onChange: (v) => setField("telefono", v) })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Factura"), /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: form.fecha, onChange: (v) => setField("fecha", v) }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "M\xE9todo de pago *"), /* @__PURE__ */ React.createElement("select", { value: form.metodoPago || "Efectivo", onChange: (e) => setField("metodoPago", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #1a6b3a", fontSize: 13, fontWeight: 600 } }, /* @__PURE__ */ React.createElement("option", { value: "Efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "Tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Estado de pago"), /* @__PURE__ */ React.createElement("select", { value: form.estado || "pagada", onChange: (e) => setField("estado", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, fontWeight: 600, color: form.estado === "pendiente" ? "#dc2626" : "#1a6b3a" } }, /* @__PURE__ */ React.createElement("option", { value: "pagada" }, "\u2705 PAGADA"), /* @__PURE__ */ React.createElement("option", { value: "pendiente" }, "\u23F3 PENDIENTE"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "itbis", checked: form.itbis, onChange: (e) => setField("itbis", e.target.checked), style: { width: 16, height: 16, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "itbis", style: { fontSize: 13, cursor: "pointer" } }, "Aplicar ITBIS (18%)")), /* @__PURE__ */ React.createElement(Input, { label: "Notas (opcional)", value: form.notas, onChange: (v) => setField("notas", v) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Servicios / Productos"), form.items.map((item, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "3fr 80px 100px 80px auto", gap: 10, marginBottom: 10, alignItems: "end" } }, /* @__PURE__ */ React.createElement("div", null, i === 0 && /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         value: item.descripcion,
@@ -5133,7 +5294,7 @@ function AvisoCandidatosNuevos({ setTab }) {
   }, []);
   React.useEffect(() => {
     cargar();
-    const t = setInterval(cargar, 60000);
+    const t = setInterval(() => { if (!document.hidden) cargar(); }, 60000);
     const h = () => cargar();
     window.addEventListener("pc-cand-nuevos", h);
     return () => { clearInterval(t); window.removeEventListener("pc-cand-nuevos", h); };
@@ -5337,7 +5498,7 @@ function Candidatos() {
     setSheetUrl(u); setSheetStatus("");
     if (!loaded) return;
     importarSheet(u, true, puesto);
-    const t = setInterval(() => importarSheet(u, true, puesto), CAND_SHEET_MS);
+    const t = setInterval(() => { if (!document.hidden) importarSheet(u, true, puesto); }, CAND_SHEET_MS);
     return () => clearInterval(t);
   }, [puesto, loaded]);
 
@@ -5540,7 +5701,7 @@ function AvisoLlamadasSofia({ setTab }) {
       } catch {}
     };
     cargar();
-    const t = setInterval(cargar, 60000);
+    const t = setInterval(() => { if (!document.hidden) cargar(); }, 60000);
     return () => { vivo = false; clearInterval(t); };
   }, []);
   let visto = 0; try { visto = Number(localStorage.getItem("pc_llamadas_visto") || 0); } catch {}
@@ -5726,7 +5887,7 @@ function WhatsAppInbox() {
 
   // Refresco automático cada 7 s mientras la pestaña está abierta.
   React.useEffect(() => {
-    const t = setInterval(() => { cargarChats(); if (sel) cargarMsgs(sel); }, 7000);
+    const t = setInterval(() => { if (document.hidden) return; cargarChats(); if (sel) cargarMsgs(sel); }, 7000);
     return () => clearInterval(t);
   }, [sel, cargarChats, cargarMsgs]);
 
@@ -6280,6 +6441,7 @@ function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventar
       "Dirección": c.direccion || "",
       "Instagram": c.instagram || "",
       "Cédula / ID": c.cedula || "",
+      "Alerta médica": c.alertaMedica || "",
       "Alergias": c.alergias || "",
       "Condiciones": c.condiciones || "",
       "Medicamentos": c.medicamentos || "",
@@ -6650,9 +6812,12 @@ function PetColinas() {
     // Exponer setVentas para portales
     window.__setVentasGlobal = setVentasVet;
   }, []);
-  // Polling cada 30s — sincroniza citas, ventas y clientes con Supabase
+  // Sondeo del portal. Se salta cuando la pestana esta en segundo plano: antes
+  // se bajaban pc_ventas y pc_clientes enteras cada 30 s aunque nadie estuviera
+  // mirando, y al volver a la pestana entraban todas de golpe.
   React.useEffect(() => {
     const poll = setInterval(async () => {
+      if (document.hidden) return;
       refetchCitasPortal();
       // Sincronizar ventas nuevas de otros usuarios
       try {
@@ -6673,7 +6838,7 @@ function PetColinas() {
           setClientesVet(clRows.map(r => normalizeRow("pc_clientes", r)));
         }
       } catch(e) {}
-    }, 30000);
+    }, 60000);
     return () => clearInterval(poll);
   }, []);
 
@@ -7006,7 +7171,7 @@ function PetColinasApp({ session, onLogout }) {
         .catch((e) => console.warn("[Candidatos] no se pudo leer la hoja:", e.message || e));
     };
     const t0 = setTimeout(correr, 4000);            // esperar a que cargue la app
-    const t = setInterval(correr, CAND_SHEET_MS);
+    const t = setInterval(() => { if (!document.hidden) correr(); }, CAND_SHEET_MS);
     return () => { vivo = false; clearTimeout(t0); clearInterval(t); };
   }, []);
   // IDs de notificaciones marcadas como "listas/vistas" — persiste en localStorage
@@ -7061,9 +7226,14 @@ function PetColinasApp({ session, onLogout }) {
   const [lastSync, setLastSync] = useState(null);
   const [pollingSync, setPollingSync] = useState(false);
   const [virtualFusionVer, setVirtualFusionVer] = useState(0);
-  // Polling: re-fetch todos los datos cada 30 segundos
+  // Sondeo de respaldo. Cada tabla YA se relee sola cada 60 s (useSupabase) y
+  // ademas Realtime empuja los cambios al momento, asi que este de aqui solo
+  // existe para refrescar el reloj de "Sincronizado: hh:mm". Antes corria cada
+  // 30 s y ademas con la pestana en segundo plano: cinco relecturas completas
+  // encimadas sobre las que ya hacia cada tabla. Eso trababa la app.
   useEffect(() => {
     const poll = setInterval(() => {
+      if (document.hidden) return;   // en segundo plano no se gasta nada
       setPollingSync(true);
       refetchVentas();
       refetchCitas();
@@ -7072,7 +7242,7 @@ function PetColinasApp({ session, onLogout }) {
       refetchSeguimientos();
       setLastSync(new Date());
       setTimeout(() => setPollingSync(false), 2000);
-    }, 30000);
+    }, 120000);
     return () => clearInterval(poll);
   }, []);
   async function sincronizarAhora() {
@@ -9245,7 +9415,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       setCliente(nom);
     }
     if (clearClienteVentaInicial) clearClienteVentaInicial();
-  });
+  }, [clienteVentaInicial, clearClienteVentaInicial]);
   const [cliente, setCliente] = useState("");
   const [showSug, setShowSug] = useState(false);
   const [filtromes, setFiltroMes] = useState((/* @__PURE__ */ new Date()).toISOString().slice(0, 7));
@@ -9908,7 +10078,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       onMouseLeave: (e) => e.currentTarget.style.opacity = "1"
     },
     clienteEnCRM ? "\u{1F464} Ver en CRM" : "\u2795 Crear en CRM"
-  )), groomingLealtad >= 10 && groomingLealtad % 10 === 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#d1fae5", border: "2px solid #059669", borderRadius: 10, padding: "10px 14px", marginTop: 8, display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#065f46", fontSize: 13 } }, "\u00A1BA\xD1O GRATIS DISPONIBLE!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#047857" } }, groomingLealtad + " ba\xF1os acumulados \u2014 \u00A1Este ba\xF1o va gratis!"))), groomingLealtad > 0 && groomingLealtad % 10 !== 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fffbea", border: "1.5px solid #f0c030", borderRadius: 8, padding: "6px 12px", marginTop: 6, fontSize: 12, fontWeight: 700, color: "#b8860b", display: "flex", alignItems: "center", gap: 6 } }, "\uD83D\uDC3E Lealtad: " + (groomingLealtad % 10) + "/10 ba\xF1os \u2014 faltan " + (10 - groomingLealtad % 10) + " para el gratis")), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#f8f9fa", borderRadius: 12, padding: "14px 16px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 10, color: C.negro } }, "\u{1F6D2} Servicios / productos en esta venta"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, items.map((item) => /* @__PURE__ */ React.createElement("div", { key: item.id, style: {
+  )), /* @__PURE__ */ React.createElement(AlertaMedica, { nombre: cliente, clientes }), groomingLealtad >= 10 && groomingLealtad % 10 === 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#d1fae5", border: "2px solid #059669", borderRadius: 10, padding: "10px 14px", marginTop: 8, display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\uD83C\uDF89"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#065f46", fontSize: 13 } }, "\u00A1BA\xD1O GRATIS DISPONIBLE!"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#047857" } }, groomingLealtad + " ba\xF1os acumulados \u2014 \u00A1Este ba\xF1o va gratis!"))), groomingLealtad > 0 && groomingLealtad % 10 !== 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fffbea", border: "1.5px solid #f0c030", borderRadius: 8, padding: "6px 12px", marginTop: 6, fontSize: 12, fontWeight: 700, color: "#b8860b", display: "flex", alignItems: "center", gap: 6 } }, "\uD83D\uDC3E Lealtad: " + (groomingLealtad % 10) + "/10 ba\xF1os \u2014 faltan " + (10 - groomingLealtad % 10) + " para el gratis")), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#f8f9fa", borderRadius: 12, padding: "14px 16px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 10, color: C.negro } }, "\u{1F6D2} Servicios / productos en esta venta"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, items.map((item) => /* @__PURE__ */ React.createElement("div", { key: item.id, style: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -11131,6 +11301,7 @@ const CRM_EMPTY_FORM = {
   alergias: "",
   medicamentos: "",
   condiciones: "",
+  alertaMedica: "",
   veterinarioExterno: "",
   pesoKg: "",
   microchip: "",
@@ -11499,6 +11670,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
         flexShrink: 0
       } }, espIcon), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 16 } }, c.nombreMascota), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, c.especie, " \xB7 ", c.raza || "Sin raza", " \xB7 ", c.tamano))),
       /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, display: "flex", flexDirection: "column", gap: 4 } }, /* @__PURE__ */ React.createElement("div", null, "\u{1F464} ", /* @__PURE__ */ React.createElement("strong", { style: { color: C.negro } }, c.nombrePropietario)), /* @__PURE__ */ React.createElement("div", null, "\u{1F4DE} ", c.telefono), ultima && /* @__PURE__ */ React.createElement("div", null, "\u{1F4C5} \xDAltima visita: ", /* @__PURE__ */ React.createElement("strong", null, ultima)), total > 0 && /* @__PURE__ */ React.createElement("div", { style: { color: C.verde, fontWeight: 700, marginTop: 4 } }, "\u{1F4B0} Total hist\xF3rico: ", RD(total))),
+      c.alertaMedica && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.rojoL, border: "1.5px solid " + C.rojo, borderRadius: 6, padding: "5px 10px", fontSize: 11.5, color: C.rojo, fontWeight: 800 } }, "\u26A0\uFE0F ", c.alertaMedica),
       c.alergias && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.rojoL, borderRadius: 6, padding: "5px 10px", fontSize: 11, color: C.rojo, fontWeight: 600 } }, "\u26A0\uFE0F Alergias: ", c.alergias)
     );
   })), showDedup && /* @__PURE__ */ React.createElement("div", { style: { position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,overflowY:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:24 } }, /* @__PURE__ */ React.createElement("div", { style: { background:"#fff",borderRadius:16,maxWidth:920,width:"100%",padding:28,marginTop:40,marginBottom:40 } }, /* @__PURE__ */ React.createElement("div", { style: { display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 } }, /* @__PURE__ */ React.createElement("h3", { style: { fontFamily:"Georgia,serif",fontSize:22,margin:0 } }, "\uD83D\uDD0D Revisar Duplicados"), /* @__PURE__ */ React.createElement("button", { onClick:()=>setShowDedup(false), style: { background:"none",border:"none",fontSize:24,cursor:"pointer",color:C.grisd } }, "\xD7")), dupGrupos.length === 0 ? /* @__PURE__ */ React.createElement("p", { style: { color:C.grisd,textAlign:"center",padding:40 } }, "\u2714\uFE0F No se detectaron duplicados") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { style: { color:C.grisd,fontSize:13,marginBottom:16 } }, dupGrupos.length+" grupos detectados \u2014 haz clic en las fichas para seleccionar cu\xE1les fusionar."), /* @__PURE__ */ React.createElement("div", { style: { display:"flex",flexDirection:"column",gap:14 } }, dupGrupos.map(g => /* @__PURE__ */ React.createElement(GrupoDupCard, { key:g.key, grupo:g, onFusionarSel:fusionarSeleccionados, onIgnorar:ignorarGrupo })))))))
@@ -11537,7 +11709,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
         onChange: (v) => setF("sexo", v),
         options: SEXO_OPTS.map((e) => ({ value: e, label: e }))
       }
-    ), /* @__PURE__ */ React.createElement(Input, { label: "Color / pelaje", value: form.color, onChange: (v) => setF("color", v), placeholder: "Blanco, negro, tricolor..." }), /* @__PURE__ */ React.createElement(Input, { label: "Fecha de nacimiento", type: "date", value: form.fechaNacimiento, onChange: (v) => setF("fechaNacimiento", v) }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingTop: 24 } }, /* @__PURE__ */ React.createElement(CrmCheck, { label: "\u2702\uFE0F Esterilizado/a", checked: form.esterilizado, onChange: (v) => setF("esterilizado", v) }))), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F464} Datos del propietario" }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre completo *", value: form.nombrePropietario, onChange: (v) => setF("nombrePropietario", v), placeholder: "Juan P\xE9rez" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono principal *", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "809-000-0000" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono alternativo", value: form.telefono2, onChange: (v) => setF("telefono2", v), placeholder: "Opcional" }), /* @__PURE__ */ React.createElement(Input, { label: "Email", value: form.email, onChange: (v) => setF("email", v), placeholder: "correo@email.com" }), /* @__PURE__ */ React.createElement(Input, { label: "Direcci\xF3n / Sector", value: form.direccion, onChange: (v) => setF("direccion", v), placeholder: "Los Alcarrizos, Residencial..." }), /* @__PURE__ */ React.createElement(Input, { label: "Instagram", value: form.instagram, onChange: (v) => setF("instagram", v), placeholder: "@usuario" }), /* @__PURE__ */ React.createElement(Input, { label: "C\xE9dula / ID", value: form.cedula || "", onChange: (v) => setF("cedula", v), placeholder: "001-0000000-0" })), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1FA7A} Historial m\xE9dico" }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Alergias conocidas", value: form.alergias, onChange: (v) => setF("alergias", v), placeholder: "Ninguna, Pollo, Polen..." }), /* @__PURE__ */ React.createElement(Input, { label: "Condiciones cr\xF3nicas", value: form.condiciones, onChange: (v) => setF("condiciones", v), placeholder: "Diabetes, displasia..." }), /* @__PURE__ */ React.createElement(Input, { label: "Medicamentos actuales", value: form.medicamentos, onChange: (v) => setF("medicamentos", v), placeholder: "Ninguno, Apoquel..." }), /* @__PURE__ */ React.createElement(Input, { label: "Veterinario externo", value: form.veterinarioExterno, onChange: (v) => setF("veterinarioExterno", v), placeholder: "Dr. P\xE9rez, Cl\xEDnica..." }), /* @__PURE__ */ React.createElement(Input, { label: "Peso (kg)", value: form.pesoKg, onChange: (v) => setF("pesoKg", v), placeholder: "3.5" }), /* @__PURE__ */ React.createElement(Input, { label: "Microchip #", value: form.microchip, onChange: (v) => setF("microchip", v), placeholder: "900026000..." })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, "\u{1F381} Ba\xF1os realizados en 2025 (antes del sistema)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Input, { label: "Color / pelaje", value: form.color, onChange: (v) => setF("color", v), placeholder: "Blanco, negro, tricolor..." }), /* @__PURE__ */ React.createElement(Input, { label: "Fecha de nacimiento", type: "date", value: form.fechaNacimiento, onChange: (v) => setF("fechaNacimiento", v) }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", paddingTop: 24 } }, /* @__PURE__ */ React.createElement(CrmCheck, { label: "\u2702\uFE0F Esterilizado/a", checked: form.esterilizado, onChange: (v) => setF("esterilizado", v) }))), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1F464} Datos del propietario" }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre completo *", value: form.nombrePropietario, onChange: (v) => setF("nombrePropietario", v), placeholder: "Juan P\xE9rez" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono principal *", value: form.telefono, onChange: (v) => setF("telefono", v), placeholder: "809-000-0000" }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono alternativo", value: form.telefono2, onChange: (v) => setF("telefono2", v), placeholder: "Opcional" }), /* @__PURE__ */ React.createElement(Input, { label: "Email", value: form.email, onChange: (v) => setF("email", v), placeholder: "correo@email.com" }), /* @__PURE__ */ React.createElement(Input, { label: "Direcci\xF3n / Sector", value: form.direccion, onChange: (v) => setF("direccion", v), placeholder: "Los Alcarrizos, Residencial..." }), /* @__PURE__ */ React.createElement(Input, { label: "Instagram", value: form.instagram, onChange: (v) => setF("instagram", v), placeholder: "@usuario" }), /* @__PURE__ */ React.createElement(Input, { label: "C\xE9dula / ID", value: form.cedula || "", onChange: (v) => setF("cedula", v), placeholder: "001-0000000-0" })), /* @__PURE__ */ React.createElement(CrmSection, { title: "\u{1FA7A} Historial m\xE9dico" }, /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, border: "2px solid " + C.rojo, borderRadius: 10, padding: "12px 14px", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11.5, fontWeight: 800, color: C.rojo, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 5 } }, "\u26A0\uFE0F Alerta m\xE9dica \u2014 sale en rojo al facturar y al agendar"), /* @__PURE__ */ React.createElement("input", { value: form.alertaMedica || "", onChange: (e) => setF("alertaMedica", e.target.value), placeholder: "Ej: Es epil\xE9ptico \u2014 no usar secadora ruidosa", style: { width: "100%", boxSizing: "border-box", padding: "9px 12px", border: "1px solid " + C.rojo, borderRadius: 8, fontSize: 14, fontWeight: 600, background: "#fff", color: C.negro } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 5 } }, "Una l\xEDnea, lo que hay que saber antes de tocar a la mascota. D\xE9jelo vac\xEDo si no hay nada.")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Alergias conocidas", value: form.alergias, onChange: (v) => setF("alergias", v), placeholder: "Ninguna, Pollo, Polen..." }), /* @__PURE__ */ React.createElement(Input, { label: "Condiciones cr\xF3nicas", value: form.condiciones, onChange: (v) => setF("condiciones", v), placeholder: "Diabetes, displasia..." }), /* @__PURE__ */ React.createElement(Input, { label: "Medicamentos actuales", value: form.medicamentos, onChange: (v) => setF("medicamentos", v), placeholder: "Ninguno, Apoquel..." }), /* @__PURE__ */ React.createElement(Input, { label: "Veterinario externo", value: form.veterinarioExterno, onChange: (v) => setF("veterinarioExterno", v), placeholder: "Dr. P\xE9rez, Cl\xEDnica..." }), /* @__PURE__ */ React.createElement(Input, { label: "Peso (kg)", value: form.pesoKg, onChange: (v) => setF("pesoKg", v), placeholder: "3.5" }), /* @__PURE__ */ React.createElement(Input, { label: "Microchip #", value: form.microchip, onChange: (v) => setF("microchip", v), placeholder: "900026000..." })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 4 } }, "\u{1F381} Ba\xF1os realizados en 2025 (antes del sistema)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -11939,7 +12111,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
   small: true,
   color: C.azul,
   onClick: () => { setVista("evolucion"); }
-}, "📋 Evolución"))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F43E} Mascota"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombreMascota }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Especie", val: c.especie }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Raza", val: c.raza }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tama\xF1o", val: c.tamano }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Sexo", val: c.sexo }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Color / pelaje", val: c.color }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Fecha de nacimiento", val: c.fechaNacimiento }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Edad", val: edad() }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Esterilizado/a", val: c.esterilizado ? "\u2705 S\xED" : "\u274C No" })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.azul, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F464} Propietario"), c.nombrePropietario ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, padding: "7px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, minWidth: 170 } }, "Nombre"), /* @__PURE__ */ React.createElement("span", { onClick: () => { setPropietarioSel(c.nombrePropietario); setVista("propietario"); }, style: { fontWeight: 600, color: C.azul, cursor: "pointer", textDecoration: "underline" }, title: "Ver todas las mascotas de este propietario" }, c.nombrePropietario, " \u{1F50D}")) : null, /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono", val: c.telefono }), c.telefono && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 0", borderBottom: "1px solid #f4f5f6" } }, llamadaStatus === "llamando" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\uD83D\uDCDE Iniciando llamada...") : llamadaStatus === "ok" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\u2705 Llamada iniciada con Sof\xEDa") : llamadaStatus === "error" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.rojo, fontWeight: 700 } }, "\u274C Error al iniciar llamada") : /* @__PURE__ */ React.createElement("button", { onClick: async () => { setLlamadaStatus("llamando"); try { const _r = await fetch("https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/vapi-trigger", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY }, body: JSON.stringify({ nombreMascota: c.nombreMascota, nombrePropietario: c.nombrePropietario || "", telefono: c.telefono, motivo: "manual" }) }); setLlamadaStatus(_r.ok ? "ok" : "error"); } catch(_e) { setLlamadaStatus("error"); } setTimeout(() => setLlamadaStatus(null), 6000); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%", marginTop: 4 } }, "\uD83D\uDCDE Llamar con Sof\xEDa (IA)")), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono alternativo", val: c.telefono2 }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Email", val: c.email }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Direcci\xF3n", val: c.direccion }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Instagram", val: c.instagram }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Registrado el", val: c.fechaRegistro }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.rojo, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1FA7A} Datos m\xE9dicos"), c.alergias && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alergias:"), " ", c.alergias), /* @__PURE__ */ React.createElement(InfoRow, { label: "Medicamentos", val: c.medicamentos }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Condiciones cr\xF3nicas", val: c.condiciones }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Vet. externo", val: c.veterinarioExterno }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Peso", val: c.pesoKg ? c.pesoKg + " kg" : null }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Microchip", val: c.microchip }), !c.alergias && !c.medicamentos && !c.condiciones && !c.veterinarioExterno && !c.pesoKg && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, "Sin antecedentes m\xE9dicos registrados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.gold, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4CA} Resumen de visitas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total visitas"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.verde, fontWeight: 700 } }, ventasCliente.length)), /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total gastado"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.gold, fontWeight: 700 } }, RD(ventasCliente.reduce((s, v) => s + (v.total || 0), 0))))), /* @__PURE__ */ React.createElement(InfoRow, { label: "\xDAltima visita", val: ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : c.ultimaVisita2025 || "Sin visitas" }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Ticket promedio", val: ventasCliente.length > 0 ? RD(Math.round(ventasCliente.reduce((s, v) => s + (v.total || 0), 0) / ventasCliente.length)) : null }), c.notas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.gris, borderRadius: 8, padding: "10px 12px", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 4, fontSize: 11, color: C.grisd, textTransform: "uppercase" } }, "Notas"), c.notas))), (() => {
+}, "📋 Evolución"))), /* @__PURE__ */ React.createElement(AlertaMedica, { cliente: c }), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F43E} Mascota"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombreMascota }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Especie", val: c.especie }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Raza", val: c.raza }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tama\xF1o", val: c.tamano }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Sexo", val: c.sexo }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Color / pelaje", val: c.color }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Fecha de nacimiento", val: c.fechaNacimiento }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Edad", val: edad() }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Esterilizado/a", val: c.esterilizado ? "\u2705 S\xED" : "\u274C No" })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.azul, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F464} Propietario"), c.nombrePropietario ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, padding: "7px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, minWidth: 170 } }, "Nombre"), /* @__PURE__ */ React.createElement("span", { onClick: () => { setPropietarioSel(c.nombrePropietario); setVista("propietario"); }, style: { fontWeight: 600, color: C.azul, cursor: "pointer", textDecoration: "underline" }, title: "Ver todas las mascotas de este propietario" }, c.nombrePropietario, " \u{1F50D}")) : null, /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono", val: c.telefono }), c.telefono && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 0", borderBottom: "1px solid #f4f5f6" } }, llamadaStatus === "llamando" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\uD83D\uDCDE Iniciando llamada...") : llamadaStatus === "ok" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\u2705 Llamada iniciada con Sof\xEDa") : llamadaStatus === "error" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.rojo, fontWeight: 700 } }, "\u274C Error al iniciar llamada") : /* @__PURE__ */ React.createElement("button", { onClick: async () => { setLlamadaStatus("llamando"); try { const _r = await fetch("https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/vapi-trigger", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY }, body: JSON.stringify({ nombreMascota: c.nombreMascota, nombrePropietario: c.nombrePropietario || "", telefono: c.telefono, motivo: "manual" }) }); setLlamadaStatus(_r.ok ? "ok" : "error"); } catch(_e) { setLlamadaStatus("error"); } setTimeout(() => setLlamadaStatus(null), 6000); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%", marginTop: 4 } }, "\uD83D\uDCDE Llamar con Sof\xEDa (IA)")), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono alternativo", val: c.telefono2 }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Email", val: c.email }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Direcci\xF3n", val: c.direccion }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Instagram", val: c.instagram }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Registrado el", val: c.fechaRegistro }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.rojo, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1FA7A} Datos m\xE9dicos"), c.alertaMedica && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, border: "2px solid " + C.rojo, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13, fontWeight: 700, color: C.negro } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alerta: "), c.alertaMedica), c.alergias && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alergias:"), " ", c.alergias), /* @__PURE__ */ React.createElement(InfoRow, { label: "Medicamentos", val: c.medicamentos }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Condiciones cr\xF3nicas", val: c.condiciones }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Vet. externo", val: c.veterinarioExterno }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Peso", val: c.pesoKg ? c.pesoKg + " kg" : null }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Microchip", val: c.microchip }), !c.alertaMedica && !c.alergias && !c.medicamentos && !c.condiciones && !c.veterinarioExterno && !c.pesoKg && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, "Sin antecedentes m\xE9dicos registrados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.gold, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4CA} Resumen de visitas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total visitas"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.verde, fontWeight: 700 } }, ventasCliente.length)), /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total gastado"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.gold, fontWeight: 700 } }, RD(ventasCliente.reduce((s, v) => s + (v.total || 0), 0))))), /* @__PURE__ */ React.createElement(InfoRow, { label: "\xDAltima visita", val: ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : c.ultimaVisita2025 || "Sin visitas" }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Ticket promedio", val: ventasCliente.length > 0 ? RD(Math.round(ventasCliente.reduce((s, v) => s + (v.total || 0), 0) / ventasCliente.length)) : null }), c.notas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.gris, borderRadius: 8, padding: "10px 12px", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 4, fontSize: 11, color: C.grisd, textTransform: "uppercase" } }, "Notas"), c.notas))), (() => {
       let fotos = [];
       try {
         fotos = JSON.parse(c.fotosMascota || "[]");
@@ -14147,6 +14319,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
           )
         ),
 
+        React.createElement(AlertaMedica, { nombre: cliente, clientes, compacto: true }),
+
         // Tipo
         React.createElement("div", { style:{ marginBottom:14 }},
           React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Tipo"),
@@ -15585,7 +15759,7 @@ function AvisoCambiosFacturas({ session }) {
 
   React.useEffect(() => {
     cargar();
-    const t = setInterval(cargar, 90000);
+    const t = setInterval(() => { if (!document.hidden) cargar(); }, 90000);
     return () => clearInterval(t);
   }, [cargar]);
 
@@ -16552,6 +16726,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
           E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Mascota"), E("input",{value:modalCita.nombreMascota||"",onChange:e=>setF("nombreMascota",e.target.value),placeholder:"Nombre de la mascota",style:inputStyle})),
           E("div", {style:{flex:1}}, E("label",{style:labelStyle},"Teléfono"), E("input",{value:modalCita.telefono||"",onChange:e=>setF("telefono",e.target.value),placeholder:"809-555-0000",type:"tel",style:inputStyle}))
         ),
+        E(AlertaMedica, { nombre: modalCita.nombreMascota, clientes }),
         E("div", { style:{background:"#f8f9fa",borderRadius:10,padding:"14px 14px",marginBottom:14} },
           E("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"🛎️ Servicios de la cita"),
           servicios.length>0 && E("div",{style:{marginBottom:10}},
