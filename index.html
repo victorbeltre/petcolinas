@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-19 19:06Z";
+const PC_BUILD = "2026-08-19 19:47Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -746,7 +746,7 @@ function useSupabase(table, seed = []) {
 // corrió el SQL que las crea, PostgREST rechaza el INSERT entero y se perdería
 // la venta completa. Este respaldo detecta ese error, quita las columnas que no
 // existen y reintenta, para que el guardado nunca se caiga por eso.
-const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"], pc_clientes: ["alertamedica"] };
+const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco", "abonos", "abonado", "fecharecordatorio"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"], pc_clientes: ["alertamedica"] };
 function faltaColumna(msg, table) {
   const m = String(msg || "").toLowerCase();
   if (!/column|schema cache|pgrst204|42703/.test(m)) return null;
@@ -1132,6 +1132,8 @@ function normalizeRow(table, r) {
     const cp = r.cobradopor ?? r.cobradoPor ?? null;
     let items = r.items ?? [];
     if (typeof items === "string") { try { items = JSON.parse(items || "[]"); } catch { items = []; } }
+    let abonos = r.abonos ?? [];
+    if (typeof abonos === "string") { try { abonos = JSON.parse(abonos || "[]"); } catch { abonos = []; } }
     return {
       id: r.id,
       fecha: r.fecha,
@@ -1147,6 +1149,9 @@ function normalizeRow(table, r) {
       descuento: Number(r.descuento) || 0,
       banco: r.banco || "",
       items: Array.isArray(items) ? items : [],
+      abonos: Array.isArray(abonos) ? abonos : [],
+      abonado: Number(r.abonado) || 0,
+      fechaRecordatorio: r.fecharecordatorio || "", fecharecordatorio: r.fecharecordatorio || "",
       notas: r.notas
     };
   }
@@ -1327,6 +1332,9 @@ function denormalizeRow(table, r) {
     descuento: Number(r.descuento) || 0,
     banco: r.banco || null,
     items: Array.isArray(r.items) ? r.items : [],
+    abonos: Array.isArray(r.abonos) ? r.abonos : [],
+    abonado: Number(r.abonado) || 0,
+    fecharecordatorio: r.fechaRecordatorio || r.fecharecordatorio || null,
     notas: r.notas
   };
   if (table === "pc_gastos") return {
@@ -1518,7 +1526,48 @@ const RD = (n) => "RD$ " + (Math.round(Number(n) || 0) || 0).toLocaleString("es-
 const hoy = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 // El valor guardado es "Pago pendiente"; varios sitios comparaban con
 // "pendiente" a secas y por eso la marca ⏳ PEND. nunca aparecía.
-const esPagoPendiente = (v) => String((v && (v.formaPago || v.formapago)) || "").toLowerCase().includes("pendiente");
+// ─── ABONOS · FACILIDAD DE PAGO ─────────────────────────────────────────────
+// Una venta puede quedar pagada a medias: el cliente abona una parte y se
+// apunta la fecha en que hay que escribirle para que termine de saldar.
+// El total NUNCA se toca (es el precio del servicio); lo que se mueve es
+// cuanto lleva abonado, y el saldo es la resta. Cada abono guarda SU fecha
+// y SU forma de pago, para que el cierre de caja del dia en que se recibio
+// el dinero cuadre con lo que hay en el cajon.
+const redondeo2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+function abonosDe(v) {
+  const a = v && v.abonos;
+  if (Array.isArray(a)) return a;
+  if (typeof a === "string") { try { const p = JSON.parse(a || "[]"); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+}
+function abonadoDe(v) {
+  const lista = abonosDe(v);
+  if (lista.length) return redondeo2(lista.reduce((n, x) => n + (Number(x && x.monto) || 0), 0));
+  return redondeo2(v && v.abonado);
+}
+function saldoDe(v) {
+  return Math.max(0, redondeo2((Number(v && v.total) || 0) - abonadoDe(v)));
+}
+function tieneAbonos(v) {
+  return abonosDe(v).length > 0 || (Number(v && v.abonado) || 0) > 0;
+}
+// El valor guardado es "Pago pendiente"; varios sitios comparaban con
+// "pendiente" a secas y por eso la marca ⏳ PEND. nunca aparecía.
+// Con abonos manda la cuenta: si ya no queda saldo, deja de estar pendiente
+// aunque el texto de la forma de pago siga diciendo otra cosa.
+const esPagoPendiente = (v) => {
+  if (!v) return false;
+  if (tieneAbonos(v)) return saldoDe(v) > 0.5;
+  return String((v.formaPago || v.formapago) || "").toLowerCase().includes("pendiente");
+};
+// Lo que falta por cobrar de una venta (0 si ya esta saldada).
+const montoPorCobrar = (v) => (esPagoPendiente(v) ? saldoDe(v) : 0);
+// ¿Ya toca escribirle al cliente para que termine de saldar?
+function tocaRecordar(v, hoyStr) {
+  const f = String((v && (v.fechaRecordatorio || v.fecharecordatorio)) || "").slice(0, 10);
+  if (!f || !esPagoPendiente(v)) return false;
+  return f <= (hoyStr || hoy());
+}
 function useLS(key, def) {
   const [val, setVal] = useState(() => {
     try {
@@ -3592,6 +3641,204 @@ function AlertaMedica({ cliente, nombre, clientes, compacto = false, style = {} 
       }, av.etiqueta ? E("strong", { style: { color: C.rojo } }, av.etiqueta + ": ") : null, av.texto))
     ))
   );
+}
+
+// ─── CALCULADORA DE EFECTIVO Y ABONO ────────────────────────────────────────
+// Dos piezas que se usan igual en Ventas, en Cobros y en el facturador de los
+// portales, para que cobrar se haga de una sola forma en toda la app.
+
+// Estilos compartidos de los campos de dinero.
+const COBRO_INPUT = { width: "100%", boxSizing: "border-box", padding: "10px 12px",
+  borderRadius: 8, border: "1.5px solid #d1d5db", fontSize: 15, fontWeight: 700, background: "#fff" };
+const COBRO_LABEL = { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase",
+  letterSpacing: 1, display: "block", marginBottom: 4 };
+
+// Cuánto hay que devolverle al cliente. Se pide con cuánto paga y se muestra
+// la devuelta en grande: es el número que la persona en caja necesita leer de
+// un vistazo, sin hacer la resta de cabeza.
+function BloqueEfectivo({ aCobrar, recibido, setRecibido, titulo = "¿Con cu\xE1nto paga?" }) {
+  const E = React.createElement;
+  const cobrar = Number(aCobrar) || 0;
+  const rec = parseFloat(recibido);
+  const hayRec = recibido !== "" && !isNaN(rec);
+  const dif = redondeo2(rec - cobrar);
+
+  let caja = null;
+  if (!hayRec) {
+    caja = E("div", { style: { background: "#d1fae5", border: "1.5px solid #059669", borderRadius: 8,
+      padding: "8px 14px", fontSize: 12, fontWeight: 700, color: "#065f46" } },
+      "\u{1F4B5} Entra a Caja Chica \xB7 a cobrar " + RD(cobrar));
+  } else if (dif > 0) {
+    caja = E("div", { style: { background: "#fef3c7", border: "2px solid #d97706", borderRadius: 10,
+      padding: "10px 14px" } },
+      E("div", { style: { fontSize: 11, fontWeight: 800, color: "#92400e", textTransform: "uppercase",
+        letterSpacing: 1 } }, "Devolverle al cliente"),
+      E("div", { style: { fontSize: 26, fontWeight: 900, color: "#92400e", lineHeight: 1.2 } }, RD(dif)),
+      E("div", { style: { fontSize: 11, color: "#92400e" } },
+        "Paga con " + RD(rec) + " \xB7 cuesta " + RD(cobrar)));
+  } else if (dif === 0) {
+    caja = E("div", { style: { background: "#d1fae5", border: "2px solid #059669", borderRadius: 10,
+      padding: "10px 14px", fontSize: 14, fontWeight: 800, color: "#065f46" } },
+      "✅ Pago exacto \xB7 no hay que devolver nada");
+  } else {
+    caja = E("div", { style: { background: "#fee2e2", border: "2px solid " + C.rojo, borderRadius: 10,
+      padding: "10px 14px" } },
+      E("div", { style: { fontSize: 11, fontWeight: 800, color: C.rojo, textTransform: "uppercase",
+        letterSpacing: 1 } }, "No alcanza \xB7 faltan"),
+      E("div", { style: { fontSize: 22, fontWeight: 900, color: C.rojo } }, RD(Math.abs(dif))),
+      E("div", { style: { fontSize: 11, color: C.rojo } },
+        "Si va a quedar debiendo, usa \u{1F91D} Abono / pago a plazos"));
+  }
+
+  return E("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+    E("div", null,
+      E("label", { style: COBRO_LABEL }, "\u{1F4B5} " + titulo),
+      E("input", { type: "number", inputMode: "decimal", min: "0", step: "1", value: recibido,
+        onChange: (e) => setRecibido(e.target.value),
+        placeholder: "Ej: " + Math.ceil((cobrar || 0) / 100) * 100,
+        style: COBRO_INPUT })),
+    caja);
+}
+
+// Pago parcial: cuánto deja hoy, con qué lo paga y cuándo hay que escribirle
+// para que termine de saldar.
+function BloqueAbono({ aCobrar, monto, setMonto, forma, setForma, recibido, setRecibido,
+                       fechaRec, setFechaRec }) {
+  const E = React.createElement;
+  const cobrar = Number(aCobrar) || 0;
+  const ab = parseFloat(monto);
+  const hayAb = monto !== "" && !isNaN(ab) && ab > 0;
+  const saldo = redondeo2(cobrar - (hayAb ? ab : 0));
+  const abExcede = hayAb && ab > cobrar;
+
+  return E("div", { style: { background: "#f5f3ff", border: "2px solid #7c3aed", borderRadius: 10,
+    padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 } },
+    E("div", { style: { fontSize: 12, fontWeight: 800, color: "#5b21b6", textTransform: "uppercase",
+      letterSpacing: 1 } }, "\u{1F91D} Abono \xB7 el cliente paga una parte hoy"),
+
+    E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+      E("div", { style: { flex: "1 1 150px" } },
+        E("label", { style: COBRO_LABEL }, "\xBFCu\xE1nto abona hoy?"),
+        E("input", { type: "number", inputMode: "decimal", min: "0", step: "1", value: monto,
+          onChange: (e) => setMonto(e.target.value), placeholder: "Ej: " + Math.round(cobrar / 2),
+          style: { ...COBRO_INPUT, border: "1.5px solid #7c3aed" } })),
+      E("div", { style: { flex: "1 1 150px" } },
+        E("label", { style: COBRO_LABEL }, "\xBFCon qu\xE9 paga ese abono?"),
+        E("select", { value: forma, onChange: (e) => setForma(e.target.value),
+          style: { ...COBRO_INPUT, border: "1.5px solid #7c3aed" } },
+          E("option", { value: "efectivo" }, "\u{1F4B5} Efectivo"),
+          E("option", { value: "transferencia" }, "\u{1F3E6} Transferencia"),
+          E("option", { value: "tarjeta" }, "\u{1F4B3} Tarjeta")))),
+
+    abExcede && E("div", { style: { background: "#fee2e2", border: "1.5px solid " + C.rojo,
+      borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 700, color: C.rojo } },
+      "El abono es mayor que el servicio (" + RD(cobrar) + "). Si ya pag\xF3 todo, escoge la forma de pago normal."),
+
+    hayAb && forma === "efectivo" && !abExcede &&
+      E(BloqueEfectivo, { aCobrar: ab, recibido, setRecibido,
+        titulo: "\xBFCon cu\xE1nto paga el abono?" }),
+
+    E("div", null,
+      E("label", { style: COBRO_LABEL }, "\u{1F4C5} \xBFQu\xE9 d\xEDa le recuerdo que termine de pagar?"),
+      E("input", { type: "date", value: fechaRec, min: hoy(),
+        onChange: (e) => setFechaRec(e.target.value),
+        style: { ...COBRO_INPUT, border: "1.5px solid #7c3aed" } }),
+      E("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } },
+        "Ese d\xEDa la app te lo recuerda en el Dashboard y en Cobros, con el WhatsApp listo para enviar.")),
+
+    E("div", { style: { background: "#fff", borderRadius: 8, padding: "10px 12px",
+      border: "1px solid #ddd6fe" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 } },
+        E("span", { style: { color: C.grisd } }, "Servicio"),
+        E("span", { style: { fontWeight: 700 } }, RD(cobrar))),
+      E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 } },
+        E("span", { style: { color: C.grisd } }, "Abona hoy"),
+        E("span", { style: { fontWeight: 700, color: "#059669" } }, "− " + RD(hayAb ? ab : 0))),
+      E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15,
+        borderTop: "1px solid #ede9fe", paddingTop: 5, marginTop: 3 } },
+        E("span", { style: { fontWeight: 800, color: "#5b21b6" } }, "Queda debiendo"),
+        E("span", { style: { fontWeight: 900, color: saldo > 0 ? C.rojo : "#059669" } },
+          RD(Math.max(0, saldo))))));
+}
+
+// Aviso del Dashboard: a quién toca recordarle hoy que termine de saldar.
+// Sale solo el día que Victor puso al registrar el abono (o después, si no se
+// atendió). Trae el WhatsApp ya escrito con el saldo real, no con el total.
+function AvisoAbonosPorCobrar({ ventas = [], clientes = [], setTab }) {
+  const E = React.createElement;
+  const [cerrado, setCerrado] = React.useState(false);
+
+  const porNombre = React.useMemo(() => {
+    const m = new Map();
+    (clientes || []).forEach((c) => {
+      const k1 = String(c.nombreMascota || "").toLowerCase().trim();
+      const k2 = String(c.nombrePropietario || "").toLowerCase().trim();
+      if (k1 && !m.has(k1)) m.set(k1, c);
+      if (k2 && !m.has(k2)) m.set(k2, c);
+    });
+    return m;
+  }, [clientes]);
+
+  const pendientes = React.useMemo(() => {
+    const h = hoy();
+    return (ventas || [])
+      .filter((v) => tocaRecordar(v, h))
+      .map((v) => {
+        const cli = porNombre.get(String(v.cliente || "").toLowerCase().trim()) || null;
+        const crudo = String((cli && cli.telefono) || "").replace(/\D/g, "");
+        const tel = crudo.length >= 11 ? crudo : (crudo.length === 10 ? "1" + crudo : "");
+        const dueno = (cli && cli.nombrePropietario) || "";
+        const dias = Math.max(0, Math.round((new Date(h + "T00:00:00") - new Date(String(v.fecha || h).slice(0, 10) + "T00:00:00")) / 864e5));
+        return { v, tel, dueno, saldo: saldoDe(v), abonado: abonadoDe(v),
+                 fechaRec: String(v.fechaRecordatorio || v.fecharecordatorio || "").slice(0, 10), dias };
+      })
+      .sort((a, b) => a.fechaRec.localeCompare(b.fechaRec));
+  }, [ventas, porNombre]);
+
+  if (cerrado || pendientes.length === 0) return null;
+  const totalSaldo = pendientes.reduce((n, x) => n + x.saldo, 0);
+
+  return E("div", {
+    style: { background: "#f5f3ff", border: "2px solid #7c3aed", borderRadius: 12,
+             padding: "14px 16px", marginBottom: 16 }
+  },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+      E("div", { style: { fontWeight: 800, fontSize: 14, color: "#5b21b6" } },
+        "\u{1F514} Hoy toca recordarle a " + pendientes.length + " cliente" + (pendientes.length === 1 ? "" : "s") +
+        " que termine de pagar \xB7 " + RD(totalSaldo)),
+      E("button", { onClick: () => setCerrado(true),
+        style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#5b21b6" } }, "✕")),
+
+    pendientes.slice(0, 6).map((x) => E("div", {
+      key: x.v.id,
+      style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+               background: "#fff", border: "1px solid #ddd6fe", borderRadius: 8,
+               padding: "9px 12px", marginBottom: 6 }
+    },
+      E("div", { style: { flex: 1, minWidth: 190 } },
+        E("div", { style: { fontWeight: 800, fontSize: 13.5 } },
+          x.v.cliente || "(sin nombre)",
+          x.dueno ? E("span", { style: { fontWeight: 500, color: C.grisd, fontSize: 12 } }, "  \xB7 " + x.dueno) : null),
+        E("div", { style: { fontSize: 11.5, color: C.grisd, marginTop: 2 } },
+          "Debe " + RD(x.saldo) + (x.abonado > 0 ? " \xB7 ya abon\xF3 " + RD(x.abonado) : "") +
+          " \xB7 acordado para el " + x.fechaRec)),
+      x.tel
+        ? E("a", { href: "https://wa.me/" + x.tel + "?text=" + encodeURIComponent(cobMensaje(x.v, x.dueno, x.dias)),
+            target: "_blank", rel: "noreferrer",
+            style: { background: "#25d366", color: "#fff", borderRadius: 8, padding: "8px 13px",
+                     fontSize: 12, fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" } },
+            "\u{1F4AC} Escribirle")
+        : E("span", { style: { fontSize: 11.5, color: "#c9a227", fontWeight: 700 } }, "⚠️ sin tel\xE9fono"))),
+
+    pendientes.length > 6
+      ? E("div", { style: { fontSize: 11.5, color: C.grisd, marginBottom: 6 } },
+          "y " + (pendientes.length - 6) + " m\xE1s…")
+      : null,
+
+    E("button", { onClick: () => setTab && setTab("cobros"),
+      style: { background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8,
+               padding: "8px 16px", fontSize: 12.5, fontWeight: 800, cursor: "pointer" } },
+      "Ver todo en Cobros"));
 }
 // jsPDF con las fuentes estándar no dibuja emojis: salían como "Ø=Ü>".
 const sinEmoji = (t) => String(t || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, "").replace(/\s{2,}/g, " ").trim();
@@ -7396,7 +7643,9 @@ function PetColinasApp({ session, onLogout }) {
   // cuenta y por eso mas de RD$100,000 nunca aparecieron como cobrables.
   const ventasPend = (ventas || []).filter(esPagoPendiente);
   const ventasPendientesCount = ventasPend.length;
-  const ventasPendientesMonto = ventasPend.reduce((n, v) => n + (Number(v.total) || 0), 0);
+  // Con abonos hay que contar el SALDO, no el total: si de RD$2,000 ya abonó
+  // RD$800, lo que queda por cobrar es RD$1,200, no los RD$2,000.
+  const ventasPendientesMonto = ventasPend.reduce((n, v) => n + saldoDe(v), 0);
   return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: {
     background: `linear-gradient(135deg, ${C.verde} 0%, ${C.verde2} 100%)`,
     padding: "20px 32px",
@@ -7474,7 +7723,7 @@ function PetColinasApp({ session, onLogout }) {
         padding: "0 4px", marginLeft: 2
       }}, pendientes)
     );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
@@ -9462,6 +9711,13 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [formaPago, setFormaPago] = useState("efectivo");
   const [bancoOtro, setBancoOtro] = useState("");
   const [banco, setBanco] = useState("");
+  // Efectivo: con cuanto paga el cliente, para calcular la devuelta.
+  const [efectivoRecibido, setEfectivoRecibido] = useState("");
+  // Abono: cuanto deja hoy, con que lo paga y cuando hay que recordarle.
+  const [montoAbono, setMontoAbono] = useState("");
+  const [abonoForma, setAbonoForma] = useState("efectivo");
+  const [abonoRecibido, setAbonoRecibido] = useState("");
+  const [fechaRecordatorio, setFechaRecordatorio] = useState("");
   const [cobradoPor, setCobradoPor] = useState("e4");
   const [servicioPor, setServicioPor] = useState("e1");
   const [items, setItems] = useState([]);
@@ -9740,7 +9996,20 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       return i.nombre + dto;
     }).join(" + ");
     const nombreEmpleado = (id) => id==="e1"?"Alexander":id==="e2"?"Aylein":id==="e3"?"Leydeli":id==="e4"?"Laura":id==="e5"?"Valentina":id==="ev"?"Victor":"";
-    const textoFormaPago = formaPago === "pendiente" ? "Pago pendiente"
+    // Abono: la venta queda pendiente por el saldo, y el dinero que SI entro
+    // hoy se guarda con su fecha y su forma de pago, para que el cierre de
+    // caja del dia cuadre con lo que hay en el cajon.
+    let abonosNueva = [], abonadoNueva = 0, recordatorioNueva = "";
+    if (formaPago === "abono") {
+      const ab = redondeo2(parseFloat(montoAbono));
+      if (!(ab > 0)) return alert("Escribe cu\xE1nto est\xE1 abonando el cliente.");
+      if (ab > totalNeto) return alert("El abono (" + RD(ab) + ") no puede ser mayor que el servicio (" + RD(totalNeto) + ").\n\nSi ya pag\xF3 todo, escoge la forma de pago normal.");
+      if (!fechaRecordatorio) return alert("Falta la fecha para recordarle al cliente que termine de pagar.");
+      abonosNueva = [{ fecha, monto: ab, forma: abonoForma, banco: abonoForma === "transferencia" ? (banco === "Otro" ? bancoOtro : banco) : "", por: nombreEmpleado(cobradoPor) }];
+      abonadoNueva = ab;
+      recordatorioNueva = fechaRecordatorio;
+    }
+    const textoFormaPago = (formaPago === "pendiente" || formaPago === "abono") ? "Pago pendiente"
       : formaPago === "transferencia" ? ("Transferencia " + (banco === "Otro" ? bancoOtro : banco)).trim()
       : formaPago;
     const nueva = {
@@ -9759,6 +10028,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       cobradopor: nombreEmpleado(cobradoPor), cobradoPor: nombreEmpleado(cobradoPor),
       formapago: textoFormaPago, formaPago: textoFormaPago,
       banco: banco || "",
+      abonos: abonosNueva,
+      abonado: abonadoNueva,
+      fechaRecordatorio: recordatorioNueva, fecharecordatorio: recordatorioNueva,
       items: items.map((i) => ({ nombre: i.nombre, precio: i.precio, descPct: i.descPct, subtotal: i.subtotal, area: i.area }))
     };
     setVentas([...ventas, nueva]);
@@ -9769,6 +10041,11 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     setFormaPago("pendiente");
     setBanco("");
     setBancoOtro("");
+    setEfectivoRecibido("");
+    setMontoAbono("");
+    setAbonoForma("efectivo");
+    setAbonoRecibido("");
+    setFechaRecordatorio("");
     setCobradoPor("e4");
     setServicioPor("e1");
     enviarASheet(nueva);
@@ -9937,6 +10214,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       /* @__PURE__ */ React.createElement("label", { style:{ fontSize:11, fontWeight:700, color:C.grisd, textTransform:"uppercase", letterSpacing:1 }}, "Forma de pago"),
       /* @__PURE__ */ React.createElement("select", { value: formaPago, onChange: e => { setFormaPago(e.target.value); if(e.target.value !== "transferencia") { setBanco(""); setBancoOtro(""); } }, style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }},
         /* @__PURE__ */ React.createElement("option", { value:"pendiente"}, "⏳ Pago pendiente"),
+        /* @__PURE__ */ React.createElement("option", { value:"abono"}, "🤝 Abono / pago a plazos"),
         /* @__PURE__ */ React.createElement("option", { value:"efectivo"}, "💵 Efectivo (Caja)"),
         /* @__PURE__ */ React.createElement("option", { value:"transferencia"}, "🏦 Transferencia"),
         /* @__PURE__ */ React.createElement("option", { value:"tarjeta"}, "💳 Tarjeta")
@@ -9964,8 +10242,16 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #93c5fd", fontSize:13, fontWeight:600, background:"#fff", minWidth:170, outline:"none" }
       })
     ),
-    formaPago === "efectivo" && /* @__PURE__ */ React.createElement("div", { style:{ background:"#d1fae5", border:"1.5px solid #059669", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#065f46", display:"flex", alignItems:"center", gap:6 }},
-      "\u{1F4B5} Entra a Caja Chica"
+    formaPago === "efectivo" && /* @__PURE__ */ React.createElement("div", { style:{ flex:"1 1 100%", maxWidth:380 }},
+      /* @__PURE__ */ React.createElement(BloqueEfectivo, {
+        aCobrar: totalNeto, recibido: efectivoRecibido, setRecibido: setEfectivoRecibido })
+    ),
+    formaPago === "abono" && /* @__PURE__ */ React.createElement("div", { style:{ flex:"1 1 100%", maxWidth:480 }},
+      /* @__PURE__ */ React.createElement(BloqueAbono, {
+        aCobrar: totalNeto, monto: montoAbono, setMonto: setMontoAbono,
+        forma: abonoForma, setForma: setAbonoForma,
+        recibido: abonoRecibido, setRecibido: setAbonoRecibido,
+        fechaRec: fechaRecordatorio, setFechaRec: setFechaRecordatorio })
     ),
     formaPago === "pendiente" && /* @__PURE__ */ React.createElement("div", { style:{ background:"#fef9c3", border:"1.5px solid #ca8a04", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#854d0e", display:"flex", alignItems:"center", gap:6 }},
       "\u23F3 Pago pendiente \u2014 registrar al cobrar"
@@ -14171,6 +14457,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [descGlobal, setDescGlobal] = React.useState("");
   const [descTipo, setDescTipo] = React.useState("pct");
   const [pago, setPago] = React.useState("efectivo");
+  const [efectivoRecibido, setEfectivoRecibido] = React.useState("");
   const [atendidoPor, setAtendidoPor] = React.useState(usuario.nombre);
   const [ok, setOk] = React.useState(null);
 
@@ -14249,7 +14536,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     // Push inmediato a Supabase para que el admin lo vea al sincronizar
     upsertOne("pc_ventas", v).catch(e => console.warn("[FacturarEmpleado] sync error", e));
     setOk({ ...v, clienteNombre: cliente.trim() });
-    setCarrito([]); setCliente(""); setDescGlobal(""); setNota("");
+    setCarrito([]); setCliente(""); setDescGlobal(""); setNota(""); setEfectivoRecibido("");
     setTimeout(() => setOk(null), 8000);
   }
 
@@ -14404,7 +14691,10 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
             React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Transferencia Reservas"),
             React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta"),
             React.createElement("option", { value:"pendiente" }, "⏳ Pago pendiente")
-          )
+          ),
+          pago === "efectivo" && totalFinal > 0 && React.createElement("div", { style:{ marginTop:12 }},
+            React.createElement(BloqueEfectivo, {
+              aCobrar: totalFinal, recibido: efectivoRecibido, setRecibido: setEfectivoRecibido }))
         ),
 
         // Botón registrar
@@ -15051,8 +15341,12 @@ const cobRD = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO");
 function cobMensaje(v, dueno, dias) {
   const nombre = String(dueno || "").split(" ")[0] || "buenas";
   const mascota = v.cliente || "su mascota";
-  const monto = cobRD(v.total);
-  const serv = sinEmoji(String(v.servicio || v.descripcion || "el servicio"));
+  // Con abonos hay que pedir el SALDO, no el total: cobrarle de nuevo lo que
+  // ya pagó es la forma más rápida de perder un cliente.
+  const monto = cobRD(saldoDe(v));
+  const yaAbono = abonadoDe(v);
+  const notaAbono = yaAbono > 0 ? " (ya nos abonó " + cobRD(yaAbono) + ", ¡gracias!)" : "";
+  const serv = sinEmoji(String(v.servicio || v.descripcion || "el servicio")) + notaAbono;
   const fecha = String(v.fecha || "").slice(0, 10);
   if (dias <= 30) {
     return "Hola " + nombre + "! \u{1F43E} Le escribimos de PetColinas. Le recordamos que qued\xF3 pendiente el pago de " + monto +
@@ -15409,6 +15703,10 @@ function Cobros({ ventas, setVentas, clientes }) {
   const [busq, setBusq] = React.useState("");
   const [tramoSel, setTramoSel] = React.useState("todos");
   const [cobrando, setCobrando] = React.useState(null);
+  const [modoCobro, setModoCobro] = React.useState("total");   // "total" o "abono"
+  const [abMonto, setAbMonto] = React.useState("");
+  const [abRecibido, setAbRecibido] = React.useState("");
+  const [abFecha, setAbFecha] = React.useState("");
   const [generando, setGenerando] = React.useState(null);
   async function cobrarConTarjeta(x) {
     setGenerando(String(x.v.id));
@@ -15461,10 +15759,16 @@ function Cobros({ ventas, setVentas, clientes }) {
         const telCrudo = String((cli && cli.telefono) || "").replace(/\D/g, "");
         const tel = telCrudo.length >= 11 ? telCrudo : (telCrudo.length === 10 ? "1" + telCrudo : "");
         const d = diasDe(v.fecha);
-        return { v, cli, tel, dias: d, tramo: cobTramo(d), monto: Number(v.total) || 0,
+        const fechaRec = String(v.fechaRecordatorio || v.fecharecordatorio || "").slice(0, 10);
+        return { v, cli, tel, dias: d, tramo: cobTramo(d),
+                 // Lo que falta por cobrar. Con abonos NO es el total: si de
+                 // RD$2,000 ya abonó RD$800, aquí van RD$1,200.
+                 monto: saldoDe(v), total: Number(v.total) || 0, abonado: abonadoDe(v),
+                 fechaRec, tocaHoy: tocaRecordar(v),
                  dueno: (cli && cli.nombrePropietario) || v.propietario || "" };
       })
-      .sort((a, b) => b.dias - a.dias);
+      // Los que ya toca recordar suben al tope: son los que hay que atender hoy.
+      .sort((a, b) => (Number(b.tocaHoy) - Number(a.tocaHoy)) || (b.dias - a.dias));
   }, [ventas, porMascota, hoyMs]);
 
   const total = lista.reduce((n, x) => n + x.monto, 0);
@@ -15482,15 +15786,53 @@ function Cobros({ ventas, setVentas, clientes }) {
 
   function marcarCobrado(x, forma) {
     const antes = x.v;
-    const updated = Object.assign({}, antes, { formaPago: forma, formapago: forma });
+    const restante = saldoDe(antes);
+    // El dinero se apunta con la fecha de HOY, que es cuando entró al cajón,
+    // aunque el servicio se haya hecho hace semanas. Las ventas ya cobradas
+    // antes de esto no se tocan: solo los cobros nuevos quedan fechados.
+    const abonos = abonosDe(antes).concat(
+      restante > 0 ? [{ fecha: hoy(), monto: restante, forma, banco: "", por: usuarioActual() }] : []);
+    const abonado = abonadoDe({ abonos });
+    const updated = Object.assign({}, antes, {
+      formaPago: forma, formapago: forma, abonos, abonado,
+      fechaRecordatorio: "", fecharecordatorio: ""
+    });
     try {
       const conf = JSON.parse(localStorage.getItem("pc_pagos_conf") || "{}");
       conf[String(antes.id)] = forma;
       guardarLocal("pc_pagos_conf", conf);
     } catch (e) {}
     setVentas((prev) => prev.map((y) => String(y.id) === String(antes.id) ? updated : y));
-    supaFetch("pc_ventas", "PATCH", { formapago: forma }, "?id=eq." + encodeURIComponent(antes.id));
-    try { auditar("pc_ventas", "editar", updated, ["Cobrado: Pago pendiente → " + forma + " (" + cobRD(antes.total) + ")"]); } catch (e) {}
+    supaFetch("pc_ventas", "PATCH", { formapago: forma, abonos, abonado, fecharecordatorio: null },
+      "?id=eq." + encodeURIComponent(antes.id));
+    try { auditar("pc_ventas", "editar", updated, ["Cobrado: Pago pendiente → " + forma + " (" + cobRD(restante) + ")"]); } catch (e) {}
+    setCobrando(null);
+  }
+
+  // Abono desde Cobros: el cliente deja una parte y se reprograma el
+  // recordatorio. La venta sigue pendiente por lo que falte.
+  function registrarAbono(x, monto, forma, nuevaFecha) {
+    const antes = x.v;
+    const m = redondeo2(monto);
+    const restante = saldoDe(antes);
+    if (!(m > 0)) return alert("Escribe cuánto está abonando.");
+    if (m > restante) return alert("El abono (" + cobRD(m) + ") es mayor que lo que debe (" + cobRD(restante) + ").");
+    const abonos = abonosDe(antes).concat([{ fecha: hoy(), monto: m, forma, banco: "", por: usuarioActual() }]);
+    const abonado = abonadoDe({ abonos });
+    const saldaTodo = redondeo2((Number(antes.total) || 0) - abonado) <= 0.5;
+    const fechaRec = saldaTodo ? "" : (nuevaFecha || "");
+    const updated = Object.assign({}, antes, {
+      abonos, abonado,
+      formaPago: saldaTodo ? forma : "Pago pendiente", formapago: saldaTodo ? forma : "Pago pendiente",
+      fechaRecordatorio: fechaRec, fecharecordatorio: fechaRec
+    });
+    setVentas((prev) => prev.map((y) => String(y.id) === String(antes.id) ? updated : y));
+    supaFetch("pc_ventas", "PATCH", {
+      abonos, abonado,
+      formapago: saldaTodo ? forma : "Pago pendiente",
+      fecharecordatorio: fechaRec || null
+    }, "?id=eq." + encodeURIComponent(antes.id));
+    try { auditar("pc_ventas", "editar", updated, ["Abono de " + cobRD(m) + " (" + forma + ") — queda debiendo " + cobRD(Math.max(0, redondeo2((Number(antes.total) || 0) - abonado)))]); } catch (e) {}
     setCobrando(null);
   }
 
@@ -15577,7 +15919,14 @@ function Cobros({ ventas, setVentas, clientes }) {
               String(v.fecha || "").slice(0, 10),
               E("span", { style: { color: x.tramo.color, fontWeight: 800, marginLeft: 8 } },
                 "hace " + x.dias + " d\xEDa" + (x.dias === 1 ? "" : "s")),
-              !x.tel ? E("span", { style: { color: "#c9a227", fontWeight: 700, marginLeft: 8 } }, "⚠️ sin tel\xE9fono") : null)),
+              !x.tel ? E("span", { style: { color: "#c9a227", fontWeight: 700, marginLeft: 8 } }, "⚠️ sin tel\xE9fono") : null),
+            x.abonado > 0 ? E("div", { style: { fontSize: 12, marginTop: 4, color: "#5b21b6", fontWeight: 700 } },
+              "\u{1F91D} Abonado " + cobRD(x.abonado) + " de " + cobRD(x.total)) : null,
+            x.fechaRec ? E("div", {
+              style: { fontSize: 12, marginTop: 4, fontWeight: 800,
+                       color: x.tocaHoy ? "#b8232a" : "#5a6472" }
+            }, x.tocaHoy ? "\u{1F514} Hoy toca recordarle (desde " + x.fechaRec + ")"
+                         : "\u{1F4C5} Recordarle el " + x.fechaRec) : null),
           E("div", { style: { fontSize: 22, fontWeight: 800, fontFamily: "Georgia,serif", color: x.tramo.color, whiteSpace: "nowrap" } },
             cobRD(x.monto)),
           E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
@@ -15595,10 +15944,20 @@ function Cobros({ ventas, setVentas, clientes }) {
                        cursor: generando === String(v.id) ? "wait" : "pointer", whiteSpace: "nowrap" }
             }, generando === String(v.id) ? "Generando..." : "\u{1F4B3} Cobrar con tarjeta"),
             E("button", {
-              onClick: () => { setMetodo("Efectivo"); setCobrando(abierto ? null : v.id); },
+              onClick: () => { setMetodo("Efectivo"); setModoCobro("total");
+                setCobrando(abierto && modoCobro === "total" ? null : v.id); },
               style: { background: abierto ? "#5a6472" : "#1a6b3a", color: "#fff", border: "none", borderRadius: 8,
                        padding: "9px 14px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }
-            }, abierto ? "Cancelar" : "✓ Ya me pag\xF3"))),
+            }, abierto && modoCobro === "total" ? "Cancelar" : "✓ Ya me pag\xF3"),
+            E("button", {
+              onClick: () => { setMetodo("Efectivo"); setAbMonto(""); setAbRecibido("");
+                setAbFecha(x.fechaRec || ""); setModoCobro("abono");
+                setCobrando(abierto && modoCobro === "abono" ? null : v.id); },
+              title: "El cliente deja una parte y queda debiendo el resto",
+              style: { background: abierto && modoCobro === "abono" ? "#5a6472" : "#7c3aed", color: "#fff",
+                       border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 12.5,
+                       fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }
+            }, abierto && modoCobro === "abono" ? "Cancelar" : "\u{1F91D} Abon\xF3 una parte"))),
 
         abierto ? E("div", {
           style: { marginTop: 12, paddingTop: 12, borderTop: "1px dashed #e0e4e8", display: "flex",
@@ -15612,11 +15971,38 @@ function Cobros({ ventas, setVentas, clientes }) {
                        border: "1.5px solid " + (metodo === m ? "#1a4fa0" : "#e0e4e8"), borderRadius: 8,
                        padding: "8px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }
             }, m)),
-          E("button", {
-            onClick: () => marcarCobrado(x, metodo),
-            style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px",
-                     fontSize: 12.5, fontWeight: 800, cursor: "pointer", marginLeft: "auto" }
-          }, "Guardar cobro de " + cobRD(x.monto))) : null
+
+          modoCobro === "abono"
+            ? E("div", { style: { flex: "1 1 100%", display: "flex", flexDirection: "column", gap: 10, marginTop: 4 } },
+                E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+                  E("div", { style: { flex: "1 1 150px" } },
+                    E("label", { style: COBRO_LABEL }, "\xBFCu\xE1nto abona? (debe " + cobRD(x.monto) + ")"),
+                    E("input", { type: "number", inputMode: "decimal", min: "0", step: "1", value: abMonto,
+                      onChange: (e) => setAbMonto(e.target.value), placeholder: "Ej: " + Math.round(x.monto / 2),
+                      style: { ...COBRO_INPUT, border: "1.5px solid #7c3aed" } })),
+                  E("div", { style: { flex: "1 1 150px" } },
+                    E("label", { style: COBRO_LABEL }, "\u{1F4C5} Pr\xF3ximo recordatorio"),
+                    E("input", { type: "date", value: abFecha, min: hoy(),
+                      onChange: (e) => setAbFecha(e.target.value),
+                      style: { ...COBRO_INPUT, border: "1.5px solid #7c3aed" } }))),
+                metodo === "Efectivo" && parseFloat(abMonto) > 0
+                  ? E(BloqueEfectivo, { aCobrar: parseFloat(abMonto), recibido: abRecibido,
+                      setRecibido: setAbRecibido, titulo: "\xBFCon cu\xE1nto paga el abono?" })
+                  : null,
+                E("div", { style: { fontSize: 13, fontWeight: 800,
+                    color: redondeo2(x.monto - (parseFloat(abMonto) || 0)) > 0 ? "#b8232a" : "#059669" } },
+                  "Despu\xE9s de este abono queda debiendo " +
+                  cobRD(Math.max(0, redondeo2(x.monto - (parseFloat(abMonto) || 0))))),
+                E("button", {
+                  onClick: () => registrarAbono(x, parseFloat(abMonto), metodo.toLowerCase(), abFecha),
+                  style: { background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8,
+                           padding: "10px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer" }
+                }, "\u{1F91D} Guardar abono de " + cobRD(parseFloat(abMonto) || 0)))
+            : E("button", {
+                onClick: () => marcarCobrado(x, metodo),
+                style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px",
+                         fontSize: 12.5, fontWeight: 800, cursor: "pointer", marginLeft: "auto" }
+              }, "Guardar cobro de " + cobRD(x.monto))) : null
       );
     }),
 
@@ -15636,19 +16022,37 @@ function CierreCaja({ ventas, gastos }) {
   const gastosDia = (gastos || []).filter((g) => String(g.fecha || "").slice(0, 10) === fecha);
 
   // Clasificar por forma de pago. Las transferencias se agrupan por banco.
+  const etiquetaDe = (formaCruda) => {
+    const fp = String(formaCruda || "").trim() || "Sin especificar";
+    const l = fp.toLowerCase();
+    return l.includes("efectivo") ? "💵 Efectivo"
+      : l.includes("tarjeta") ? "💳 Tarjeta"
+      : l.includes("transfer") ? "🏦 " + (fp.replace(/transferencias?/i, "").trim() || "Transferencia")
+      : fp;
+  };
   const grupos = {};
   let pendiente = 0, cobrado = 0;
   delDia.forEach((v) => {
     const monto = Number(v.total) || 0;
+    // Con abonos el dinero NO se cuenta aquí: cada abono se suma abajo, en el
+    // día en que entró. Aquí solo queda lo que todavía falta por cobrar. Si se
+    // contaran los dos lados, el mismo dinero saldría dos veces.
+    if (tieneAbonos(v)) { pendiente += saldoDe(v); return; }
     if (esPagoPendiente(v)) { pendiente += monto; return; }
     cobrado += monto;
-    const fp = String(v.formaPago || v.formapago || "").trim() || "Sin especificar";
-    const l = fp.toLowerCase();
-    const etiqueta = l.includes("efectivo") ? "💵 Efectivo"
-      : l.includes("tarjeta") ? "💳 Tarjeta"
-      : l.includes("transfer") ? "🏦 " + (fp.replace(/transferencias?/i, "").trim() || "Transferencia")
-      : fp;
-    grupos[etiqueta] = (grupos[etiqueta] || 0) + monto;
+    grupos[etiquetaDe(v.formaPago || v.formapago)] = (grupos[etiquetaDe(v.formaPago || v.formapago)] || 0) + monto;
+  });
+  // Abonos recibidos ESTE día, vengan de la venta que vengan: el servicio pudo
+  // ser la semana pasada, pero el dinero entró al cajón hoy.
+  (ventas || []).forEach((v) => {
+    abonosDe(v).forEach((ab) => {
+      if (String(ab.fecha || "").slice(0, 10) !== fecha) return;
+      const monto = Number(ab.monto) || 0;
+      if (!monto) return;
+      cobrado += monto;
+      const forma = ab.forma === "transferencia" && ab.banco ? "Transferencia " + ab.banco : ab.forma;
+      grupos[etiquetaDe(forma)] = (grupos[etiquetaDe(forma)] || 0) + monto;
+    });
   });
   const totalGastos = gastosDia.reduce((n, g) => n + (Number(g.monto) || 0), 0);
   const efectivo = grupos["💵 Efectivo"] || 0;
