@@ -14322,14 +14322,9 @@ function MisServiciosVet({ usuario, ventas }) {
   ))), /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 10, padding: "10px 16px", marginBottom: 16, display: "flex", gap: 24, fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.azul, fontWeight: 700 } }, ventasFiltradas.length, " servicio(s)")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Descripci\xF3n"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, ventasFiltradas.map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, (v.descripcion || v.servicio || "")?.slice(0, 80), (v.descripcion || v.servicio || "")?.length > 80 ? "\u2026" : ""))), ventasFiltradas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin servicios en este per\xEDodo."))))));
 }
 const TABS_VET = [
-  { id: "dashboard_vet",   icon: "\u{1F4CA}", label: "Dashboard" },
-  { id: "historias",       icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
-  { id: "evolucion_vet",   icon: "\u{1F4C8}", label: "Evoluci\xF3n Cl\xEDnica" },
-  { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" },
-  { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" },
   { id: "facturar_vet",    icon: "\u{1F9FE}", label: "Facturar" },
   { id: "agenda_vet",      icon: "\u{1F4C5}", label: "Agenda" },
-  { id: "farmacia_vet",    icon: "\u{1F48A}", label: "Farmacia / Tienda" }
+  { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" }
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -15285,7 +15280,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 }
 
 function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, clientes = [], setClientes, citas = [], setCitas }) {
-  const [tabGrm, setTabGrm] = React.useState("dashboard_grm");
+  const [tabGrm, setTabGrm] = React.useState("agenda_grm");
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
   // Objeto usuario para compatibilidad con MiVitrina
   const usuario = { id:"e1", nombre:"Alexander Ramírez", email:"alexander@petcolinas.com", comision_pct:0.05 };
@@ -15321,11 +15316,9 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
   const totalCobrado = pagosAlexander.reduce((s,p)=>s+(p.totalPagado||0),0);
 
   const TABS_GRM = [
-    { id:"dashboard_grm",      icon:"📊", label:"Mi Dashboard" },
-    { id:"mis_baños",          icon:"🛁", label:"Mis Baños" },
     { id:"facturar_grm",       icon:"🧾", label:"Facturar" },
     { id:"agenda_grm",         icon:"📅", label:"Agenda" },
-    { id:"mi_vitrina_grm",     icon:"🛍️", label:"Mi Vitrina" }
+    { id:"mis_baños",          icon:"🛁", label:"Mis Baños" }
   ];
 
   return React.createElement("div", { style:{ fontFamily:"'Segoe UI',sans-serif", background:CC.fondo, minHeight:"100vh" }},
@@ -15428,7 +15421,8 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
         ventas,
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
         tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [],
-        tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : []
+        tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [],
+        soloPropio: "Alexander"
       }),
       tabGrm === "mi_vitrina_grm" && React.createElement(MiVitrina, {
         usuario,
@@ -15672,7 +15666,7 @@ function EvolucionClinica({ usuario, clientes }) {
 }
 
 function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas }) {
-  const [tabVet, setTabVet] = React.useState("dashboard_vet");
+  const [tabVet, setTabVet] = React.useState("agenda_vet");
   const userEmail = session?.user?.email || "";
   const vetInfo   = VET_EMAILS.find(v => v.email === userEmail) || VET_EMAILS[0];
   const usuario   = { ...vetInfo, rol: "veterinaria" };
@@ -15745,7 +15739,8 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
         clientes,
         ventas, setVentas,
         tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [],
-        tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : []
+        tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [],
+        soloPropio: usuario.nombre.split(" ")[0]
       }),
       tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [], clientes }),
       tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] })
@@ -17293,7 +17288,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
   );
 }
 
-function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], setVentas, tarifasGrooming = [], tarifasVet = [], setTab, refetchCitasAgenda }) {
+function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ventas = [], setVentas, tarifasGrooming = [], tarifasVet = [], setTab, refetchCitasAgenda, soloPropio }) {
+  const citas = soloPropio ? citasArg.filter(c => (c.empleado||"").toLowerCase().includes(soloPropio.toLowerCase())) : citasArg;
   const [vista, setVista] = React.useState("dia");
   const [fechaActual, setFechaActual] = React.useState(hoy());
   const [modalCita, setModalCita] = React.useState(null);
@@ -17333,7 +17329,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     recogida:    { label: "Recogida / Entrega",   icon: "🚗",  bg: "#fef9c3", color: "#854d0e", border: "#ca8a04" },
     seguimiento: { label: "Seguimiento",          icon: "🔔",  bg: "#f3e8ff", color: "#6b21a8", border: "#7c3aed" }
   };
-  const EMPLEADOS = { "Alexander": { color: "#f97316" }, "Aylein": { color: "#06b6d4" }, "Valentina": { color: "#ec4899" } };
+  const EMPLEADOS = { "Alexander": { color: "#f97316" }, "Naylan": { color: "#06b6d4" }, "Valentina": { color: "#ec4899" } };
   const ESTADOS = {
     pendiente:  { label: "Pendiente",   color: "#d97706", bg: "#fef3c7" },
     confirmada: { label: "Confirmada",  color: "#1a6b3a", bg: "#e6f4ec" },
@@ -17390,7 +17386,10 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
     return aS < bE && bS < aE;
   });
 
-  const abrirModal = (data) => { setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(data.empleado||"Alexander"); setConflictoMsg(null); setShowHistCliente(false); setModalCita(data); };
+  const abrirModal = (data) => {
+    const d = soloPropio && data.id === "nuevo" ? { ...data, empleado: soloPropio } : data;
+    setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(d.empleado||"Alexander"); setConflictoMsg(null); setShowHistCliente(false); setModalCita(d);
+  };
   const cerrarModal = () => { setModalCita(null); setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setShowHistCliente(false); };
 
   const abrirReagendar = (cita) => { setModalReagendar(cita); setReaFecha(cita.fecha||hoy()); setReaHora(cita.hora||"08:00"); cerrarModal(); };
@@ -18087,7 +18086,7 @@ function Agenda({ citas = [], setCitas, deleteCita, clientes = [], ventas = [], 
       )
     ),
     vista==="dia"?renderVistaDia():vista==="semana"?renderVistaSemana():vista==="mes"?renderVistaMes():vista==="lista"?renderVistaLista():renderVistaEspera(),
-    renderEstadisticas()
+    !soloPropio && renderEstadisticas()
   );
 }
 
