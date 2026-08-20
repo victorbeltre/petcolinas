@@ -1271,7 +1271,13 @@ function normalizeRow(table, r) {
     medicamentos: r.medicamentos || "",
     proximacita: r.proximacita || "",
     notas: r.notas || "",
-    creadoen: r.creadoen || ""
+    creadoen: r.creadoen || "",
+    peso: r.peso || "",
+    temperatura: r.temperatura || "",
+    motivo: r.motivo || "",
+    anamnesis: r.anamnesis || "",
+    examen_fisico: r.examen_fisico || "",
+    prescripcion: r.prescripcion || ""
   };
   return r;
 }
@@ -1449,7 +1455,13 @@ function denormalizeRow(table, r) {
     medicamentos: r.medicamentos,
     proximacita: r.proximacita,
     notas: r.notas,
-    creadoen: r.creadoen
+    creadoen: r.creadoen,
+    peso: r.peso,
+    temperatura: r.temperatura,
+    motivo: r.motivo,
+    anamnesis: r.anamnesis,
+    examen_fisico: r.examen_fisico,
+    prescripcion: r.prescripcion
   };
   return r;
 }
@@ -7422,6 +7434,7 @@ function PetColinas() {
   const setVentas = setVentasVet;
   const [clientesVet, setClientesVet] = useClientesConSeed(CLIENTES_SEED);
   const [citasPortal, setCitasPortal, , , , refetchCitasPortal] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
+  const [historiasVet, setHistoriasVet] = useSupabase("pc_historias", []);
   const [pagosNomVet, setPagosNomVet] = React.useState([]);
   // Datos que necesita el portal de caja (hooks siempre arriba, sin condicionales)
   const [invCaja, setInvCaja, , , deleteInvCaja] = useSupabase("pc_inventario", INVENTARIO_SEED);
@@ -7527,7 +7540,8 @@ function PetColinas() {
     session, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     clientes: clientesVet, setClientes: setClientesVet,
-    citas: citasPortal, setCitas: setCitasPortal
+    citas: citasPortal, setCitas: setCitasPortal,
+    historias: historiasVet, setHistorias: setHistoriasVet
   }));
 
   if (isGrm) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalGroomer, {
@@ -15548,8 +15562,7 @@ function EvTEA(props) {
   });
 }
 
-function EvolucionClinica({ usuario, clientes, citas = [], setCitas }) {
-  const [evoluciones, setEvoluciones, evLoaded] = useSupabase("pc_evoluciones", []);
+function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias = [], setHistorias }) {
   const [busqueda, setBusqueda] = useState("");
   const [paciente, setPaciente] = useState(null);
   const [modal, setModal] = useState(false);
@@ -15573,8 +15586,8 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas }) {
     .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
 
   const evPaciente = paciente
-    ? evoluciones.filter(e => (e.mascota || "").toLowerCase() === paciente.nombre.toLowerCase())
-        .sort((a, b) => b.fecha.localeCompare(a.fecha))
+    ? historias.filter(h => String(h.clienteid) === String(paciente.id))
+        .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""))
     : [];
 
   function abrirNueva() {
@@ -15585,9 +15598,28 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas }) {
   function guardar() {
     if (!form.mascota.trim()) return alert("Ingresa el nombre de la mascota.");
     if (!form.motivo.trim()) return alert("El motivo de consulta es obligatorio.");
-    const ev = { ...form, id: Date.now(), created_at: new Date().toISOString() };
-    setEvoluciones(prev => [ev, ...prev]);
-    upsertOne("pc_evoluciones", ev).catch(e => console.warn("[EvolucionClinica]", e));
+    const nueva = {
+      id: Date.now(),
+      clienteid: String(paciente?.id || ""),
+      fecha: form.fecha,
+      tipo: "Evoluci\xF3n",
+      descripcion: form.motivo,
+      veterinario: form.veterinario,
+      diagnostico: form.diagnostico,
+      tratamiento: form.tratamiento,
+      medicamentos: form.prescripcion,
+      proximacita: form.proxima_cita,
+      notas: form.notas,
+      creadoen: hoy(),
+      peso: form.peso,
+      temperatura: form.temperatura,
+      motivo: form.motivo,
+      anamnesis: form.anamnesis,
+      examen_fisico: form.examen_fisico,
+      prescripcion: form.prescripcion
+    };
+    setHistorias(prev => [nueva, ...(prev || [])]);
+    upsertOne("pc_historias", nueva).catch(e => console.warn("[EvolucionClinica]", e));
     if (form.proxima_cita && typeof setCitas === "function") {
       const citaAuto = {
         id: Date.now() + 1,
@@ -15637,7 +15669,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas }) {
           React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "#1a1a2e" } }, c.nombre),
           React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, c.dueno || "Sin propietario"),
           React.createElement("div", { style: { fontSize: 10, color: C.azul, marginTop: 1 } },
-            (evoluciones.filter(e => (e.mascota || "").toLowerCase() === c.nombre.toLowerCase()).length || 0) + " registros"
+            (historias.filter(h => String(h.clienteid) === String(c.id)).length || 0) + " registros"
           )
         ))
       )
@@ -15691,7 +15723,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas }) {
                     React.createElement("div", { style: { padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" } },
                       ev.peso && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "PESO: "), React.createElement("span", { style: { fontSize: 13 } }, ev.peso + " kg")),
                       ev.temperatura && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "TEMP: "), React.createElement("span", { style: { fontSize: 13 } }, ev.temperatura + " °C")),
-                      ev.motivo && React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "MOTIVO: "), React.createElement("span", { style: { fontSize: 13 } }, ev.motivo)),
+                      (ev.motivo || ev.descripcion) && React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "MOTIVO: "), React.createElement("span", { style: { fontSize: 13 } }, ev.motivo || ev.descripcion)),
                       ev.anamnesis && React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "ANAMNESIS: "), React.createElement("span", { style: { fontSize: 13 } }, ev.anamnesis)),
                       ev.examen_fisico && React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "EXAMEN FÍSICO: "), React.createElement("span", { style: { fontSize: 13 } }, ev.examen_fisico)),
                       ev.diagnostico && React.createElement("div", { style: { gridColumn: "1/-1", background: "#fdf6e3", borderRadius: 8, padding: "8px 12px" } },
@@ -15699,11 +15731,11 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas }) {
                         React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, ev.diagnostico)
                       ),
                       ev.tratamiento && React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "TRATAMIENTO: "), React.createElement("span", { style: { fontSize: 13 } }, ev.tratamiento)),
-                      ev.prescripcion && React.createElement("div", { style: { gridColumn: "1/-1", background: C.verdeL, borderRadius: 8, padding: "8px 12px" } },
+                      (ev.prescripcion || ev.medicamentos) && React.createElement("div", { style: { gridColumn: "1/-1", background: C.verdeL, borderRadius: 8, padding: "8px 12px" } },
                         React.createElement("span", { style: { fontSize: 11, color: C.verde, fontWeight: 700 } }, "PRESCRIPCIÓN: "),
-                        React.createElement("span", { style: { fontSize: 13 } }, ev.prescripcion)
+                        React.createElement("span", { style: { fontSize: 13 } }, ev.prescripcion || ev.medicamentos)
                       ),
-                      ev.proxima_cita && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "PRÓXIMA CITA: "), React.createElement("span", { style: { fontSize: 13 } }, ev.proxima_cita)),
+                      ev.proximacita && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "PRÓXIMA CITA: "), React.createElement("span", { style: { fontSize: 13 } }, ev.proximacita)),
                       ev.notas && React.createElement("div", { style: { gridColumn: "1/-1", fontStyle: "italic", color: C.grisd, fontSize: 12 } }, "📝 " + ev.notas)
                     )
                   ))
@@ -15749,7 +15781,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas }) {
   );
 }
 
-function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas }) {
+function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias }) {
   const [tabVet, setTabVet] = React.useState("agenda_vet");
   const userEmail = session?.user?.email || "";
   const vetInfo   = VET_EMAILS.find(v => v.email === userEmail) || VET_EMAILS[0];
@@ -15813,7 +15845,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
         })
       ),
       tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes }),
-      tabVet === "evolucion_vet" && React.createElement(EvolucionClinica, { usuario, clientes, citas, setCitas }),
+      tabVet === "evolucion_vet" && React.createElement(EvolucionClinica, { usuario, clientes, citas, setCitas, historias, setHistorias }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
       tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [] }),
