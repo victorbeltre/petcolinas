@@ -9,9 +9,14 @@ Supabase: https://ulrzzddovkioxeaarnjk.supabase.co
 
 ## USUARIOS
 admin@petcolinas.com / Nickyjose00 -> Admin
-aylein@petcolinas.com / aylein2026 -> Vet 30%
-valentina@petcolinas.com / valentina2026 -> Vet 40%
+naylan@petcolinas.com / naylan2026 -> Vet 30% (veterinaria) + 5% (farmacia/ventas)
+valentina@petcolinas.com / valentina2026 -> Vet 40% (sin acceso a Supabase Auth actualmente)
 alexander@petcolinas.com / alexander2026 -> Groomer
+veterinaria@petcolinas.com -> Caja (factura y registra ventas, sin ver el negocio)
+
+Aylein Santiago ya NO tiene acceso (20 Ago 2026, ya no labora con nosotros). Su
+historial de ventas/comisiones se conserva intacto (Regla Critica 2), pero se
+quito de las listas activas de seleccion (nueva venta, nueva vacuna, etc).
 
 ## REGLA CRITICA 1 - authChecked
 supaGetSession() NO es async. authChecked debe iniciar en TRUE si no hay sesion.
