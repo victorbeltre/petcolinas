@@ -14347,7 +14347,10 @@ function MisServiciosVet({ usuario, ventas }) {
 const TABS_VET = [
   { id: "facturar_vet",    icon: "\u{1F9FE}", label: "Facturar" },
   { id: "agenda_vet",      icon: "\u{1F4C5}", label: "Agenda" },
-  { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" }
+  { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" },
+  { id: "historias",       icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
+  { id: "evolucion_vet",   icon: "\u{1F4C8}", label: "Evoluci\xF3n Cl\xEDnica" },
+  { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" }
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -14999,6 +15002,11 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [pago, setPago] = React.useState("efectivo");
   const [efectivoRecibido, setEfectivoRecibido] = React.useState("");
   const [atendidoPor, setAtendidoPor] = React.useState(usuario.nombre);
+  const [nombreLibre, setNombreLibre] = React.useState("");
+  const [montoAbono, setMontoAbono] = React.useState("");
+  const [abonoForma, setAbonoForma] = React.useState("efectivo");
+  const [abonoRecibido, setAbonoRecibido] = React.useState("");
+  const [fechaRecordatorio, setFechaRecordatorio] = React.useState("");
   const [ok, setOk] = React.useState(null);
 
   const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
@@ -15032,8 +15040,10 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   }, [cliente, clientes]);
 
   function agregarItem() {
-    if (!servSel && !precioCustom) return alert("Selecciona un servicio o ingresa un precio");
-    const nombre = servSel ? (servSel.nombre||servSel.servicio||servSel.descripcion||"") : (nota||"Servicio personalizado");
+    const esLibre = servSelId === "__libre__";
+    if (esLibre && !nombreLibre.trim()) return alert("Escribe el nombre del servicio o producto.");
+    if (!esLibre && !servSel && !precioCustom) return alert("Selecciona un servicio o ingresa un precio");
+    const nombre = esLibre ? nombreLibre.trim() : (servSel ? (servSel.nombre||servSel.servicio||servSel.descripcion||"") : (nota||"Servicio personalizado"));
     const item = {
       id: Date.now(),
       categoria,
@@ -15045,7 +15055,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       nota
     };
     setCarrito(prev => [...prev, item]);
-    setServSelId(""); setPrecioCustom(""); setQty(1); setDescItem(""); setNota("");
+    setServSelId(""); setPrecioCustom(""); setQty(1); setDescItem(""); setNota(""); setNombreLibre("");
   }
 
   function quitarItem(id) { setCarrito(prev => prev.filter(it => it.id !== id)); }
@@ -15053,8 +15063,19 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   function registrar() {
     if (!cliente.trim()) return alert("Escribe el nombre del cliente o mascota");
     if (carrito.length === 0) return alert("Agrega al menos un servicio al carrito");
+    let abonosNueva = [], abonadoNueva = 0, recordatorioNueva = "";
+    if (pago === "abono") {
+      const ab = parseFloat(montoAbono) || 0;
+      if (!(ab > 0)) return alert("Escribe cu\xE1nto est\xE1 abonando el cliente.");
+      if (ab > totalFinal) return alert("El abono (" + RD2(ab) + ") no puede ser mayor que el total (" + RD2(totalFinal) + ").\n\nSi ya pag\xF3 todo, escoge la forma de pago normal.");
+      if (!fechaRecordatorio) return alert("Falta la fecha para recordarle al cliente que termine de pagar.");
+      abonosNueva = [{ fecha: new Date().toISOString().slice(0,10), monto: ab, forma: abonoForma, banco: "", por: usuario.nombre }];
+      abonadoNueva = ab;
+      recordatorioNueva = fechaRecordatorio;
+    }
     const fecha = new Date().toISOString().slice(0,10);
     const descripcion = carrito.map(it => (it.qty > 1 ? it.qty + "x " : "") + it.nombre).join(" + ");
+    const formapagoTexto = pago === "abono" ? "Pago pendiente" : pago;
     const v = {
       id: Date.now(),
       fecha,
@@ -15067,9 +15088,12 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       descuento: descGlobalMonto,
       total: totalFinal,
       comision: 0,
-      formapago: pago,
+      formapago: formapagoTexto,
       recibidopor: atendidoPor,
       cobradopor: usuario.nombre,
+      abonos: abonosNueva,
+      abonado: abonadoNueva,
+      fechaRecordatorio: recordatorioNueva, fecharecordatorio: recordatorioNueva,
       ...(nota ? { notas: nota } : {})
     };
     setVentas(prev => [...(prev||[]), v]);
@@ -15077,6 +15101,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     upsertOne("pc_ventas", v).catch(e => console.warn("[FacturarEmpleado] sync error", e));
     setOk({ ...v, clienteNombre: cliente.trim() });
     setCarrito([]); setCliente(""); setDescGlobal(""); setNota(""); setEfectivoRecibido("");
+    setMontoAbono(""); setAbonoForma("efectivo"); setAbonoRecibido(""); setFechaRecordatorio("");
     setTimeout(() => setOk(null), 8000);
   }
 
@@ -15168,9 +15193,15 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
                 style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13 }
               },
               React.createElement("option", { value:"" }, "-- Selecciona --"),
+              React.createElement("option", { value:"__libre__" }, "✏️ Otro (entrada libre)"),
               servicios.map(s => React.createElement("option", { key:s.id, value:s.id }, (s.nombre||s.servicio||s.descripcion||"") + " · RD$ " + Math.round(s.pventa||s.precio||0).toLocaleString("es-DO")))
             )
-            : React.createElement("input", { placeholder:"Nombre del servicio", value:nota, onChange:e=>setNota(e.target.value), style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13, boxSizing:"border-box" } })
+            : React.createElement("input", { placeholder:"Nombre del servicio", value:nota, onChange:e=>setNota(e.target.value), style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13, boxSizing:"border-box" } }),
+          servSelId === "__libre__" && React.createElement("input", {
+            value:nombreLibre, onChange:e=>setNombreLibre(e.target.value),
+            placeholder:"Nombre del servicio o producto...", autoFocus:true,
+            style:{ width:"100%", marginTop:8, padding:"9px 12px", border:"1.5px solid #7c3aed", borderRadius:10, fontSize:13, boxSizing:"border-box" }
+          })
         ),
 
         // Precio, Cantidad, Descuento item
@@ -15230,11 +15261,18 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
             React.createElement("option", { value:"Transferencia Popular" }, "🏦 Transferencia Popular"),
             React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Transferencia Reservas"),
             React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta"),
+            React.createElement("option", { value:"abono" }, "🤝 Abono (paga una parte)"),
             React.createElement("option", { value:"pendiente" }, "⏳ Pago pendiente")
           ),
           pago === "efectivo" && totalFinal > 0 && React.createElement("div", { style:{ marginTop:12 }},
             React.createElement(BloqueEfectivo, {
-              aCobrar: totalFinal, recibido: efectivoRecibido, setRecibido: setEfectivoRecibido }))
+              aCobrar: totalFinal, recibido: efectivoRecibido, setRecibido: setEfectivoRecibido })),
+          pago === "abono" && React.createElement("div", { style:{ marginTop:12 }},
+            React.createElement(BloqueAbono, {
+              aCobrar: totalFinal, monto: montoAbono, setMonto: setMontoAbono,
+              forma: abonoForma, setForma: setAbonoForma,
+              recibido: abonoRecibido, setRecibido: setAbonoRecibido,
+              fechaRec: fechaRecordatorio, setFechaRec: setFechaRecordatorio }))
         ),
 
         // Botón registrar
