@@ -15724,6 +15724,11 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
       setCitas(prev => [...(prev || []), citaAuto]);
       upsertOne("pc_citas", citaAuto).catch(e => console.warn("[EvolucionClinica\u2192cita]", e));
       if (typeof dispararCalendarSync === "function") dispararCalendarSync();
+      if (citaAuto.telefono && typeof abrirWA === "function") {
+        const fLarga = fechaLargaRD(citaAuto.fecha);
+        const msg = "\u{1F43E} Hola " + (citaAuto.nombreCliente || "cliente") + ", te confirmamos la pr\xF3xima cita de *" + citaAuto.nombreMascota + "* en *PetColinas* para el " + fLarga + " a las " + citaAuto.hora + ".\n\n\u{1F527} Motivo: " + (form.motivo || "Evoluci\xF3n cl\xEDnica") + "\n\n\xA1Te esperamos! Cualquier cambio, escr\xEDbenos \ud83d\ude4f";
+        abrirWA(citaAuto.telefono, msg);
+      }
     }
     setModal(false);
   }
