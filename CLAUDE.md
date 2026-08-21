@@ -20,9 +20,13 @@ quito de las listas activas de seleccion (nueva venta, nueva vacuna, etc).
 
 ## REGLA CRITICA 1 - authChecked
 supaGetSession() NO es async. authChecked debe iniciar en TRUE si no hay sesion.
+La sesion (pc_session) vive en sessionStorage, NO en localStorage (21 Ago 2026):
+cada pestaña del navegador queda con su propia sesion independiente, para poder
+tener admin y doctora abiertos en pestañas distintas sin que se pisen. A cambio,
+cerrar la pestaña cierra la sesion (hay que volver a iniciar sesion la proxima).
 const [authChecked, setAuthChecked] = useState(() => {
   try {
-    const s = localStorage.getItem('pc_session');
+    const s = sessionStorage.getItem('pc_session');
     if (!s) return true;
     const p = JSON.parse(s);
     if (p.expires_at && Date.now()/1e3 > p.expires_at) return true;

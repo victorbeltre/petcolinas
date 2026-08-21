@@ -164,7 +164,7 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
   const url = `${SUPA_URL}/rest/v1/${table}${params}`;
   let authToken = SUPA_KEY;
   try {
-    const sess = JSON.parse(localStorage.getItem("pc_session") || "null");
+    const sess = JSON.parse(sessionStorage.getItem("pc_session") || "null");
     if (sess && sess.access_token) {
       const expired = !sess.expires_at || Date.now() / 1e3 >= sess.expires_at;
       if (!expired) {
@@ -180,7 +180,7 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
             const newSess = await rr.json();
             if (!newSess.expires_at && newSess.expires_in) newSess.expires_at = Math.floor(Date.now() / 1e3) + newSess.expires_in;
             if (!newSess.user && sess.user) newSess.user = sess.user;
-            localStorage.setItem("pc_session", JSON.stringify(newSess));
+            sessionStorage.setItem("pc_session", JSON.stringify(newSess));
             authToken = newSess.access_token;
             console.log("[Auth] Sesi\xF3n renovada autom\xE1ticamente");
           } else {
@@ -284,7 +284,7 @@ const PCRealtime = (function () {
 
   const tokenActual = () => {
     try {
-      const s = JSON.parse(localStorage.getItem("pc_session") || "null");
+      const s = JSON.parse(sessionStorage.getItem("pc_session") || "null");
       if (s && s.access_token && (!s.expires_at || Date.now() / 1e3 < s.expires_at)) return s.access_token;
     } catch (e) {}
     return SUPA_KEY;
@@ -765,7 +765,7 @@ const AUD_TABLAS = new Set(["pc_ventas", "pc_facturas", "pc_clientes", "pc_citas
 let AUD_DISPONIBLE = true;
 function usuarioActual() {
   try {
-    const s = JSON.parse(localStorage.getItem("pc_session") || "null");
+    const s = JSON.parse(sessionStorage.getItem("pc_session") || "null");
     return (s && s.user && s.user.email) || "desconocido";
   } catch { return "desconocido"; }
 }
@@ -896,12 +896,12 @@ async function supaSignOut(accessToken) {
   });
 }
 async function supaGetSession() {
-  const stored = localStorage.getItem("pc_session");
+  const stored = sessionStorage.getItem("pc_session");
   if (!stored) return null;
   try {
     const session = JSON.parse(stored);
     if (session.expires_at && Date.now() / 1e3 > session.expires_at) {
-      localStorage.removeItem("pc_session");
+      sessionStorage.removeItem("pc_session");
       return null;
     }
     return session;
@@ -930,7 +930,7 @@ function LoginScreen({ onLogin }) {
         user: data.user,
         expires_at: data.expires_at || Math.floor(Date.now() / 1e3) + (data.expires_in || 3600)
       };
-      localStorage.setItem("pc_session", JSON.stringify(session));
+      sessionStorage.setItem("pc_session", JSON.stringify(session));
       onLogin(session);
     } catch (err) {
       setError("Usuario o contrase\xF1a incorrectos");
@@ -7413,16 +7413,16 @@ function CatalogoPublico() {
 function PetColinas() {
   const [session, setSession] = useState(() => {
     try {
-      const s = localStorage.getItem("pc_session");
+      const s = sessionStorage.getItem("pc_session");
       if (!s) return null;
       const p = JSON.parse(s);
-      if (p.expires_at && Date.now()/1e3 > p.expires_at) { localStorage.removeItem("pc_session"); return null; }
+      if (p.expires_at && Date.now()/1e3 > p.expires_at) { sessionStorage.removeItem("pc_session"); return null; }
       return p;
     } catch { return null; }
   });
   const [authChecked, setAuthChecked] = useState(() => {
     try {
-      const s = localStorage.getItem("pc_session");
+      const s = sessionStorage.getItem("pc_session");
       if (!s) return true;
       const p = JSON.parse(s);
       if (p.expires_at && Date.now()/1e3 > p.expires_at) return true;
@@ -7503,7 +7503,7 @@ function PetColinas() {
   function handleLogin(s) { setSession(s); }
   async function handleLogout() {
     if (session?.access_token) await supaSignOut(session.access_token);
-    localStorage.removeItem("pc_session");
+    sessionStorage.removeItem("pc_session");
     setSession(null);
   }
 
@@ -13407,7 +13407,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes }
     });
     setModalHistoria(false);
   }
-  const C = { verde: "#1a6b3a", verdeL: "#e8f5ed", azul: "#1a4fa0", azulL: "#e8eef8", gris: "#f4f5f6", grisd: "#5a6472", fondo: "#f0f4f8", gold: "#b8860b", goldL: "#fdf6e3", rojo: "#c0392b", rojoL: "#fdecea", naranja: "#e67e22", naranjaL: "#fef4e8", negro: "#1a1a2e" };
+  const C = { verde: "#1a6b3a", verdeL: "#e8f5ed", azul: "#db2777", azulL: "#fce7f3", gris: "#f4f5f6", grisd: "#5a6472", fondo: "#fdf2f8", gold: "#b8860b", goldL: "#fdf6e3", rojo: "#c0392b", rojoL: "#fdecea", naranja: "#e67e22", naranjaL: "#fef4e8", negro: "#1a1a2e" };
   // Normalizar clientes — compatibilidad entre seed viejo (nombreMascota) y nuevo (nombre)
   const clientesNorm = clientes.map((c) => ({
     ...c,
@@ -14297,6 +14297,7 @@ modalEntrada && /* @__PURE__ */ React.createElement("div", { style: { position: 
   ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 16 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: crearPaciente, color: C.azul }, "Crear paciente"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setModalNuevo(false), color: C.grisd, outline: true }, "Cancelar")))));
 }
 function VacunasVet({ usuario, ventas }) {
+  const C = { verde: "#1a6b3a", azul: "#db2777", azulL: "#fce7f3", naranja: "#d45f1e", naranjaL: "#fff0e8", gris: "#f4f5f6", grisd: "#5a6472" };
   const vacunas = ventas.filter((v) => (v.area === "veterinaria" || v.area === "farmacia") && (() => {
     const r = (v.recibidopor||v.recibidoPor||"").toLowerCase().trim();
     const nb = usuario.nombre.split(" ")[0].toLowerCase();
@@ -14317,6 +14318,7 @@ function VacunasVet({ usuario, ventas }) {
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, marginBottom: 8 } }, "\u{1F489} Registro de Vacunas"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Total: ", vacunas.length, " registros"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12, marginBottom: 24 } }, Object.entries(tipos).map(([tipo, cnt]) => /* @__PURE__ */ React.createElement("div", { key: tipo, style: { background: C.azulL, borderRadius: 12, padding: "14px 16px", borderLeft: `3px solid ${C.azul}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: C.azul, fontWeight: 700, textTransform: "uppercase" } }, tipo.replace(/vacuna/i, "").trim() || "Vacuna"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 28, fontWeight: 900, color: C.azul, marginTop: 4 } }, cnt)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Detalle", "Total"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, vacunas.map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, (v.descripcion || v.servicio || "")?.split("(")[0]?.trim()), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.verde } }, RD(v.total)))), vacunas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin registros de vacunas."))))));
 }
 function MisServiciosVet({ usuario, ventas }) {
+  const C = { verde: "#1a6b3a", azul: "#db2777", azulL: "#fce7f3", naranja: "#d45f1e", naranjaL: "#fff0e8", gris: "#f4f5f6", grisd: "#5a6472" };
   const [filtroMes, setFiltroMes] = useState("todos");
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const misVentas = ventas.filter((v) => (v.area === "veterinaria" || v.area === "farmacia") && (() => {
@@ -14722,7 +14724,7 @@ function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
   const [cliente, setCliente] = React.useState("");
   const [pago, setPago] = React.useState("efectivo");
   const [ok, setOk] = React.useState(null);
-  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",fondo:"#f0f4f8",rojo:"#c0392b" };
+  const CC = { verde:"#1a6b3a",azul:"#db2777",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",fondo:"#fdf2f8",rojo:"#c0392b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
 
   const prods = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[]))
@@ -14859,7 +14861,7 @@ function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
 // ═══════════════════════════════════════════════
 function MisComisionesVet({ usuario, ventas, pagosNom }) {
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
-  const CC = { verde:"#1a6b3a",azul:"#1a4fa0",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojoL:"#fdecea",rojo:"#c0392b" };
+  const CC = { verde:"#1a6b3a",azul:"#db2777",gold:"#b8860b",goldL:"#fdf6e3",gris:"#5a6472",rojoL:"#fdecea",rojo:"#c0392b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
 
   const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
@@ -15001,7 +15003,7 @@ function MisCitasHoy({ empleadoNombre, acento = "#1a6b3a" }) {
 // ═══════════════════════════════════════════════════════════
 // FACTURAR — Componente compartido para empleados (sin totales)
 // ═══════════════════════════════════════════════════════════
-function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [] }) {
+function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], acento }) {
   const [categoria, setCategoria] = React.useState("grooming");
   const [cliente, setCliente] = React.useState("");
   const [showSugg, setShowSugg] = React.useState(false);
@@ -15023,7 +15025,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [fechaRecordatorio, setFechaRecordatorio] = React.useState("");
   const [ok, setOk] = React.useState(null);
 
-  const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
+  const CC = { verde:"#1a6b3a", azul: acento || "#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
   const tarifasGrm = typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [];
   const tarifasVetArr = typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [];
@@ -15575,7 +15577,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   const [form, setForm] = useState(EMPTY);
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const C = { azul: "#1a4fa0", azulL: "#e8eef8", verde: "#1a6b3a", verdeL: "#e8f5ed", gris: "#f4f5f7", grisd: "#5a6472", fondo: "#f0f4f8", rojo: "#c0392b" };
+  const C = { azul: "#db2777", azulL: "#fce7f3", verde: "#1a6b3a", verdeL: "#e8f5ed", gris: "#f4f5f7", grisd: "#5a6472", fondo: "#fdf2f8", rojo: "#c0392b" };
 
   const clientesNorm = clientes.map(c => ({
     ...c, nombre: c.nombre || c.nombreMascota || "", dueno: c.dueno || c.nombrePropietario || ""
@@ -15787,13 +15789,13 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
   const vetInfo   = VET_EMAILS.find(v => v.email === userEmail) || VET_EMAILS[0];
   const usuario   = { ...vetInfo, rol: "veterinaria" };
 
-  const C = { verde: "#1a6b3a", azul: "#1a4fa0", gris: "#5a6472", fondo: "#f0f4f8" };
+  const C = { verde: "#1a6b3a", azul: "#db2777", gris: "#5a6472", fondo: "#fdf2f8" };
 
   return React.createElement("div", { style: { fontFamily: "'Segoe UI', sans-serif", background: C.fondo, minHeight: "100vh" } },
 
     // ── Header ──────────────────────────────────────────────
     React.createElement("div", { style: {
-      background: "linear-gradient(135deg, #1a4fa0 0%, #1a3d80 100%)",
+      background: "linear-gradient(135deg, #db2777 0%, #9d174d 100%)",
       padding: "16px 28px", display: "flex", alignItems: "center",
       justifyContent: "space-between", boxShadow: "0 4px 18px rgba(0,0,0,0.15)"
     }},
@@ -15827,8 +15829,8 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
         style: {
           background: "none", border: "none", cursor: "pointer",
           padding: "13px 18px", fontSize: 13, fontWeight: 700,
-          color: tabVet === t.id ? "#1a4fa0" : "#5a6472",
-          borderBottom: tabVet === t.id ? "3px solid #1a4fa0" : "3px solid transparent",
+          color: tabVet === t.id ? "#db2777" : "#5a6472",
+          borderBottom: tabVet === t.id ? "3px solid #db2777" : "3px solid transparent",
           display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", transition: "all 0.15s"
         }
       }, React.createElement("span", null, t.icon), t.label))
@@ -15837,7 +15839,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
     // ── Contenido ────────────────────────────────────────────
     React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "24px 20px" } },
       tabVet === "dashboard_vet" && React.createElement(React.Fragment, null,
-        React.createElement(MisCitasHoy, { empleadoNombre: usuario.nombre, acento: "#1a4fa0" }),
+        React.createElement(MisCitasHoy, { empleadoNombre: usuario.nombre, acento: "#db2777" }),
         React.createElement(DashboardVet, {
           usuario, ventas,
           onVerHistorias: () => setTabVet("historias"),
@@ -15848,7 +15850,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       tabVet === "evolucion_vet" && React.createElement(EvolucionClinica, { usuario, clientes, citas, setCitas, historias, setHistorias }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
-      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [] }),
+      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [], acento: "#db2777" }),
       tabVet === "agenda_vet"     && React.createElement(Agenda, {
         citas, setCitas,
         deleteCita: id => { setCitas(prev => prev.filter(c => c.id !== id)); },
@@ -16309,7 +16311,7 @@ async function pedirEnlacePago(venta, cliente) {
   }
   let token = SUPA_KEY;
   try {
-    const s = JSON.parse(localStorage.getItem("pc_session") || "null");
+    const s = JSON.parse(sessionStorage.getItem("pc_session") || "null");
     if (s && s.access_token) token = s.access_token;
   } catch (e) {}
   const res = await fetch(SUPA_URL + "/functions/v1/pagadito-cobro", {
@@ -17445,7 +17447,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
     recogida:    { label: "Recogida / Entrega",   icon: "🚗",  bg: "#fef9c3", color: "#854d0e", border: "#ca8a04" },
     seguimiento: { label: "Seguimiento",          icon: "🔔",  bg: "#f3e8ff", color: "#6b21a8", border: "#7c3aed" }
   };
-  const EMPLEADOS = { "Alexander": { color: "#f97316" }, "Naylan": { color: "#06b6d4" }, "Valentina": { color: "#ec4899" } };
+  const EMPLEADOS = { "Alexander": { color: "#f97316" }, "Naylan": { color: "#f472b6" }, "Valentina": { color: "#ec4899" } };
   const ESTADOS = {
     pendiente:  { label: "Pendiente",   color: "#d97706", bg: "#fef3c7" },
     confirmada: { label: "Confirmada",  color: "#1a6b3a", bg: "#e6f4ec" },
