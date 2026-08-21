@@ -10496,7 +10496,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       abonadoNueva = ab;
       recordatorioNueva = fechaRecordatorio;
     }
-    const textoFormaPago = (formaPago === "pendiente" || formaPago === "abono") ? "Pago pendiente"
+    const textoFormaPago = (formaPago === "pendiente" || formaPago === "abono" || formaPago === "tarjeta_link") ? "Pago pendiente"
       : formaPago === "transferencia" ? ("Transferencia " + (banco === "Otro" ? bancoOtro : banco)).trim()
       : formaPago;
     const nueva = {
@@ -10522,6 +10522,24 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     };
     setVentas([...ventas, nueva]);
     upsertOne("pc_ventas", nueva).catch(e => console.error("[handleAdd] upsertOne error:", e));
+    if (formaPago === "tarjeta_link") {
+      const clienteParaLink = clienteEnCRM;
+      pedirEnlacePago(nueva, clienteParaLink).then((d) => {
+        const detalleRecargo = d.recargo > 0
+          ? " (" + RD(d.subtotal) + " + " + RD(d.recargo) + " de cargo por pago con tarjeta)"
+          : "";
+        const tel = (clienteParaLink && clienteParaLink.telefono) || "";
+        const dueno = (clienteParaLink && clienteParaLink.nombrePropietario) || "";
+        const msg = "Hola" + (dueno ? " " + dueno.split(" ")[0] : "") + "! \u{1F43E} Aquí PetColinas.\n\n" +
+          "Puede pagar " + RD(d.monto) + detalleRecargo + " con tarjeta desde este enlace seguro:\n" + d.url +
+          "\n\nEn cuanto pague, se marca solo en nuestro sistema.";
+        if (tel) window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
+        else window.open(d.url, "_blank");
+      }).catch((e) => {
+        alert("La venta se guardó, pero no se pudo generar el enlace de pago.\n\n" + e.message +
+          "\n\nPuedes generarlo después desde la pestaña Cobros.");
+      });
+    }
     setItems([]);
     setCliente("");
     setDescPct(0);
@@ -10781,6 +10799,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     ),
     formaPago === "pendiente" && /* @__PURE__ */ React.createElement("div", { style:{ background:"#fef9c3", border:"1.5px solid #ca8a04", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#854d0e", display:"flex", alignItems:"center", gap:6 }},
       "\u23F3 Pago pendiente \u2014 registrar al cobrar"
+    ),
+    formaPago === "tarjeta_link" && /* @__PURE__ */ React.createElement("div", { style:{ background:"#f5f3ff", border:"1.5px solid #7c3aed", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#5b21b6", display:"flex", alignItems:"center", gap:6 }},
+      "\u{1F517} Al guardar se genera el link de pago y se abre WhatsApp para enviárselo al cliente"
     ),
     /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: fecha, onChange: (v) => { if (v > hoy()) { setFechaFuturaWarn(v); setFecha(hoy()); } else { setFechaFuturaWarn(null); setFecha(v); } } }), fechaFuturaWarn && /* @__PURE__ */ React.createElement("div", { style: { background: "#fee2e2", border: "1.5px solid #ef4444", borderRadius: 6, padding: "7px 12px", fontSize: 12, fontWeight: 700, color: "#b91c1c" } }, "⚠️ Fecha futura detectada (", fechaFuturaWarn, "). Se corrigió automáticamente a hoy (", hoy(), ").")),
     /* Selector de empleado — cambia automáticamente según el área */
