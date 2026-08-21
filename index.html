@@ -17659,6 +17659,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
     upsertOne("pc_citas", cita).catch(e => console.warn("[guardarCita] sync error", e));
     dispararCalendarSync();
     cerrarModal();
+    if (esNueva) setModalWA({ tipo: "confirmacion", mensaje: generarMensajeWA("confirmacion", cita), telefono: cita.telefono || "", citaId: cita.id });
   };
 
   const cambiarEstado = (id, estado, motivo) => {
