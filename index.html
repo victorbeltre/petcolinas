@@ -14405,6 +14405,7 @@ function MisServiciosVet({ usuario, ventas }) {
 }
 const TABS_VET = [
   { id: "facturar_vet",    icon: "\u{1F9FE}", label: "Facturar" },
+  { id: "cobros_vet",      icon: "\u{1F4B0}", label: "Cobros" },
   { id: "agenda_vet",      icon: "\u{1F4C5}", label: "Agenda" },
   { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" },
   { id: "historias",       icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
@@ -15946,6 +15947,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas, clientes, historias }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
       tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [], acento: "#db2777" }),
+      tabVet === "cobros_vet"     && React.createElement(Cobros, { ventas, setVentas, clientes, soloPropio: usuario.nombre.split(" ")[0] }),
       tabVet === "agenda_vet"     && React.createElement(Agenda, {
         citas, setCitas,
         deleteCita: id => { setCitas(prev => prev.filter(c => c.id !== id)); },
@@ -16428,7 +16430,7 @@ async function pedirEnlacePago(venta, cliente) {
   }
   return d;
 }
-function Cobros({ ventas, setVentas, clientes }) {
+function Cobros({ ventas, setVentas, clientes, soloPropio }) {
   const E = React.createElement;
   const [busq, setBusq] = React.useState("");
   const [tramoSel, setTramoSel] = React.useState("todos");
@@ -16484,6 +16486,7 @@ function Cobros({ ventas, setVentas, clientes }) {
   const lista = React.useMemo(() => {
     return (ventas || [])
       .filter(esPagoPendiente)
+      .filter((v) => !soloPropio || (v.recibidopor || v.recibidoPor || "").toLowerCase().includes(soloPropio.toLowerCase()))
       .map((v) => {
         const cli = porMascota.get(String(v.cliente || "").toLowerCase().trim()) || null;
         const telCrudo = String((cli && cli.telefono) || "").replace(/\D/g, "");
