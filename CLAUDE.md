@@ -56,6 +56,23 @@ importar(Exportar Excel), vozia, notificaciones. Y los componentes Agenda, Porta
 PortalGroomer, VozIA, ExportarExcel. Peso >1 MB. El workflow validate-app.yml
 bloquea el merge a main si falla.
 
+## REGLA CRITICA 5 - Laura tambien contribuye (desde 19 Ago 2026)
+Laura (menos experimentada con este stack) empezo a abrir PRs directo a main
+en paralelo, en sesiones de Claude separadas de esta. Por eso:
+
+1. SIEMPRE, antes de tocar index.html, correr `git fetch origin main` y
+   comparar con el ultimo commit local (`git log HEAD..origin/main`). Si hay
+   commits que esta sesion no hizo, AVISARLE A VICTOR que se movio y un
+   resumen de que, ANTES de seguir trabajando.
+2. Hacer fast-forward (`git merge --ff-only origin/main`) para no perder ese
+   trabajo ni generar un merge feo. Si el fast-forward no aplica limpio, parar
+   y preguntarle a Victor como proceder — no forzar nada.
+3. Punto de restauracion: la rama `respaldo-2026-08-19-antes-de-laura` en el
+   repo (commit 02a5ca0) es la ultima version antes de que Laura empezara a
+   contribuir. Validada: 1.54 MB, sintaxis OK, 16 pestañas completas. Si algo
+   que ella suba rompe la app en produccion, se puede restaurar `main` a ese
+   punto y reconstruir desde ahi lo que valga la pena conservar.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
