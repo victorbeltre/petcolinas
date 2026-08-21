@@ -15076,6 +15076,17 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     return [...names].slice(0, 6);
   }, [cliente, clientes]);
 
+  const clienteEnCRM = React.useMemo(() => {
+    const vN = cliente.toLowerCase().trim();
+    if (!vN) return null;
+    return clientes.find(c => (c.nombreMascota || c.nombre || "").toLowerCase().trim() === vN)
+      || clientes.find(c => {
+        const cn = (c.nombreMascota || c.nombre || "").toLowerCase().trim();
+        return cn && (cn.includes(vN) || vN.includes(cn));
+      })
+      || null;
+  }, [cliente, clientes]);
+
   function agregarItem() {
     const esLibre = servSelId === "__libre__";
     if (esLibre && !nombreLibre.trim()) return alert("Escribe el nombre del servicio o producto.");
@@ -15112,7 +15123,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     }
     const fecha = new Date().toISOString().slice(0,10);
     const descripcion = carrito.map(it => (it.qty > 1 ? it.qty + "x " : "") + it.nombre).join(" + ");
-    const formapagoTexto = pago === "abono" ? "Pago pendiente" : pago;
+    const formapagoTexto = (pago === "abono" || pago === "tarjeta_link") ? "Pago pendiente" : pago;
     const v = {
       id: Date.now(),
       fecha,
@@ -15136,6 +15147,23 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     setVentas(prev => [...(prev||[]), v]);
     // Push inmediato a Supabase para que el admin lo vea al sincronizar
     upsertOne("pc_ventas", v).catch(e => console.warn("[FacturarEmpleado] sync error", e));
+    if (pago === "tarjeta_link") {
+      const clienteParaLink = clienteEnCRM;
+      pedirEnlacePago(v, clienteParaLink).then((d) => {
+        const detalleRecargo = d.recargo > 0
+          ? " (" + RD2(d.subtotal) + " + " + RD2(d.recargo) + " de cargo por pago con tarjeta)"
+          : "";
+        const tel = (clienteParaLink && clienteParaLink.telefono) || "";
+        const dueno = (clienteParaLink && clienteParaLink.nombrePropietario) || "";
+        const msg = "Hola" + (dueno ? " " + dueno.split(" ")[0] : "") + "! \u{1F43E} Aquí PetColinas.\n\n" +
+          "Puede pagar " + RD2(d.monto) + detalleRecargo + " con tarjeta desde este enlace seguro:\n" + d.url +
+          "\n\nEn cuanto pague, se marca solo en nuestro sistema.";
+        if (tel) window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
+        else window.open(d.url, "_blank");
+      }).catch((e) => {
+        alert("La factura se guardó, pero no se pudo generar el enlace de pago.\n\n" + e.message);
+      });
+    }
     setOk({ ...v, clienteNombre: cliente.trim() });
     setCarrito([]); setCliente(""); setDescGlobal(""); setNota(""); setEfectivoRecibido("");
     setMontoAbono(""); setAbonoForma("efectivo"); setAbonoRecibido(""); setFechaRecordatorio("");
@@ -15298,6 +15326,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
             React.createElement("option", { value:"Transferencia Popular" }, "🏦 Transferencia Popular"),
             React.createElement("option", { value:"Transferencia Reservas" }, "🏦 Transferencia Reservas"),
             React.createElement("option", { value:"tarjeta" }, "💳 Tarjeta"),
+            React.createElement("option", { value:"tarjeta_link" }, "🔗 Tarjeta (link de pago WhatsApp)"),
             React.createElement("option", { value:"abono" }, "🤝 Abono (paga una parte)"),
             React.createElement("option", { value:"pendiente" }, "⏳ Pago pendiente")
           ),
@@ -15309,7 +15338,9 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
               aCobrar: totalFinal, monto: montoAbono, setMonto: setMontoAbono,
               forma: abonoForma, setForma: setAbonoForma,
               recibido: abonoRecibido, setRecibido: setAbonoRecibido,
-              fechaRec: fechaRecordatorio, setFechaRec: setFechaRecordatorio }))
+              fechaRec: fechaRecordatorio, setFechaRec: setFechaRecordatorio })),
+          pago === "tarjeta_link" && React.createElement("div", { style:{ marginTop:12, background:"#f5f3ff", border:"1.5px solid #7c3aed", borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:700, color:"#5b21b6", display:"flex", alignItems:"center", gap:6 }},
+            "\u{1F517} Al registrar se genera el link de pago y se abre WhatsApp para enviárselo al cliente")
         ),
 
         // Botón registrar
