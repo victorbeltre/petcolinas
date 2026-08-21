@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-19 21:44Z";
+const PC_BUILD = "2026-08-21 23:21Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3892,6 +3892,22 @@ function AvisoAbonosPorCobrar({ ventas = [], clientes = [], setTab }) {
 function AvisoAntiparasitarios({ seguimientos = [], clientes = [], ventas = [], setTab }) {
   const E = React.createElement;
   const [cerrado, setCerrado] = React.useState(false);
+  // Las que no tienen teléfono no se pueden contactar desde aquí: se quedaban
+  // trabadas en el aviso para siempre y solo estorbaban. Se pueden quitar una
+  // por una; queda guardado en este navegador, no en la base — si el cliente
+  // le pone el teléfono despues en Clientes/CRM, vuelve a aparecer sola en el
+  // próximo dispositivo (ahí sí se puede escribir).
+  const [ocultas, setOcultas] = React.useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("pc_antipar_ocultas") || "[]")); }
+    catch { return new Set(); }
+  });
+  const ocultar = (clave) => {
+    setOcultas((prev) => {
+      const s = new Set(prev); s.add(clave);
+      try { guardarLocal("pc_antipar_ocultas", [...s]); } catch (e) {}
+      return s;
+    });
+  };
 
   const porNombre = React.useMemo(() => {
     const m = new Map();
@@ -3956,10 +3972,12 @@ function AvisoAntiparasitarios({ seguimientos = [], clientes = [], ventas = [], 
         const prox = String(s.proximaFecha || "").slice(0, 10);
         const dias = diasHasta(prox);
         const producto = String(s.notas || "").split("—")[0].trim() || "su antiparasitario";
-        return { s, tel, dueno, prox, dias, producto };
+        const clave = String(s.mascota || "").toLowerCase().trim();
+        return { s, tel, dueno, prox, dias, producto, clave };
       })
+      .filter((x) => !ocultas.has(x.clave))
       .sort((a, b) => a.prox.localeCompare(b.prox));
-  }, [seguimientos, ventas, porNombre]);
+  }, [seguimientos, ventas, porNombre, ocultas]);
 
   if (cerrado || pendientes.length === 0) return null;
 
@@ -4005,7 +4023,14 @@ function AvisoAntiparasitarios({ seguimientos = [], clientes = [], ventas = [], 
             style: { background: "#25d366", color: "#fff", borderRadius: 8, padding: "8px 13px",
                      fontSize: 12, fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" } },
             "\u{1F4AC} Escribirle")
-        : E("span", { style: { fontSize: 11.5, color: "#c9a227", fontWeight: 700 } }, "⚠️ sin tel\xE9fono"))),
+        : E("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+            E("span", { style: { fontSize: 11.5, color: "#c9a227", fontWeight: 700 } }, "⚠️ sin tel\xE9fono"),
+            E("button", {
+              onClick: () => ocultar(x.clave),
+              title: "Quitar este aviso. Si le agregan el tel\xE9fono en Clientes/CRM, vuelve a aparecer.",
+              style: { background: "none", border: "1px solid #d1d5db", color: "#8a93a0", borderRadius: 6,
+                       padding: "4px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }
+            }, "✕ Quitar")))),
 
     pendientes.length > 6
       ? E("div", { style: { fontSize: 11.5, color: C.grisd, marginBottom: 6 } },

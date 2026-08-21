@@ -121,6 +121,13 @@ render("AvisoReactivacion", sandbox.AvisoReactivacion, {
     cliente: "Doky Diaz", total: 1289 }],
   setTab: () => {}
 });
+render("AvisoAntiparasitarios", sandbox.AvisoAntiparasitarios, {
+  seguimientos: [{ id: 9001, mascota: "Gucci Brito", propietario: "", telefono: "",
+    tipo: "antipulgas", proximaFecha: "2026-07-08", completado: false, activo: true,
+    notas: "NexGard — toca reforzar la protección (35 días)" }],
+  clientes: [{ id: 1, nombreMascota: "Gucci Brito", nombrePropietario: "Dianny Brito", telefono: "" }],
+  ventas: [], setTab: () => {}
+}, null, "sin tel");
 render("Candidatos", sandbox.Candidatos, {});
 render("WhatsAppInbox", sandbox.WhatsAppInbox, {});
 render("Llamadas", sandbox.Llamadas, {});
@@ -131,4 +138,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (14 comprobadas).`);
+console.log(`✓ Vistas principales renderizan sin errores (15 comprobadas).`);
