@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-22 15:52Z";
+const PC_BUILD = "2026-08-22 17:20Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -4377,10 +4377,25 @@ function enviarPDFWhatsApp(f, clientes) {
         ? "\n*Saldo pendiente: RD$ " + Math.round(pgWA.saldo).toLocaleString("es-DO") + "*"
         : "\n✅ *Pagada en su totalidad*")
     : "";
+  // Si hay proxima cita (agendada de verdad o puesta a mano al facturar), se
+  // avisa en el propio texto del chat, no solo impresa en el PDF adjunto: es
+  // lo que de verdad se lee primero.
+  let lineasProxima = "";
+  if (f.proximaCita && f.proximaCita.fecha) {
+    const pc = f.proximaCita;
+    const enlaceCal = enlaceCalendarioGoogle(
+      sinEmoji(String(pc.label || "Pr\xF3xima cita")) + " — " + (f.mascota || "") + " \xB7 PetColinas",
+      pc.fecha, pc.hora || "10:00", 60,
+      "Cita de " + (f.mascota || "") + " en PetColinas. " + sinEmoji(String(pc.label || ""))
+    );
+    lineasProxima = "\n\n\u{1F5D3}️ Su pr\xF3xima cita: *" + fechaLargaRD(pc.fecha) + (pc.hora ? " a las " + pc.hora : "") + "*" +
+      "\n" + sinEmoji(String(pc.label || "")) +
+      (enlaceCal ? "\n\n\u{1F4C5} T\xF3quelo para guardarla en su calendario:\n" + enlaceCal : "");
+  }
   const msgText = saludo + "le anexamos su factura de PetColinas 🐾\n\n*Factura #" + f.numero + "* \xB7 " + f.fecha +
     (f.mascota ? "\n🐾 " + f.mascota : "") +
     "\n*Total: RD$ " + (f.total || 0).toLocaleString("es-DO") + "*" + lineasPago +
-    "\n\n\xA1Gracias por la visita!";
+    "\n\n\xA1Gracias por la visita!" + lineasProxima;
   const waUrl = tel
     ? "https://wa.me/" + tel + "?text=" + encodeURIComponent(msgText)
     : "https://wa.me/?text=" + encodeURIComponent(msgText);
@@ -4602,7 +4617,7 @@ function PanelFondo({ saldo, mascota, total, dejar, setDejar, usar, setUsar }) {
   );
 }
 
-function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], historias = [], tarifasGrooming, tarifasVet, inventario }) {
+function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCitas, historias = [], tarifasGrooming, tarifasVet, inventario }) {
   const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
     try {
       const stored = JSON.parse(localStorage.getItem("pc_facturas") || "null");
@@ -5143,9 +5158,41 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], histor
       setFacturas((fs) => fs.map((x) => x.id === f.id ? { ...x, telefono: tel } : x));
       f = { ...f, telefono: tel };
     }
+    let proximaCita = f.proximaCita || proximaCitaDeFactura(f, citas);
+    // El servicio no tiene una cadencia conocida (no es baño, vacuna, antipulgas,
+    // etc.) y no hay ninguna cita ya agendada: se le pregunta a quien factura en
+    // cuantos dias debe volver, porque ella conoce el procedimiento mejor que
+    // cualquier regla automatica. Si lo deja vacio, la factura sale sin proxima
+    // cita, igual que antes.
+    if (!proximaCita) {
+      const resp = window.prompt(
+        "Este servicio no tiene una fecha de regreso automatica.\n\n" +
+        "\xBFEn cu\xE1ntos d\xEDas deber\xEDa volver " + (f.mascota || "la mascota") + "? " +
+        "(deja vac\xEDo para enviar la factura sin pr\xF3xima cita)", "");
+      const dias = parseInt(resp, 10);
+      if (Number.isFinite(dias) && dias > 0) {
+        const fechaProx = evitarDomingo(sumarDias(f.fecha || hoy(), dias));
+        const label = sinEmoji(String(f.servicio || f.descripcion || "Pr\xF3xima cita"));
+        proximaCita = { fecha: fechaProx, hora: "10:00", label, agendada: true };
+        // Queda registrada de verdad en la Agenda, no solo impresa en la
+        // factura: asi el aviso del dashboard tambien la recuerda un dia antes.
+        if (typeof setCitas === "function") {
+          const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === String(f.mascota || "").toLowerCase().trim());
+          const citaManual = {
+            id: Date.now(), fecha: fechaProx, hora: "10:00",
+            nombreMascota: f.mascota || "", nombreCliente: (cli && cli.nombrePropietario) || f.propietario || "",
+            telefono: String((cli && cli.telefono) || f.telefono || "").replace(/\D/g, ""),
+            servicio: label, tipo: "consulta", empleado: "Valentina", estado: "pendiente", precio: 0,
+            notas: "Agendada a mano al facturar el " + (f.fecha || hoy()) + " (" + dias + " d\xEDas)"
+          };
+          setCitas((prev) => [...(prev || []), citaManual]);
+          upsertOne("pc_citas", citaManual).catch((e) => console.warn("[compartirWhatsApp]", e));
+        }
+      }
+    }
     // El PDF necesita el contador de lealtad; antes no se le pasaba y por eso el
     // bloque de baños nunca salía en la factura enviada por WhatsApp.
-    enviarPDFWhatsApp({ ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas), chequeo: f.chequeo || chequeoDeFactura(f, historias, clientes) }, clientes);
+    enviarPDFWhatsApp({ ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita, chequeo: f.chequeo || chequeoDeFactura(f, historias, clientes) }, clientes);
   }
   const [busqueda, setBusqueda] = useState("");
   const [busqFact, setBusqFact] = useState("");
@@ -7837,7 +7884,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
         clientes: clientesCaja, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial: setClienteInicial,
         clienteVentaInicial: clienteInicial, clearClienteVentaInicial: () => setClienteInicial(null),
         tarifasGrooming, tarifasVet, setSeguimientos }),
-      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesCaja, citas, historias,
+      tab === "facturas" && E(Facturas, { ventas, setVentas, deleteVenta, clientes: clientesCaja, citas, setCitas, historias,
         tarifasGrooming, tarifasVet, inventario }),
       tab === "agenda" && E(Agenda, { citas, setCitas, deleteCita, clientes: clientesCaja, ventas, setVentas,
         tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }),
@@ -8173,7 +8220,7 @@ function PetColinasApp({ session, onLogout }) {
       }}, pendientes)
     );
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
