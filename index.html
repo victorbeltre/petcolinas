@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-21 23:21Z";
+const PC_BUILD = "2026-08-22 15:52Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -8303,6 +8303,30 @@ function fechaLargaRD(fechaISO) {
   if (isNaN(d.getTime())) return String(fechaISO || "");
   return d.toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" });
 }
+// Enlace "Agregar a Google Calendar": el cliente lo toca desde WhatsApp y le
+// queda la cita puesta en su propio calendario con recordatorio, sin
+// depender de que se acuerde de leer el mensaje otra vez. No es la tarjeta
+// de eventos de WhatsApp (esa es una funcion manual del chat, no programable
+// via la API de negocio) pero el resultado para el cliente es el mismo: la
+// cita queda anotada sola.
+// Santo Domingo no tiene horario de verano, es UTC-4 todo el año.
+function enlaceCalendarioGoogle(titulo, fechaISO, horaHHMM, duracionMin, detalles, ubicacion) {
+  const [y, m, d] = String(fechaISO || "").split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const [hh, mm] = String(horaHHMM || "10:00").split(":").map(Number);
+  const inicioUTC = new Date(Date.UTC(y, m - 1, d, (Number.isFinite(hh) ? hh : 10) + 4, mm || 0));
+  const finUTC = new Date(inicioUTC.getTime() + (duracionMin || 60) * 60000);
+  const fmt = (dt) => dt.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  const qs = new URLSearchParams({
+    action: "TEMPLATE",
+    text: titulo || "Cita PetColinas",
+    dates: fmt(inicioUTC) + "/" + fmt(finUTC),
+    details: detalles || "",
+    location: ubicacion || "PetColinas, Plaza Las Colinas, Santo Domingo Oeste",
+    ctz: "America/Santo_Domingo"
+  });
+  return "https://calendar.google.com/calendar/render?" + qs.toString();
+}
 // Del texto de la venta saca cual es el servicio que marca el ritmo. Gana el
 // intervalo MAS CORTO: si le hicieron bano y vacuna, vuelve por el bano.
 function proximaCitaSugerida(descripcion, fechaBase) {
@@ -10440,9 +10464,15 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     upsertOne("pc_citas", cita).catch((e) => console.warn("[agendarProxima]", e));
     if (conWhatsApp) {
       const quien = String(cita.nombreCliente || "").split(" ")[0] || "";
+      const enlaceCal = enlaceCalendarioGoogle(
+        proxCita.label + " — " + proxCita.mascota + " \xB7 PetColinas",
+        proxCita.fecha, proxCita.hora, proxCita.tipo === "grooming" ? 60 : 30,
+        "Cita de " + proxCita.mascota + " en PetColinas. " + proxCita.label + "."
+      );
       const msg = "\xA1Hola" + (quien ? " " + quien : "") + "! \u{1F43E} Le dejamos apartada la pr\xF3xima cita de *" + proxCita.mascota +
         "* en *PetColinas* para el *" + fechaLargaRD(proxCita.fecha) + "* a las *" + proxCita.hora + "*.\n\n" +
-        "\u{1F527} " + proxCita.label + "\n\nLe escribimos un d\xEDa antes para recordarle. \xA1Cualquier cambio nos avisa! \u{1F436}";
+        "\u{1F527} " + proxCita.label + "\n\nLe escribimos un d\xEDa antes para recordarle. \xA1Cualquier cambio nos avisa! \u{1F436}" +
+        (enlaceCal ? "\n\n\u{1F4C5} T\xF3quelo para guardarla en su calendario:\n" + enlaceCal : "");
       abrirWA(tel, msg);
     }
     setProxCitaOk("Cita agendada para el " + fechaLargaRD(proxCita.fecha) + " a las " + proxCita.hora + ". Ya aparece en la Agenda.");
