@@ -18,7 +18,25 @@
 
 // ─── CONFIGURACIÓN ──────────────────────────────────────────────────────────
 var SUPA_URL = "https://ulrzzddovkioxeaarnjk.supabase.co";
-var SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVscnp6ZGRvdmtpb3hlYWFybmprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjc3MDEsImV4cCI6MjA4ODYwMzcwMX0.mX3cei5kKAID3WhmMAojhk2QOMs8gDF1LFbYHKXrfUM";
+
+// La llave va PARTIDA en cuatro pedazos a propósito.
+//
+// Pegada de una sola pieza, el editor de Apps Script la detecta como un token
+// y la muestra enmascarada con bullets (eyJhbGci••••••). El riesgo real no es
+// verla con puntos: es que al copiar de vuelta un texto ya enmascarado, lo que
+// queda guardado son los bullets literales — una cadena que sigue midiendo 208
+// caracteres y sin espacios (por eso el diagnostico viejo la daba por buena),
+// pero que Supabase rechaza con "401 Invalid API key". Peor: los bullets no son
+// ASCII, y meterlos en una cabecera HTTP hace que UrlFetchApp reviente con un
+// "error desconocido" en vez de un error claro.
+//
+// Partida así, ningún pedazo parece un JWT, el editor no la enmascara, y se ve
+// tal cual es. Para comprobar que quedó intacta: correr diagnostico().
+var SUPA_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXB" +
+  "hYmFzZSIsInJlZiI6InVscnp6ZGRvdmtpb3hlYWFybmprIiwicm9" +
+  "sZSI6ImFub24iLCJpYXQiOjE3NzMwMjc3MDEsImV4cCI6MjA4ODY" +
+  "wMzcwMX0.mX3cei5kKAID3WhmMAojhk2QOMs8gDF1LFbYHKXrfUM";
 
 // ID de "Ficha de Ingreso — PetColinas (respuestas)". Se saca de su URL:
 // https://docs.google.com/spreadsheets/d/ESTE_PEDAZO/edit
@@ -246,14 +264,43 @@ function probarConDatosFicticios() {
 
 /**
  * DIAGNÓSTICO
- * Confirma que SUPA_KEY se pegó bien (sin espacios/saltos de línea de más)
- * y que apunta a la hoja correcta.
+ *
+ * No imprime la llave (el registro también la enmascara, así que mostrarla no
+ * prueba nada). En vez de eso mide cosas que el enmascarado no puede falsear:
+ * cuántos caracteres se salen del alfabeto de un JWT, y la huella SHA-256.
+ * Si la huella coincide, la llave es idéntica byte por byte a la buena.
  */
 function diagnostico() {
-  Logger.log("Largo de SUPA_KEY: " + SUPA_KEY.length + " (debe ser 208)");
-  Logger.log("Empieza: " + SUPA_KEY.substring(0, 25) + " (debe ser: eyJhbGciOiJIUzI1NiIsInR5c)");
-  Logger.log("Termina: " + SUPA_KEY.slice(-25) + " (debe ser: ojhk2QOMs8gDF1LFbYHKXrfUM)");
-  Logger.log("Tiene espacios o saltos de linea de mas: " + /\s/.test(SUPA_KEY));
+  Logger.log("1. Largo: " + SUPA_KEY.length + "   (debe ser 208)");
+
+  var invalidos = 0, puntos = 0, ejemplos = [];
+  for (var i = 0; i < SUPA_KEY.length; i++) {
+    var c = SUPA_KEY.charAt(i);
+    if (c === ".") { puntos++; continue; }
+    var n = SUPA_KEY.charCodeAt(i);
+    var ok = (n >= 48 && n <= 57) || (n >= 65 && n <= 90) ||
+             (n >= 97 && n <= 122) || c === "-" || c === "_";
+    if (!ok) {
+      invalidos++;
+      if (ejemplos.length < 5) ejemplos.push("posicion " + i + " = codigo " + n);
+    }
+  }
+  Logger.log("2. Caracteres invalidos: " + invalidos + "   (debe ser 0)");
+  Logger.log("   Puntos separadores: " + puntos + "   (debe ser 2)");
+  if (invalidos > 0) {
+    Logger.log("   >>> LLAVE CORROMPIDA. " + ejemplos.join(" | "));
+    Logger.log("   >>> Si el codigo es 8226, son bullets (•): se pego la llave ya enmascarada.");
+  }
+
+  var bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, SUPA_KEY, Utilities.Charset.UTF_8);
+  var hex = "";
+  for (var j = 0; j < bytes.length; j++) {
+    var b = bytes[j] < 0 ? bytes[j] + 256 : bytes[j];
+    hex += (b < 16 ? "0" : "") + b.toString(16);
+  }
+  Logger.log("3. Huella SHA-256: " + hex.substring(0, 16) + "   (debe ser c54e8196784bb60b)");
+
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  Logger.log("Hoja encontrada: " + ss.getName());
+  Logger.log("4. Hoja encontrada: " + ss.getName());
 }
