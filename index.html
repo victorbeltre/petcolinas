@@ -555,6 +555,16 @@ function useSupabase(table, seed = []) {
               const localVentas = JSON.parse(localStorage.getItem("pc_ventas_local") || "[]");
               if (localVentas.length > 0) {
                 const mergedIds = new Set(merged.map((r) => String(r.id)));
+                // Las que ya confirmamos en Supabase no necesitan seguir en el respaldo:
+                // si se quedan, y luego alguien (p.ej. el admin, desde OTRO dispositivo)
+                // borra esa venta, este dispositivo la "recupera" de aqui y la vuelve a
+                // subir sola — la factura borrada revive en el dispositivo de quien la
+                // registro. Podando el respaldo en cuanto se confirma, una vez borrada
+                // de verdad ya no hay de donde resucitarla.
+                if (localVentas.some((r) => mergedIds.has(String(r.id)))) {
+                  const pendientes = localVentas.filter((r) => !mergedIds.has(String(r.id)));
+                  try { localStorage.setItem("pc_ventas_local", JSON.stringify(pendientes)); } catch {}
+                }
                 const localNuevas = localVentas.filter((r) => !mergedIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)));
                 if (localNuevas.length > 0) {
                   merged = [...merged, ...localNuevas];
