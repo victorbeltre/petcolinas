@@ -3,16 +3,26 @@
  * Vincula el Google Form de registro al CRM (Supabase pc_clientes)
  *
  * INSTALACIÓN:
- * 1. Abre el Google Sheet vinculado al formulario
- * 2. Extensiones → Apps Script
- * 3. Pega todo este código y guarda
- * 4. En el menú: Ejecutar → configurarTrigger (solo la primera vez)
- * 5. Autoriza los permisos cuando se solicite
+ * 1. En script.google.com (o Extensiones → Apps Script desde la hoja),
+ *    crea un proyecto y pega todo este código.
+ * 2. En el menú: Ejecutar → configurarTrigger (solo la primera vez)
+ * 3. Autoriza los permisos cuando se solicite.
+ *
+ * NOTA (22 ago 2026): este proyecto vive como script SUELTO en Drive, no
+ * pegado dentro de la hoja de respuestas. Por eso el trigger se engancha a
+ * la hoja por ID (SPREADSHEET_ID) en vez de usar
+ * SpreadsheetApp.getActiveSpreadsheet(), que solo funciona si el script se
+ * abre desde Extensiones → Apps Script DENTRO de esa hoja. Con el ID fijo
+ * funciona igual sin tener que mover el proyecto.
  */
 
 // ─── CONFIGURACIÓN ──────────────────────────────────────────────────────────
 var SUPA_URL = "https://ulrzzddovkioxeaarnjk.supabase.co";
 var SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVscnp6ZGRvdmtpb3hlYWFybmprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjc3MDEsImV4cCI6MjA4ODYwMzcwMX0.mX3cei5kKAID3WhmMAojhk2QOMs8gDF1LFbYHKXrfUM";
+
+// ID de "Ficha de Ingreso — PetColinas (respuestas)". Se saca de su URL:
+// https://docs.google.com/spreadsheets/d/ESTE_PEDAZO/edit
+var SPREADSHEET_ID = "15FJq5GZNtl_T_qy7aq29dyLY9Ox-um49uEA6GXirEV0";
 
 /**
  * MAPEO DE CAMPOS DEL FORMULARIO
@@ -78,18 +88,20 @@ var CAMPO_FORM = {
 
 // ─── TRIGGER (ejecutar solo una vez) ────────────────────────────────────────
 function configurarTrigger() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+
   // Elimina triggers existentes para evitar duplicados
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === "onFormSubmit") {
       ScriptApp.deleteTrigger(t);
     }
   });
-  // Crear nuevo trigger on form submit
+  // Crear nuevo trigger on form submit, enganchado por ID (no por "hoja activa")
   ScriptApp.newTrigger("onFormSubmit")
-    .forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet())
+    .forSpreadsheet(ss)
     .onFormSubmit()
     .create();
-  Logger.log("✅ Trigger configurado correctamente.");
+  Logger.log("✅ Trigger configurado correctamente sobre: " + ss.getName());
 }
 
 // ─── HANDLER PRINCIPAL ──────────────────────────────────────────────────────
@@ -220,18 +232,28 @@ function parsearFecha(val) {
 /**
  * FUNCIÓN DE PRUEBA
  * Ejecuta esta función para probar sin necesitar un envío real del form.
- * Ajusta los valores de prueba abajo según tus campos reales.
  */
 function probarConDatosFicticios() {
   var datosTest = {
     "Nombre de la mascota":     ["Luna Test"],
     "Especie":                  ["Perro"],
-    "Raza":                     ["Shih Tzu"],
-    "Nombre del propietario":   ["Maria Rodriguez"],
-    "Teléfono":                 ["829-555-1234"],
-    "Correo electrónico":       ["maria@test.com"],
-    "¿Cómo nos conociste?":     ["Instagram"],
-    "Servicio que busca":       ["Baño y corte"]
+    "Nombre completo":          ["Maria Rodriguez"],
+    "Teléfono / WhatsApp":      ["829-555-1234"],
+    "¿Cómo nos conociste?":     ["Instagram"]
   };
   onFormSubmit({ namedValues: datosTest });
+}
+
+/**
+ * DIAGNÓSTICO
+ * Confirma que SUPA_KEY se pegó bien (sin espacios/saltos de línea de más)
+ * y que apunta a la hoja correcta.
+ */
+function diagnostico() {
+  Logger.log("Largo de SUPA_KEY: " + SUPA_KEY.length + " (debe ser 208)");
+  Logger.log("Empieza: " + SUPA_KEY.substring(0, 25) + " (debe ser: eyJhbGciOiJIUzI1NiIsInR5c)");
+  Logger.log("Termina: " + SUPA_KEY.slice(-25) + " (debe ser: ojhk2QOMs8gDF1LFbYHKXrfUM)");
+  Logger.log("Tiene espacios o saltos de linea de mas: " + /\s/.test(SUPA_KEY));
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  Logger.log("Hoja encontrada: " + ss.getName());
 }
