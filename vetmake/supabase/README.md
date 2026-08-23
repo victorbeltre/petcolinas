@@ -7,10 +7,11 @@
 Victor pero **completamente separado** del de PetColinas
 (`ulrzzddovkioxeaarnjk`), que sigue sin tocarse.
 
-Ahí se aplicaron `0001`, `0002`, `0003` y `0004`. `0003` agregó la
-estructura vacía de las seis tablas operativas y `0004` cerró los permisos
-explícitos de `anon`. No se copiaron datos reales de PetColinas — solo se
-leyó su estructura para que la prueba fuera fiel.
+Ahí se aplicaron `0001`, `0002`, `0003`, `0004`, `0005` y `0006`. `0003` agregó la
+estructura vacía de las seis tablas operativas, `0004` cerró los permisos
+explícitos de `anon` y `0005` agregó las siete tablas auxiliares necesarias
+para el MVP; `0006` agrega los planes prepagados. No se copiaron datos reales
+de PetColinas — solo se leyó su estructura para que la prueba fuera fiel.
 
 ## Los archivos
 
@@ -20,6 +21,8 @@ leyó su estructura para que la prueba fuera fiel.
 | `migrations/0002_negocio_id_pc_clientes_ejemplo.sql` | El patrón completo — agregar `negocio_id`, quitar las políticas de un solo negocio, crear las 4 políticas multi-tenant (select/insert/update/delete) — aplicado a `pc_clientes` como ejemplo trabajado. |
 | `migrations/0003_negocio_id_pc_tablas_restantes.sql` | Completa la estructura vacía de esas seis tablas si aún no existe, endurece la fundación RLS y aplica el patrón multi-tenant a `pc_ventas`, `pc_facturas`, `pc_inventario`, `pc_empleados` (nómina), `pc_gastos` y `pc_citas`. |
 | `migrations/0004_restringe_acceso_anonimo.sql` | Revoca los permisos explícitos de `anon` sobre las tablas de VetMake y conserva solo los permisos necesarios para la aplicación autenticada. |
+| `migrations/0005_negocio_id_tablas_auxiliares.sql` | Crea y tenantiza `pc_seguimientos`, `pc_pagos`, `pc_tarifas`, `pc_historias`, `pc_fichas_clinicas`, `pc_depositos` y `pc_auditoria`, con RLS y permisos explícitos para `authenticated`. |
+| `migrations/0006_negocio_id_pc_paquetes.sql` | Crea y tenantiza `pc_paquetes`, la tabla de planes prepagados usada por Ventas y Planes. |
 
 ## El patrón a repetir
 
@@ -42,6 +45,12 @@ tablas operativas incluidas en esta fase (`pc_ventas`, `pc_facturas`,
 `pc_clientes`. Copia únicamente columnas, tipos y defaults de PetColinas;
 no copia datos reales.
 
+`0005` repite el mismo patrón para las siete tablas auxiliares que el frontend
+usa para seguimiento, nómina, tarifas, historia clínica, fichas, depósitos y
+auditoría. `0006` hace lo mismo con `pc_paquetes`, que soporta los planes
+prepagados. `pc_candidatos`, `pc_llamadas` y otras tablas ligadas a operaciones
+específicas de PetColinas no se habilitan en el MVP de VetMake.
+
 La misma migración endurece `mi_negocio()` como `SECURITY INVOKER`, revoca
 su ejecución a `anon`, conserva la ejecución para `authenticated` y
 `service_role`, agrega el índice de membresía que faltaba y otorga a
@@ -55,10 +64,10 @@ la revocación evita depender únicamente de una política vacía para bloquear
 el acceso anónimo.
 
 El patrón se validó primero con `pc_clientes` usando dos negocios ficticios
-y después se repitió sobre las seis tablas de esta fase. La prueba de
-aislamiento quedó completada; las tablas auxiliares de PetColinas que no
-forman parte de esta primera lista todavía quedan para una decisión de
-alcance posterior.
+y después se repitió sobre las seis tablas operativas. La verificación
+estructural de `0005` confirmó que las catorce tablas tenantizadas tienen
+`negocio_id` no nulo, RLS habilitado y cuatro políticas por tabla. `0006`
+dejó la misma frontera aplicada a `pc_paquetes`.
 
 ## La prueba obligatoria antes de vender nada
 
@@ -124,13 +133,15 @@ prueba transaccional devolvió lo siguiente en cada tabla:
 | `delete` sobre una fila del negocio B | 0 filas afectadas |
 
 La transacción se revirtió; las seis tablas siguen vacías y no quedaron
-fixtures temporales. `0003` y `0004` están aplicadas en `vetmake-dev`.
+fixtures temporales. `0003`, `0004`, `0005` y `0006` están aplicadas en
+`vetmake-dev`. La comprobación estructural de `0005` cubre las siete tablas
+auxiliares nuevas y `0006` cubre `pc_paquetes`.
 
 Los advisors posteriores quedaron así:
 
 - Seguridad: solo permanece la advertencia preexistente de protección contra
   contraseñas filtradas desactivada; no queda la alerta de `SECURITY DEFINER`.
-- Rendimiento: reporta índices sin uso porque las seis tablas están vacías;
+- Rendimiento: reporta índices sin uso porque las tablas nuevas están vacías;
   se conservan porque cubren las búsquedas por `negocio_id` y las claves
   foráneas.
 
