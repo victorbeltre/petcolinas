@@ -1,9 +1,8 @@
 # De PetColinas a SaaS — plan estratégico y técnico
 
-> Rama dedicada exclusivamente a planear el producto SaaS. **No contiene ni
-> toca código de PetColinas en vivo** (`index.html`, `supabase/functions/`,
-> `form-to-crm.gs`). Esta rama nace de `main` sin ningún commit de trabajo
-> operativo por delante — es planeación pura.
+> Rama dedicada al producto SaaS. La implementación vive en `vetmake/` y
+> **no toca el código de PetColinas en vivo** (`index.html`,
+> `supabase/functions/`, `form-to-crm.gs`).
 
 Preparado para Victor Ballas · 23 ago 2026
 
@@ -131,7 +130,7 @@ solo hay un negocio. En el SaaS, cada webhook que llega (un mensaje de
 WhatsApp) tiene que resolver primero a qué negocio pertenece — el número de
 WhatsApp de destino se vuelve la clave para encontrar el negocio correcto.
 
-**Estado (23 ago, después de aplicar `0001`–`0005`): ✅ fundación aplicada y
+**Estado (23 ago, después de aplicar `0001`–`0006`): ✅ fundación aplicada y
 aislamiento validado; frontend en integración.** En `vetmake-dev`
 (`couzqdicmxrypacgrqcn`) ya están la fundación multi-tenant, `pc_clientes`,
 las seis tablas operativas (`pc_ventas`, `pc_facturas`, `pc_inventario`,
@@ -146,6 +145,14 @@ También se revocó el acceso explícito de `anon` y `mi_negocio()` quedó como
 `SECURITY INVOKER`. PetColinas (`ulrzzddovkioxeaarnjk`) no se tocó. Detalle
 completo en `vetmake/supabase/README.md`. Tablas específicas de PetColinas
 como candidatos, llamadas y paquetes quedan fuera del MVP.
+
+**Estado de frontend (23 ago): ✅ identidad generalizada en el bloque
+operativo.** Paneles, mensajes, agenda, caja, CRM, facturas PDF, carnet y
+reportes toman el nombre/tagline/logo del negocio; las semillas y empleados
+demo de PetColinas no se cargan. Las comisiones nuevas se leen del registro
+de venta/servicio y no se inventan porcentajes históricos. Pendiente para
+cerrar el MVP: configuración de empleados/comisiones y datos comerciales
+por negocio (teléfono, dirección, RNC y canales propios).
 
 ---
 
@@ -208,8 +215,8 @@ percibido da desde el día uno.
 | Fase | Qué | Cuándo |
 |---|---|---|
 | 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · ✅ copia semilla de `index.html` validada y congelada en `vetmake/` · falta registrar el dominio | Esta semana |
-| 1 — Datos | ✅ Fundación multi-tenant aplicada en `vetmake-dev`, patrón replicado a las 15 tablas del MVP y aislamiento confirmado — falta terminar la conexión y generalización de frontend | En curso |
-| 2 — Generalizar | Sacar lo quemado a configuración (sección 4), eliminar semillas e integraciones específicas de PetColinas | Después de cerrar la integración de Fase 1 |
+| 1 — Datos | ✅ Fundación multi-tenant aplicada en `vetmake-dev`, patrón replicado a las 15 tablas del MVP, aislamiento confirmado y frontend conectado al negocio actual | En curso: onboarding |
+| 2 — Generalizar | ✅ Identidad operativa, mensajes, documentos, semillas y empleados demo aislados; falta configuración de empleados/comisiones y datos comerciales por negocio | En curso |
 | 3 — Piloto | 1–2 veterinarias conocidas, gratis o precio simbólico | Cuando la Fase 1 esté probada con datos reales |
 | 4 — Vender | Primeras clínicas de pago, onboarding manual asistido | Tras un piloto sin incidentes de aislamiento |
 | 5 — Escalar | Autoservicio, más mercados | Más adelante, no parte de este plan todavía |
@@ -232,11 +239,10 @@ percibido da desde el día uno.
 ## 10. Siguiente paso inmediato
 
 Fase 0 está prácticamente cerrada: nombre (VetMake), rama propia
-(`saas/plan-inicial`), y la copia semilla de `index.html` ya congelada y
-validada en `vetmake/index.html` (idéntica byte a byte al `index.html` en
-vivo del commit `71f59ae`, ver `vetmake/PROVENANCE.md`). Esa carpeta es
-ahora la línea que separa "planeación" de "código real" — cualquier cambio
-de aquí en adelante dentro de `vetmake/` es Fase 1, no PetColinas.
+(`saas/plan-inicial`) y semilla validada en `vetmake/index.html`. La base
+multi-tenant de Supabase y el primer bloque de generalización del frontend
+ya están implementados; cualquier cambio dentro de `vetmake/` pertenece a
+la Fase 1 de VetMake, no a PetColinas.
 
 Solo falta una cosa de la Fase 0, y **no es algo que Claude pueda hacer**:
 registrar el dominio de VetMake. Requiere una compra real con datos de pago
