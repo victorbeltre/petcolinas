@@ -162,14 +162,51 @@ Script había guardado bullets (`•`) en vez de la llave. **Es falsa.** La llav
 es válida y Supabase la acepta — lo que rechaza es el permiso, no la credencial.
 La prueba por huella SHA-256 existe justamente para cerrar esa puerta.
 
+### ✅ ARREGLADO (23 ago 2026, sesión 2) — tercera falla real: el upsert pedía permiso que `anon` no tiene
+
+Victor corrió `probarConDatosFicticios` con las dos correcciones de arriba ya
+puestas y **igual dio 401 RLS** en `pc_clientes`. Parecía que la política
+seguía sin funcionar, pero no era eso: son dos bugs nuevos, distintos de los
+dos ya arreglados.
+
+1. **`insertarEnCRM` mandaba `Prefer: return=minimal,resolution=merge-duplicates`.**
+   `resolution=merge-duplicates` convierte el INSERT en un
+   `INSERT ... ON CONFLICT DO UPDATE` (upsert). Para resolver el conflicto,
+   Postgres necesita poder **leer** la fila existente — permiso de SELECT.
+   `anon` solo tiene política de INSERT, nunca de SELECT. Por eso el 401
+   dice "row-level security" aunque la política de INSERT esté perfecta:
+   Postgres nunca llega a evaluarla, se cae antes por el SELECT implícito
+   del upsert. Comprobado con SQL crudo como rol `anon`: el mismo INSERT sin
+   `ON CONFLICT` pasa limpio; con `ON CONFLICT DO UPDATE` (sin tocar nada
+   más) falla con el mismo 401.
+
+   La solución NO es darle SELECT a `anon` — eso dejaría que cualquiera con
+   la llave pública (está en `index.html`) lea todo el CRM. La solución es
+   quitar `resolution=merge-duplicates`: una inscripción del form siempre es
+   un INSERT nuevo, nunca hay razón real para hacer upsert aquí.
+
+2. **La columna `id` de `pc_clientes` es `numeric NOT NULL` sin default ni
+   identity.** El payload de Apps Script nunca la mandaba. La app real
+   (`index.html:12522`) genera `id: Date.now()` en JS antes de insertar —
+   por eso el flujo normal (usuarios `authenticated`) nunca lo notó. El
+   formulario tiene que hacer lo mismo.
+
+Las dos correcciones ya están en `form-to-crm.gs` (`cliente.id = Date.now()`
+en `parsearRespuestas`, y `Prefer` sin `resolution=merge-duplicates` en
+`insertarEnCRM`). Verificado con SQL directo como rol `anon` simulando
+exactamente ese INSERT (id numérico tipo epoch-ms, sin ON CONFLICT,
+`Prefer: return=minimal`): pasa limpio.
+
 ### 👉 SIGUIENTE PASO INMEDIATO
 
-**Correr `probarConDatosFicticios` en Apps Script.** Debe dar `HTTP 201`.
+**Pegar el `form-to-crm.gs` actualizado en el proyecto de Apps Script y
+correr `probarConDatosFicticios` de nuevo.** Debe dar `HTTP 201`.
 
-Las dos fallas ya están arregladas, pero **el puente nunca se ha probado con
-ambas correcciones puestas a la vez**. Al 23 ago 2026 no existe ninguna fila
-`Luna Test` en `pc_clientes` — es decir, esa prueba todavía no ha pasado
-nunca. Hasta que dé 201, no se puede dar por vivo.
+Ahora sí las tres fallas están arregladas, pero **nunca se ha probado con las
+tres correcciones puestas a la vez**. Al 23 ago 2026 no existe ninguna fila
+`Luna Test` real en `pc_clientes` (se insertaron y se borraron varias filas
+de prueba directo por SQL durante el diagnóstico, ninguna se dejó). Hasta que
+el `Ejecutar` desde el editor de Apps Script dé 201, no se puede dar por vivo.
 
 Si falla, el error dirá exactamente qué falta; no volver a sospechar de la
 llave (ver la sección tachada de arriba).

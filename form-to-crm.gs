@@ -199,6 +199,10 @@ function parsearRespuestas(namedValues) {
   // Fecha de registro = hoy
   cliente.fecharegistro = Utilities.formatDate(new Date(), "America/Santo_Domingo", "yyyy-MM-dd");
 
+  // id: la columna es NOT NULL sin default. La app (index.html) genera
+  // Date.now() antes de insertar; el form tiene que hacer lo mismo.
+  cliente.id = Date.now();
+
   return cliente;
 }
 
@@ -213,7 +217,12 @@ function insertarEnCRM(cliente) {
     headers: {
       "apikey": SUPA_KEY,
       "Authorization": "Bearer " + SUPA_KEY,
-      "Prefer": "return=minimal,resolution=merge-duplicates"
+      // OJO: NUNCA "resolution=merge-duplicates" aqui. Eso convierte el INSERT
+      // en un upsert (ON CONFLICT DO UPDATE), y Postgres necesita permiso de
+      // SELECT para resolver el conflicto — permiso que "anon" no tiene ni debe
+      // tener (le daria acceso de lectura a todo el CRM con la llave publica).
+      // Probado: el mismo INSERT sin este flag funciona bien.
+      "Prefer": "return=minimal"
     },
     payload: payload,
     muteHttpExceptions: true
