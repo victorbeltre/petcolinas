@@ -197,23 +197,22 @@ en `parsearRespuestas`, y `Prefer` sin `resolution=merge-duplicates` en
 exactamente ese INSERT (id numérico tipo epoch-ms, sin ON CONFLICT,
 `Prefer: return=minimal`): pasa limpio.
 
-### 👉 SIGUIENTE PASO INMEDIATO
+### ✅ CONFIRMADO EN VIVO (23 ago 2026, sesión 2) — el puente ya funciona
 
-**Pegar el `form-to-crm.gs` actualizado en el proyecto de Apps Script y
-correr `probarConDatosFicticios` de nuevo.** Debe dar `HTTP 201`.
+Victor pegó el `form-to-crm.gs` corregido y corrió `probarConDatosFicticios`:
+`HTTP 201`. Se verificó por SQL que la fila `Luna Test` llegó completa a
+`pc_clientes` (mascota, propietario, teléfono, especie, notas con el formato
+`"Nos conocio | via: ..."`, fecha de registro) y se borró después de
+confirmar — era solo la prueba, no un cliente real.
 
-Ahora sí las tres fallas están arregladas, pero **nunca se ha probado con las
-tres correcciones puestas a la vez**. Al 23 ago 2026 no existe ninguna fila
-`Luna Test` real en `pc_clientes` (se insertaron y se borraron varias filas
-de prueba directo por SQL durante el diagnóstico, ninguna se dejó). Hasta que
-el `Ejecutar` desde el editor de Apps Script dé 201, no se puede dar por vivo.
-
-Si falla, el error dirá exactamente qué falta; no volver a sospechar de la
-llave (ver la sección tachada de arriba).
+**Las tres fallas del puente Form → CRM están arregladas.** Falta lo de
+"Después, en orden" de abajo.
 
 ### Después, en orden
 
-1. Correr `configurarTrigger` en el proyecto correcto.
+1. Correr `configurarTrigger` en el proyecto correcto (esto sí falta —
+   la prueba de arriba solo llamó a `onFormSubmit` directo, no probó el
+   trigger real sobre envíos del formulario).
 2. Revisar Disparadores en **ambos** proyectos y eliminar duplicados.
 3. **Aclarar por dónde entran hoy las inscripciones.** El 22 ago se
    registraron clientes reales (Diamond Nuñez, Sally Fulcar, Lily Maldonado…)
