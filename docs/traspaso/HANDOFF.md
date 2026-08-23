@@ -9,16 +9,17 @@
 
 ## 0. Lo primero: el conector de Supabase
 
-En la sesión anterior el conector reportaba `connected: true` pero
-`enabledInChat: false`, y sus herramientas **nunca cargaron**. Todo el SQL se
-tuvo que correr a mano desde el navegador. Meta ads y Netlify también se
-cayeron y no volvieron; Gmail, Drive, Canva, Calendar y GitHub sí.
-
-**Verifica con ToolSearch si `mcp__Supabase__execute_sql` está disponible y
-dile a Victor qué encuentras.** Prender el conector a mitad de sesión no lo
-carga: hay que abrir la conversación con él ya encendido.
-
 Proyecto Supabase: `ulrzzddovkioxeaarnjk`
+
+Durante buena parte de la sesión el conector reportó `connected: true` pero
+`enabledInChat: false`, y sus herramientas no cargaron — todo el SQL se corrió
+a mano desde el navegador. **Al final de la sesión volvió y funcionó**
+(se leyeron y editaron políticas sin problema).
+
+Es intermitente: si se cae, prenderlo a mitad de conversación **no** lo
+recupera; hay que abrir una conversación nueva con él ya encendido.
+Verifica con ToolSearch que `mcp__Supabase__execute_sql` responda antes de
+prometerle a Victor que puedes tocar la base.
 
 ---
 
@@ -131,14 +132,24 @@ se insertaría dos veces**.
 1. ✅ **ARREGLADO — el trigger nunca se enganchó.** El script vive suelto en
    Drive, y `SpreadsheetApp.getActiveSpreadsheet()` no resuelve nada ahí.
    Ahora usa `openById(SPREADSHEET_ID)`.
-2. ❌ **PENDIENTE — RLS bloquea la escritura.** El rol `anon` no tiene política
-   de INSERT en `pc_clientes`:
+2. ✅ **ARREGLADO — RLS bloqueaba la escritura.** El rol `anon` no tenía
+   política de INSERT en `pc_clientes`:
    ```
    401 {"code":"42501","message":"new row violates row-level security
         policy for table \"pc_clientes\""}
    ```
    La app sí puede porque el personal inicia sesión (`authenticated`); el Apps
    Script llega como `anon`.
+
+   Estado verificado en la base el 23 ago 2026:
+
+   | Política | Comando | Rol |
+   |---|---|---|
+   | `pc_auth_all` | ALL | `authenticated` |
+   | `pc_clientes insert formulario web` | INSERT | `anon` |
+
+   Había una tercera duplicada (`pc_clientes insert publico`, idéntica) que
+   **ya se eliminó**. Si reaparece, sobra: dejar solo una.
 
 ### ⛔ YA DESCARTADO — no volver a investigar
 
@@ -151,27 +162,39 @@ Script había guardado bullets (`•`) en vez de la llave. **Es falsa.** La llav
 es válida y Supabase la acepta — lo que rechaza es el permiso, no la credencial.
 La prueba por huella SHA-256 existe justamente para cerrar esa puerta.
 
-### Siguiente paso inmediato
+### 👉 SIGUIENTE PASO INMEDIATO
 
-En `https://supabase.com/dashboard/project/ulrzzddovkioxeaarnjk/sql/new`:
+**Correr `probarConDatosFicticios` en Apps Script.** Debe dar `HTTP 201`.
 
-```sql
-create policy "pc_clientes insert formulario web"
-on pc_clientes for insert to anon with check (true);
-```
+Las dos fallas ya están arregladas, pero **el puente nunca se ha probado con
+ambas correcciones puestas a la vez**. Al 23 ago 2026 no existe ninguna fila
+`Luna Test` en `pc_clientes` — es decir, esa prueba todavía no ha pasado
+nunca. Hasta que dé 201, no se puede dar por vivo.
 
-Luego, en Apps Script: `probarConDatosFicticios` → debe dar `HTTP 201`.
+Si falla, el error dirá exactamente qué falta; no volver a sospechar de la
+llave (ver la sección tachada de arriba).
 
 ### Después, en orden
 
 1. Correr `configurarTrigger` en el proyecto correcto.
 2. Revisar Disparadores en **ambos** proyectos y eliminar duplicados.
-3. **Recuperación** (no escrita aún): una función que recorra la hoja completa y
-   suba las inscripciones de marzo a junio. El trigger solo dispara con envíos
-   **nuevos**; las viejas no entran solas.
-4. **Blindaje**: sacar el Apps Script del rol `anon` → Edge Function con
+3. **Aclarar por dónde entran hoy las inscripciones.** El 22 ago se
+   registraron clientes reales (Diamond Nuñez, Sally Fulcar, Lily Maldonado…)
+   con notas del tipo
+   `"Nos conocio por: … | Cedula: … | Peso: … | Guardado en CRM: …"`.
+   Ese formato **no** es el que genera `form-to-crm.gs` (que produce
+   `"Nos conocio | via: … | Servicio: …"`), y trae campos que ni siquiera
+   están en `CAMPO_FORM`. O sea: hay **otro camino** metiendo inscripciones
+   al CRM — casi seguro la pestaña de "clientes nuevos" de la app, guardados
+   a mano. Averiguar cómo funciona ese camino **antes** de escribir la
+   recuperación: cambia cuántas inscripciones faltan de verdad, y hay riesgo
+   real de duplicar clientes que ya están.
+4. **Recuperación** (no escrita aún): una función que recorra la hoja completa
+   y suba las inscripciones de marzo a junio que sigan faltando. El trigger
+   solo dispara con envíos **nuevos**; las viejas no entran solas.
+5. **Blindaje**: sacar el Apps Script del rol `anon` → Edge Function con
    `service_role` como secret + secreto compartido, igual que `pagadito-cobro`.
-   Después **eliminar la política permisiva** del paso anterior.
+   Después **eliminar la política `pc_clientes insert formulario web`**.
 
    Por qué importa: esa política deja que cualquiera con la llave pública (está
    en `index.html`) meta filas basura en el CRM — solo insertar, no leer, editar
