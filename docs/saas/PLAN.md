@@ -131,15 +131,19 @@ solo hay un negocio. En el SaaS, cada webhook que llega (un mensaje de
 WhatsApp) tiene que resolver primero a qué negocio pertenece — el número de
 WhatsApp de destino se vuelve la clave para encontrar el negocio correcto.
 
-**Estado (23 ago, sesión 3):** el diseño de este modelo ya está escrito —
-`vetmake/supabase/migrations/0001_negocios_y_membresia.sql` (tabla
-`negocios`, tabla `usuarios_negocio`, función `mi_negocio()`) y
-`0002_negocio_id_pc_clientes_ejemplo.sql` (el patrón completo aplicado a
-`pc_clientes` como ejemplo trabajado, con el resto de las tablas
-documentado como el mismo patrón mecánico en `vetmake/supabase/README.md`).
-Nada de esto se ha aplicado todavía: no existe un proyecto de Supabase para
-VetMake. Provisionarlo es la siguiente decisión — tiene costo/cuenta real
-de por medio, así que le toca a Victor decidirlo, no es automático.
+**Estado (23 ago, sesión 3): ✅ diseñado, aplicado y probado.** El modelo
+está escrito en `vetmake/supabase/migrations/` (`0001` para `negocios` +
+`usuarios_negocio` + `mi_negocio()`, `0002` para el patrón completo
+aplicado a `pc_clientes` como ejemplo trabajado). Con el visto bueno de
+Victor se creó `vetmake-dev` (`couzqdicmxrypacgrqcn`) — proyecto de
+Supabase nuevo y separado, $0/mes, en su misma organización pero sin
+ningún vínculo con el de PetColinas — y ahí se corrió la prueba de los dos
+negocios ficticios: aislamiento confirmado en select, insert, update y
+delete (el delete se probó con `commit` real, no solo revertido, para que
+la prueba fuera inequívoca). Detalle completo en
+`vetmake/supabase/README.md`. Falta replicar el mismo patrón mecánico al
+resto de las tablas `pc_*` — sigue siendo Fase 1, antes de pasar a
+generalizar lo quemado (Fase 2).
 
 ---
 
@@ -202,7 +206,7 @@ percibido da desde el día uno.
 | Fase | Qué | Cuándo |
 |---|---|---|
 | 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · ✅ copia semilla de `index.html` validada y congelada en `vetmake/` · falta registrar el dominio | Esta semana |
-| 1 — Datos | 🔶 Diseño de la migración listo (`vetmake/supabase/`) — falta provisionar un proyecto de Supabase para probarla y correr la prueba de dos negocios ficticios | Próximas semanas |
+| 1 — Datos | ✅ Fundación multi-tenant diseñada, aplicada en `vetmake-dev` y probada con dos negocios ficticios (aislamiento confirmado) — falta replicar el patrón al resto de tablas `pc_*` | En curso |
 | 2 — Generalizar | Sacar lo quemado a configuración (sección 4) | Después de la Fase 1 |
 | 3 — Piloto | 1–2 veterinarias conocidas, gratis o precio simbólico | Cuando la Fase 1 esté probada con datos reales |
 | 4 — Vender | Primeras clínicas de pago, onboarding manual asistido | Tras un piloto sin incidentes de aislamiento |

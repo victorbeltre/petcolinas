@@ -1,16 +1,16 @@
 # Base de datos de VetMake — Fase 1
 
-## Estado: diseño listo, sin aplicar en ningún lado
+## Estado: aplicado y probado en un proyecto de Supabase separado
 
-Estas migraciones **no se han corrido en ningún proyecto de Supabase
-real**. No existe todavía un proyecto de Supabase para VetMake — el de
-PetColinas (`ulrzzddovkioxeaarnjk`) sigue siendo solo de PetColinas, sin
-tocar.
+`vetmake-dev` (`couzqdicmxrypacgrqcn`) — proyecto nuevo, plan gratuito
+($0/mes, confirmado antes de crearlo), en la misma organización de
+Victor pero **completamente separado** del de PetColinas
+(`ulrzzddovkioxeaarnjk`), que sigue sin tocarse.
 
-Provisionar un proyecto nuevo (aunque sea de prueba) es una decisión que
-le toca a Victor antes de seguir: tiene costo potencial y crea
-infraestructura real ligada a su cuenta. Cuando la dé, el siguiente paso
-es aplicar `0001` y luego `0002` ahí, no en el de PetColinas.
+Ahí se aplicaron `0001` y `0002`, sobre una réplica de la estructura de
+`pc_clientes` (columnas y tipos exactos, sin datos reales — solo
+estructura leída de PetColinas para que la prueba fuera fiel). Después se
+corrió la prueba de aislamiento de la sección de abajo — **pasó**.
 
 ## Los archivos
 
@@ -69,3 +69,26 @@ Si el usuario A ve, edita o borra algo del negocio B con esto puesto,
 **no se avanza a la Fase 2** hasta arreglarlo — es exactamente el tipo de
 bug que el 23 ago costó horas de diagnóstico en un solo negocio; acá
 significaría una fuga de datos médicos entre clínicas de verdad.
+
+## Resultado — 23 ago 2026, corrida real contra `vetmake-dev`
+
+Dos negocios de prueba, dos usuarios de `auth.users`, un cliente en cada
+uno (Firulais → Clínica A, Michi → Clínica B). Autenticado como el usuario
+de la Clínica A:
+
+| Prueba | Resultado |
+|---|---|
+| `select` sobre `pc_clientes` | Solo ve a Firulais, nunca a Michi |
+| `insert` marcando una fila como de la Clínica B | Bloqueado por RLS (`42501`) |
+| `update` sobre el cliente de la Clínica B | 0 filas afectadas |
+| `delete` sobre el cliente de la Clínica B — **corrido con `commit` real, no revertido**, para que la prueba fuera inequívoca | Michi sobrevive intacto, con su `negocio_id` correcto |
+| `select` sobre `negocios` | Solo ve el suyo (1 fila) |
+| `select` sobre `usuarios_negocio` | Solo ve su propia membresía (1 fila) |
+
+**✅ Pasó. Aislamiento confirmado con datos reales, no solo revisión de
+código.** El patrón (`negocio_id` + 4 políticas usando `mi_negocio()`) está
+validado y listo para replicarse al resto de las tablas `pc_*` siguiendo
+el patrón mecánico de la sección de arriba.
+
+Los datos de prueba (negocios, usuarios, clientes ficticios) siguen en
+`vetmake-dev` a propósito, como fixture reproducible — no se borraron.
