@@ -191,7 +191,7 @@ percibido da desde el día uno.
 
 | Fase | Qué | Cuándo |
 |---|---|---|
-| 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · falta congelar copia de `index.html` validada | Esta semana |
+| 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · ✅ copia semilla de `index.html` validada y congelada en `vetmake/` · falta registrar el dominio | Esta semana |
 | 1 — Datos | Tabla `negocios`, `negocio_id` en cada tabla, RLS reescrita, probado con dos negocios ficticios | Próximas semanas |
 | 2 — Generalizar | Sacar lo quemado a configuración (sección 4) | Después de la Fase 1 |
 | 3 — Piloto | 1–2 veterinarias conocidas, gratis o precio simbólico | Cuando la Fase 1 esté probada con datos reales |
@@ -215,8 +215,37 @@ percibido da desde el día uno.
 
 ## 10. Siguiente paso inmediato
 
-Fase 0 ya tiene nombre (VetMake) y rama propia. Falta lo último de esa fase:
-congelar una copia de `index.html` validado de PetColinas como semilla del
-código de VetMake — sin que ese trabajo toque la app en vivo ni la rama
-operativa de PetColinas — y registrar el dominio antes de que alguien más
-lo tome.
+Fase 0 está prácticamente cerrada: nombre (VetMake), rama propia
+(`saas/plan-inicial`), y la copia semilla de `index.html` ya congelada y
+validada en `vetmake/index.html` (idéntica byte a byte al `index.html` en
+vivo del commit `71f59ae`, ver `vetmake/PROVENANCE.md`). Esa carpeta es
+ahora la línea que separa "planeación" de "código real" — cualquier cambio
+de aquí en adelante dentro de `vetmake/` es Fase 1, no PetColinas.
+
+Solo falta una cosa de la Fase 0, y **no es algo que Claude pueda hacer**:
+registrar el dominio de VetMake. Requiere una compra real con datos de pago
+de Victor. Ver sección 11.
+
+---
+
+## 11. Registrar el dominio — pendiente, lo hace Victor
+
+La red de esta sesión bloquea el acceso a whois y a los sitios de
+registradores (Namecheap, GoDaddy, etc.), así que no hay forma de
+confirmar disponibilidad desde aquí — y aunque se pudiera, registrar un
+dominio es una compra real con datos de pago de Victor, no algo que Claude
+deba hacer por su cuenta.
+
+Señal indirecta a favor: durante la verificación del nombre (sección
+inicial), la búsqueda no encontró ningún sitio activo en `vetmake.com`,
+`vetmake.app`, ni una cuenta de Instagram `@vetmake` — eso no confirma
+disponibilidad (un dominio puede estar registrado y sin usar), pero es
+buena señal.
+
+**Qué hacer:**
+1. Entrar a un registrador (Namecheap, GoDaddy, o el que Victor ya use
+   para dominios de PetColinas) y buscar `vetmake.com`.
+2. Si está tomado, alternativas razonables en orden de preferencia:
+   `vetmake.app`, `vetmake.io`, `getvetmake.com`.
+3. Registrarlo aunque el desarrollo real (Fase 1) todavía no arranque —
+   es barato y evita que alguien más lo tome mientras se construye.
