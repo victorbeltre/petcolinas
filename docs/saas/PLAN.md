@@ -130,7 +130,7 @@ solo hay un negocio. En el SaaS, cada webhook que llega (un mensaje de
 WhatsApp) tiene que resolver primero a qué negocio pertenece — el número de
 WhatsApp de destino se vuelve la clave para encontrar el negocio correcto.
 
-**Estado (23 ago, después de aplicar `0001`–`0006`): ✅ fundación aplicada y
+**Estado (23 ago, después de aplicar `0001`–`0007`): ✅ fundación aplicada y
 aislamiento validado; frontend en integración.** En `vetmake-dev`
 (`couzqdicmxrypacgrqcn`) ya están la fundación multi-tenant, `pc_clientes`,
 las seis tablas operativas (`pc_ventas`, `pc_facturas`, `pc_inventario`,
@@ -143,16 +143,21 @@ el aislamiento entre dos usuarios y dos negocios ficticios ya pasó las
 pruebas de select, insert, update y delete en las tablas operativas.
 También se revocó el acceso explícito de `anon` y `mi_negocio()` quedó como
 `SECURITY INVOKER`. PetColinas (`ulrzzddovkioxeaarnjk`) no se tocó. Detalle
-completo en `vetmake/supabase/README.md`. Tablas específicas de PetColinas
-como candidatos, llamadas y paquetes quedan fuera del MVP.
+completo en `vetmake/supabase/README.md`. `0007` agrega perfil comercial por
+negocio, equipo configurable y permisos de escritura exclusivos para
+administradores sobre configuración, empleados y tarifas. Tablas específicas
+de PetColinas como candidatos y llamadas quedan fuera del MVP; `pc_paquetes`
+sí forma parte de la base de VetMake.
 
-**Estado de frontend (23 ago): ✅ identidad generalizada en el bloque
-operativo.** Paneles, mensajes, agenda, caja, CRM, facturas PDF, carnet y
+**Estado de frontend (23 ago): ✅ identidad y configuración inicial
+generalizadas.** Paneles, mensajes, agenda, caja, CRM, facturas PDF, carnet y
 reportes toman el nombre/tagline/logo del negocio; las semillas y empleados
-demo de PetColinas no se cargan. Las comisiones nuevas se leen del registro
-de venta/servicio y no se inventan porcentajes históricos. Pendiente para
-cerrar el MVP: configuración de empleados/comisiones y datos comerciales
-por negocio (teléfono, dirección, RNC y canales propios).
+demo de PetColinas no se cargan. El panel de Configuración permite editar el
+perfil comercial, equipo, roles, estado, mensualidad y comisión predeterminada;
+Servicios permite crear el catálogo propio sin restaurar defaults heredados.
+Las comisiones nuevas se leen de los registros configurados y no se inventan
+porcentajes históricos. Pendiente para el MVP comercial: invitaciones y
+vinculación con usuarios de Supabase Auth, más integraciones por negocio.
 
 ---
 
@@ -199,14 +204,18 @@ percibido da desde el día uno.
 
 ## 7. Dar de alta un cliente nuevo (checklist manual)
 
-1. Alta en la tabla de negocios — nombre, moneda, zona horaria, colores.
-2. Crear usuarios de Supabase Auth para su personal y asignar rol.
-3. Migrar su base de clientes existente si vienen de Excel u otro sistema.
-4. Google Calendar propio si quieren sincronización de citas.
-5. WhatsApp Business — número propio, webhook, prompt del bot ajustado a
+1. Alta en la tabla de negocios — nombre, moneda, zona horaria, colores y
+   perfil comercial.
+2. Configurar el equipo, roles, estado y comisiones desde el panel de
+   Configuración.
+3. Crear usuarios de Supabase Auth para su personal y vincularlos a los
+   registros del equipo.
+4. Migrar su base de clientes existente si vienen de Excel u otro sistema.
+5. Google Calendar propio si quieren sincronización de citas.
+6. WhatsApp Business — número propio, webhook, prompt del bot ajustado a
    su clínica.
-6. Pagadito u otra pasarela — cuenta comercial propia de la clínica.
-7. Capacitación — material de onboarding para las 16 pestañas.
+7. Pagadito u otra pasarela — cuenta comercial propia de la clínica.
+8. Capacitación — material de onboarding para las 16 pestañas.
 
 ---
 
@@ -215,8 +224,8 @@ percibido da desde el día uno.
 | Fase | Qué | Cuándo |
 |---|---|---|
 | 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · ✅ copia semilla de `index.html` validada y congelada en `vetmake/` · falta registrar el dominio | Esta semana |
-| 1 — Datos | ✅ Fundación multi-tenant aplicada en `vetmake-dev`, patrón replicado a las 15 tablas del MVP, aislamiento confirmado y frontend conectado al negocio actual | En curso: onboarding |
-| 2 — Generalizar | ✅ Identidad operativa, mensajes, documentos, semillas y empleados demo aislados; falta configuración de empleados/comisiones y datos comerciales por negocio | En curso |
+| 1 — Datos | ✅ Fundación multi-tenant aplicada en `vetmake-dev`, patrón replicado a las 15 tablas del MVP, aislamiento confirmado y frontend conectado al negocio actual | En curso: onboarding/Auth |
+| 2 — Generalizar | ✅ Identidad operativa, mensajes, documentos, semillas y empleados demo aislados; ✅ perfil comercial, equipo y tarifas configurables con escritura admin-only en `0007` | En curso: invitaciones e integraciones por negocio |
 | 3 — Piloto | 1–2 veterinarias conocidas, gratis o precio simbólico | Cuando la Fase 1 esté probada con datos reales |
 | 4 — Vender | Primeras clínicas de pago, onboarding manual asistido | Tras un piloto sin incidentes de aislamiento |
 | 5 — Escalar | Autoservicio, más mercados | Más adelante, no parte de este plan todavía |
@@ -240,9 +249,14 @@ percibido da desde el día uno.
 
 Fase 0 está prácticamente cerrada: nombre (VetMake), rama propia
 (`saas/plan-inicial`) y semilla validada en `vetmake/index.html`. La base
-multi-tenant de Supabase y el primer bloque de generalización del frontend
-ya están implementados; cualquier cambio dentro de `vetmake/` pertenece a
-la Fase 1 de VetMake, no a PetColinas.
+multi-tenant de Supabase, el bloque de identidad y el onboarding comercial
+inicial del frontend ya están implementados; cualquier cambio dentro de
+`vetmake/` pertenece a la Fase 1 de VetMake, no a PetColinas.
+
+El siguiente bloque técnico es crear el flujo de invitación/vinculación de
+usuarios de Supabase Auth y completar las credenciales de integraciones por
+negocio. Hasta entonces, el piloto se puede dar de alta manualmente con el
+panel de Configuración y la base de datos.
 
 Solo falta una cosa de la Fase 0, y **no es algo que Claude pueda hacer**:
 registrar el dominio de VetMake. Requiere una compra real con datos de pago
