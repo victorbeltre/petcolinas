@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>🐾 PetColinas — Sistema de Gestión 2026</title>
+  <title>🐾 VetMake — Gestión veterinaria</title>
   <script>
     // Auto-actualización: si la versión cambió, recarga forzada
     (function() {
@@ -38,7 +38,7 @@
   <div id="root">
     <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;background:#1a6b3a;color:white;font-family:Segoe UI">
       <div style="font-size:48px">🐾</div>
-      <div style="font-size:22px;font-weight:800">PetColinas</div>
+      <div style="font-size:22px;font-weight:800">VetMake</div>
       <div style="font-size:14px;opacity:0.8">Cargando sistema...</div>
     </div>
   </div>
@@ -46,8 +46,83 @@
   <script>
 const { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } = React;
 
-const SUPA_URL = "https://ulrzzddovkioxeaarnjk.supabase.co";
-const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVscnp6ZGRvdmtpb3hlYWFybmprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjc3MDEsImV4cCI6MjA4ODYwMzcwMX0.mX3cei5kKAID3WhmMAojhk2QOMs8gDF1LFbYHKXrfUM";
+const VETMAKE_CONFIG = Object.freeze({
+  name: "VetMake",
+  tagline: "Gestión veterinaria multiempresa",
+  projectRef: "couzqdicmxrypacgrqcn",
+  supabaseUrl: "https://couzqdicmxrypacgrqcn.supabase.co",
+  publishableKey: "sb_publishable_BE6gdkMX7kGQo3uOovExrA_2Pt2SCqC"
+});
+const VETMAKE_SESSION_KEY = "vetmake_session";
+const VETMAKE_AUTH_EVENT = "vetmake-auth-changed";
+const VETMAKE_USE_LOCAL_SEEDS = false;
+const VETMAKE_ENABLE_LEGACY_INTEGRATIONS = false;
+const VETMAKE_ENABLE_LOCAL_BACKUPS = false;
+const SUPA_URL = VETMAKE_CONFIG.supabaseUrl;
+const SUPA_KEY = VETMAKE_CONFIG.publishableKey;
+const SUPA_FUNCTIONS_URL = SUPA_URL + "/functions/v1";
+const VETMAKE_MULTI_TENANT_TABLES = new Set([
+  "pc_clientes", "pc_ventas", "pc_facturas", "pc_inventario", "pc_empleados",
+  "pc_gastos", "pc_citas", "pc_seguimientos", "pc_pagos", "pc_tarifas",
+  "pc_historias", "pc_fichas_clinicas", "pc_depositos", "pc_auditoria", "pc_paquetes"
+]);
+let VETMAKE_TENANT_CONTEXT = null;
+let VETMAKE_TENANT_PROMISE = null;
+
+function getStoredVetMakeSession() {
+  try {
+    const raw = sessionStorage.getItem(VETMAKE_SESSION_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.access_token) return null;
+    return session;
+  } catch { return null; }
+}
+
+async function obtenerContextoNegocio() {
+  const session = getStoredVetMakeSession();
+  const userId = session?.user?.id;
+  if (!session?.access_token || !userId) return null;
+  if (VETMAKE_TENANT_CONTEXT?.userId === userId) return VETMAKE_TENANT_CONTEXT;
+  if (VETMAKE_TENANT_PROMISE) return VETMAKE_TENANT_PROMISE;
+
+  VETMAKE_TENANT_PROMISE = (async () => {
+    const headers = {
+      apikey: SUPA_KEY,
+      Authorization: "Bearer " + session.access_token,
+      Accept: "application/json"
+    };
+    const membershipRes = await fetch(
+      SUPA_URL + "/rest/v1/usuarios_negocio?usuario_id=eq." + encodeURIComponent(userId) + "&select=negocio_id,rol&limit=1",
+      { headers }
+    );
+    if (!membershipRes.ok) throw new Error("No se pudo leer la membresía de VetMake");
+    const memberships = await membershipRes.json();
+    if (!Array.isArray(memberships) || !memberships[0]?.negocio_id) return null;
+
+    const membership = memberships[0];
+    const businessRes = await fetch(
+      SUPA_URL + "/rest/v1/negocios?id=eq." + encodeURIComponent(membership.negocio_id) + "&select=id,nombre,slug,plan,moneda,zona_horaria,color_primario,logo_url,activo&limit=1",
+      { headers }
+    );
+    if (!businessRes.ok) throw new Error("No se pudo leer la clínica de VetMake");
+    const businesses = await businessRes.json();
+    const negocio = Array.isArray(businesses) ? businesses[0] : null;
+    if (!negocio || negocio.activo === false) return null;
+
+    VETMAKE_TENANT_CONTEXT = { userId, negocioId: membership.negocio_id, rol: membership.rol, negocio };
+    window.__vetmakeTenant = VETMAKE_TENANT_CONTEXT;
+    return VETMAKE_TENANT_CONTEXT;
+  })().finally(() => { VETMAKE_TENANT_PROMISE = null; });
+
+  return VETMAKE_TENANT_PROMISE;
+}
+
+function resetearContextoNegocio() {
+  VETMAKE_TENANT_CONTEXT = null;
+  VETMAKE_TENANT_PROMISE = null;
+  try { delete window.__vetmakeTenant; } catch {}
+}
 const APPS_SCRIPT_URL = "";
 async function enviarASheet(venta) {
   if (!APPS_SCRIPT_URL) return;
@@ -164,7 +239,7 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
   const url = `${SUPA_URL}/rest/v1/${table}${params}`;
   let authToken = SUPA_KEY;
   try {
-    const sess = JSON.parse(sessionStorage.getItem("pc_session") || "null");
+    const sess = JSON.parse(sessionStorage.getItem(VETMAKE_SESSION_KEY) || "null");
     if (sess && sess.access_token) {
       const expired = !sess.expires_at || Date.now() / 1e3 >= sess.expires_at;
       if (!expired) {
@@ -180,7 +255,7 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
             const newSess = await rr.json();
             if (!newSess.expires_at && newSess.expires_in) newSess.expires_at = Math.floor(Date.now() / 1e3) + newSess.expires_in;
             if (!newSess.user && sess.user) newSess.user = sess.user;
-            sessionStorage.setItem("pc_session", JSON.stringify(newSess));
+            sessionStorage.setItem(VETMAKE_SESSION_KEY, JSON.stringify(newSess));
             authToken = newSess.access_token;
             console.log("[Auth] Sesi\xF3n renovada autom\xE1ticamente");
           } else {
@@ -193,6 +268,18 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
       }
     }
   } catch {}
+  // VetMake nunca usa la clave pública como identidad. Si no hay una sesión
+  // autenticada, no se consulta ni se escribe ninguna tabla privada.
+  if (authToken === SUPA_KEY) return null;
+  const tenant = VETMAKE_MULTI_TENANT_TABLES.has(table)
+    ? await obtenerContextoNegocio()
+    : null;
+  if (VETMAKE_MULTI_TENANT_TABLES.has(table) && !tenant?.negocioId) return null;
+  let requestBody = body;
+  if (method === "POST" && VETMAKE_MULTI_TENANT_TABLES.has(table) && body) {
+    const agregarNegocio = (row) => ({ ...row, negocio_id: row.negocio_id || tenant.negocioId });
+    requestBody = Array.isArray(body) ? body.map(agregarNegocio) : agregarNegocio(body);
+  }
   const headers = {
     "apikey": SUPA_KEY,
     "Authorization": `Bearer ${authToken}`,
@@ -203,7 +290,7 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
   const res = await fetch(url, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : null
+    body: requestBody ? JSON.stringify(requestBody) : null
   });
   if (method === "GET") {
     try {
@@ -262,9 +349,9 @@ try {
 //
 // Si el WebSocket no conecta (red del local, proxy, lo que sea) NO se pierde la
 // sincronizacion: entra el respaldo por sondeo. Peor caso, 60 segundos.
-const PC_TABLAS_VIVAS = ["pc_ventas", "pc_clientes", "pc_citas", "pc_facturas", "pc_paquetes",
+const PC_TABLAS_VIVAS = ["pc_ventas", "pc_clientes", "pc_citas", "pc_facturas",
                          "pc_seguimientos", "pc_inventario", "pc_gastos", "pc_pagos",
-                         "pc_historias", "pc_tarifas", "pc_fichas_clinicas"];
+                         "pc_historias", "pc_tarifas", "pc_fichas_clinicas", "pc_paquetes"];
 const PC_SONDEO_MS = 60000;      // respaldo cuando el WebSocket esta caido
 const PC_REBOTE_MS = 1200;       // espera antes de releer, para agrupar rafagas
 // Al volver a la pestana se releia TODO de golpe (11 tablas x 2 peticiones cada
@@ -284,7 +371,7 @@ const PCRealtime = (function () {
 
   const tokenActual = () => {
     try {
-      const s = JSON.parse(sessionStorage.getItem("pc_session") || "null");
+      const s = JSON.parse(sessionStorage.getItem(VETMAKE_SESSION_KEY) || "null");
       if (s && s.access_token && (!s.expires_at || Date.now() / 1e3 < s.expires_at)) return s.access_token;
     } catch (e) {}
     return SUPA_KEY;
@@ -436,6 +523,9 @@ function EstadoSync() {
 }
 
 function useSupabase(table, seed = []) {
+  // La semilla contiene datos históricos de PetColinas. En VetMake no se
+  // muestran ni se suben automáticamente: cada clínica empieza aislada.
+  if (!VETMAKE_USE_LOCAL_SEEDS) seed = [];
   const deletedKey = "pc_deleted_" + table;
   const deletedIdsInit = new Set(
     JSON.parse(localStorage.getItem(deletedKey) || "[]")
@@ -526,6 +616,7 @@ function useSupabase(table, seed = []) {
             const trackMonths = new Set(Object.keys(supaMonthCounts).filter(m => supaMonthCounts[m] >= 3));
             const seedRows = seed.filter((r) => !supaIds.has(String(r.id)) && !deletedIds.current.has(String(r.id)) && !trackMonths.has((r.fecha||"").slice(0,7)) && !supaLogicalKeys.has(`${r.fecha||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`) && !supaLogicalKeys.has(`${fixFecha(r.fecha)||""}|${(r.cliente||"").toLowerCase().trim()}|${r.total}|${r.area||""}`));
             let merged = [...seedRows, ...normalized];
+            if (VETMAKE_ENABLE_LOCAL_BACKUPS) {
             // Aplicar descripciones del localStorage a filas sin descripción
             try {
               const descMap = JSON.parse(localStorage.getItem("pc_venta_serv") || "{}");
@@ -571,6 +662,7 @@ function useSupabase(table, seed = []) {
                 }
               }
             } catch {}
+            }
             // Aplicar correcciones de fecha guardadas localmente (persisten aunque Supabase falle)
             try {
               const fechaOv = JSON.parse(localStorage.getItem("pc_fecha_overrides") || "{}");
@@ -643,6 +735,14 @@ function useSupabase(table, seed = []) {
       setLoaded(true);
     })();
   }, [refetchTrigger]);
+  // La sesión se resuelve después de montar los hooks. Al iniciar sesión,
+  // todas las tablas vuelven a leer bajo el negocio autenticado; sin esto la
+  // app se quedaba mostrando únicamente la semilla local del primer render.
+  useEffect(() => {
+    const alCambiarAuth = () => { setLoaded(false); refetch(); };
+    window.addEventListener(VETMAKE_AUTH_EVENT, alCambiarAuth);
+    return () => window.removeEventListener(VETMAKE_AUTH_EVENT, alCambiarAuth);
+  }, [refetch]);
   // Sincronizacion entre dispositivos: Supabase avisa por WebSocket y se
   // relee la tabla. Si el WebSocket esta caido, el sondeo cubre el hueco.
   useEffect(() => {
@@ -658,8 +758,8 @@ function useSupabase(table, seed = []) {
     const newData = typeof newDataOrFn === "function" ? newDataOrFn(prevData) : newDataOrFn;
     dataRef.current = newData;
     setData(newData);
-    // Guardar descripciones en localStorage como respaldo (para pc_ventas)
-    if (table === "pc_ventas") {
+    // Guardar descripciones en localStorage como respaldo (solo en la app legacy)
+    if (table === "pc_ventas" && VETMAKE_ENABLE_LOCAL_BACKUPS) {
       try {
         const descMap = JSON.parse(localStorage.getItem("pc_venta_serv") || "{}");
         newData.forEach(v => {
@@ -669,7 +769,7 @@ function useSupabase(table, seed = []) {
         guardarLocal("pc_venta_serv", descMap);
       } catch {}
     }
-    if (table === "pc_ventas") {
+    if (table === "pc_ventas" && VETMAKE_ENABLE_LOCAL_BACKUPS) {
       try {
         const localKey = "pc_ventas_local";
         const existing = JSON.parse(localStorage.getItem(localKey) || "[]");
@@ -681,10 +781,10 @@ function useSupabase(table, seed = []) {
         }
       } catch {}
     }
-    if (table === "pc_citas") {
+    if (table === "pc_citas" && VETMAKE_ENABLE_LOCAL_BACKUPS) {
       try { guardarLocal("pc_citas_agenda", newData); } catch {}
     }
-    if (table === "pc_facturas") {
+    if (table === "pc_facturas" && VETMAKE_ENABLE_LOCAL_BACKUPS) {
       guardarLocal("pc_facturas", newData);
     }
     setSyncing(true);
@@ -727,7 +827,7 @@ function useSupabase(table, seed = []) {
     }
     savDeleted(deletedIds.current);
     auditar(table, "borrar", row || { id });
-    if (table === "pc_ventas") {
+    if (table === "pc_ventas" && VETMAKE_ENABLE_LOCAL_BACKUPS) {
       try {
         const localVentas = JSON.parse(localStorage.getItem("pc_ventas_local") || "[]");
         const filtered = localVentas.filter((r) => String(r.id) !== sid);
@@ -765,7 +865,7 @@ const AUD_TABLAS = new Set(["pc_ventas", "pc_facturas", "pc_clientes", "pc_citas
 let AUD_DISPONIBLE = true;
 function usuarioActual() {
   try {
-    const s = JSON.parse(sessionStorage.getItem("pc_session") || "null");
+    const s = JSON.parse(sessionStorage.getItem(VETMAKE_SESSION_KEY) || "null");
     return (s && s.user && s.user.email) || "desconocido";
   } catch { return "desconocido"; }
 }
@@ -871,8 +971,8 @@ async function uploadSeed(table, seed) {
     await supaFetch(table, "POST", batch, "?on_conflict=id");
   }
 }
-const SUPA_URL_AUTH = "https://ulrzzddovkioxeaarnjk.supabase.co";
-const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVscnp6ZGRvdmtpb3hlYWFybmprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjc3MDEsImV4cCI6MjA4ODYwMzcwMX0.mX3cei5kKAID3WhmMAojhk2QOMs8gDF1LFbYHKXrfUM";
+const SUPA_URL_AUTH = SUPA_URL;
+const SUPA_ANON_KEY = SUPA_KEY;
 async function supaSignIn(email, password) {
   const res = await fetch(`${SUPA_URL_AUTH}/auth/v1/token?grant_type=password`, {
     method: "POST",
@@ -896,12 +996,12 @@ async function supaSignOut(accessToken) {
   });
 }
 async function supaGetSession() {
-  const stored = sessionStorage.getItem("pc_session");
+  const stored = sessionStorage.getItem(VETMAKE_SESSION_KEY);
   if (!stored) return null;
   try {
     const session = JSON.parse(stored);
     if (session.expires_at && Date.now() / 1e3 > session.expires_at) {
-      sessionStorage.removeItem("pc_session");
+      sessionStorage.removeItem(VETMAKE_SESSION_KEY);
       return null;
     }
     return session;
@@ -930,7 +1030,7 @@ function LoginScreen({ onLogin }) {
         user: data.user,
         expires_at: data.expires_at || Math.floor(Date.now() / 1e3) + (data.expires_in || 3600)
       };
-      sessionStorage.setItem("pc_session", JSON.stringify(session));
+      sessionStorage.setItem(VETMAKE_SESSION_KEY, JSON.stringify(session));
       onLogin(session);
     } catch (err) {
       setError("Usuario o contrase\xF1a incorrectos");
@@ -954,7 +1054,7 @@ function LoginScreen({ onLogin }) {
     width: "100%",
     maxWidth: 400,
     boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 52, marginBottom: 8 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 900, color: "#1a6b3a" } }, "PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "#5a6472", marginTop: 4 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas")), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 } }, "Usuario (email)"), /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 32 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 52, marginBottom: 8 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 900, color: "#1a6b3a" } }, VETMAKE_CONFIG.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "#5a6472", marginTop: 4 } }, VETMAKE_CONFIG.tagline)), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 } }, "Usuario (email)"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "email",
@@ -1634,12 +1734,18 @@ function useLS(key, def) {
   return [val, setVal];
 }
 function useSupaTarifas() {
-  const SEED_ALL = useMemo(() => [
+  const SEED_ALL = useMemo(() => VETMAKE_USE_LOCAL_SEEDS ? [
     ...TARIFAS_GROOMING.map(t => ({ ...t, area: "grooming" })),
     ...TARIFAS_VET.map(t => ({ ...t, area: "vet" }))
-  ], []);
+  ] : [], []);
   const [data, _setData] = useState(SEED_ALL);
   const dataRef = useRef(SEED_ALL);
+  const [authVersion, setAuthVersion] = useState(0);
+  useEffect(() => {
+    const alCambiarAuth = () => setAuthVersion(v => v + 1);
+    window.addEventListener(VETMAKE_AUTH_EVENT, alCambiarAuth);
+    return () => window.removeEventListener(VETMAKE_AUTH_EVENT, alCambiarAuth);
+  }, []);
   useEffect(() => {
     (async () => {
       const rows = await supaFetch("pc_tarifas", "GET", null, "?order=id.asc&limit=500");
@@ -1650,7 +1756,7 @@ function useSupaTarifas() {
         await uploadSeed("pc_tarifas", SEED_ALL);
       }
     })();
-  }, []);
+  }, [authVersion, SEED_ALL]);
   const setTarifasGrooming = useCallback(async (fnOrArr) => {
     const cur = dataRef.current;
     const curG = cur.filter(t => t.area === "grooming");
@@ -1806,11 +1912,13 @@ const TABS = [
   { id: "planes", icon: "\u{1F4B3}", label: "Planes" },
   { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
   { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
-  { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
-  { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa" },
+  ...(VETMAKE_ENABLE_LEGACY_INTEGRATIONS ? [
+    { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
+    { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa" },
+  ] : []),
   { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp" },
   { id: "caja", icon: "\u{1F9FE}", label: "Cierre de caja" },
-  { id: "candidatos", icon: "\u{1F9D1}‍⚕️", label: "Candidatos" },
+  ...(VETMAKE_ENABLE_LEGACY_INTEGRATIONS ? [{ id: "candidatos", icon: "\u{1F9D1}‍⚕️", label: "Candidatos" }] : []),
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
 ];
 const VENTAS_SEED = [
@@ -6014,6 +6122,7 @@ async function sincronizarCandidatosSheet(url, puestoDef) {
 
 // Aviso en el Dashboard: candidatos nuevos que Laura todavía no ha revisado.
 function AvisoCandidatosNuevos({ setTab }) {
+  if (!VETMAKE_ENABLE_LEGACY_INTEGRATIONS) return null;
   const E = React.createElement;
   const [pend, setPend] = React.useState([]);
   const cargar = React.useCallback(async () => {
@@ -6232,6 +6341,7 @@ function Candidatos() {
   // La hoja viene conectada de fábrica (CAND_SHEET_URL); si alguien guardó otra
   // para esta vacante, esa manda. Se relee al abrir y cada 2 min, sin botones.
   React.useEffect(() => {
+    if (!VETMAKE_ENABLE_LEGACY_INTEGRATIONS) return;
     let u = ""; try { u = localStorage.getItem("pc_sheet_" + puesto) || ""; } catch {}
     if (!u) u = CAND_SHEET_URL;
     setSheetUrl(u); setSheetStatus("");
@@ -6429,6 +6539,7 @@ function Candidatos() {
 // Aviso en el Dashboard: llamadas registradas HOY por Sofía (marca las no vistas).
 // Al tocarlo lleva a la pestaña Llamadas y las marca como vistas.
 function AvisoLlamadasSofia({ setTab }) {
+  if (!VETMAKE_ENABLE_LEGACY_INTEGRATIONS) return null;
   const E = React.createElement;
   const [calls, setCalls] = React.useState([]);
   React.useEffect(() => {
@@ -7501,26 +7612,29 @@ function CatalogoPublico() {
 function PetColinas() {
   const [session, setSession] = useState(() => {
     try {
-      const s = sessionStorage.getItem("pc_session");
+      const s = sessionStorage.getItem(VETMAKE_SESSION_KEY);
       if (!s) return null;
       const p = JSON.parse(s);
-      if (p.expires_at && Date.now()/1e3 > p.expires_at) { sessionStorage.removeItem("pc_session"); return null; }
+      if (p.expires_at && Date.now()/1e3 > p.expires_at) { sessionStorage.removeItem(VETMAKE_SESSION_KEY); return null; }
       return p;
     } catch { return null; }
   });
   const [authChecked, setAuthChecked] = useState(() => {
     try {
-      const s = sessionStorage.getItem("pc_session");
+      const s = sessionStorage.getItem(VETMAKE_SESSION_KEY);
       if (!s) return true;
       const p = JSON.parse(s);
       if (p.expires_at && Date.now()/1e3 > p.expires_at) return true;
       return false;
     } catch { return true; }
   });
+  const [tenant, setTenant] = useState(() => VETMAKE_TENANT_CONTEXT);
+  const [tenantChecked, setTenantChecked] = useState(() => !session);
+  const [tenantError, setTenantError] = useState("");
   // Hooks siempre al tope — antes de cualquier return condicional (reglas de React)
-  const [ventasVet, setVentasVet]   = useVentasConSeed(VENTAS_SEED);
+  const [ventasVet, setVentasVet]   = useSupabase("pc_ventas", []);
   const setVentas = setVentasVet;
-  const [clientesVet, setClientesVet] = useClientesConSeed(CLIENTES_SEED);
+  const [clientesVet, setClientesVet] = useSupabase("pc_clientes", []);
   const [citasPortal, setCitasPortal, , , , refetchCitasPortal] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
   const [historiasVet, setHistoriasVet] = useSupabase("pc_historias", []);
   const [fichasVet, setFichasVet] = useSupabase("pc_fichas_clinicas", []);
@@ -7540,14 +7654,20 @@ function PetColinas() {
   const [invGlobal, setInvGlobal]     = React.useState([]);
   // Exponer inventario y pagos via window para portales veterinaria/groomer
   React.useEffect(() => {
+    if (!VETMAKE_ENABLE_LOCAL_BACKUPS) {
+      window.__inventarioGlobal = [];
+      window.__pagosNomGlobal = [];
+      window.__setVentasGlobal = setVentasVet;
+      return;
+    }
     try {
       const inv = JSON.parse(localStorage.getItem("pc_inventario") || "[]");
       if (inv.length > 0) { window.__inventarioGlobal = inv; setInvGlobal(inv); }
-      else window.__inventarioGlobal = INVENTARIO_SEED;
+      else window.__inventarioGlobal = [];
       const pagos = JSON.parse(localStorage.getItem("pc_pagos") || "[]");
       window.__pagosNomGlobal = pagos; setPagosNomVet(pagos);
     } catch(e) {
-      window.__inventarioGlobal = INVENTARIO_SEED;
+      window.__inventarioGlobal = [];
       window.__pagosNomGlobal = [];
     }
     // Exponer setVentas para portales
@@ -7589,25 +7709,48 @@ function PetColinas() {
       setAuthChecked(true);
     });
   }, []);
+  useEffect(() => {
+    if (!session) {
+      resetearContextoNegocio();
+      setTenant(null);
+      setTenantError("");
+      setTenantChecked(true);
+      return;
+    }
+    let vivo = true;
+    setTenantChecked(false);
+    setTenantError("");
+    obtenerContextoNegocio().then((ctx) => {
+      if (!vivo) return;
+      setTenant(ctx);
+      setTenantChecked(true);
+      if (ctx) window.dispatchEvent(new Event(VETMAKE_AUTH_EVENT));
+    }).catch((err) => {
+      if (!vivo) return;
+      console.error("[VetMake] No se pudo resolver el negocio:", err);
+      setTenantError("No se pudo preparar el espacio de trabajo. Intenta nuevamente.");
+      setTenantChecked(true);
+    });
+    return () => { vivo = false; };
+  }, [session?.user?.id]);
   function handleLogin(s) { setSession(s); }
   async function handleLogout() {
     if (session?.access_token) await supaSignOut(session.access_token);
-    sessionStorage.removeItem("pc_session");
+    sessionStorage.removeItem(VETMAKE_SESSION_KEY);
+    resetearContextoNegocio();
+    window.dispatchEvent(new Event(VETMAKE_AUTH_EVENT));
     setSession(null);
   }
 
-  if (window.location.search.includes("catalogo")) return React.createElement(CatalogoPublico, null);
+  if (VETMAKE_ENABLE_LEGACY_INTEGRATIONS && window.location.search.includes("catalogo")) return React.createElement(CatalogoPublico, null);
   if (!authChecked) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, color: "#5a6472" } }, "Verificando sesi\xF3n...")));
   if (!session) return /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin });
+  if (!tenantChecked) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, color: "#5a6472" } }, "Preparando tu espacio VetMake...")));
+  if (!tenant) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6", padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: "32px 28px", maxWidth: 440, textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,.08)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 42, marginBottom: 10 } }, "\u{1F512}"), /* @__PURE__ */ React.createElement("h2", { style: { margin: "0 0 10px", color: "#1a6b3a" } }, "Cuenta sin clínica asignada"), /* @__PURE__ */ React.createElement("p", { style: { color: "#5a6472", lineHeight: 1.5, margin: "0 0 20px" } }, tenantError || "Esta cuenta todavía no pertenece a un negocio de VetMake. El administrador debe asignarte una clínica."), /* @__PURE__ */ React.createElement("button", { onClick: handleLogout, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 9, padding: "11px 20px", fontWeight: 700, cursor: "pointer" } }, "Cerrar sesión")));
 
-  const VET_EMAILS_LIST = ["naylan@petcolinas.com"];   // Aylein y Valentina ya no tienen acceso; Naylan Perez tiene su propio usuario
-  const GRM_EMAILS_LIST = ["alexander@petcolinas.com"];
-  // Doctora que atiende en caja: factura y registra ventas, sin ver el negocio.
-  const CAJA_EMAILS_LIST = ["veterinaria@petcolinas.com"];
-  const isCaja = session?.user?.email && CAJA_EMAILS_LIST.includes(session.user.email);
-  // petcolinasrd@gmail.com es también admin — cae en else → PetColinasApp
-  const isVet = session?.user?.email && VET_EMAILS_LIST.includes(session.user.email);
-  const isGrm = session?.user?.email && GRM_EMAILS_LIST.includes(session.user.email);
+  const isCaja = tenant.rol === "caja";
+  const isVet = tenant.rol === "veterinario";
+  const isGrm = tenant.rol === "groomer";
 
   if (isCaja) return React.createElement(React.Fragment, null,
     React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null),
@@ -7866,7 +8009,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
     E("div", { style: { background: C.verde, color: "#fff", padding: "16px 24px" } },
       E("div", { style: { maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 } },
         E("div", null,
-          E("div", { style: { fontWeight: 900, fontSize: 19 } }, "\u{1F43E} PetColinas"),
+          E("div", { style: { fontWeight: 900, fontSize: 19 } }, "\u{1F43E} " + VETMAKE_CONFIG.name),
           E("div", { style: { fontSize: 12, opacity: .85, marginTop: 2, display: "flex", gap: 10, alignItems: "center" } }, session?.user?.email || "", E(EstadoSync, null))),
         E("button", { onClick: onLogout, style: { background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Cerrar sesi\u00F3n"))),
 
@@ -7913,6 +8056,7 @@ function PetColinasApp({ session, onLogout }) {
   // Hoja de leads SIEMPRE en vivo: se relee cada 2 min aunque la pestaña de
   // Candidatos esté cerrada, para que el aviso del Dashboard salga solo.
   useEffect(() => {
+    if (!VETMAKE_ENABLE_LEGACY_INTEGRATIONS) return;
     let vivo = true;
     const correr = () => {
       sincronizarCandidatosSheet(CAND_SHEET_URL)
@@ -8116,7 +8260,7 @@ function PetColinasApp({ session, onLogout }) {
     const todosAuto = inventarioDeGastos.filter((p) => !deletedAuto.has(String(p.id)));
     return [...inventario, ...todosAuto];
   }, [inventario, inventarioDeGastos]);
-  if (!dbReady) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f4f5f6", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: "#1a6b3a" } }, "PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "#5a6472" } }, "Conectando con la base de datos..."), /* @__PURE__ */ React.createElement("div", { style: { width: 200, height: 4, background: "#e0e4e8", borderRadius: 4, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", background: "#1a6b3a", borderRadius: 4, animation: "loadbar 1.5s ease-in-out infinite" } })), /* @__PURE__ */ React.createElement("style", null, `@keyframes loadbar { 0%{width:0%} 60%{width:80%} 100%{width:100%} }`));
+  if (!dbReady) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f4f5f6", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: "#1a6b3a" } }, VETMAKE_CONFIG.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "#5a6472" } }, "Conectando con la base de datos..."), /* @__PURE__ */ React.createElement("div", { style: { width: 200, height: 4, background: "#e0e4e8", borderRadius: 4, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", background: "#1a6b3a", borderRadius: 4, animation: "loadbar 1.5s ease-in-out infinite" } })), /* @__PURE__ */ React.createElement("style", null, `@keyframes loadbar { 0%{width:0%} 60%{width:80%} 100%{width:100%} }`));
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const ventasMes = ventas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
   const gastosMes = gastos.filter((g) => g.fecha?.slice(0, 7) === mesActual);
@@ -8155,7 +8299,7 @@ function PetColinasApp({ session, onLogout }) {
     alignItems: "center",
     justifyContent: "space-between",
     boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
-  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), React.createElement(EstadoSync, null), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} " + VETMAKE_CONFIG.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, VETMAKE_CONFIG.tagline)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), React.createElement(EstadoSync, null), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
     background: "rgba(255,255,255,0.15)",
     border: "1px solid rgba(255,255,255,0.3)",
     color: "#fff",
@@ -8680,7 +8824,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     if (!tel) return alert("Este seguimiento no tiene teléfono. Edítalo y agrega el número.");
     setLlamandoSegId(seg.id);
     try {
-      const r = await fetch("https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/vapi-trigger", {
+      const r = await fetch(SUPA_FUNCTIONS_URL + "/vapi-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY },
         body: JSON.stringify({ nombreMascota: seg.mascota, nombrePropietario: seg.propietario || "", telefono: tel, motivo: "seguimiento_vencido", contexto: seg.notas || seg.tipo || "" })
@@ -13103,7 +13247,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
   small: true,
   color: C.azul,
   onClick: () => { setVista("evolucion"); }
-}, "📋 Evolución"))), /* @__PURE__ */ React.createElement(AlertaMedica, { cliente: c }), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F43E} Mascota"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombreMascota }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Especie", val: c.especie }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Raza", val: c.raza }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tama\xF1o", val: c.tamano }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Sexo", val: c.sexo }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Color / pelaje", val: c.color }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Fecha de nacimiento", val: c.fechaNacimiento }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Edad", val: edad() }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Esterilizado/a", val: c.esterilizado ? "\u2705 S\xED" : "\u274C No" })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.azul, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F464} Propietario"), c.nombrePropietario ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, padding: "7px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, minWidth: 170 } }, "Nombre"), /* @__PURE__ */ React.createElement("span", { onClick: () => { setPropietarioSel(c.nombrePropietario); setVista("propietario"); }, style: { fontWeight: 600, color: C.azul, cursor: "pointer", textDecoration: "underline" }, title: "Ver todas las mascotas de este propietario" }, c.nombrePropietario, " \u{1F50D}")) : null, /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono", val: c.telefono }), c.telefono && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 0", borderBottom: "1px solid #f4f5f6" } }, llamadaStatus === "llamando" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\uD83D\uDCDE Iniciando llamada...") : llamadaStatus === "ok" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\u2705 Llamada iniciada con Sof\xEDa") : llamadaStatus === "error" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.rojo, fontWeight: 700 } }, "\u274C Error al iniciar llamada") : /* @__PURE__ */ React.createElement("button", { onClick: async () => { setLlamadaStatus("llamando"); try { const _r = await fetch("https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/vapi-trigger", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY }, body: JSON.stringify({ nombreMascota: c.nombreMascota, nombrePropietario: c.nombrePropietario || "", telefono: c.telefono, motivo: "manual" }) }); setLlamadaStatus(_r.ok ? "ok" : "error"); } catch(_e) { setLlamadaStatus("error"); } setTimeout(() => setLlamadaStatus(null), 6000); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%", marginTop: 4 } }, "\uD83D\uDCDE Llamar con Sof\xEDa (IA)")), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono alternativo", val: c.telefono2 }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Email", val: c.email }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Direcci\xF3n", val: c.direccion }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Instagram", val: c.instagram }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Registrado el", val: c.fechaRegistro }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.rojo, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1FA7A} Datos m\xE9dicos"), c.alertaMedica && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, border: "2px solid " + C.rojo, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13, fontWeight: 700, color: C.negro } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alerta: "), c.alertaMedica), c.alergias && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alergias:"), " ", c.alergias), /* @__PURE__ */ React.createElement(InfoRow, { label: "Medicamentos", val: c.medicamentos }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Condiciones cr\xF3nicas", val: c.condiciones }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Vet. externo", val: c.veterinarioExterno }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Peso", val: c.pesoKg ? c.pesoKg + " kg" : null }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Microchip", val: c.microchip }), !c.alertaMedica && !c.alergias && !c.medicamentos && !c.condiciones && !c.veterinarioExterno && !c.pesoKg && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, "Sin antecedentes m\xE9dicos registrados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.gold, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4CA} Resumen de visitas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total visitas"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.verde, fontWeight: 700 } }, ventasCliente.length)), /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total gastado"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.gold, fontWeight: 700 } }, RD(ventasCliente.reduce((s, v) => s + (v.total || 0), 0))))), /* @__PURE__ */ React.createElement(InfoRow, { label: "\xDAltima visita", val: ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : c.ultimaVisita2025 || "Sin visitas" }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Ticket promedio", val: ventasCliente.length > 0 ? RD(Math.round(ventasCliente.reduce((s, v) => s + (v.total || 0), 0) / ventasCliente.length)) : null }), c.notas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.gris, borderRadius: 8, padding: "10px 12px", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 4, fontSize: 11, color: C.grisd, textTransform: "uppercase" } }, "Notas"), c.notas))), (() => {
+}, "📋 Evolución"))), /* @__PURE__ */ React.createElement(AlertaMedica, { cliente: c }), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.verde, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F43E} Mascota"), /* @__PURE__ */ React.createElement(InfoRow, { label: "Nombre", val: c.nombreMascota }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Especie", val: c.especie }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Raza", val: c.raza }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tama\xF1o", val: c.tamano }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Sexo", val: c.sexo }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Color / pelaje", val: c.color }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Fecha de nacimiento", val: c.fechaNacimiento }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Edad", val: edad() }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Esterilizado/a", val: c.esterilizado ? "\u2705 S\xED" : "\u274C No" })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.azul, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F464} Propietario"), c.nombrePropietario ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, padding: "7px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, minWidth: 170 } }, "Nombre"), /* @__PURE__ */ React.createElement("span", { onClick: () => { setPropietarioSel(c.nombrePropietario); setVista("propietario"); }, style: { fontWeight: 600, color: C.azul, cursor: "pointer", textDecoration: "underline" }, title: "Ver todas las mascotas de este propietario" }, c.nombrePropietario, " \u{1F50D}")) : null, /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono", val: c.telefono }), c.telefono && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 0", borderBottom: "1px solid #f4f5f6" } }, llamadaStatus === "llamando" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\uD83D\uDCDE Iniciando llamada...") : llamadaStatus === "ok" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.verde, fontWeight: 700 } }, "\u2705 Llamada iniciada con Sof\xEDa") : llamadaStatus === "error" ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.rojo, fontWeight: 700 } }, "\u274C Error al iniciar llamada") : /* @__PURE__ */ React.createElement("button", { onClick: async () => { setLlamadaStatus("llamando"); try { const _r = await fetch(SUPA_FUNCTIONS_URL + "/vapi-trigger", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY }, body: JSON.stringify({ nombreMascota: c.nombreMascota, nombrePropietario: c.nombrePropietario || "", telefono: c.telefono, motivo: "manual" }) }); setLlamadaStatus(_r.ok ? "ok" : "error"); } catch(_e) { setLlamadaStatus("error"); } setTimeout(() => setLlamadaStatus(null), 6000); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%", marginTop: 4 } }, "\uD83D\uDCDE Llamar con Sof\xEDa (IA)")), /* @__PURE__ */ React.createElement(InfoRow, { label: "Tel\xE9fono alternativo", val: c.telefono2 }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Email", val: c.email }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Direcci\xF3n", val: c.direccion }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Instagram", val: c.instagram }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Registrado el", val: c.fechaRegistro }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.rojo, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1FA7A} Datos m\xE9dicos"), c.alertaMedica && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, border: "2px solid " + C.rojo, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13, fontWeight: 700, color: C.negro } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alerta: "), c.alertaMedica), c.alergias && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u26A0\uFE0F Alergias:"), " ", c.alergias), /* @__PURE__ */ React.createElement(InfoRow, { label: "Medicamentos", val: c.medicamentos }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Condiciones cr\xF3nicas", val: c.condiciones }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Vet. externo", val: c.veterinarioExterno }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Peso", val: c.pesoKg ? c.pesoKg + " kg" : null }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Microchip", val: c.microchip }), !c.alertaMedica && !c.alergias && !c.medicamentos && !c.condiciones && !c.veterinarioExterno && !c.pesoKg && /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13 } }, "Sin antecedentes m\xE9dicos registrados.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: C.gold, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "\u{1F4CA} Resumen de visitas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total visitas"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.verde, fontWeight: 700 } }, ventasCliente.length)), /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 10, padding: "12px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginBottom: 4 } }, "Total gastado"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.gold, fontWeight: 700 } }, RD(ventasCliente.reduce((s, v) => s + (v.total || 0), 0))))), /* @__PURE__ */ React.createElement(InfoRow, { label: "\xDAltima visita", val: ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : c.ultimaVisita2025 || "Sin visitas" }), /* @__PURE__ */ React.createElement(InfoRow, { label: "Ticket promedio", val: ventasCliente.length > 0 ? RD(Math.round(ventasCliente.reduce((s, v) => s + (v.total || 0), 0) / ventasCliente.length)) : null }), c.notas && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, background: C.gris, borderRadius: 8, padding: "10px 12px", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 4, fontSize: 11, color: C.grisd, textTransform: "uppercase" } }, "Notas"), c.notas))), (() => {
       let fotos = [];
       try {
         fotos = JSON.parse(c.fotosMascota || "[]");
@@ -16521,7 +16665,7 @@ async function pedirEnlacePago(venta, cliente) {
   }
   let token = SUPA_KEY;
   try {
-    const s = JSON.parse(sessionStorage.getItem("pc_session") || "null");
+    const s = JSON.parse(sessionStorage.getItem(VETMAKE_SESSION_KEY) || "null");
     if (s && s.access_token) token = s.access_token;
   } catch (e) {}
   const res = await fetch(SUPA_URL + "/functions/v1/pagadito-cobro", {
