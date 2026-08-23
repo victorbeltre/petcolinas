@@ -7,11 +7,13 @@
 Victor pero **completamente separado** del de PetColinas
 (`ulrzzddovkioxeaarnjk`), que sigue sin tocarse.
 
-Ahí se aplicaron `0001`, `0002`, `0003`, `0004`, `0005` y `0006`. `0003` agregó la
+Ahí se aplicaron `0001`, `0002`, `0003`, `0004`, `0005`, `0006` y `0007`. `0003` agregó la
 estructura vacía de las seis tablas operativas, `0004` cerró los permisos
 explícitos de `anon` y `0005` agregó las siete tablas auxiliares necesarias
-para el MVP; `0006` agrega los planes prepagados. No se copiaron datos reales
-de PetColinas — solo se leyó su estructura para que la prueba fuera fiel.
+para el MVP; `0006` agrega los planes prepagados y `0007` agrega el perfil
+comercial por negocio, el equipo configurable y las políticas admin-only para
+la configuración, empleados y tarifas. No se copiaron datos reales de
+PetColinas — solo se leyó su estructura para que la prueba fuera fiel.
 
 ## Los archivos
 
@@ -23,6 +25,7 @@ de PetColinas — solo se leyó su estructura para que la prueba fuera fiel.
 | `migrations/0004_restringe_acceso_anonimo.sql` | Revoca los permisos explícitos de `anon` sobre las tablas de VetMake y conserva solo los permisos necesarios para la aplicación autenticada. |
 | `migrations/0005_negocio_id_tablas_auxiliares.sql` | Crea y tenantiza `pc_seguimientos`, `pc_pagos`, `pc_tarifas`, `pc_historias`, `pc_fichas_clinicas`, `pc_depositos` y `pc_auditoria`, con RLS y permisos explícitos para `authenticated`. |
 | `migrations/0006_negocio_id_pc_paquetes.sql` | Crea y tenantiza `pc_paquetes`, la tabla de planes prepagados usada por Ventas y Planes. |
+| `migrations/0007_configuracion_negocio_y_empleados.sql` | Agrega datos comerciales a `negocios`, campos de contacto/rol/comisión a `pc_empleados` y restringe las escrituras de configuración, empleados y tarifas al rol `admin`. |
 
 ## El patrón a repetir
 
@@ -48,8 +51,12 @@ no copia datos reales.
 `0005` repite el mismo patrón para las siete tablas auxiliares que el frontend
 usa para seguimiento, nómina, tarifas, historia clínica, fichas, depósitos y
 auditoría. `0006` hace lo mismo con `pc_paquetes`, que soporta los planes
-prepagados. `pc_candidatos`, `pc_llamadas` y otras tablas ligadas a operaciones
-específicas de PetColinas no se habilitan en el MVP de VetMake.
+prepagados. `0007` deja el perfil comercial editable solo por el administrador
+del negocio y separa la configuración de empleados y tarifas de la lectura
+operativa: cualquier miembro autenticado puede consultarlos dentro de su
+tenant, pero solo `admin` puede crearlos, modificarlos o eliminarlos.
+`pc_candidatos`, `pc_llamadas` y otras tablas ligadas a operaciones específicas
+de PetColinas no se habilitan en el MVP de VetMake.
 
 La misma migración endurece `mi_negocio()` como `SECURITY INVOKER`, revoca
 su ejecución a `anon`, conserva la ejecución para `authenticated` y
@@ -134,9 +141,10 @@ prueba transaccional devolvió lo siguiente en cada tabla:
 | `delete` sobre una fila del negocio B | 0 filas afectadas |
 
 La transacción se revirtió; las seis tablas siguen vacías y no quedaron
-fixtures temporales. `0003`, `0004`, `0005` y `0006` están aplicadas en
+fixtures temporales. `0003`, `0004`, `0005`, `0006` y `0007` están aplicadas en
 `vetmake-dev`. La comprobación estructural de `0005` cubre las siete tablas
-auxiliares nuevas y `0006` cubre `pc_paquetes`.
+auxiliares nuevas, `0006` cubre `pc_paquetes` y `0007` fue verificada contra
+columnas, grants y políticas RLS de configuración.
 
 Los advisors posteriores quedaron así:
 
