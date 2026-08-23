@@ -7,10 +7,10 @@
 Victor pero **completamente separado** del de PetColinas
 (`ulrzzddovkioxeaarnjk`), que sigue sin tocarse.
 
-Ahí se aplicaron `0001` y `0002`, sobre una réplica de la estructura de
-`pc_clientes` (columnas y tipos exactos, sin datos reales — solo
-estructura leída de PetColinas para que la prueba fuera fiel). Después se
-corrió la prueba de aislamiento de la sección de abajo — **pasó**.
+Ahí se aplicaron `0001`, `0002`, `0003` y `0004`. `0003` agregó la
+estructura vacía de las seis tablas operativas y `0004` cerró los permisos
+explícitos de `anon`. No se copiaron datos reales de PetColinas — solo se
+leyó su estructura para que la prueba fuera fiel.
 
 ## Los archivos
 
@@ -19,6 +19,7 @@ corrió la prueba de aislamiento de la sección de abajo — **pasó**.
 | `migrations/0001_negocios_y_membresia.sql` | La fundación: tabla `negocios`, tabla `usuarios_negocio`, función `mi_negocio()`. Se aplica una sola vez. |
 | `migrations/0002_negocio_id_pc_clientes_ejemplo.sql` | El patrón completo — agregar `negocio_id`, quitar las políticas de un solo negocio, crear las 4 políticas multi-tenant (select/insert/update/delete) — aplicado a `pc_clientes` como ejemplo trabajado. |
 | `migrations/0003_negocio_id_pc_tablas_restantes.sql` | Completa la estructura vacía de esas seis tablas si aún no existe, endurece la fundación RLS y aplica el patrón multi-tenant a `pc_ventas`, `pc_facturas`, `pc_inventario`, `pc_empleados` (nómina), `pc_gastos` y `pc_citas`. |
+| `migrations/0004_restringe_acceso_anonimo.sql` | Revoca los permisos explícitos de `anon` sobre las tablas de VetMake y conserva solo los permisos necesarios para la aplicación autenticada. |
 
 ## El patrón a repetir
 
@@ -48,10 +49,16 @@ su ejecución a `anon`, conserva la ejecución para `authenticated` y
 nuevas. Esto evita depender de la exposición implícita que Supabase está
 retirando para tablas nuevas.
 
-El patrón se validó primero con `pc_clientes` usando datos reales de dos
-negocios (ver siguiente sección). La repetición para las seis tablas de
-esta fase quedó escrita en `0003`; todavía falta aplicarla y repetir la
-prueba de aislamiento sobre cada tabla.
+Después de aplicarla, `0004` elimina también los permisos de tabla que el
+proyecto había heredado para `anon`. RLS sigue habilitado en todas las tablas;
+la revocación evita depender únicamente de una política vacía para bloquear
+el acceso anónimo.
+
+El patrón se validó primero con `pc_clientes` usando dos negocios ficticios
+y después se repitió sobre las seis tablas de esta fase. La prueba de
+aislamiento quedó completada; las tablas auxiliares de PetColinas que no
+forman parte de esta primera lista todavía quedan para una decisión de
+alcance posterior.
 
 ## La prueba obligatoria antes de vender nada
 
@@ -85,7 +92,7 @@ Si el usuario A ve, edita o borra algo del negocio B con esto puesto,
 bug que el 23 ago costó horas de diagnóstico en un solo negocio; acá
 significaría una fuga de datos médicos entre clínicas de verdad.
 
-## Resultado — 23 ago 2026, corrida real contra `vetmake-dev`
+## Resultado — 23 ago 2026, corridas reales contra `vetmake-dev`
 
 Dos negocios de prueba, dos usuarios de `auth.users`, un cliente en cada
 uno (Firulais → Clínica A, Michi → Clínica B). Autenticado como el usuario
@@ -106,11 +113,26 @@ código.** El patrón (`negocio_id` + 4 políticas usando
 validado y listo para replicarse al resto de las tablas `pc_*` siguiendo
 el patrón mecánico de la sección de arriba.
 
-La migración `0003_negocio_id_pc_tablas_restantes.sql` ya deja escrita esa
-repetición para las seis tablas de esta fase. Está preparada localmente,
-pero todavía no se ha aplicado en `vetmake-dev`: ejecutarla modificaría
-infraestructura de Supabase y requiere confirmación explícita antes de
-correrla.
+Para las seis tablas operativas nuevas, autenticado como el usuario A, la
+prueba transaccional devolvió lo siguiente en cada tabla:
+
+| Operación | Resultado |
+|---|---|
+| `select` | Solo la fila del negocio A (`OWN_ONLY`) |
+| `insert` con `negocio_id` del negocio B | Bloqueado por RLS |
+| `update` sobre una fila del negocio B | 0 filas afectadas |
+| `delete` sobre una fila del negocio B | 0 filas afectadas |
+
+La transacción se revirtió; las seis tablas siguen vacías y no quedaron
+fixtures temporales. `0003` y `0004` están aplicadas en `vetmake-dev`.
+
+Los advisors posteriores quedaron así:
+
+- Seguridad: solo permanece la advertencia preexistente de protección contra
+  contraseñas filtradas desactivada; no queda la alerta de `SECURITY DEFINER`.
+- Rendimiento: reporta índices sin uso porque las seis tablas están vacías;
+  se conservan porque cubren las búsquedas por `negocio_id` y las claves
+  foráneas.
 
 Los datos de prueba (negocios, usuarios, clientes ficticios) siguen en
 `vetmake-dev` a propósito, como fixture reproducible — no se borraron.

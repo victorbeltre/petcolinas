@@ -103,14 +103,14 @@ Hoy cada tabla de Supabase tiene una sola política: `for all to
 authenticated`. Cualquier empleado que inicia sesión ve todo. Correcto para
 una clínica. Catastrófico para dos.
 
-**Modelo de datos que falta:** tabla nueva `negocios` (id, nombre, slug,
+**Modelo de datos:** tabla `negocios` (id, nombre, slug,
 plan, moneda, zona horaria, colores, fecha de alta, activo) + columna
 `negocio_id` en cada tabla existente (clientes, ventas, facturas,
 inventario, nómina, gastos, citas). Tabla `usuarios_negocio` que mapea cada
 `auth.uid()` a su `negocio_id` y su rol.
 
 **Las políticas RLS cambian de forma, no de espíritu:** de `using (true)` a
-`using (negocio_id = mi_negocio())`. El patrón "todas las tablas usan RLS +
+`using (negocio_id = (select mi_negocio()))`. El patrón "todas las tablas usan RLS +
 `authenticated`" que ya es la convención de PetColinas se mantiene — solo
 se le agrega la dimensión de negocio.
 
@@ -131,19 +131,17 @@ solo hay un negocio. En el SaaS, cada webhook que llega (un mensaje de
 WhatsApp) tiene que resolver primero a qué negocio pertenece — el número de
 WhatsApp de destino se vuelve la clave para encontrar el negocio correcto.
 
-**Estado (23 ago, sesión 3): ✅ diseñado, aplicado y probado.** El modelo
-está escrito en `vetmake/supabase/migrations/` (`0001` para `negocios` +
-`usuarios_negocio` + `mi_negocio()`, `0002` para el patrón completo
-aplicado a `pc_clientes` como ejemplo trabajado). Con el visto bueno de
-Victor se creó `vetmake-dev` (`couzqdicmxrypacgrqcn`) — proyecto de
-Supabase nuevo y separado, $0/mes, en su misma organización pero sin
-ningún vínculo con el de PetColinas — y ahí se corrió la prueba de los dos
-negocios ficticios: aislamiento confirmado en select, insert, update y
-delete (el delete se probó con `commit` real, no solo revertido, para que
-la prueba fuera inequívoca). Detalle completo en
-`vetmake/supabase/README.md`. Falta replicar el mismo patrón mecánico al
-resto de las tablas `pc_*` — sigue siendo Fase 1, antes de pasar a
-generalizar lo quemado (Fase 2).
+**Estado (23 ago, después de aplicar `0003` y `0004`): ✅ diseñado, aplicado
+y probado.** En `vetmake-dev` (`couzqdicmxrypacgrqcn`) ya están la fundación
+multi-tenant, `pc_clientes` y las seis tablas operativas (`pc_ventas`,
+`pc_facturas`, `pc_inventario`, `pc_empleados`, `pc_gastos` y `pc_citas`),
+con RLS probado entre dos usuarios y dos negocios ficticios en select,
+insert, update y delete. También se revocó el acceso explícito de `anon` y
+`mi_negocio()` quedó como `SECURITY INVOKER`. PetColinas
+(`ulrzzddovkioxeaarnjk`) no se tocó. Detalle completo en
+`vetmake/supabase/README.md`. Las tablas auxiliares restantes de PetColinas
+quedan fuera de esta primera lista y deben resolverse antes de pasar a la
+Fase 2.
 
 ---
 
