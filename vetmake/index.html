@@ -102,7 +102,7 @@ async function obtenerContextoNegocio() {
 
     const membership = memberships[0];
     const businessRes = await fetch(
-      SUPA_URL + "/rest/v1/negocios?id=eq." + encodeURIComponent(membership.negocio_id) + "&select=id,nombre,slug,plan,moneda,zona_horaria,color_primario,logo_url,activo&limit=1",
+      SUPA_URL + "/rest/v1/negocios?id=eq." + encodeURIComponent(membership.negocio_id) + "&select=id,nombre,slug,plan,moneda,zona_horaria,color_primario,logo_url,tagline,telefono,direccion,rnc,email,whatsapp,instagram,facebook,sitio_web,activo&limit=1",
       { headers }
     );
     if (!businessRes.ok) throw new Error("No se pudo leer la clínica de VetMake");
@@ -374,7 +374,7 @@ try {
 // sincronizacion: entra el respaldo por sondeo. Peor caso, 60 segundos.
 const PC_TABLAS_VIVAS = ["pc_ventas", "pc_clientes", "pc_citas", "pc_facturas",
                          "pc_seguimientos", "pc_inventario", "pc_gastos", "pc_pagos",
-                         "pc_historias", "pc_tarifas", "pc_fichas_clinicas", "pc_paquetes"];
+                         "pc_historias", "pc_tarifas", "pc_empleados", "pc_fichas_clinicas", "pc_paquetes"];
 const PC_SONDEO_MS = 60000;      // respaldo cuando el WebSocket esta caido
 const PC_REBOTE_MS = 1200;       // espera antes de releer, para agrupar rafagas
 // Al volver a la pestana se releia TODO de golpe (11 tablas x 2 peticiones cada
@@ -1308,7 +1308,14 @@ function normalizeRow(table, r) {
     id: r.id,
     nombre: r.nombre,
     cargo: r.cargo,
-    mensualidad: r.mensualidad
+    mensualidad: Number(r.mensualidad) || 0,
+    usuarioId: r.usuario_id || r.usuarioId || null,
+    email: r.email || "",
+    telefono: r.telefono || "",
+    rol: r.rol || "",
+    activo: r.activo !== false,
+    comisionPct: Number(r.comision_pct ?? r.comisionPct) || 0,
+    tipoPago: r.tipo_pago || r.tipoPago || ""
   };
   if (table === "pc_inventario") return {
     id: r.id,
@@ -1502,7 +1509,14 @@ function denormalizeRow(table, r) {
     id: r.id,
     nombre: r.nombre,
     cargo: r.cargo,
-    mensualidad: r.mensualidad
+    mensualidad: Number(r.mensualidad) || 0,
+    usuario_id: r.usuarioId || r.usuario_id || null,
+    email: r.email || null,
+    telefono: r.telefono || null,
+    rol: r.rol || null,
+    activo: r.activo !== false,
+    comision_pct: Number(r.comisionPct ?? r.comision_pct) || 0,
+    tipo_pago: r.tipoPago || r.tipo_pago || null
   };
   if (table === "pc_inventario") return {
     id: r.id,
@@ -1927,6 +1941,7 @@ const TABS = [
   { id: "cobros", icon: "\u{1F4B5}", label: "Cobros" },
   { id: "planes", icon: "\u{1F4B3}", label: "Planes" },
   { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
+  { id: "configuracion", icon: "\u{1F527}", label: "Configuración" },
   { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
   ...(VETMAKE_ENABLE_LEGACY_INTEGRATIONS ? [
     { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
@@ -7436,15 +7451,14 @@ function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventar
       "Área": "Grooming",
       "Servicio": t.nombre || "",
       "Precio (RD$)": fmt(t.precio),
-      "Comisión Alexander (RD$)": fmt(t.comision)
+      "Comisión configurada (RD$ o %)": fmt(t.comision)
     }));
     const tarVetData = (tarifasVet || []).map(t => ({
       "ID": t.id,
       "Área": "Veterinaria",
       "Servicio": t.nombre || "",
       "Precio (RD$)": fmt(t.precio),
-      "Comisión Aylein (30%)": Math.round(fmt(t.precio) * 0.30),
-      "Comisión Valentina (40%)": Math.round(fmt(t.precio) * 0.40)
+      "Comisión configurada (RD$ o %)": fmt(t.comision)
     }));
     const wsTar = XLSX.utils.json_to_sheet([...tarGroomData, ...tarVetData].length ? [...tarGroomData, ...tarVetData] : [{ "Sin datos": "" }]);
     wsTar["!cols"] = [8,14,35,14,20,22].map(w => ({ wch: w }));
@@ -7661,6 +7675,7 @@ function PetColinas() {
   const [historiasVet, setHistoriasVet] = useSupabase("pc_historias", []);
   const [fichasVet, setFichasVet] = useSupabase("pc_fichas_clinicas", []);
   const [pagosNomVet, setPagosNomVet] = React.useState([]);
+  const [empleadosVet, setEmpleadosVet, empleadosLoadedVet, , deleteEmpleadoVet] = useSupabase("pc_empleados", []);
   // Datos que necesita el portal de caja (hooks siempre arriba, sin condicionales)
   const [invCaja, setInvCaja, , , deleteInvCaja] = useSupabase("pc_inventario", INVENTARIO_SEED);
   const [paqCaja, setPaqCaja] = useSupabase("pc_paquetes", []);
@@ -7791,7 +7806,7 @@ function PetColinas() {
     }));
 
   if (isVet) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalVeterinaria, {
-    session, tenant, onLogout: handleLogout,
+    session, tenant, empleados: empleadosVet, tarifasGrooming: (tarifasCaja || []).filter((t) => t.area === "grooming"), tarifasVet: (tarifasCaja || []).filter((t) => t.area === "vet"), onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     clientes: clientesVet, setClientes: setClientesVet,
     citas: citasPortal, setCitas: setCitasPortal,
@@ -7800,14 +7815,14 @@ function PetColinas() {
   }));
 
   if (isGrm) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalGroomer, {
-    session, tenant, onLogout: handleLogout,
+    session, tenant, empleados: empleadosVet, tarifasGrooming: (tarifasCaja || []).filter((t) => t.area === "grooming"), tarifasVet: (tarifasCaja || []).filter((t) => t.area === "vet"), onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     pagosNom: pagosNomVet || [],
     clientes: clientesVet, setClientes: setClientesVet,
     citas: citasPortal, setCitas: setCitasPortal
   }));
 
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, tenant, onLogout: handleLogout }));
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, tenant, onLogout: handleLogout, onTenantChange: setTenant, empleados: empleadosVet, setEmpleados: setEmpleadosVet, empleadosLoaded: empleadosLoadedVet, deleteEmpleado: deleteEmpleadoVet }));
 }
 const INVENTARIO_SEED = [
   { id: "80001", nombre: "NG Spectra S 3.6 - 7.5 kg", categoria: "farmaco", stock: 0, stockInicial: 8, stockMin: 1, costo: 962, pventa: 1462, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
@@ -8068,7 +8083,211 @@ function PortalCaja({ session, tenant, onLogout, ventas, setVentas, deleteVenta,
   );
 }
 
-function PetColinasApp({ session, tenant, onLogout }) {
+// ─── CONFIGURACIÓN DEL NEGOCIO · onboarding operativo ─────────────────────
+// Esta pantalla solo se monta dentro del panel admin. El alta de cuentas de
+// Auth sigue siendo una operación separada: aquí se prepara el negocio y su
+// equipo sin exponer claves administrativas ni inventar usuarios desde el navegador.
+function ConfiguracionNegocio({ tenant, onTenantChange, empleados = [], setEmpleados, deleteEmpleado, onGoServicios }) {
+  const E = React.createElement;
+  const negocio = tenant?.negocio || {};
+  const [seccion, setSeccion] = React.useState("perfil");
+  const [guardandoPerfil, setGuardandoPerfil] = React.useState(false);
+  const [mensaje, setMensaje] = React.useState(null);
+  const [perfil, setPerfil] = React.useState(() => ({
+    nombre: negocio.nombre || "",
+    tagline: negocio.tagline || "",
+    telefono: negocio.telefono || "",
+    whatsapp: negocio.whatsapp || "",
+    email: negocio.email || "",
+    rnc: negocio.rnc || "",
+    direccion: negocio.direccion || "",
+    instagram: negocio.instagram || "",
+    facebook: negocio.facebook || "",
+    sitio_web: negocio.sitio_web || "",
+    color_primario: negocio.color_primario || ""
+  }));
+  const EMPLEADO_VACIO = { id: "", nombre: "", cargo: "", rol: "", email: "", telefono: "", mensualidad: "", comisionPct: "0", tipoPago: "mixto", activo: true, usuarioId: "" };
+  const [empleadoForm, setEmpleadoForm] = React.useState(EMPLEADO_VACIO);
+  const [empleadoEditId, setEmpleadoEditId] = React.useState(null);
+
+  React.useEffect(() => {
+    setPerfil({
+      nombre: negocio.nombre || "",
+      tagline: negocio.tagline || "",
+      telefono: negocio.telefono || "",
+      whatsapp: negocio.whatsapp || "",
+      email: negocio.email || "",
+      rnc: negocio.rnc || "",
+      direccion: negocio.direccion || "",
+      instagram: negocio.instagram || "",
+      facebook: negocio.facebook || "",
+      sitio_web: negocio.sitio_web || "",
+      color_primario: negocio.color_primario || ""
+    });
+  }, [negocio.id]);
+
+  const setPerfilCampo = (campo, valor) => setPerfil(prev => ({ ...prev, [campo]: valor }));
+  const setEmpleadoCampo = (campo, valor) => setEmpleadoForm(prev => ({ ...prev, [campo]: valor }));
+  const avisar = (tipo, texto) => {
+    setMensaje({ tipo, texto });
+    window.setTimeout(() => setMensaje(null), 5000);
+  };
+
+  async function guardarPerfil() {
+    if (!String(perfil.nombre || "").trim()) return avisar("error", "El nombre del negocio es obligatorio.");
+    setGuardandoPerfil(true);
+    const payload = {
+      nombre: String(perfil.nombre).trim(),
+      tagline: String(perfil.tagline || "").trim() || null,
+      telefono: String(perfil.telefono || "").trim() || null,
+      whatsapp: String(perfil.whatsapp || "").trim() || null,
+      email: String(perfil.email || "").trim() || null,
+      rnc: String(perfil.rnc || "").trim() || null,
+      direccion: String(perfil.direccion || "").trim() || null,
+      instagram: String(perfil.instagram || "").trim() || null,
+      facebook: String(perfil.facebook || "").trim() || null,
+      sitio_web: String(perfil.sitio_web || "").trim() || null,
+      color_primario: String(perfil.color_primario || "").trim() || null
+    };
+    const resultado = await supaFetch("negocios", "PATCH", payload, "?id=eq." + encodeURIComponent(tenant.negocioId));
+    setGuardandoPerfil(false);
+    if (!resultado || resultado.error) return avisar("error", "No se pudo guardar el perfil. Revisa la conexión e inténtalo otra vez.");
+    const siguiente = { ...tenant, negocio: { ...negocio, ...payload } };
+    VETMAKE_TENANT_CONTEXT = siguiente;
+    window.__vetmakeTenant = siguiente;
+    if (onTenantChange) onTenantChange(siguiente);
+    avisar("ok", "Perfil del negocio actualizado.");
+  }
+
+  function editarEmpleado(emp) {
+    setEmpleadoEditId(emp.id);
+    setEmpleadoForm({
+      id: emp.id,
+      nombre: emp.nombre || "",
+      cargo: emp.cargo || "",
+      rol: emp.rol || "",
+      email: emp.email || "",
+      telefono: emp.telefono || "",
+      mensualidad: emp.mensualidad ?? "",
+      comisionPct: emp.comisionPct ?? 0,
+      tipoPago: emp.tipoPago || "mixto",
+      activo: emp.activo !== false,
+      usuarioId: emp.usuarioId || ""
+    });
+    setSeccion("equipo");
+  }
+
+  function limpiarEmpleado() {
+    setEmpleadoEditId(null);
+    setEmpleadoForm(EMPLEADO_VACIO);
+  }
+
+  function guardarEmpleado() {
+    if (!String(empleadoForm.nombre || "").trim()) return avisar("error", "El nombre del empleado es obligatorio.");
+    const pct = Math.max(0, Math.min(100, Number(empleadoForm.comisionPct) || 0));
+    const fila = {
+      id: empleadoEditId || "emp_" + Date.now(),
+      nombre: String(empleadoForm.nombre).trim(),
+      cargo: String(empleadoForm.cargo || "").trim(),
+      mensualidad: Number(empleadoForm.mensualidad) || 0,
+      usuarioId: empleadoForm.usuarioId || null,
+      email: String(empleadoForm.email || "").trim(),
+      telefono: String(empleadoForm.telefono || "").trim(),
+      rol: empleadoForm.rol || "",
+      activo: empleadoForm.activo !== false,
+      comisionPct: pct,
+      tipoPago: empleadoForm.tipoPago || "mixto"
+    };
+    if (empleadoEditId) setEmpleados(prev => prev.map(emp => String(emp.id) === String(empleadoEditId) ? { ...emp, ...fila } : emp));
+    else setEmpleados(prev => [...(prev || []), fila]);
+    limpiarEmpleado();
+    avisar("ok", empleadoEditId ? "Empleado actualizado." : "Empleado agregado al negocio.");
+  }
+
+  async function borrarEmpleado(emp) {
+    if (!confirm("¿Eliminar a " + (emp.nombre || "este empleado") + " del equipo?")) return;
+    await deleteEmpleado(emp.id);
+    if (String(empleadoEditId) === String(emp.id)) limpiarEmpleado();
+    avisar("ok", "Empleado eliminado.");
+  }
+
+  const Campo = ({ label, campo, placeholder, type = "text" }) => E("label", { style: { display: "flex", flexDirection: "column", gap: 5, fontSize: 12, color: "#5a6472", fontWeight: 700 } },
+    label,
+    E("input", { type, value: perfil[campo] || "", onChange: e => setPerfilCampo(campo, e.target.value), placeholder: placeholder || "", style: { width: "100%", padding: "10px 11px", border: "1px solid #dfe5e8", borderRadius: 8, fontSize: 13, color: "#1a1d23", background: "#fff" } })
+  );
+  const campoEmpleado = (label, campo, placeholder, type = "text") => E("label", { style: { display: "flex", flexDirection: "column", gap: 5, fontSize: 12, color: "#5a6472", fontWeight: 700 } },
+    label,
+    E("input", { type, value: empleadoForm[campo] ?? "", onChange: e => setEmpleadoCampo(campo, e.target.value), placeholder: placeholder || "", style: { width: "100%", padding: "9px 10px", border: "1px solid #dfe5e8", borderRadius: 8, fontSize: 13, color: "#1a1d23", background: "#fff" } })
+  );
+  const botonSeccion = (id, icono, label) => E("button", { key: id, onClick: () => setSeccion(id), style: { border: "none", borderRadius: 9, padding: "9px 13px", cursor: "pointer", background: seccion === id ? "#1a6b3a" : "#f1f5f3", color: seccion === id ? "#fff" : "#5a6472", fontWeight: 800, fontSize: 12 } }, icono + " " + label);
+
+  return E("div", null,
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap", marginBottom: 18 } },
+      E("div", null,
+        E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800, color: "#1a1d23" } }, "⚙️ Configuración"),
+        E("div", { style: { color: "#5a6472", fontSize: 13, marginTop: 4 } }, "Prepara el perfil, el equipo y las reglas de tu negocio.")),
+      E("div", { style: { display: "flex", gap: 7, flexWrap: "wrap" } }, botonSeccion("perfil", "🏢", "Perfil comercial"), botonSeccion("equipo", "👥", "Equipo"), botonSeccion("ayuda", "✓", "Siguiente paso"))
+    ),
+    mensaje && E("div", { style: { padding: "10px 13px", borderRadius: 9, marginBottom: 16, background: mensaje.tipo === "ok" ? "#e8f5ed" : "#fdeaea", color: mensaje.tipo === "ok" ? "#166534" : "#b4232a", fontSize: 13, fontWeight: 700 } }, mensaje.tipo === "ok" ? "✅ " : "⚠️ ", mensaje.texto),
+    seccion === "perfil" && E("div", null,
+      E("div", { style: { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 12, padding: 20, marginBottom: 16 } },
+        E("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, "🏢 Identidad del negocio"),
+        E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 16 } }, "Estos datos aparecen en encabezados, facturas, carnets y mensajes."),
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 13 } },
+          E(Campo, { label: "Nombre comercial *", campo: "nombre", placeholder: "Ej. Clínica Veterinaria" }),
+          E(Campo, { label: "Descripción corta", campo: "tagline", placeholder: "Ej. Salud y bienestar animal" }),
+          E(Campo, { label: "Teléfono", campo: "telefono", placeholder: "809-000-0000" }),
+          E(Campo, { label: "WhatsApp", campo: "whatsapp", placeholder: "809-000-0000" }),
+          E(Campo, { label: "Correo comercial", campo: "email", placeholder: "contacto@clinica.com", type: "email" }),
+          E(Campo, { label: "RNC", campo: "rnc", placeholder: "Opcional" }),
+          E("label", { style: { gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 5, fontSize: 12, color: "#5a6472", fontWeight: 700 } }, "Dirección", E("textarea", { value: perfil.direccion || "", onChange: e => setPerfilCampo("direccion", e.target.value), rows: 2, placeholder: "Dirección de la clínica", style: { width: "100%", padding: "10px 11px", border: "1px solid #dfe5e8", borderRadius: 8, fontSize: 13, resize: "vertical" } })),
+          E(Campo, { label: "Instagram", campo: "instagram", placeholder: "@tuclinica" }),
+          E(Campo, { label: "Facebook", campo: "facebook", placeholder: "facebook.com/tuclinica" }),
+          E(Campo, { label: "Sitio web", campo: "sitio_web", placeholder: "https://..." }),
+          E(Campo, { label: "Color principal", campo: "color_primario", placeholder: "#1a6b3a" })
+        ),
+        E("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 18 } }, E("button", { onClick: guardarPerfil, disabled: guardandoPerfil, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", cursor: guardandoPerfil ? "wait" : "pointer", fontWeight: 800, fontSize: 13 } }, guardandoPerfil ? "Guardando…" : "💾 Guardar perfil"))
+      ),
+      E("div", { style: { background: "#f8faf9", border: "1px solid #e0e4e8", borderRadius: 12, padding: 16, fontSize: 12, color: "#5a6472" } }, "Plan actual: ", E("strong", null, negocio.plan || "base"), " · Moneda: ", E("strong", null, negocio.moneda || "DOP"), " · Zona horaria: ", E("strong", null, negocio.zona_horaria || "America/Santo_Domingo"))
+    ),
+    seccion === "equipo" && E("div", null,
+      E("div", { style: { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 12, padding: 20, marginBottom: 16 } },
+        E("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, empleadoEditId ? "✏️ Editar empleado" : "➕ Agregar empleado"),
+        E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 16 } }, "La comisión predeterminada se expresa en porcentaje. Las comisiones por servicio se configuran en Servicios."),
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 } },
+          campoEmpleado("Nombre *", "nombre", "Nombre completo"),
+          campoEmpleado("Cargo", "cargo", "Ej. Médico veterinario"),
+          campoEmpleado("Correo del empleado", "email", "Se vinculará al acceso Auth"),
+          campoEmpleado("Teléfono", "telefono", "809-000-0000"),
+          E("label", { style: { display: "flex", flexDirection: "column", gap: 5, fontSize: 12, color: "#5a6472", fontWeight: 700 } }, "Rol", E("select", { value: empleadoForm.rol || "", onChange: e => setEmpleadoCampo("rol", e.target.value), style: { width: "100%", padding: "9px 10px", border: "1px solid #dfe5e8", borderRadius: 8, fontSize: 13, background: "#fff" } }, E("option", { value: "" }, "Sin asignar"), E("option", { value: "admin" }, "Administrador"), E("option", { value: "veterinario" }, "Veterinario"), E("option", { value: "groomer" }, "Groomer"), E("option", { value: "caja" }, "Caja"))),
+          campoEmpleado("Mensualidad (RD$)", "mensualidad", "0", "number"),
+          campoEmpleado("Comisión predeterminada (%)", "comisionPct", "0", "number"),
+          E("label", { style: { display: "flex", flexDirection: "column", gap: 5, fontSize: 12, color: "#5a6472", fontWeight: 700 } }, "Tipo de pago", E("select", { value: empleadoForm.tipoPago || "mixto", onChange: e => setEmpleadoCampo("tipoPago", e.target.value), style: { width: "100%", padding: "9px 10px", border: "1px solid #dfe5e8", borderRadius: 8, fontSize: 13, background: "#fff" } }, E("option", { value: "mensual" }, "Mensual"), E("option", { value: "comision" }, "Comisión"), E("option", { value: "mixto" }, "Mixto")))
+        ),
+        E("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#5a6472", fontWeight: 700, marginTop: 13 } }, E("input", { type: "checkbox", checked: empleadoForm.activo !== false, onChange: e => setEmpleadoCampo("activo", e.target.checked) }), "Empleado activo"),
+        E("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 } }, empleadoEditId && E("button", { onClick: limpiarEmpleado, style: { background: "#f1f5f9", color: "#5a6472", border: "none", borderRadius: 8, padding: "10px 14px", cursor: "pointer", fontWeight: 700 } }, "Cancelar"), E("button", { onClick: guardarEmpleado, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "10px 17px", cursor: "pointer", fontWeight: 800 } }, empleadoEditId ? "Guardar cambios" : "Agregar empleado")),
+        E("div", { style: { marginTop: 13, fontSize: 11, color: "#7a8490" } }, "Nota: guardar el correo no crea una cuenta de acceso. La invitación de Auth se habilitará en el siguiente bloque de onboarding.")
+      ),
+      E("div", { style: { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 12, padding: 20 } },
+        E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 } }, E("div", { style: { fontWeight: 800, fontSize: 15 } }, "👥 Equipo del negocio"), E("span", { style: { fontSize: 12, color: "#5a6472" } }, (empleados || []).filter(e => e.activo !== false).length, " activos")),
+        (empleados || []).length === 0
+          ? E("div", { style: { padding: "24px 8px", textAlign: "center", color: "#7a8490", fontSize: 13 } }, "Todavía no hay empleados configurados. Agrega el primero arriba.")
+          : E("div", { style: { display: "grid", gap: 8 } }, (empleados || []).map(emp => E("div", { key: emp.id, style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "11px 12px", border: "1px solid #edf0f2", borderRadius: 9, background: emp.activo === false ? "#fafafa" : "#fff" } },
+              E("div", { style: { minWidth: 180, flex: 1 } }, E("div", { style: { fontWeight: 800, fontSize: 13, color: emp.activo === false ? "#8b939b" : "#1a1d23" } }, emp.nombre || "Sin nombre"), E("div", { style: { fontSize: 11, color: "#5a6472", marginTop: 3 } }, [emp.cargo || "Sin cargo", emp.rol ? vetMakeRoleLabel(emp.rol) : "Rol sin asignar"].join(" · "))),
+              E("div", { style: { fontSize: 12, color: "#5a6472" } }, "Comisión: ", E("strong", null, (Number(emp.comisionPct) || 0) + "%")),
+              E("div", { style: { display: "flex", gap: 6 } }, E("button", { onClick: () => editarEmpleado(emp), style: { background: "#eef5ff", color: "#1a4fa0", border: "none", borderRadius: 7, padding: "7px 10px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "Editar"), E("button", { onClick: () => borrarEmpleado(emp), style: { background: "#fff1f1", color: "#b8232a", border: "none", borderRadius: 7, padding: "7px 10px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "Eliminar"))
+            )))
+      )
+    ),
+    seccion === "ayuda" && E("div", { style: { display: "grid", gap: 14 } },
+      E("div", { style: { background: "#e8f5ed", border: "1px solid #b7dec4", borderRadius: 12, padding: 20 } }, E("div", { style: { fontWeight: 800, fontSize: 16, color: "#166534", marginBottom: 8 } }, "✅ Perfil preparado"), E("div", { style: { fontSize: 13, color: "#365b42", lineHeight: 1.55 } }, "El siguiente orden recomendado es: completar el perfil, agregar el equipo, configurar tarifas y comisiones, y luego crear los accesos de Auth para cada empleado.")),
+      E("div", { style: { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 12, padding: 20 } }, E("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 8 } }, "💰 Tarifas y comisiones"), E("div", { style: { fontSize: 13, color: "#5a6472", lineHeight: 1.5, marginBottom: 14 } }, "Cada negocio empieza sin catálogo heredado. Configura aquí los servicios y el importe de comisión que realmente utilizará."), E("button", { onClick: onGoServicios, style: { background: "#1a4fa0", color: "#fff", border: "none", borderRadius: 8, padding: "10px 15px", cursor: "pointer", fontWeight: 800 } }, "⚙️ Abrir Servicios")),
+      E("div", { style: { background: "#fffaf0", border: "1px solid #f2d39b", borderRadius: 12, padding: 20, fontSize: 13, color: "#76551a", lineHeight: 1.55 } }, "🔐 El próximo bloque será la invitación de usuarios: crear el acceso de Supabase Auth y vincularlo al empleado sin exponer claves administrativas en el navegador.")
+    )
+  );
+}
+
+function PetColinasApp({ session, tenant, onLogout, onTenantChange, empleados, setEmpleados, empleadosLoaded, deleteEmpleado }) {
   const [tab, setTab] = useState("dashboard");
   const [showPendModal, setShowPendModal] = useState(false);
   const [dbReady, setDbReady] = useState(false);
@@ -8171,7 +8390,6 @@ function PetColinasApp({ session, tenant, onLogout }) {
     setTimeout(() => setPollingSync(false), 2000);
   }
   const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
-  const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", []);
   const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
   const [historias, setHistoriasRaw, , , deleteHistoria] = useSupabase("pc_historias", []);
   const [paquetes, setPaquetes] = useSupabase("pc_paquetes", []);
@@ -8197,11 +8415,11 @@ function PetColinasApp({ session, tenant, onLogout }) {
     setTimeout(() => setUndoMsg(null), 3e3);
   };
   useEffect(() => {
-    if (ventasLoaded && clientesLoaded && segsLoaded && invLoaded && gastosLoaded && empLoaded && pagosLoaded) {
+    if (ventasLoaded && clientesLoaded && segsLoaded && invLoaded && gastosLoaded && empleadosLoaded && pagosLoaded) {
       setDbReady(true);
       setSyncStatus("ok");
     }
-  }, [ventasLoaded, clientesLoaded, segsLoaded, invLoaded, gastosLoaded, empLoaded, pagosLoaded]);
+  }, [ventasLoaded, clientesLoaded, segsLoaded, invLoaded, gastosLoaded, empleadosLoaded, pagosLoaded]);
   useEffect(() => {
     window.__notifSyncError = (ctx) => {
       setSyncStatus("error");
@@ -8394,6 +8612,7 @@ function PetColinasApp({ session, tenant, onLogout }) {
   })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
+    tab === "configuracion" && React.createElement(ConfiguracionNegocio, { tenant, onTenantChange, empleados, setEmpleados, deleteEmpleado, onGoServicios: () => setTab("servicios") }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
     tab === "whatsapp" && React.createElement(WhatsAppInbox, null),
@@ -10356,7 +10575,11 @@ function EditorItemsVenta({ items, setItems, tarifasGrooming, tarifasVet, invent
 
   const catalogo = React.useMemo(() => {
     if (area === "grooming") return (tarifasGrooming || []).map((t) => ({ nombre: t.nombre, precio: Number(t.precio) || 0, comision: Number(t.comision) || 0 }));
-    if (area === "veterinaria") return (tarifasVet || []).map((t) => ({ nombre: t.nombre, precio: Number(t.precio) || 0, comision: 0 }));
+    if (area === "veterinaria") return (tarifasVet || []).map((t) => {
+      const precio = Number(t.precio) || 0;
+      const com = Number(t.comision) || 0;
+      return { nombre: t.nombre, precio, comision: Math.round(precio * (com > 1 ? com / 100 : com)) };
+    });
     return (inventario || []).filter((p) => p && p.nombre).map((p) => ({ nombre: p.nombre, precio: Number(p.precioVenta ?? p.pventa ?? 0) || 0, comision: 0 }));
   }, [area, tarifasGrooming, tarifasVet, inventario]);
 
@@ -10409,7 +10632,7 @@ function EditorItemsVenta({ items, setItems, tarifasGrooming, tarifasVet, invent
   );
 }
 
-function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setClientes, citas, setCitas, paquetes = [], setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial, tarifasGrooming = TARIFAS_GROOMING, tarifasVet = TARIFAS_VET, setSeguimientos }) {
+function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setClientes, citas, setCitas, paquetes = [], setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial, tarifasGrooming = [], tarifasVet = [], setSeguimientos }) {
   const empleadoActual = vetMakeUserName(getStoredVetMakeSession(), "Usuario actual");
   const [fecha, setFecha] = useState(hoy());
   const clienteVentaRef = useRef(null);
@@ -10486,7 +10709,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [servicioPor, setServicioPor] = useState("current");
   const [items, setItems] = useState([]);
   const [tipoItem, setTipoItem] = useState("grooming");
-  const [servId, setServId] = useState(tarifasGrooming[0]?.id || "g1");
+  const [servId, setServId] = useState(tarifasGrooming[0]?.id || "manual");
   const [nombreManual, setNombreManual] = useState("");
   const [precioManual, setPrecioManual] = useState("");
   const [cantidad, setCantidad] = useState(1);
@@ -10522,15 +10745,14 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     if (casaGratis) return 0;   // cortesía de la casa: no genera comisión
     if (tipoItem === "grooming") return esManual ? 0 : (servSel ? servSel.comision * cantidad : 0);
     if (tipoItem === "veterinaria") {
-      const pctVet = 0;
+      const tarifaVet = Number(servSel?.comision) || 0;
+      const pctVet = tarifaVet > 1 ? tarifaVet / 100 : tarifaVet;
       return Math.round(previewNeto * pctVet);
     }
     if (tipoItem === "farmacia") {
-      // 5% de la ganancia neta (pventa - costo) por el empleado que vendió
-      const prodFarm = modoFarmacia === "catalogo" ? prodSel : null;
-      const costo = prodFarm?.costo || 0;
-      const ganancia = previewNeto - (costo * (prodFarm ? parseInt(cantProd||1) : 1));
-      return Math.round(Math.max(0, ganancia) * 0.05);
+      // VetMake no inventa un porcentaje para farmacia: se configurará por
+      // producto/negocio cuando esa regla forme parte del catálogo comercial.
+      return 0;
     }
     return 0;
   })();
@@ -11220,11 +11442,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     { v: "farmacia", l: "\u{1F48A} Farmacia" }
   ].map(({ v, l }) => /* @__PURE__ */ React.createElement("button", { key: v, onClick: () => {
     setTipoItem(v);
-    setServId(v === "grooming" ? (tarifasGrooming[0]?.id || "g1") : (tarifasVet[0]?.id || "v1"));
+    setServId(v === "grooming" ? (tarifasGrooming[0]?.id || "manual") : (tarifasVet[0]?.id || "manual"));
     setDescPct(0);
-    if (v === "grooming") setServicioPor("e1");
-    else if (v === "veterinaria") setServicioPor("e2");
-    else if (v === "farmacia") setServicioPor("e4");
+    setServicioPor("current");
   }, style: {
     padding: "7px 16px",
     borderRadius: 20,
@@ -11235,7 +11455,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     fontWeight: 700,
     cursor: "pointer"
   } }, l))),
-  /* @__PURE__ */ React.createElement("button", { onClick: () => {
+  VETMAKE_USE_LOCAL_SEEDS && /* @__PURE__ */ React.createElement("button", { onClick: () => {
     const ts = Date.now();
     setItems(function(prev) { return [...prev,
       { id: ts+1, tipo: "veterinaria", area: "veterinaria", nombre: "Consulta veterinaria", precio: 1500, descPct: 0, subtotal: 1500 },
@@ -13589,7 +13809,7 @@ function DashboardVet({ usuario, ventas, onVerHistorias, onVerServicios }) {
     )
   ));
 }
-function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes, fichas = [], setFichas }) {
+function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes, fichas = [], setFichas, tarifasVet = [] }) {
   const [busqueda, setBusqueda] = useState("");
   const [pacienteVer, setPacienteVer] = useState(null);
   const [modalNuevo, setModalNuevo] = useState(false);
@@ -13717,7 +13937,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes, 
   }
   function guardarEntrada() {
     if (!pacienteVer || serviciosSelec.length === 0) return;
-    const com_pct = usuario.comision_pct || 0.3;
+    const com_pct = Number(usuario.comision_pct) || 0;
     const totalT = serviciosSelec.reduce((s, sv) => s + sv.precio, 0);
     const comT = Math.round(totalT * com_pct);
     const desc = serviciosSelec.map((s) => s.nombre).join(" + ");
@@ -14493,7 +14713,7 @@ modalEntrada && /* @__PURE__ */ React.createElement("div", { style: { position: 
         placeholder: f.placeholder,
         style: { width: "100%", marginTop: 2, padding: "9px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" }
       }
-    )))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Servicios / procedimientos"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 } }, TARIFAS_VET_MODAL.map((t) => /* @__PURE__ */ React.createElement(
+    )))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Servicios / procedimientos"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 } }, tarifasVet.map((t) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: t.id,
@@ -14512,7 +14732,7 @@ modalEntrada && /* @__PURE__ */ React.createElement("div", { style: { position: 
         onChange: (e) => cambiarPrecio(s.key, e.target.value),
         style: { width: 90, padding: "5px 8px", borderRadius: 6, border: "1.5px solid #c3d4f5", fontSize: 13 }
       }
-    ), /* @__PURE__ */ React.createElement("button", { onClick: () => quitarServicio(s.key), style: { background: "none", border: "none", cursor: "pointer", color: C.rojo, fontSize: 20, lineHeight: 1 } }, "\xD7"))), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.azul, fontSize: 15, textAlign: "right", marginTop: 8 } }, "Total: ", RD(serviciosSelec.reduce((s, sv) => s + sv.precio, 0)), /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, fontSize: 12, marginLeft: 8 } }, "\xB7 Comisi\xF3n: ", RD(Math.round(serviciosSelec.reduce((s, sv) => s + sv.precio, 0) * (usuario.comision_pct || 0.3)))))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Observaciones cl\xEDnicas / diagn\xF3stico / indicaciones"), /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("button", { onClick: () => quitarServicio(s.key), style: { background: "none", border: "none", cursor: "pointer", color: C.rojo, fontSize: 20, lineHeight: 1 } }, "\xD7"))), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: C.azul, fontSize: 15, textAlign: "right", marginTop: 8 } }, "Total: ", RD(serviciosSelec.reduce((s, sv) => s + sv.precio, 0)), /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd, fontSize: 12, marginLeft: 8 } }, "\xB7 Comisi\xF3n: ", RD(Math.round(serviciosSelec.reduce((s, sv) => s + sv.precio, 0) * (Number(usuario.comision_pct) || 0)))))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: C.grisd, textTransform: "uppercase" } }, "Observaciones cl\xEDnicas / diagn\xF3stico / indicaciones"), /* @__PURE__ */ React.createElement(
       "textarea",
       {
         value: entradaForm.observaciones,
@@ -15166,7 +15386,7 @@ function MisComisionesVet({ usuario, ventas, pagosNom }) {
   return React.createElement("div", null,
     React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
     React.createElement("p", { style:{ color:CC.gris, fontSize:13, marginBottom:16 }},
-      "Detalle de comisiones por servicio · " + (usuario.id === "valentina" ? "40% veterinaria · 5% farmacia" : "30% veterinaria · 5% farmacia")
+      "Detalle de comisiones configuradas para " + (usuario.nombre || "este empleado") + (usuario.comision_pct ? " · base " + (usuario.comision_pct * 100).toFixed(0) + "%" : " · sin porcentaje predeterminado")
     ),
 
     // KPIs
@@ -15277,7 +15497,7 @@ function MisCitasHoy({ empleadoNombre, acento = "#1a6b3a" }) {
 // ═══════════════════════════════════════════════════════════
 // FACTURAR — Componente compartido para empleados (sin totales)
 // ═══════════════════════════════════════════════════════════
-function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], acento }) {
+function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], tarifasGrooming = [], tarifasVet = [], acento }) {
   const [categoria, setCategoria] = React.useState("grooming");
   const [cliente, setCliente] = React.useState("");
   const [showSugg, setShowSugg] = React.useState(false);
@@ -15301,8 +15521,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
   const CC = { verde:"#1a6b3a", azul: acento || "#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
-  const tarifasGrm = typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [];
-  const tarifasVetArr = typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [];
+  const tarifasGrm = Array.isArray(tarifasGrooming) ? tarifasGrooming : [];
+  const tarifasVetArr = Array.isArray(tarifasVet) ? tarifasVet : [];
   const inv = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[])).filter(p => p.pventa > 0);
   const servicios = categoria === "grooming" ? tarifasGrm : categoria === "veterinaria" ? tarifasVetArr : inv;
   const servSel = servicios.find(s => s.id === servSelId) || null;
@@ -15345,6 +15565,12 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     if (esLibre && !nombreLibre.trim()) return alert("Escribe el nombre del servicio o producto.");
     if (!esLibre && !servSel && !precioCustom) return alert("Selecciona un servicio o ingresa un precio");
     const nombre = esLibre ? nombreLibre.trim() : (servSel ? (servSel.nombre||servSel.servicio||servSel.descripcion||"") : (nota||"Servicio personalizado"));
+    const tarifaComision = Number(servSel?.comision) || 0;
+    const comisionItem = categoria === "grooming"
+      ? tarifaComision * qty
+      : categoria === "veterinaria"
+        ? Math.round(subtotalItem * (tarifaComision > 1 ? tarifaComision / 100 : tarifaComision))
+        : 0;
     const item = {
       id: Date.now(),
       categoria,
@@ -15353,6 +15579,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       precioUnit: precioBase,
       descPct: descItemVal,
       subtotal: subtotalItem,
+      comision: comisionItem,
       nota
     };
     setCarrito(prev => [...prev, item]);
@@ -15388,7 +15615,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       subtotal: subtotalCarrito,
       descuento: descGlobalMonto,
       total: totalFinal,
-      comision: 0,
+      comision: carrito.reduce((total, item) => total + (Number(item.comision) || 0), 0),
       formapago: formapagoTexto,
       recibidopor: atendidoPor,
       cobradopor: usuario.nombre,
@@ -15661,11 +15888,12 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   );
 }
 
-function PortalGroomer({ session, tenant, onLogout, ventas, setVentas, pagosNom, clientes = [], setClientes, citas = [], setCitas }) {
+function PortalGroomer({ session, tenant, empleados = [], tarifasGrooming = [], tarifasVet = [], onLogout, ventas, setVentas, pagosNom, clientes = [], setClientes, citas = [], setCitas }) {
   const [tabGrm, setTabGrm] = React.useState("agenda_grm");
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
   // Objeto usuario para compatibilidad con los módulos compartidos.
-  const usuario = { id: session?.user?.id || "current-user", nombre: vetMakeUserName(session, "Groomer"), email: session?.user?.email || "", comision_pct: 0 };
+  const empleadoSesion = (empleados || []).find(e => (e.usuarioId && e.usuarioId === session?.user?.id) || (e.email && e.email.toLowerCase() === String(session?.user?.email || "").toLowerCase()));
+  const usuario = { id: empleadoSesion?.id || session?.user?.id || "current-user", nombre: empleadoSesion?.nombre || vetMakeUserName(session, "Groomer"), email: empleadoSesion?.email || session?.user?.email || "", comision_pct: (Number(empleadoSesion?.comisionPct) || 0) / 100 };
   const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",gris:"#5a6472",grisd:"#5a6472",fondo:"#f0f4f8",gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
 
@@ -15793,7 +16021,9 @@ function PortalGroomer({ session, tenant, onLogout, ventas, setVentas, pagosNom,
         ventas,
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
         clientes,
-        inventario: window.__inventarioGlobal || []
+        inventario: window.__inventarioGlobal || [],
+        tarifasGrooming,
+        tarifasVet
       }),
       tabGrm === "agenda_grm" && React.createElement(Agenda, {
         citas, setCitas,
@@ -15801,8 +16031,8 @@ function PortalGroomer({ session, tenant, onLogout, ventas, setVentas, pagosNom,
         clientes,
         ventas,
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
-        tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [],
-        tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [],
+        tarifasGrooming,
+        tarifasVet,
         soloPropio: usuario.nombre.split(" ")[0]
       }),
       tabGrm === "mi_vitrina_grm" && React.createElement(MiVitrina, {
@@ -16113,10 +16343,11 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   );
 }
 
-function PortalVeterinaria({ session, tenant, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas }) {
+function PortalVeterinaria({ session, tenant, empleados = [], tarifasGrooming = [], tarifasVet = [], onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas }) {
   const [tabVet, setTabVet] = React.useState("agenda_vet");
   const userEmail = session?.user?.email || "";
-  const usuario   = { id: session?.user?.id || "current-user", nombre: vetMakeUserName(session, "Veterinario"), email: userEmail, rol: "veterinaria", comision_pct: 0 };
+  const empleadoSesion = (empleados || []).find(e => (e.usuarioId && e.usuarioId === session?.user?.id) || (e.email && e.email.toLowerCase() === userEmail.toLowerCase()));
+  const usuario   = { id: empleadoSesion?.id || session?.user?.id || "current-user", nombre: empleadoSesion?.nombre || vetMakeUserName(session, "Veterinario"), email: empleadoSesion?.email || userEmail, rol: empleadoSesion?.rol || "veterinario", comision_pct: (Number(empleadoSesion?.comisionPct) || 0) / 100 };
 
   const C = { verde: "#1a6b3a", azul: "#db2777", gris: "#5a6472", fondo: "#fdf2f8" };
 
@@ -16175,19 +16406,19 @@ function PortalVeterinaria({ session, tenant, onLogout, ventas, setVentas, clien
           onVerServicios: () => setTabVet("mis_servicios")
         })
       ),
-      tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes, fichas, setFichas }),
+      tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes, fichas, setFichas, tarifasVet }),
       tabVet === "evolucion_vet" && React.createElement(EvolucionClinica, { usuario, clientes, citas, setCitas, historias, setHistorias }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas, clientes, historias }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
-      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [], acento: "#db2777" }),
+      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [], tarifasGrooming, tarifasVet, acento: "#db2777" }),
       tabVet === "cobros_vet"     && React.createElement(Cobros, { ventas, setVentas, clientes, soloPropio: usuario.nombre.split(" ")[0] }),
       tabVet === "agenda_vet"     && React.createElement(Agenda, {
         citas, setCitas,
         deleteCita: id => { setCitas(prev => prev.filter(c => c.id !== id)); },
         clientes,
         ventas, setVentas,
-        tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [],
-        tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [],
+        tarifasGrooming,
+        tarifasVet,
         soloPropio: usuario.nombre.split(" ")[0]
       }),
       tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [], clientes }),
@@ -17596,7 +17827,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
   function guardarEdicion() {
     if (!editForm.nombre || !editForm.precio) return alert("Nombre y precio son obligatorios.");
     setTarifas(prev => prev.map(t => t.id === editandoId
-      ? { ...t, nombre: editForm.nombre.trim(), precio: Number(editForm.precio) || 0, comision: Number(editForm.comision) || t.comision }
+      ? { ...t, nombre: editForm.nombre.trim(), precio: Number(editForm.precio) || 0, comision: editForm.comision === "" ? 0 : (Number(editForm.comision) || 0) }
       : t
     ));
     setEditandoId(null);
@@ -17609,17 +17840,13 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     if (!nuevoForm.nombre || !nuevoForm.precio) return alert("Nombre y precio son obligatorios.");
     const prefix = esGrooming ? "g" : "v";
     const newId = prefix + Date.now();
-    const comision = Number(nuevoForm.comision) || (esGrooming ? 100 : 0.3);
+    const comision = Number(nuevoForm.comision) || 0;
     setTarifas(prev => [...prev, { id: newId, nombre: nuevoForm.nombre.trim(), precio: Number(nuevoForm.precio), comision }]);
     setNuevoForm({ nombre: "", precio: "", comision: "" });
     setAgregando(false);
   }
   function resetearDefaults() {
-    if (!confirm("¿Restaurar todos los servicios " + (esGrooming ? "de grooming" : "veterinarios") + " a los valores originales?")) return;
-    if (esGrooming) setTarifasGrooming(TARIFAS_GROOMING);
-    else setTarifasVet(TARIFAS_VET);
-    setEditandoId(null);
-    setAgregando(false);
+    alert("Este negocio no carga catálogos heredados. Agrega y configura sus propios servicios.");
   }
 
   function comisionLabel(t) {
@@ -17639,7 +17866,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
       ),
       React.createElement("div", { style: { display: "flex", gap: 8 } },
         React.createElement("button", { onClick: () => { setAgregando(true); setEditandoId(null); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "+ Agregar servicio"),
-        React.createElement("button", { onClick: resetearDefaults, style: { background: "#f1f5f9", color: C.grisd, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12 } }, "\u21BA Restaurar defaults")
+        React.createElement("button", { onClick: resetearDefaults, style: { background: "#f1f5f9", color: C.grisd, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12 } }, "\u2139 Sin defaults heredados")
       )
     ),
 
