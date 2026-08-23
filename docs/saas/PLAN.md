@@ -7,6 +7,15 @@
 
 Preparado para Victor Ballas · 23 ago 2026
 
+**Nombre de marca: VetMake.** Verificado sin choques contra software
+veterinario existente, ni dominio ni redes sociales ocupadas. Descartados
+antes de llegar aquí: VetBase (tres productos ya lo usan), Clinvet (clínicas
+reales en España y Colombia más una CRO internacional desde 1999), MiVet
+(media docena de productos), VetPal (colisión directa: un producto en
+Sudáfrica con el mismo set de funciones — facturación, WhatsApp, Google
+Calendar). Pendiente: registro formal de dominio y verificación de marca
+antes de invertir en identidad visual.
+
 ## Decisiones ya tomadas
 
 1. **Arquitectura: copia separada.** El SaaS se construye en un repo/rama
@@ -82,8 +91,9 @@ equipo): no sincronizar los dos códigos automáticamente. Cuando un fix en
 PetColinas sea genuinamente genérico, se portea a mano. Cuando sea
 específico de PetColinas, se queda ahí.
 
-**Nombre pendiente.** "PetColinas" es la marca de la clínica de Victor — no
-puede ser el nombre del producto. Decisión pendiente (sección 9).
+**Nombre: VetMake.** "PetColinas" es la marca de la clínica de Victor — no
+podía ser el nombre del producto. Ver el proceso de descarte al inicio del
+documento.
 
 ---
 
@@ -181,7 +191,7 @@ percibido da desde el día uno.
 
 | Fase | Qué | Cuándo |
 |---|---|---|
-| 0 — Congelar | Copia de `index.html` validada + nombre de marca + repo/rama limpia | Esta semana |
+| 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · falta congelar copia de `index.html` validada | Esta semana |
 | 1 — Datos | Tabla `negocios`, `negocio_id` en cada tabla, RLS reescrita, probado con dos negocios ficticios | Próximas semanas |
 | 2 — Generalizar | Sacar lo quemado a configuración (sección 4) | Después de la Fase 1 |
 | 3 — Piloto | 1–2 veterinarias conocidas, gratis o precio simbólico | Cuando la Fase 1 esté probada con datos reales |
@@ -194,7 +204,8 @@ percibido da desde el día uno.
 
 - **Seguridad multi-tenant** — se prueba con datos reales de dos negocios
   antes de aceptar el primer cliente de pago.
-- **Nombre de marca** — "PetColinas" no puede ser el nombre del SaaS.
+- ✅ **Nombre de marca** — resuelto: VetMake. Pendiente registrar dominio y
+  verificar marca formalmente antes de invertir en identidad visual.
 - **Legal: dueño de los datos** — cada clínica es dueña de los datos de sus
   propios clientes y mascotas. Falta un término de servicio simple que lo
   diga explícitamente y una forma de exportar datos si una clínica se va.
@@ -204,6 +215,8 @@ percibido da desde el día uno.
 
 ## 10. Siguiente paso inmediato
 
-Fase 0: nombre de marca, y el repo/rama copia congelada a partir del
-`index.html` validado de PetColinas — sin que ese trabajo toque la app en
-vivo ni la rama operativa de PetColinas.
+Fase 0 ya tiene nombre (VetMake) y rama propia. Falta lo último de esa fase:
+congelar una copia de `index.html` validado de PetColinas como semilla del
+código de VetMake — sin que ese trabajo toque la app en vivo ni la rama
+operativa de PetColinas — y registrar el dominio antes de que alguien más
+lo tome.
