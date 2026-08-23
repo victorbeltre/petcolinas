@@ -40,7 +40,7 @@ sesión hizo qué):
   y probado con dos negocios ficticios en un proyecto de Supabase de
   prueba separado (vetmake-dev). Falta replicar el mismo patrón mecánico
   al resto de las tablas pc_* — pc_ventas, pc_facturas, pc_inventario,
-  pc_nomina, pc_gastos, pc_citas.
+  pc_empleados (nómina), pc_gastos, pc_citas.
 - Fase 2 en adelante: no empezada.
 
 Antes de crear o modificar cualquier infraestructura real (un proyecto

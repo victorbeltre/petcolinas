@@ -1,7 +1,7 @@
 -- VetMake · Fase 1: patrón multi-tenant aplicado a pc_clientes (ejemplo)
 --
 -- Este es el PATRÓN COMPLETO a repetir, tabla por tabla, para el resto de
--- pc_ventas, pc_facturas, pc_inventario, pc_nomina, pc_gastos, pc_citas...
+-- pc_ventas, pc_facturas, pc_inventario, pc_empleados, pc_gastos, pc_citas...
 -- Se eligió pc_clientes como ejemplo trabajado porque es la tabla que se
 -- diagnosticó a fondo el 23 ago 2026 (el bug de RLS del formulario) — su
 -- estructura ya se conoce con certeza.

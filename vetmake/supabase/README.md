@@ -18,13 +18,15 @@ corrió la prueba de aislamiento de la sección de abajo — **pasó**.
 |---|---|
 | `migrations/0001_negocios_y_membresia.sql` | La fundación: tabla `negocios`, tabla `usuarios_negocio`, función `mi_negocio()`. Se aplica una sola vez. |
 | `migrations/0002_negocio_id_pc_clientes_ejemplo.sql` | El patrón completo — agregar `negocio_id`, quitar las políticas de un solo negocio, crear las 4 políticas multi-tenant (select/insert/update/delete) — aplicado a `pc_clientes` como ejemplo trabajado. |
+| `migrations/0003_negocio_id_pc_tablas_restantes.sql` | El mismo patrón aplicado a `pc_ventas`, `pc_facturas`, `pc_inventario`, `pc_empleados` (nómina), `pc_gastos` y `pc_citas`. |
 
 ## El patrón a repetir
 
 `0002` se hizo sobre `pc_clientes` porque es la tabla que ya se conoce a
 fondo (el diagnóstico del bug de RLS del 23 ago). Para el resto de las
 tablas de PetColinas (`pc_ventas`, `pc_facturas`, `pc_inventario`,
-`pc_nomina`, `pc_gastos`, `pc_citas`, ...) el patrón es mecánico:
+`pc_empleados` —la tabla de nómina—, `pc_gastos`, `pc_citas`, ...) el patrón
+es mecánico:
 
 1. `alter table X add column negocio_id uuid references negocios(id);`
 2. Backfill si hay datos, luego `set not null`.
@@ -33,10 +35,10 @@ tablas de PetColinas (`pc_ventas`, `pc_facturas`, `pc_inventario`,
 5. Crear las políticas `select` / `insert` / `update` / `delete` con
    `using (negocio_id = mi_negocio())` (y `with check` en insert/update).
 
-No se hizo tabla por tabla todavía porque no vale la pena escribir 15
-archivos casi idénticos antes de probar el patrón una vez con datos
-reales — mejor validarlo con `pc_clientes` primero (ver siguiente
-sección) y automatizar el resto solo si el patrón aguanta la prueba.
+El patrón se validó primero con `pc_clientes` usando datos reales de dos
+negocios (ver siguiente sección). La repetición para las seis tablas
+restantes quedó escrita en `0003`; todavía falta aplicarla y repetir la
+prueba de aislamiento sobre cada tabla.
 
 ## La prueba obligatoria antes de vender nada
 
@@ -89,6 +91,11 @@ de la Clínica A:
 código.** El patrón (`negocio_id` + 4 políticas usando `mi_negocio()`) está
 validado y listo para replicarse al resto de las tablas `pc_*` siguiendo
 el patrón mecánico de la sección de arriba.
+
+La migración `0003_negocio_id_pc_tablas_restantes.sql` ya deja escrita esa
+repetición para las seis tablas restantes. Todavía no se ha aplicado en
+`vetmake-dev`: ejecutarla modificaría infraestructura de Supabase y requiere
+confirmación explícita antes de correrla.
 
 Los datos de prueba (negocios, usuarios, clientes ficticios) siguen en
 `vetmake-dev` a propósito, como fixture reproducible — no se borraron.
