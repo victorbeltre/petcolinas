@@ -131,17 +131,21 @@ solo hay un negocio. En el SaaS, cada webhook que llega (un mensaje de
 WhatsApp) tiene que resolver primero a qué negocio pertenece — el número de
 WhatsApp de destino se vuelve la clave para encontrar el negocio correcto.
 
-**Estado (23 ago, después de aplicar `0003` y `0004`): ✅ diseñado, aplicado
-y probado.** En `vetmake-dev` (`couzqdicmxrypacgrqcn`) ya están la fundación
-multi-tenant, `pc_clientes` y las seis tablas operativas (`pc_ventas`,
-`pc_facturas`, `pc_inventario`, `pc_empleados`, `pc_gastos` y `pc_citas`),
-con RLS probado entre dos usuarios y dos negocios ficticios en select,
-insert, update y delete. También se revocó el acceso explícito de `anon` y
-`mi_negocio()` quedó como `SECURITY INVOKER`. PetColinas
-(`ulrzzddovkioxeaarnjk`) no se tocó. Detalle completo en
-`vetmake/supabase/README.md`. Las tablas auxiliares restantes de PetColinas
-quedan fuera de esta primera lista y deben resolverse antes de pasar a la
-Fase 2.
+**Estado (23 ago, después de aplicar `0001`–`0005`): ✅ fundación aplicada y
+aislamiento validado; frontend en integración.** En `vetmake-dev`
+(`couzqdicmxrypacgrqcn`) ya están la fundación multi-tenant, `pc_clientes`,
+las seis tablas operativas (`pc_ventas`, `pc_facturas`, `pc_inventario`,
+`pc_empleados`, `pc_gastos` y `pc_citas`), las siete auxiliares
+(`pc_seguimientos`, `pc_pagos`, `pc_tarifas`, `pc_historias`,
+`pc_fichas_clinicas`, `pc_depositos` y `pc_auditoria`) y `pc_paquetes` para
+planes prepagados. Las quince tablas tienen `negocio_id` no nulo, RLS
+habilitado y cuatro políticas cada una;
+el aislamiento entre dos usuarios y dos negocios ficticios ya pasó las
+pruebas de select, insert, update y delete en las tablas operativas.
+También se revocó el acceso explícito de `anon` y `mi_negocio()` quedó como
+`SECURITY INVOKER`. PetColinas (`ulrzzddovkioxeaarnjk`) no se tocó. Detalle
+completo en `vetmake/supabase/README.md`. Tablas específicas de PetColinas
+como candidatos, llamadas y paquetes quedan fuera del MVP.
 
 ---
 
@@ -204,8 +208,8 @@ percibido da desde el día uno.
 | Fase | Qué | Cuándo |
 |---|---|---|
 | 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · ✅ copia semilla de `index.html` validada y congelada en `vetmake/` · falta registrar el dominio | Esta semana |
-| 1 — Datos | ✅ Fundación multi-tenant diseñada, aplicada en `vetmake-dev` y probada con dos negocios ficticios (aislamiento confirmado) — falta replicar el patrón al resto de tablas `pc_*` | En curso |
-| 2 — Generalizar | Sacar lo quemado a configuración (sección 4) | Después de la Fase 1 |
+| 1 — Datos | ✅ Fundación multi-tenant aplicada en `vetmake-dev`, patrón replicado a las 15 tablas del MVP y aislamiento confirmado — falta terminar la conexión y generalización de frontend | En curso |
+| 2 — Generalizar | Sacar lo quemado a configuración (sección 4), eliminar semillas e integraciones específicas de PetColinas | Después de cerrar la integración de Fase 1 |
 | 3 — Piloto | 1–2 veterinarias conocidas, gratis o precio simbólico | Cuando la Fase 1 esté probada con datos reales |
 | 4 — Vender | Primeras clínicas de pago, onboarding manual asistido | Tras un piloto sin incidentes de aislamiento |
 | 5 — Escalar | Autoservicio, más mercados | Más adelante, no parte de este plan todavía |
