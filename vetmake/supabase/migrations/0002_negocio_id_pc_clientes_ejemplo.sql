@@ -38,26 +38,26 @@ create policy "negocio_lee_su_clientes"
   on pc_clientes
   for select
   to authenticated
-  using (negocio_id = mi_negocio());
+  using (negocio_id = (select mi_negocio()));
 
 create policy "negocio_escribe_su_clientes"
   on pc_clientes
   for insert
   to authenticated
-  with check (negocio_id = mi_negocio());
+  with check (negocio_id = (select mi_negocio()));
 
 create policy "negocio_actualiza_su_clientes"
   on pc_clientes
   for update
   to authenticated
-  using (negocio_id = mi_negocio())
-  with check (negocio_id = mi_negocio());
+  using (negocio_id = (select mi_negocio()))
+  with check (negocio_id = (select mi_negocio()));
 
 create policy "negocio_borra_su_clientes"
   on pc_clientes
   for delete
   to authenticated
-  using (negocio_id = mi_negocio());
+  using (negocio_id = (select mi_negocio()));
 
 -- ─── 4. Pendiente, sin resolver aquí a propósito ─────────────────────────
 -- El puente Form → CRM (form-to-crm.gs) inserta como rol "anon", que no

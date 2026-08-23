@@ -18,26 +18,39 @@ corrió la prueba de aislamiento de la sección de abajo — **pasó**.
 |---|---|
 | `migrations/0001_negocios_y_membresia.sql` | La fundación: tabla `negocios`, tabla `usuarios_negocio`, función `mi_negocio()`. Se aplica una sola vez. |
 | `migrations/0002_negocio_id_pc_clientes_ejemplo.sql` | El patrón completo — agregar `negocio_id`, quitar las políticas de un solo negocio, crear las 4 políticas multi-tenant (select/insert/update/delete) — aplicado a `pc_clientes` como ejemplo trabajado. |
-| `migrations/0003_negocio_id_pc_tablas_restantes.sql` | El mismo patrón aplicado a `pc_ventas`, `pc_facturas`, `pc_inventario`, `pc_empleados` (nómina), `pc_gastos` y `pc_citas`. |
+| `migrations/0003_negocio_id_pc_tablas_restantes.sql` | Completa la estructura vacía de esas seis tablas si aún no existe, endurece la fundación RLS y aplica el patrón multi-tenant a `pc_ventas`, `pc_facturas`, `pc_inventario`, `pc_empleados` (nómina), `pc_gastos` y `pc_citas`. |
 
 ## El patrón a repetir
 
 `0002` se hizo sobre `pc_clientes` porque es la tabla que ya se conoce a
 fondo (el diagnóstico del bug de RLS del 23 ago). Para el resto de las
-tablas de PetColinas (`pc_ventas`, `pc_facturas`, `pc_inventario`,
-`pc_empleados` —la tabla de nómina—, `pc_gastos`, `pc_citas`, ...) el patrón
-es mecánico:
+tablas operativas incluidas en esta fase (`pc_ventas`, `pc_facturas`,
+`pc_inventario`, `pc_empleados` —la tabla de nómina—, `pc_gastos` y
+`pc_citas`) el patrón es mecánico:
 
 1. `alter table X add column negocio_id uuid references negocios(id);`
 2. Backfill si hay datos, luego `set not null`.
 3. `create index on X (negocio_id);`
 4. `drop policy` de la política de un solo negocio que exista hoy.
 5. Crear las políticas `select` / `insert` / `update` / `delete` con
-   `using (negocio_id = mi_negocio())` (y `with check` en insert/update).
+   `using (negocio_id = (select mi_negocio()))` (y `with check` en
+   insert/update).
+
+`0003` también crea las seis tablas vacías cuando no existen en
+`vetmake-dev`, porque el baseline aplicado originalmente solo contenía
+`pc_clientes`. Copia únicamente columnas, tipos y defaults de PetColinas;
+no copia datos reales.
+
+La misma migración endurece `mi_negocio()` como `SECURITY INVOKER`, revoca
+su ejecución a `anon`, conserva la ejecución para `authenticated` y
+`service_role`, agrega el índice de membresía que faltaba y otorga a
+`authenticated` los permisos explícitos del Data API sobre las tablas
+nuevas. Esto evita depender de la exposición implícita que Supabase está
+retirando para tablas nuevas.
 
 El patrón se validó primero con `pc_clientes` usando datos reales de dos
-negocios (ver siguiente sección). La repetición para las seis tablas
-restantes quedó escrita en `0003`; todavía falta aplicarla y repetir la
+negocios (ver siguiente sección). La repetición para las seis tablas de
+esta fase quedó escrita en `0003`; todavía falta aplicarla y repetir la
 prueba de aislamiento sobre cada tabla.
 
 ## La prueba obligatoria antes de vender nada
@@ -88,14 +101,16 @@ de la Clínica A:
 | `select` sobre `usuarios_negocio` | Solo ve su propia membresía (1 fila) |
 
 **✅ Pasó. Aislamiento confirmado con datos reales, no solo revisión de
-código.** El patrón (`negocio_id` + 4 políticas usando `mi_negocio()`) está
+código.** El patrón (`negocio_id` + 4 políticas usando
+`(select mi_negocio())`) está
 validado y listo para replicarse al resto de las tablas `pc_*` siguiendo
 el patrón mecánico de la sección de arriba.
 
 La migración `0003_negocio_id_pc_tablas_restantes.sql` ya deja escrita esa
-repetición para las seis tablas restantes. Todavía no se ha aplicado en
-`vetmake-dev`: ejecutarla modificaría infraestructura de Supabase y requiere
-confirmación explícita antes de correrla.
+repetición para las seis tablas de esta fase. Está preparada localmente,
+pero todavía no se ha aplicado en `vetmake-dev`: ejecutarla modificaría
+infraestructura de Supabase y requiere confirmación explícita antes de
+correrla.
 
 Los datos de prueba (negocios, usuarios, clientes ficticios) siguen en
 `vetmake-dev` a propósito, como fixture reproducible — no se borraron.

@@ -6,9 +6,9 @@
 -- una columna negocio_id — ver 0002 para el patrón completo aplicado a
 -- pc_clientes como ejemplo trabajado.
 --
--- Sin aplicar todavía en ningún proyecto real: no existe un proyecto de
--- Supabase para VetMake aún. Esto es el diseño, listo para cuando se
--- decida provisionar la infraestructura (ver vetmake/supabase/README.md).
+-- Esta migración es la fundación de VetMake. En vetmake-dev ya fue aplicada;
+-- si se repite desde cero, debe conservar las mismas garantías de seguridad
+-- que las migraciones posteriores.
 
 -- ─── NEGOCIOS ────────────────────────────────────────────────────────────
 create table negocios (
@@ -52,7 +52,7 @@ create function mi_negocio()
 returns uuid
 language sql
 stable
-security definer
+security invoker
 set search_path = public
 as $$
   select negocio_id from usuarios_negocio where usuario_id = auth.uid() limit 1;
@@ -61,9 +61,18 @@ $$;
 comment on function mi_negocio() is
   'Resuelve el negocio_id del usuario autenticado actual. Es el corazón '
   'de cada política RLS multi-tenant: reemplaza el "using (true)" de '
-  'PetColinas por "using (negocio_id = mi_negocio())". SECURITY DEFINER '
-  'porque usuarios_negocio no tiene política de SELECT abierta para '
-  'evitar que un usuario vea membresías de otros negocios.';
+  'PetColinas por "using (negocio_id = (select mi_negocio()))". Es '
+  'SECURITY INVOKER: la lectura de usuarios_negocio queda protegida por '
+  'su propia política RLS y la función no se expone como un endpoint '
+  'anónimo.';
+
+-- La función solo la necesitan usuarios autenticados y el backend confiable.
+-- Revocar PUBLIC evita que anon pueda invocarla como /rpc/mi_negocio.
+revoke execute on function mi_negocio() from public;
+grant execute on function mi_negocio() to authenticated, service_role;
+
+-- Las políticas y la función consultan negocio_id por esta columna.
+create index usuarios_negocio_negocio_id_idx on usuarios_negocio (negocio_id);
 
 -- ─── POLÍTICAS: negocios ──────────────────────────────────────────────────
 -- Un usuario ve su propio negocio y nada más. Sin política de INSERT/
@@ -83,4 +92,4 @@ create policy "membresia_propia_select"
   on usuarios_negocio
   for select
   to authenticated
-  using (usuario_id = auth.uid());
+  using (usuario_id = (select auth.uid()));
