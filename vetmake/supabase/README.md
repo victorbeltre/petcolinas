@@ -65,9 +65,10 @@ el acceso anónimo.
 
 El patrón se validó primero con `pc_clientes` usando dos negocios ficticios
 y después se repitió sobre las seis tablas operativas. La verificación
-estructural de `0005` confirmó que las catorce tablas tenantizadas tienen
+estructural de `0005` confirmó que las catorce tablas tenantizadas tenían
 `negocio_id` no nulo, RLS habilitado y cuatro políticas por tabla. `0006`
-dejó la misma frontera aplicada a `pc_paquetes`.
+dejó la misma frontera aplicada a `pc_paquetes`, para un total de quince
+tablas tenantizadas.
 
 ## La prueba obligatoria antes de vender nada
 
@@ -97,7 +98,7 @@ select * from pc_clientes;
 ```
 
 Si el usuario A ve, edita o borra algo del negocio B con esto puesto,
-**no se avanza a la Fase 2** hasta arreglarlo — es exactamente el tipo de
+**no se avanza al piloto** hasta arreglarlo — es exactamente el tipo de
 bug que el 23 ago costó horas de diagnóstico en un solo negocio; acá
 significaría una fuga de datos médicos entre clínicas de verdad.
 
