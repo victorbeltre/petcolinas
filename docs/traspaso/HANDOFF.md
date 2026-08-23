@@ -210,10 +210,18 @@ confirmar — era solo la prueba, no un cliente real.
 
 ### Después, en orden
 
-1. Correr `configurarTrigger` en el proyecto correcto (esto sí falta —
-   la prueba de arriba solo llamó a `onFormSubmit` directo, no probó el
-   trigger real sobre envíos del formulario).
-2. Revisar Disparadores en **ambos** proyectos y eliminar duplicados.
+1. ✅ **Hecho (23 ago, sesión 2).** `configurarTrigger` corrido en el
+   proyecto correcto: `"Trigger configurado correctamente sobre: Ficha de
+   Ingreso — PetColinas (respuestas)"`.
+2. **Pendiente — revisar Disparadores en el proyecto VIEJO** ("formulario
+   clientes nuevos petcolinas", creado 12 mar 2026). `configurarTrigger`
+   solo limpia duplicados dentro de su propio proyecto (busca triggers con
+   handler `onFormSubmit` y los borra antes de crear el nuevo); si el
+   proyecto viejo tiene su propio trigger sobre la misma hoja, sigue ahí sin
+   que este paso lo toque. Hay que abrir ese proyecto viejo y mirar su panel
+   de Disparadores (el reloj a la izquierda) a mano. Si tiene un trigger
+   sobre la misma hoja de respuestas, borrarlo — si no, cada inscripción
+   se registraría dos veces.
 3. **Aclarar por dónde entran hoy las inscripciones.** El 22 ago se
    registraron clientes reales (Diamond Nuñez, Sally Fulcar, Lily Maldonado…)
    con notas del tipo
