@@ -123,6 +123,29 @@ function resetearContextoNegocio() {
   VETMAKE_TENANT_PROMISE = null;
   try { delete window.__vetmakeTenant; } catch {}
 }
+function getVetMakeBusiness() {
+  return window.__vetmakeTenant?.negocio || VETMAKE_TENANT_CONTEXT?.negocio || {};
+}
+function vetMakeBusinessName() {
+  const nombre = String(getVetMakeBusiness().nombre || VETMAKE_CONFIG.name).trim();
+  return nombre || VETMAKE_CONFIG.name;
+}
+function vetMakeBusinessTagline() {
+  const negocio = getVetMakeBusiness();
+  const texto = String(negocio.tagline || VETMAKE_CONFIG.tagline).trim();
+  return texto || VETMAKE_CONFIG.tagline;
+}
+function vetMakeBusinessLogo() {
+  return String(getVetMakeBusiness().logo_url || "").trim();
+}
+function vetMakeRoleLabel(rol) {
+  const labels = { admin: "Administrador", caja: "Caja", veterinario: "Veterinario", groomer: "Groomer" };
+  return labels[rol] || "Equipo";
+}
+function vetMakeUserName(session, fallback = "Usuario VetMake") {
+  const metadata = session?.user?.user_metadata || {};
+  return String(metadata.full_name || metadata.name || session?.user?.email || fallback).trim() || fallback;
+}
 const APPS_SCRIPT_URL = "";
 async function enviarASheet(venta) {
   if (!APPS_SCRIPT_URL) return;
@@ -1162,7 +1185,7 @@ function imprimirCarnetVacunas(mascota, cliente, ventas) {
     ".pie{margin-top:36px;font-size:11px;color:#5a6472;text-align:center}" +
     "@media print{body{padding:10px}}" +
     "</style></head><body>" +
-    "<div class='cab'><div><h1>\uD83D\uDC3E PetColinas \u2014 Carnet de Vacunaci\xF3n</h1><p>Plaza Las Colinas, Santo Domingo Oeste \xB7 petcolinasrd@gmail.com</p></div><div style='font-size:34px'>\uD83D\uDC89</div></div>" +
+    "<div class='cab'><div><h1>\uD83D\uDC3E " + vetMakeBusinessName() + " \u2014 Carnet de Vacunaci\xF3n</h1><p>" + vetMakeBusinessTagline() + "</p></div><div style='font-size:34px'>\uD83D\uDC89</div></div>" +
     "<div class='fich'>" +
     "<div><strong>Mascota:</strong> " + nombre + "</div>" +
     "<div><strong>Especie:</strong> " + (cliente?.especie || "\u2014") + "</div>" +
@@ -1175,7 +1198,7 @@ function imprimirCarnetVacunas(mascota, cliente, ventas) {
     (filas ? "<table><thead><tr><th>Fecha</th><th>Vacuna</th><th>Pr\xF3xima dosis</th></tr></thead><tbody>" + filas + "</tbody></table>" : "<p style='font-size:13px;color:#888'>Sin vacunas registradas en el sistema.</p>") +
     "<h2>\uD83D\uDC8A Desparasitaci\xF3n y antiparasitarios</h2>" +
     (filasD ? "<table><thead><tr><th>Fecha</th><th>Producto / Tratamiento</th></tr></thead><tbody>" + filasD + "</tbody></table>" : "<p style='font-size:13px;color:#888'>Sin registros.</p>") +
-    "<div class='pie'>Generado el " + new Date().toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) + " \xB7 PetColinas Sistema de Gesti\xF3n</div>" +
+    "<div class='pie'>Generado el " + new Date().toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) + " \xB7 " + vetMakeBusinessName() + " · VetMake</div>" +
     "</body></html>";
   const win = window.open("", "_blank");
   if (!win) { alert("Activa las ventanas emergentes para imprimir el carnet."); return; }
@@ -1643,14 +1666,7 @@ const TARIFAS_VET = [
   { id: "v22", nombre: "Refuerzo anual (qu\xEDntuple+giardia+bordetella+rabia)", precio: 4400, comision: 0.3 },
   { id: "v23", nombre: "Refuerzo anual+consulta (qu\xEDntuple+bordetella+rabia)", precio: 3800, comision: 0.3 }
 ];
-const EMPLEADOS_INIT = [
-  { id: "e1", nombre: "Alexander Ram\xEDrez", cargo: "Groomer", mensualidad: 25e3, comPct: 0, comTipo: "fija" },
-  { id: "e2", nombre: "Aylein Santiago", cargo: "M\xE9dico Veterinaria", mensualidad: 25e3, comPct: 0.30, comTipo: "pct" },
-  { id: "e3", nombre: "Leydeli Aybar", cargo: "Apoyo Operativo", mensualidad: 0, comPct: 0, comTipo: "fija" },
-  { id: "e4", nombre: "Laura De Los Santos", cargo: "Administradora", mensualidad: 30e3, comPct: 0, comTipo: "fija" },
-  { id: "e5", nombre: "Dra. Valentina", cargo: "M\xE9dico Veterinaria (por llamado)", mensualidad: 0, comPct: 0.40, comTipo: "pct" },
-  { id: "e6", nombre: "Naylan Perez", cargo: "M\xE9dico Veterinaria (por llamado)", mensualidad: 0, comPct: 0.30, comTipo: "pct" }
-];
+// Los empleados se crean dentro del negocio; no hay empleados demo en VetMake.
 const RD = (n) => "RD$ " + (Math.round(Number(n) || 0) || 0).toLocaleString("es-DO");
 const hoy = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 // El valor guardado es "Pago pendiente"; varios sitios comparaban con
@@ -4091,10 +4107,11 @@ function AvisoAntiparasitarios({ seguimientos = [], clientes = [], ventas = [], 
 
   const mensaje = (x) => {
     const nombre = String(x.dueno || "").split(" ")[0] || "buenas";
+    const businessName = vetMakeBusinessName();
     const venc = x.dias < 0 ? "se le venció hace " + Math.abs(x.dias) + " día(s)"
       : x.dias === 0 ? "se le vence hoy"
       : "se le vence en " + x.dias + " día(s)";
-    return "Hola " + nombre + "! \u{1F43E} Le escribimos de PetColinas. A " +
+    return "Hola " + nombre + "! \u{1F43E} Le escribimos de " + businessName + ". A " +
       (x.s.mascota || "su mascota") + " " + venc +
       " la protección contra pulgas y garrapatas (" + x.producto + "). " +
       "Le recomendamos reforzarla para que no quede desprotegido/a. " +
@@ -4308,14 +4325,15 @@ function generarFacturaPDFDoc(f) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const verde = [26, 107, 58], gr = [90, 100, 114], ng = [26, 29, 35];
+  const businessName = vetMakeBusinessName();
+  const businessTagline = vetMakeBusinessTagline();
   const W = 210, M = 15;
   // Header verde
   doc.setFillColor(...verde); doc.rect(0, 0, W, 34, "F");
   doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(18);
-  doc.text("PetColinas", M, 13);
+  doc.text(businessName, M, 13);
   doc.setFont("helvetica","normal"); doc.setFontSize(8);
-  doc.text("Plaza Las Colinas, Santo Domingo Oeste", M, 20);
-  doc.text("Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com", M, 27);
+  doc.text(businessTagline.slice(0, 62), M, 20);
   doc.setFont("helvetica","bold"); doc.setFontSize(14);
   doc.text("FACTURA #" + f.numero, W-M, 13, {align:"right"});
   doc.setFont("helvetica","normal"); doc.setFontSize(9);
@@ -4328,13 +4346,12 @@ function generarFacturaPDFDoc(f) {
   doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...gr);
   doc.text("DATOS DEL CLIENTE", M+3, y); doc.text("EMITIDO POR", W/2+5, y);
   doc.setTextColor(...ng); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-  doc.text(sinEmoji(f.propietario||"-").slice(0,32), M+3, y+8); doc.text("PetColinas", W/2+5, y+8);
+  doc.text(sinEmoji(f.propietario||"-").slice(0,32), M+3, y+8); doc.text(businessName.slice(0, 32), W/2+5, y+8);
   doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
   if(f.mascota) doc.text("Mascota: " + sinEmoji(f.mascota), M+3, y+15);
   if(f.telefono) doc.text("Tel: " + f.telefono, M+3, y+21);
   doc.setTextColor(...gr); doc.setFontSize(8);
-  doc.text("Plaza Las Colinas, SDO", W/2+5, y+15);
-  doc.text("Tel: 809-752-6806", W/2+5, y+21);
+  doc.text(businessTagline.slice(0, 32), W/2+5, y+15);
   if(f.metodoPago) doc.text("Pago: " + f.metodoPago, W/2+5, y+27);
   // Tabla items
   y += 40;
@@ -4441,8 +4458,8 @@ function generarFacturaPDFDoc(f) {
     doc.setFont("helvetica","normal");doc.text(f.notas.slice(0,120), M+3, y+6);}
   // Footer
   doc.setTextColor(...gr);doc.setFont("helvetica","normal");doc.setFontSize(8);
-  doc.text("Gracias por confiar en PetColinas", W/2, 284, {align:"center"});
-  doc.text("Plaza Las Colinas, Santo Domingo Oeste \xB7 Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com", W/2, 290, {align:"center"});
+  doc.text("Gracias por confiar en " + businessName, W/2, 284, {align:"center"});
+  doc.text(businessTagline.slice(0, 90), W/2, 290, {align:"center"});
   return doc;
 }
 // Busca el telefono del cliente de una factura. Muchas facturas viejas se
@@ -4475,6 +4492,7 @@ function resolverTelFactura(f, clientes) {
 function enviarPDFWhatsApp(f, clientes) {
   const telRaw = resolverTelFactura(f, clientes);
   const tel = telRaw ? (telRaw.length >= 11 ? telRaw : "1" + telRaw) : "";
+  const businessName = vetMakeBusinessName();
   const saludo = f.propietario ? "Hola " + String(f.propietario).split(" ")[0] + ", " : "Hola, ";
   // Si el cliente abonó, el mensaje lo dice: cuánto lleva pagado y cuánto
   // falta. Mandar solo el total haría que pareciera que no ha pagado nada.
@@ -4492,15 +4510,15 @@ function enviarPDFWhatsApp(f, clientes) {
   if (f.proximaCita && f.proximaCita.fecha) {
     const pc = f.proximaCita;
     const enlaceCal = enlaceCalendarioGoogle(
-      sinEmoji(String(pc.label || "Pr\xF3xima cita")) + " — " + (f.mascota || "") + " \xB7 PetColinas",
+      sinEmoji(String(pc.label || "Pr\xF3xima cita")) + " — " + (f.mascota || "") + " \xB7 " + businessName,
       pc.fecha, pc.hora || "10:00", 60,
-      "Cita de " + (f.mascota || "") + " en PetColinas. " + sinEmoji(String(pc.label || ""))
+      "Cita de " + (f.mascota || "") + " en " + businessName + ". " + sinEmoji(String(pc.label || ""))
     );
     lineasProxima = "\n\n\u{1F5D3}️ Su pr\xF3xima cita: *" + fechaLargaRD(pc.fecha) + (pc.hora ? " a las " + pc.hora : "") + "*" +
       "\n" + sinEmoji(String(pc.label || "")) +
       (enlaceCal ? "\n\n\u{1F4C5} T\xF3quelo para guardarla en su calendario:\n" + enlaceCal : "");
   }
-  const msgText = saludo + "le anexamos su factura de PetColinas 🐾\n\n*Factura #" + f.numero + "* \xB7 " + f.fecha +
+  const msgText = saludo + "le anexamos su factura de " + businessName + " 🐾\n\n*Factura #" + f.numero + "* \xB7 " + f.fecha +
     (f.mascota ? "\n🐾 " + f.mascota : "") +
     "\n*Total: RD$ " + (f.total || 0).toLocaleString("es-DO") + "*" + lineasPago +
     "\n\n\xA1Gracias por la visita!" + lineasProxima;
@@ -4515,7 +4533,7 @@ function enviarPDFWhatsApp(f, clientes) {
     if (window.jspdf) {
       try {
         const doc0 = generarFacturaPDFDoc(f);
-        const fileName0 = "Factura_PetColinas_" + f.numero + ".pdf";
+        const fileName0 = "Factura_" + f.numero + ".pdf";
         if (navigator.share && navigator.canShare) {
           const file0 = new File([doc0.output("blob")], fileName0, { type: "application/pdf" });
           if (navigator.canShare({ files: [file0] })) {
@@ -4534,7 +4552,7 @@ function enviarPDFWhatsApp(f, clientes) {
   // cliente con el mensaje ya escrito. Sin await antes de window.open para que
   // el navegador no bloquee la ventana (sigue siendo el mismo clic del usuario).
   if (window.jspdf) {
-    try { generarFacturaPDFDoc(f).save("Factura_PetColinas_" + f.numero + ".pdf"); }
+    try { generarFacturaPDFDoc(f).save("Factura_" + f.numero + ".pdf"); }
     catch (e) { console.error("PDF error:", e); }
   }
   window.open(waUrl, "_blank");
@@ -5080,11 +5098,17 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     f = { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas), chequeo: f.chequeo || chequeoDeFactura(f, historias, clientes) };
     const clienteData = clientes.find(c => String(c.id) === String(f.clienteId));
     const cedulaCliente = clienteData?.cedula || "";
+    const businessName = vetMakeBusinessName();
+    const businessTagline = vetMakeBusinessTagline();
+    const businessLogo = vetMakeBusinessLogo();
+    const logoMarkup = businessLogo
+      ? `<img src="${businessLogo}" alt="${businessName}" style="height:60px;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">`
+      : "";
     const win = window.open("", "_blank");
     win.document.write(`
       <!DOCTYPE html><html><head>
       <meta charset="UTF-8">
-      <title>Factura #${f.numero} - PetColinas</title>
+      <title>Factura #${f.numero} - ${businessName}</title>
       <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family: Arial, sans-serif; padding:40px; color:#1a1d23; font-size:13px; }
@@ -5116,11 +5140,10 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
       </head><body>
       <div class="header">
         <div>
-          <img src="https://victorbeltre.github.io/petcolinas/logo.png" alt="PetColinas" style="height:60px;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-          <div style="display:none;font-size:22px;font-weight:900;color:#1a6b3a">🐾 PetColinas</div>
+          ${logoMarkup}
+          <div style="${businessLogo ? "display:none;" : ""}font-size:22px;font-weight:900;color:#1a6b3a">🐾 ${businessName}</div>
           <div style="font-size:12px;color:#5a6472;margin-top:8px;">
-            Plaza Las Colinas, Santo Domingo Oeste<br>
-            Tel: <strong>809-752-6806</strong> \xB7 petcolinasrd@gmail.com
+            ${businessTagline}
           </div>
         </div>
         <div class="factura-num">
@@ -5140,9 +5163,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
         </div>
         <div class="datos-box">
           <h4>Emisor</h4>
-          <p><strong>PetColinas</strong></p>
-          <p style="font-size:12px;color:#5a6472;">Plaza Las Colinas, SDO</p>
-          <p style="font-size:12px;color:#5a6472;">Tel: 809-752-6806</p>
+          <p><strong>${businessName}</strong></p>
+          <p style="font-size:12px;color:#5a6472;">${businessTagline}</p>
           ${(window._petcolinasRNC || PETCOLINAS_RNC) ? `<p style="font-size:12px;color:#5a6472;">RNC: ${window._petcolinasRNC || PETCOLINAS_RNC}</p>` : ""}
           <p style="margin-top:8px;font-weight:700;">\uD83D\uDC3E ${f.mascota || "\u2014"}</p>
         </div>
@@ -5251,8 +5273,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     })()}
 
       <div class="footer">
-        <p>Gracias por confiar en PetColinas \u{1F43E}</p>
-        <p style="margin-top:4px;">Plaza Las Colinas, Santo Domingo Oeste \xB7 Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com</p>
+        <p>Gracias por confiar en ${businessName} \u{1F43E}</p>
+        <p style="margin-top:4px;">${businessTagline}</p>
       </div>
       <!-- redeploy:1773934086719|1773931502086 --></body><!-- rebuild:2026-03-17T17:11:53.019Z --></html>
     `);
@@ -5699,7 +5721,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
       if (!String(f.id).startsWith("venta_")) return null;
       if (estaSeparada(f)) return React.createElement("button", { onClick: () => unirFactura(f), title: "Volver a juntarla con las demás ventas de ese día", style: { background: "#fef3c7", color: "#92400e", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "🔗 Unir con las del día");
       return ventasDeFactura(f).length > 1 ? React.createElement("button", { onClick: () => separarFactura(f), title: "Emitir una factura por cada venta de ese día", style: { background: "#f3e8ff", color: "#6b21a8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "✂️ Separar en facturas") : null;
-    })(), React.createElement("button", { onClick: () => borrarFactura(f, () => setVista("lista")), style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "Plaza Las Colinas, Santo Domingo Oeste"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "petcolinasrd@gmail.com")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    })(), React.createElement("button", { onClick: () => borrarFactura(f, () => setVista("lista")), style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5D1}\uFE0F Borrar")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: `2px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 900, color: C.verde } }, "\u{1F43E} " + vetMakeBusinessName()), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, vetMakeBusinessTagline()), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1 } }, "Factura"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, color: C.verde } }, "#", f.numero), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Fecha: ", f.fecha), /* @__PURE__ */ React.createElement(Badge, { color: f.estado === "pendiente" ? "#dc2626" : C.verde }, f.estado === "pendiente" ? "\u23F3 PENDIENTE" : "\u2713 PAGADA"), f.metodoPago && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, "\uD83D\uDCB3 ", f.metodoPago), gLealtad > 0 && /* @__PURE__ */ React.createElement("div", { style: {
       marginTop: 6,
       background: gLealtad >= 10 ? "#d4edda" : "#fff3cd",
       color: gLealtad >= 10 ? "#155724" : "#856404",
@@ -5750,7 +5772,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     ), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "\u{1F43E} ", c.mascota), telFinal && /* @__PURE__ */ React.createElement(
       "a",
       {
-        href: `https://wa.me/${telFinal.replace(/\D/g, "")}?text=${encodeURIComponent("\u{1F43E} Hola " + (crmInfo?.nombrePropietario || c.propietario) + ", le escribimos de PetColinas. \xBFC\xF3mo est\xE1 " + c.mascota + "? \u{1F60A}")}`,
+        href: `https://wa.me/${telFinal.replace(/\D/g, "")}?text=${encodeURIComponent("\u{1F43E} Hola " + (crmInfo?.nombrePropietario || c.propietario) + ", le escribimos de " + vetMakeBusinessName() + ". \xBFC\xF3mo est\xE1 " + c.mascota + "? \u{1F60A}")}`,
         target: "_blank",
         rel: "noreferrer",
         style: { background: "#25D366", color: "#fff", textDecoration: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700 }
@@ -7755,7 +7777,7 @@ function PetColinas() {
   if (isCaja) return React.createElement(React.Fragment, null,
     React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null),
     React.createElement(PortalCaja, {
-      session, onLogout: handleLogout,
+      session, tenant, onLogout: handleLogout,
       ventas: ventasVet, setVentas: setVentasVet,
       clientes: clientesVet, setClientes: setClientesVet,
       citas: citasPortal, setCitas: setCitasPortal, refetchCitas: refetchCitasPortal,
@@ -7769,7 +7791,7 @@ function PetColinas() {
     }));
 
   if (isVet) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalVeterinaria, {
-    session, onLogout: handleLogout,
+    session, tenant, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     clientes: clientesVet, setClientes: setClientesVet,
     citas: citasPortal, setCitas: setCitasPortal,
@@ -7778,14 +7800,14 @@ function PetColinas() {
   }));
 
   if (isGrm) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalGroomer, {
-    session, onLogout: handleLogout,
+    session, tenant, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     pagosNom: pagosNomVet || [],
     clientes: clientesVet, setClientes: setClientesVet,
     citas: citasPortal, setCitas: setCitasPortal
   }));
 
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout }));
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, tenant, onLogout: handleLogout }));
 }
 const INVENTARIO_SEED = [
   { id: "80001", nombre: "NG Spectra S 3.6 - 7.5 kg", categoria: "farmaco", stock: 0, stockInicial: 8, stockMin: 1, costo: 962, pventa: 1462, proveedor: "ESPAVET", fechaEntrada: "2026-01-20" },
@@ -7915,7 +7937,7 @@ function ModalPagosPendientes({ ventas, setVentas, clientes, onClose }) {
     var tel = cli && cli.telefono ? cli.telefono.replace(/\D/g, "") : "";
     var monto = "RD$ " + (v.total || 0).toLocaleString("es-DO");
     var serv = v.descripcion || v.servicio || v.area || "servicio";
-    var msg = "Hola " + (v.cliente || "cliente") + "! Le recordamos que tiene un pago pendiente de " + monto + " por " + serv + " del " + (v.fecha || "") + ". Puede pagarlo en efectivo, tarjeta o transferencia. PetColinas";
+    var msg = "Hola " + (v.cliente || "cliente") + "! Le recordamos que tiene un pago pendiente de " + monto + " por " + serv + " del " + (v.fecha || "") + ". Puede pagarlo en efectivo, tarjeta o transferencia. " + vetMakeBusinessName();
     var url = tel ? "https://wa.me/1" + tel + "?text=" + encodeURIComponent(msg) : "https://wa.me/?text=" + encodeURIComponent(msg);
     window.open(url, "_blank");
   }
@@ -7976,7 +7998,7 @@ const TABS_PORTAL_CAJA = [
   { id: "whatsapp", icono: "\u{1F4AC}", label: "WhatsApp" },
   { id: "notificaciones", icono: "\u{1F43E}", label: "Clientes nuevos" }
 ];
-function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, clientes, setClientes,
+function PortalCaja({ session, tenant, onLogout, ventas, setVentas, deleteVenta, clientes, setClientes,
                       citas, setCitas, deleteCita, inventario, setInventario, tarifasGrooming, tarifasVet,
                       paquetes, setPaquetes,
                       seguimientos, setSeguimientos, notifLeidas, marcarNotifLeida, marcarNotifLeidas,
@@ -8009,7 +8031,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
     E("div", { style: { background: C.verde, color: "#fff", padding: "16px 24px" } },
       E("div", { style: { maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 } },
         E("div", null,
-          E("div", { style: { fontWeight: 900, fontSize: 19 } }, "\u{1F43E} " + VETMAKE_CONFIG.name),
+          E("div", { style: { fontWeight: 900, fontSize: 19 } }, "\u{1F43E} " + (tenant?.negocio?.nombre || vetMakeBusinessName())),
           E("div", { style: { fontSize: 12, opacity: .85, marginTop: 2, display: "flex", gap: 10, alignItems: "center" } }, session?.user?.email || "", E(EstadoSync, null))),
         E("button", { onClick: onLogout, style: { background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Cerrar sesi\u00F3n"))),
 
@@ -8046,7 +8068,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
   );
 }
 
-function PetColinasApp({ session, onLogout }) {
+function PetColinasApp({ session, tenant, onLogout }) {
   const [tab, setTab] = useState("dashboard");
   const [showPendModal, setShowPendModal] = useState(false);
   const [dbReady, setDbReady] = useState(false);
@@ -8149,7 +8171,7 @@ function PetColinasApp({ session, onLogout }) {
     setTimeout(() => setPollingSync(false), 2000);
   }
   const [gastos, setGastos, gastosLoaded] = useSupabase("pc_gastos", GASTOS_SEED);
-  const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", EMPLEADOS_INIT);
+  const [empleados, setEmpleados, empLoaded] = useSupabase("pc_empleados", []);
   const [pagosNom, setPagosNom, pagosLoaded] = useSupabase("pc_pagos", []);
   const [historias, setHistoriasRaw, , , deleteHistoria] = useSupabase("pc_historias", []);
   const [paquetes, setPaquetes] = useSupabase("pc_paquetes", []);
@@ -8270,15 +8292,15 @@ function PetColinasApp({ session, onLogout }) {
   const totalNomina = pagosMes.reduce((s, p) => s + (p.mensualidad + p.comisiones - p.descuentos), 0);
   const totalEgresos = totalGastos + totalNomina;
   const utilidad = totalVentas - totalEgresos;
-  // Para grooming: si comision === 0, calcular ~12% del total (promedio real de la tarifa de Alexander)
-  const calcComGrm = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.12);
+  // Las comisiones deben venir configuradas en cada venta/empleado del negocio.
+  // VetMake no inventa porcentajes heredados de la clínica de demostración.
+  const calcComGrm = (v) => Number(v.comision) || 0;
   const comGrmSistema = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + calcComGrm(v), 0);
-  // Para vet: si comision === 0 en el registro historico, calculamos 30% Aylein / 40% Valentina sobre el total
-  const calcComVetAylein = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.30);
-  const calcComVetValen  = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.40);
-  const comAyleinSistema = ventasMes.filter((v) => v.area === "veterinaria" && !(v.recibidopor || v.recibidoPor || "").toLowerCase().includes("valentina")).reduce((s, v) => s + calcComVetAylein(v), 0);
-  const comValenSistema = ventasMes.filter((v) => v.area === "veterinaria" && (v.recibidopor || v.recibidoPor || "").toLowerCase().includes("valentina")).reduce((s, v) => s + calcComVetValen(v), 0);
-  const comVetSistema = comAyleinSistema + comValenSistema;
+  const comVetSistema = ventasMes.filter((v) => v.area === "veterinaria").reduce((s, v) => s + (Number(v.comision) || 0), 0);
+  // Se conserva el nombre de estas props para no romper componentes antiguos;
+  // el valor representa el total configurado del negocio actual.
+  const comAyleinSistema = comVetSistema;
+  const comValenSistema = 0;
   const COM_GRM_EXCEL_MARZO = 0;
   const COM_VET_EXCEL_MARZO = 0;
   const comisionesGrm = comGrmSistema;
@@ -8299,7 +8321,7 @@ function PetColinasApp({ session, onLogout }) {
     alignItems: "center",
     justifyContent: "space-between",
     boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
-  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} " + VETMAKE_CONFIG.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, VETMAKE_CONFIG.tagline)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), React.createElement(EstadoSync, null), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} " + (tenant?.negocio?.nombre || vetMakeBusinessName())), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, vetMakeBusinessTagline())), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, (session?.user?.email || "") + " \u2014 " + vetMakeRoleLabel(tenant?.rol)), React.createElement(EstadoSync, null), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
     background: "rgba(255,255,255,0.15)",
     border: "1px solid rgba(255,255,255,0.3)",
     color: "#fff",
@@ -8442,20 +8464,9 @@ function PetColinasApp({ session, onLogout }) {
     animation: "fadeIn 0.2s ease"
   } }, undoMsg), showPendModal ? React.createElement(ModalPagosPendientes, { ventas: ventas, setVentas: setVentas, clientes: todosClientes, onClose: function() { setShowPendModal(false); } }) : null);
 }
-const HISTORICO = {
-  "2026-01": { grm: 69049, far: 19223, vet: 30470, med: 1740, total: 120482, servicios: 94, gastos: 20289, nomina: 60354 },
-  "2026-02": { grm: 63669, far: 31933, vet: 36800, med: 1650, total: 134052, servicios: 99, gastos: 21457, nomina: 36078 },
-  "2026-03": { grm: 142076, far: 42108, vet: 45499, med: 0, total: 229683, servicios: 166, gastos: 0, nomina: 0 },
-  "2026-04": { grm: 113692, far: 29324, vet: 15500, med: 0, total: 158516, servicios: 112, gastos: 0, nomina: 0 },
-  "2026-05": { grm: 112288, far: 46027, vet: 17250, med: 0, total: 175565, servicios: 134, gastos: 0, nomina: 0 }
-};
-const _PE_DIA = Math.round(203739 / 26);
-const MARZO_SEMANAS = [
-  { sem: "Semana 1", dias: "1\u20137 mar", meta: _PE_DIA * 6, real: 0, color: C.azul },
-  { sem: "Semana 2", dias: "9\u201314 mar", meta: _PE_DIA * 7, real: 0, color: C.verde },
-  { sem: "Semana 3", dias: "16\u201321 mar", meta: _PE_DIA * 7, real: 0, color: C.verde },
-  { sem: "Semana 4", dias: "23\u201329 mar", meta: _PE_DIA * 6, real: 0, color: C.gold }
-];
+// El dashboard solo puede mostrar históricos que pertenezcan al negocio actual.
+// Los datos demo de PetColinas no se cargan en VetMake.
+const HISTORICO = {};
 // Areas para agrupar los seguimientos en la pestaña.
 const AREAS_SEGUIMIENTO = [
   { id: "todas",       label: "Todas",       icono: "\u{1F4CB}", color: "#5a6472" },
@@ -8516,10 +8527,10 @@ function enlaceCalendarioGoogle(titulo, fechaISO, horaHHMM, duracionMin, detalle
   const fmt = (dt) => dt.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   const qs = new URLSearchParams({
     action: "TEMPLATE",
-    text: titulo || "Cita PetColinas",
+    text: titulo || ("Cita " + vetMakeBusinessName()),
     dates: fmt(inicioUTC) + "/" + fmt(finUTC),
     details: detalles || "",
-    location: ubicacion || "PetColinas, Plaza Las Colinas, Santo Domingo Oeste",
+    location: ubicacion || vetMakeBusinessTagline(),
     ctz: "America/Santo_Domingo"
   });
   return "https://calendar.google.com/calendar/render?" + qs.toString();
@@ -8700,17 +8711,18 @@ function estadoSeguimiento(seg) {
 }
 function whatsappMsg(seg) {
   const tipo = TIPOS_SEGUIMIENTO.find((t) => t.id === seg.tipo);
+  const businessName = vetMakeBusinessName();
   const textos = {
-    bano_medicado: `Hola! Le recordamos que ${seg.mascota} tiene pendiente su *ba\xF1o medicado* en PetColinas \u{1F6C1}. Recomendamos realizarlo cada ${seg.frecuencia} d\xEDas para mantener su piel sana. \xBFLo agendamos?`,
-    vacuna_rabia: `Hola! Es tiempo de la *vacuna antirr\xE1bica* de ${seg.mascota} en PetColinas \u{1F489}. Mantener el esquema al d\xEDa es obligatorio y protege a toda la familia. \xBFLe agendamos?`,
-    vacuna_quintuple: `Hola! ${seg.mascota} tiene su *vacuna qu\xEDntuple* pendiente en PetColinas \u{1F489}. Escr\xEDbanos para coordinar la cita con nuestra veterinaria. \xA1Es importante no atrasarla!`,
-    vacuna_giardia: `Hola! Recordatorio: la *vacuna contra giardia* de ${seg.mascota} est\xE1 pr\xF3xima \u{1F489}. En PetColinas tenemos disponibilidad. \xBFCu\xE1ndo le viene bien?`,
-    vacuna_bordetella: `Hola! El refuerzo de *bordetella* de ${seg.mascota} est\xE1 pr\xF3ximo \u{1F489}. Cont\xE1ctenos para agendar con nuestra Dra. Aylein. \xA1Con gusto le atendemos!`,
-    desparasitacion: `Hola! Es tiempo de la *desparasitaci\xF3n* de ${seg.mascota} \u{1F41B}. Recomendamos hacerla cada ${seg.frecuencia} d\xEDas para su salud y la de su familia. \xBFPasamos por PetColinas?`,
-    bano_regular: `Hola! ${seg.mascota} ya tiene ${seg.frecuencia} d\xEDas desde su \xFAltimo ba\xF1o \u{1F6BF}. En PetColinas tenemos turnos disponibles con Alexander. \xBFLo agendamos esta semana?`,
-    control_vet: `Hola! Le recordamos que ${seg.mascota} tiene su *control veterinario* pendiente en PetColinas \u{1FA7A}. La Dra. Aylein tiene disponibilidad. \xBFLe coordinamos?`,
-    antipulgas: `Hola! Es tiempo de renovar la protecci\xF3n antipulgas/garrapatas de ${seg.mascota} \u{1F99F}. En PetColinas tenemos Nexgard, Bravecto y m\xE1s opciones. \xBFNecesita que le apartemos?`,
-    otro: `Hola! Le recordamos que ${seg.mascota} tiene un servicio pendiente en PetColinas: *${seg.notas || seg.tipo}*. Cont\xE1ctenos para coordinar. \xA1Gracias por confiar en nosotros! \u{1F43E}`
+    bano_medicado: `Hola! Le recordamos que ${seg.mascota} tiene pendiente su *ba\xF1o medicado* en ${businessName} \u{1F6C1}. Recomendamos realizarlo cada ${seg.frecuencia} d\xEDas para mantener su piel sana. \xBFLo agendamos?`,
+    vacuna_rabia: `Hola! Es tiempo de la *vacuna antirr\xE1bica* de ${seg.mascota} en ${businessName} \u{1F489}. Mantener el esquema al d\xEDa es obligatorio y protege a toda la familia. \xBFLe agendamos?`,
+    vacuna_quintuple: `Hola! ${seg.mascota} tiene su *vacuna qu\xEDntuple* pendiente en ${businessName} \u{1F489}. Escr\xEDbanos para coordinar la cita con nuestro equipo veterinario. \xA1Es importante no atrasarla!`,
+    vacuna_giardia: `Hola! Recordatorio: la *vacuna contra giardia* de ${seg.mascota} est\xE1 pr\xF3xima \u{1F489}. En ${businessName} tenemos disponibilidad. \xBFCu\xE1ndo le viene bien?`,
+    vacuna_bordetella: `Hola! El refuerzo de *bordetella* de ${seg.mascota} est\xE1 pr\xF3ximo \u{1F489}. Cont\xE1ctenos para agendar con nuestro equipo veterinario. \xA1Con gusto le atendemos!`,
+    desparasitacion: `Hola! Es tiempo de la *desparasitaci\xF3n* de ${seg.mascota} \u{1F41B}. Recomendamos hacerla cada ${seg.frecuencia} d\xEDas para su salud y la de su familia. \xBFPasamos por ${businessName}?`,
+    bano_regular: `Hola! ${seg.mascota} ya tiene ${seg.frecuencia} d\xEDas desde su \xFAltimo ba\xF1o \u{1F6BF}. En ${businessName} tenemos turnos disponibles. \xBFLo agendamos esta semana?`,
+    control_vet: `Hola! Le recordamos que ${seg.mascota} tiene su *control veterinario* pendiente en ${businessName} \u{1FA7A}. \xBFLe coordinamos?`,
+    antipulgas: `Hola! Es tiempo de renovar la protecci\xF3n antipulgas/garrapatas de ${seg.mascota} \u{1F99F}. En ${businessName} tenemos opciones disponibles. \xBFNecesita que le apartemos?`,
+    otro: `Hola! Le recordamos que ${seg.mascota} tiene un servicio pendiente en ${businessName}: *${seg.notas || seg.tipo}*. Cont\xE1ctenos para coordinar. \xA1Gracias por confiar en nosotros! \u{1F43E}`
   };
   return encodeURIComponent(textos[seg.tipo] || textos.otro);
 }
@@ -9135,21 +9147,22 @@ function reacMensaje(x, plantilla) {
   const dueno = String(x.dueno || "").split(" ")[0];
   const hola = "Hola" + (dueno ? " " + dueno : "") + "!";
   const m = x.mascota;
+  const businessName = vetMakeBusinessName();
   if (plantilla === "chequeo") {
-    return hola + " \u{1F43E} Le escribimos de PetColinas. Hace " + x.dias + " d\xEDas que no vemos a *" + m + "*.\n\n" +
+    return hola + " \u{1F43E} Le escribimos de " + businessName + ". Hace " + x.dias + " d\xEDas que no vemos a *" + m + "*.\n\n" +
       "Este mes estamos haciendo un *chequeo gratis de 5 puntos* (piel, o\xEDdos, dientes, peso y u\xF1as) con nuestra doctora " +
       "a toda mascota que venga a ba\xF1o. \xBFSe lo apartamos?";
   }
   if (plantilla === "recordatorio") {
-    return hola + " \u{1F43E} Le saludamos de PetColinas. A *" + m + "* le toca su ba\xF1o hace rato — " +
+    return hola + " \u{1F43E} Le saludamos de " + businessName + ". A *" + m + "* le toca su ba\xF1o hace rato — " +
       "la \xFAltima vez fue el " + x.ultima + ".\n\n\xBFSe lo agendamos esta semana? Tenemos espacio.";
   }
   if (plantilla === "extranamos") {
-    return hola + " \u{1F43E} Aqu\xED PetColinas. Hace " + Math.round(x.dias / 30) + " meses que no vemos a *" + m + "* " +
+    return hola + " \u{1F43E} Aqu\xED " + businessName + ". Hace " + Math.round(x.dias / 30) + " meses que no vemos a *" + m + "* " +
       "y quer\xEDamos saber c\xF3mo est\xE1.\n\nSi hay algo que podamos mejorar, d\xEDganoslo con confianza. " +
       "Y si quiere volver a traerlo, aqu\xED lo esperamos con las puertas abiertas.";
   }
-  return hola + " \u{1F43E} Le escribimos de PetColinas para saber c\xF3mo est\xE1 *" + m + "*. \xBFLe agendamos una visita?";
+  return hola + " \u{1F43E} Le escribimos de " + businessName + " para saber c\xF3mo est\xE1 *" + m + "*. \xBFLe agendamos una visita?";
 }
 const REAC_PLANTILLAS = [
   { id: "chequeo",      label: "\u{1FA7A} Chequeo gratis", nota: "La mejor. No cuesta nada y abre la consulta veterinaria." },
@@ -9592,9 +9605,10 @@ function ClientesInactivos({ clientes, ventas }) {
   function msgWA(c, dias) {
     const nombre = c.nombreMascota;
     const dueno = c.nombrePropietario?.split(" ")[0] || "cliente";
+    const businessName = vetMakeBusinessName();
     if (dias > 90)
-      return encodeURIComponent(`Hola ${dueno}! \u{1F43E} Hace tiempo que no vemos a ${nombre} por PetColinas. \xBFC\xF3mo est\xE1? Estamos aqu\xED para cualquier servicio de grooming, veterinaria o farmacia. \xA1Te esperamos!`);
-    return encodeURIComponent(`Hola ${dueno}! Quer\xEDamos saludarte y recordarte que ${nombre} tiene disponibles sus servicios de grooming y veterinaria en PetColinas \u{1F43E}. \xBFLo agendamos esta semana?`);
+      return encodeURIComponent(`Hola ${dueno}! \u{1F43E} Hace tiempo que no vemos a ${nombre} por ${businessName}. \xBFC\xF3mo est\xE1? Estamos aqu\xED para cualquier servicio de grooming, veterinaria o farmacia. \xA1Te esperamos!`);
+    return encodeURIComponent(`Hola ${dueno}! Quer\xEDamos saludarte y recordarte que ${nombre} tiene disponibles sus servicios de grooming y veterinaria en ${businessName} \u{1F43E}. \xBFLo agendamos esta semana?`);
   }
   const inactivos = clientes.filter((c) => c.nombreMascota).map((c) => {
     const uv = ultimaVisitaCliente(c);
@@ -9613,7 +9627,7 @@ function ClientesInactivos({ clientes, ventas }) {
   const criticos = inactivos.filter((c) => c.diasSinVenir > 90).length;
   const moderados = inactivos.filter((c) => c.diasSinVenir > 30 && c.diasSinVenir <= 90).length;
   const conTel = inactivos.filter((c) => c.telefono).length;
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, marginBottom: 4 } }, "\u{1F634} Clientes sin venir"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginBottom: 20 } }, "Pacientes que llevan m\xE1s de ", umbral, " d\xEDas sin visitar PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 20 } }, [
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18, marginBottom: 4 } }, "\u{1F634} Clientes sin venir"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginBottom: 20 } }, "Pacientes que llevan m\xE1s de ", umbral, " d\xEDas sin visitar " + vetMakeBusinessName()), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 20 } }, [
     { label: "Total inactivos", val: inactivos.length, color: "#7f8c8d", bg: "#f4f5f6", icono: "\u{1F4CB}" },
     { label: "Cr\xEDticos (+90d)", val: criticos, color: "#c0392b", bg: "#fdeaea", icono: "\u{1F6A8}" },
     { label: "En riesgo (+30d)", val: moderados, color: "#e67e22", bg: "#fef9e7", icono: "\u26A0\uFE0F" },
@@ -9722,7 +9736,7 @@ function AlertaVacunas({ ventas = [], clientes = [], onIr }) {
   }).filter(x => x.dias <= 45).sort((a, b) => a.dias - b.dias);
   if (proximas.length === 0) return null;
   const vencidas = proximas.filter(x => x.dias < 0);
-  const waMsg = (x) => encodeURIComponent("Hola! Le saludamos de PetColinas \uD83D\uDC3E. Le recordamos que a " + x.pac + " le toca renovar su vacuna" + (x.tipo !== "general" ? " de " + x.tipo : "") + (x.dias < 0 ? " (venci\xF3 el " + x.proxFecha + ")" : " (vence el " + x.proxFecha + ")") + ". \xBFLe agendamos una cita?");
+  const waMsg = (x) => encodeURIComponent("Hola! Le saludamos de " + vetMakeBusinessName() + " \uD83D\uDC3E. Le recordamos que a " + x.pac + " le toca renovar su vacuna" + (x.tipo !== "general" ? " de " + x.tipo : "") + (x.dias < 0 ? " (venci\xF3 el " + x.proxFecha + ")" : " (vence el " + x.proxFecha + ")") + ". \xBFLe agendamos una cita?");
   return React.createElement("div", { style: {
     background: vencidas.length > 0 ? "#fdf2f8" : "#f0fdf4",
     border: `2px solid ${vencidas.length > 0 ? "#db2777" : "#16a34a"}`,
@@ -9828,7 +9842,7 @@ function AlertaClientesInactivos({ clientes = [], ventas = [], onIr }) {
 function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNomina: _tn, totalGastos: _tg, ventasMes: _vm, comisionesGrm: _cg, comisionesVet: _cv, comisionesValen = 0, comGrmSistema: _cgs, comVetSistema: _cvs, comAyleinSistema = 0, comValenSistema = 0, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos = [], clientes = [], ventas = [], inventario = [], setVentas, setTab, citas = [], gastos = [], pagosNom = [] }) {
   const mesHoy = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const [mesSel, setMesSel] = React.useState(mesHoy);
-  const PDE_BASE = 203739;
+  const PDE_BASE = 1;
   const prevMes = () => { const [y,m] = mesSel.split("-").map(Number); setMesSel(new Date(y,m-2,1).toISOString().slice(0,7)); };
   const nextMes = () => { const [y,m] = mesSel.split("-").map(Number); const nk = new Date(y,m,1).toISOString().slice(0,7); if(nk <= mesHoy) setMesSel(nk); };
   const mesNombreActual = new Date(mesSel + "-15").toLocaleDateString("es-DO", { month: "long", year: "numeric" }).replace(/^\w/, c => c.toUpperCase());
@@ -9839,19 +9853,18 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
   const totalGastos = gastosMesSel.reduce((s,g) => s+g.monto, 0);
   const totalNomina = pagosMesSel.reduce((s,p) => s+(p.mensualidad+p.comisiones-p.descuentos), 0);
   const totalEgresos = totalGastos + totalNomina;
-  // Meta mensual / punto de equilibrio: monto fijo del PE real (RD$203,739/mes).
-  // Antes era dinamico (max de egresos del mes), pero meses con gastos puntuales
-  // grandes (alquiler, registro, etc.) inflaban la meta a ~233k. Se fija al PE real.
-  const PDE = PDE_BASE;
+  // Sin históricos demo: el punto de equilibrio se calcula con los egresos
+  // registrados por el negocio actual.
+  const PDE = Math.max(PDE_BASE, totalEgresos);
   const utilidad = totalVentas - totalEgresos;
   const grm = ventasMes.filter((v) => v.area==="grooming").reduce((s,v)=>s+v.total,0);
   const vet = ventasMes.filter((v) => v.area==="veterinaria").reduce((s,v)=>s+v.total,0);
   const far = ventasMes.filter((v) => v.area==="farmacia").reduce((s,v)=>s+v.total,0);
   const mix = ventasMes.filter((v) => v.area==="mixta").reduce((s,v)=>s+v.total,0);
   const med = ventasMes.filter((v) => v.area==="medicamentos").reduce((s,v)=>s+v.total,0);
-  // Usar los valores ya calculados con fallback desde PetColinasApp (props _cgs y comAyleinSistema)
-  const calcComGrmD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.12);
-  const calcComVetD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.30);
+  // Usar los valores ya calculados desde las ventas del negocio actual.
+  const calcComGrmD = (v) => Number(v.comision) || 0;
+  const calcComVetD = (v) => Number(v.comision) || 0;
   const comGrmSistema = _cgs > 0 ? _cgs : ventasMes.filter((v)=>v.area==="grooming").reduce((s,v)=>s+calcComGrmD(v),0);
   const comVetSistema = comAyleinSistema > 0 ? comAyleinSistema : ventasMes.filter((v)=>v.area==="veterinaria").reduce((s,v)=>s+calcComVetD(v),0);
   const comisionesGrm = comGrmSistema;
@@ -9961,7 +9974,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
       const key = d.toISOString().slice(0,7);
       const nombre = new Date(key+"-15").toLocaleDateString("es-DO", { month:"long", year:"numeric" }).replace(/^\w/, c => c.toUpperCase());
       const hist = HISTORICO[key];
-      let g_,vv_,f_,mix_=0,med_=0,tot_,parcial=false;
+      let g_=0,vv_=0,f_=0,mix_=0,med_=0,tot_=0,parcial=false;
       const vk=ventas.filter((v)=>v.fecha?.slice(0,7)===key);
       if (vk.length>0) { g_=vk.filter((v)=>v.area==="grooming").reduce((s,v)=>s+v.total,0); vv_=vk.filter((v)=>v.area==="veterinaria").reduce((s,v)=>s+v.total,0); f_=vk.filter((v)=>v.area==="farmacia").reduce((s,v)=>s+v.total,0); mix_=vk.filter((v)=>v.area==="mixta").reduce((s,v)=>s+v.total,0); med_=vk.filter((v)=>v.area==="medicamentos").reduce((s,v)=>s+v.total,0); tot_=vk.reduce((s,v)=>s+v.total,0); parcial=key>=mesHoy; }
       else if (hist) { g_=hist.grm; vv_=hist.vet; f_=hist.far; med_=hist.med||0; tot_=hist.total; }
@@ -10063,7 +10076,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
       onMouseEnter: (e) => e.currentTarget.style.boxShadow = "0 4px 14px rgba(26,107,58,0.15)",
       onMouseLeave: (e) => e.currentTarget.style.boxShadow = "none"
     },
-    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 6 } }, "\u{1F415} Alexander \u2014 Grooming ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.verde } }, "\xB7 Ver detalle \u2192")),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 6 } }, "\u{1F415} Grooming \u2014 Grooming ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.verde } }, "\xB7 Ver detalle \u2192")),
     /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.verde, fontWeight: 700, marginBottom: 8 } }, RD(comisionesGrm)),
     /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11, borderTop: `1px solid ${C.verde}30`, paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4CB} Del Excel (sem.1 Marzo)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.verde } }, RD(COM_GRM_EXCEL_MARZO))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4BB} Registrados en sistema"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.verde } }, RD(comGrmSistema))))
   ), /* @__PURE__ */ React.createElement(
@@ -10074,7 +10087,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
       onMouseEnter: (e) => e.currentTarget.style.boxShadow = "0 4px 14px rgba(26,79,160,0.15)",
       onMouseLeave: (e) => e.currentTarget.style.boxShadow = "none"
     },
-    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 6 } }, "\u{1FA7A} Aylein \u2014 Veterinaria (30%) ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.azul } }, "\xB7 Ver detalle \u2192")),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 6 } }, "\u{1FA7A} Veterinaria \u2014 Veterinaria (30%) ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.azul } }, "\xB7 Ver detalle \u2192")),
     /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: C.azul, fontWeight: 700, marginBottom: 8 } }, RD(comisionesVet)),
     /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11, borderTop: `1px solid ${C.azul}30`, paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4CB} Del Excel (sem.1 Marzo)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(COM_VET_EXCEL_MARZO))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.grisd } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4BB} Registrados en sistema"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.azul } }, RD(comAyleinSistema))))
   ), /* @__PURE__ */ React.createElement(
@@ -10085,10 +10098,10 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
       onMouseEnter: (e) => e.currentTarget.style.boxShadow = "0 4px 14px rgba(219,39,119,0.15)",
       onMouseLeave: (e) => e.currentTarget.style.boxShadow = "none"
     },
-    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 6 } }, "\u{1FA7A} Dra. Valentina \u2014 Veterinaria (40%) ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#db2777" } }, "\xB7 Ver detalle \u2192")),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 6 } }, "\u{1FA7A} Veterinaria 2 \u2014 Veterinaria (40%) ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#db2777" } }, "\xB7 Ver detalle \u2192")),
     /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 24, color: "#db2777", fontWeight: 700, marginBottom: 8 } }, RD(comisionesValen)),
     /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11, borderTop: "1px solid #db277730", paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4BB} Registrados en sistema"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: "#db2777" } }, RD(comValenSistema))))
-  ), /* @__PURE__ */ React.createElement("div", { style: { background: "#f8f9fa", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.grisd } }, "\u{1F4A1} Las comisiones del Excel se actualizan cada vez que subas un archivo nuevo. Las del sistema se calculan en tiempo real desde las ventas que registres."))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u26A1 Alertas del mes"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (() => { const histPrev = Object.values(HISTORICO).slice(-2)[0]; const vetPrev = histPrev?.vet || 34550; const vetMeta = Math.round(PDE * 0.23); return vet < vetMeta && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.rojo}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u{1FA7A} Veterinaria baja:"), " Solo ", RD(vet), ". Mes anterior: ", RD(vetPrev), ". Activar consultas urgente."); })(), (() => { const histPrev = Object.values(HISTORICO).slice(-2)[0]; const farPrev = histPrev?.far || 23483; const farMeta = Math.round(PDE * 0.20); return far < farMeta && /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.naranja}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.naranja } }, "\u{1F48A} Farmacia baja:"), " Solo ", RD(far), ". Mes anterior: ", RD(farPrev), ". \xBFHay Nexgard en stock?"); })(), totalVentas >= PDE && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.verde } }, "\u2705 Meta alcanzada!"), " Superaste ", RD(PDE), " este mes. \u{1F389}"), grm > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.azul}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.azul } }, "\u{1F4CA} Ticket promedio grooming:"), " ", RD(Math.round(grm / (ventasMes.filter((v) => v.area === "grooming").length || 1))), " por servicio este mes."), vet >= 1e4 && far >= 1e4 && totalVentas < PDE && /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.gold}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.gold } }, "\u{1F3AF} Buen ritmo:"), " Faltan ", RD(PDE - totalVentas), " para el punto de equilibrio (", RD(PDE), ").")))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F550} \xDAltimas transacciones del mes"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => window.location.reload(), style: { background: "none", border: "1.5px solid #9ca3af", color: "#9ca3af", borderRadius: 20, padding: "4px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "\ud83d\udd04 Actualizar"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("ventas"), style: {
+  ), /* @__PURE__ */ React.createElement("div", { style: { background: "#f8f9fa", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.grisd } }, "\u{1F4A1} Las comisiones del Excel se actualizan cada vez que subas un archivo nuevo. Las del sistema se calculan en tiempo real desde las ventas que registres."))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u26A1 Alertas del mes"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (() => { const histPrev = Object.values(HISTORICO).slice(-2)[0]; const vetPrev = histPrev?.vet || 0; const vetMeta = Math.round(PDE * 0.23); return vet < vetMeta && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.rojo}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u{1FA7A} Veterinaria baja:"), " Solo ", RD(vet), ". Mes anterior: ", RD(vetPrev), ". Activar consultas urgente."); })(), (() => { const histPrev = Object.values(HISTORICO).slice(-2)[0]; const farPrev = histPrev?.far || 0; const farMeta = Math.round(PDE * 0.20); return far < farMeta && /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.naranja}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.naranja } }, "\u{1F48A} Farmacia baja:"), " Solo ", RD(far), ". Mes anterior: ", RD(farPrev), ". \xBFHay Nexgard en stock?"); })(), totalVentas >= PDE && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.verde}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.verde } }, "\u2705 Meta alcanzada!"), " Superaste ", RD(PDE), " este mes. \u{1F389}"), grm > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.azul}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.azul } }, "\u{1F4CA} Ticket promedio grooming:"), " ", RD(Math.round(grm / (ventasMes.filter((v) => v.area === "grooming").length || 1))), " por servicio este mes."), vet >= 1e4 && far >= 1e4 && totalVentas < PDE && /* @__PURE__ */ React.createElement("div", { style: { background: C.goldL, borderRadius: 8, padding: "10px 12px", fontSize: 12, borderLeft: `3px solid ${C.gold}` } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.gold } }, "\u{1F3AF} Buen ritmo:"), " Faltan ", RD(PDE - totalVentas), " para el punto de equilibrio (", RD(PDE), ").")))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F550} \xDAltimas transacciones del mes"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => window.location.reload(), style: { background: "none", border: "1.5px solid #9ca3af", color: "#9ca3af", borderRadius: 20, padding: "4px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "\ud83d\udd04 Actualizar"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("ventas"), style: {
     background: "none",
     border: `1.5px solid ${C.verde}`,
     color: C.verde,
@@ -10230,7 +10243,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
         },
         onClick: (e) => e.stopPropagation()
       },
-      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, fontWeight: 700 } }, comisionModal === "grooming" ? "\u{1F415} Comisiones Alexander \u2014 Grooming" : "\u{1FA7A} Comisiones Aylein \u2014 Veterinaria"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 2 } }, "Mes actual \xB7 ventas registradas en sistema")), /* @__PURE__ */ React.createElement(
+      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, fontWeight: 700 } }, comisionModal === "grooming" ? "\u{1F415} Comisiones \u2014 Grooming" : "\u{1FA7A} Comisiones \u2014 Veterinaria"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 2 } }, "Mes actual \xB7 ventas registradas en sistema")), /* @__PURE__ */ React.createElement(
         "button",
         {
           onClick: () => setComisionModal(null),
@@ -10397,6 +10410,7 @@ function EditorItemsVenta({ items, setItems, tarifasGrooming, tarifasVet, invent
 }
 
 function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setClientes, citas, setCitas, paquetes = [], setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial, tarifasGrooming = TARIFAS_GROOMING, tarifasVet = TARIFAS_VET, setSeguimientos }) {
+  const empleadoActual = vetMakeUserName(getStoredVetMakeSession(), "Usuario actual");
   const [fecha, setFecha] = useState(hoy());
   const clienteVentaRef = useRef(null);
   useEffect(() => {
@@ -10468,8 +10482,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [abonoForma, setAbonoForma] = useState("efectivo");
   const [abonoRecibido, setAbonoRecibido] = useState("");
   const [fechaRecordatorio, setFechaRecordatorio] = useState("");
-  const [cobradoPor, setCobradoPor] = useState("e4");
-  const [servicioPor, setServicioPor] = useState("e1");
+  const [cobradoPor, setCobradoPor] = useState("current");
+  const [servicioPor, setServicioPor] = useState("current");
   const [items, setItems] = useState([]);
   const [tipoItem, setTipoItem] = useState("grooming");
   const [servId, setServId] = useState(tarifasGrooming[0]?.id || "g1");
@@ -10508,7 +10522,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     if (casaGratis) return 0;   // cortesía de la casa: no genera comisión
     if (tipoItem === "grooming") return esManual ? 0 : (servSel ? servSel.comision * cantidad : 0);
     if (tipoItem === "veterinaria") {
-      const pctVet = servicioPor === "e5" ? 0.40 : 0.30;
+      const pctVet = 0;
       return Math.round(previewNeto * pctVet);
     }
     if (tipoItem === "farmacia") {
@@ -10641,6 +10655,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   // cuando quiera" en una fecha concreta, que es lo que hace que vuelvan.
   function agendarProxima(conWhatsApp) {
     if (!proxCita) return;
+    const businessName = vetMakeBusinessName();
     const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === String(proxCita.mascota || "").toLowerCase().trim());
     const tel = String((cli && cli.telefono) || proxCita.telefono || "").replace(/\D/g, "");
     const cita = {
@@ -10652,7 +10667,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       telefono: tel,
       servicio: proxCita.label,
       tipo: proxCita.tipo,
-      empleado: proxCita.tipo === "grooming" ? "Alexander" : "Valentina",
+      empleado: proxCita.empleado || "",
       estado: "pendiente",
       precio: 0,
       notas: "Agendada autom\xE1ticamente al facturar el " + (proxCita.desde || hoy())
@@ -10662,12 +10677,12 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     if (conWhatsApp) {
       const quien = String(cita.nombreCliente || "").split(" ")[0] || "";
       const enlaceCal = enlaceCalendarioGoogle(
-        proxCita.label + " — " + proxCita.mascota + " \xB7 PetColinas",
+        proxCita.label + " — " + proxCita.mascota + " \xB7 " + businessName,
         proxCita.fecha, proxCita.hora, proxCita.tipo === "grooming" ? 60 : 30,
-        "Cita de " + proxCita.mascota + " en PetColinas. " + proxCita.label + "."
+        "Cita de " + proxCita.mascota + " en " + businessName + ". " + proxCita.label + "."
       );
       const msg = "\xA1Hola" + (quien ? " " + quien : "") + "! \u{1F43E} Le dejamos apartada la pr\xF3xima cita de *" + proxCita.mascota +
-        "* en *PetColinas* para el *" + fechaLargaRD(proxCita.fecha) + "* a las *" + proxCita.hora + "*.\n\n" +
+        "* en *" + businessName + "* para el *" + fechaLargaRD(proxCita.fecha) + "* a las *" + proxCita.hora + "*.\n\n" +
         "\u{1F527} " + proxCita.label + "\n\nLe escribimos un d\xEDa antes para recordarle. \xA1Cualquier cambio nos avisa! \u{1F436}" +
         (enlaceCal ? "\n\n\u{1F4C5} T\xF3quelo para guardarla en su calendario:\n" + enlaceCal : "");
       abrirWA(tel, msg);
@@ -10752,7 +10767,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       const dto = i.descPct > 0 ? ` (-${i.descPct}%)` : "";
       return i.nombre + dto;
     }).join(" + ");
-    const nombreEmpleado = (id) => id==="e1"?"Alexander":id==="e2"?"Aylein":id==="e3"?"Leydeli":id==="e4"?"Laura":id==="e5"?"Valentina":id==="e6"?"Naylan":id==="ev"?"Victor":"";
+    const nombreEmpleado = (id) => id === "current" ? empleadoActual : String(id || "");
     // Abono: la venta queda pendiente por el saldo, y el dinero que SI entro
     // hoy se guarda con su fecha y su forma de pago, para que el cierre de
     // caja del dia cuadre con lo que hay en el cajon.
@@ -10800,7 +10815,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
           : "";
         const tel = (clienteParaLink && clienteParaLink.telefono) || "";
         const dueno = (clienteParaLink && clienteParaLink.nombrePropietario) || "";
-        const msg = "Hola" + (dueno ? " " + dueno.split(" ")[0] : "") + "! \u{1F43E} Aquí PetColinas.\n\n" +
+        const msg = "Hola" + (dueno ? " " + dueno.split(" ")[0] : "") + "! \u{1F43E} Aquí " + vetMakeBusinessName() + ".\n\n" +
           "Puede pagar " + RD(d.monto) + detalleRecargo + " con tarjeta desde este enlace seguro:\n" + d.url +
           "\n\nEn cuanto pague, se marca solo en nuestro sistema.";
         if (tel) window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
@@ -10821,8 +10836,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     setAbonoForma("efectivo");
     setAbonoRecibido("");
     setFechaRecordatorio("");
-    setCobradoPor("e4");
-    setServicioPor("e1");
+    setCobradoPor("current");
+    setServicioPor("current");
     enviarASheet(nueva);
     // Auto-crear seguimiento si es consulta veterinaria
     if (area === "veterinaria" && descripcion.toLowerCase().includes("consulta") && typeof setSeguimientos === "function") {
@@ -10954,7 +10969,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
           "Todo en orden. Sale en la factura firmado por la doctora."))
   , chequeoDe && chequeoDe.abierto && React.createElement(ModalChequeo, {
       mascota: chequeoDe.mascota, fecha: chequeoDe.fecha, clientes,
-      veterinario: "Doctora PetColinas",
+      veterinario: vetMakeUserName(getStoredVetMakeSession(), "Veterinario"),
       onCerrar: () => setChequeoDe((c) => c && { ...c, abierto: false }),
       onGuardado: (fila, resumen) => { setChequeoHecho({ mascota: chequeoDe.mascota, reco: resumen.reco }); setChequeoDe(null); }
     }), proxCita && React.createElement("div", { style: {
@@ -11016,7 +11031,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     display: "flex",
     gap: 12,
     alignItems: "center"
-  } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\u2705"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13, color: "#065f46" } }, /* @__PURE__ */ React.createElement("strong", null, "Venta registrada"), " \u2014 ", notifExito.cliente, " \xB7 ", notifExito.area, " \xB7 RD$ ", notifExito.total.toLocaleString("es-DO")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const iLst = (notifExito.items || []).map(i => { const dto = i.descPct > 0 ? " (-" + i.descPct + "%)" : ""; return "\u2022 " + i.nombre + dto + ": RD$" + (i.subtotal || i.precio || 0).toLocaleString("es-DO"); }).join("\n"); const msg = "\ud83d\udc3e *\xA1Bienvenido/a a PetColinas!* \ud83d\udc3e\n\nHola *" + notifExito.cliente + "*, te confirmamos tu servicio de hoy:\n\n" + (iLst || ("\u2022 " + (notifExito.servicio || notifExito.area) + ": RD$" + notifExito.total.toLocaleString("es-DO"))) + "\n\n*Total: RD$" + notifExito.total.toLocaleString("es-DO") + "*\n\n\xA1Gracias por confiar en PetColinas! \ud83d\udc36\ud83d\udc31"; abrirWA(notifExito.telefono || "", msg); }, style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, "\ud83d\udcac WhatsApp"), /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\u2705"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13, color: "#065f46" } }, /* @__PURE__ */ React.createElement("strong", null, "Venta registrada"), " \u2014 ", notifExito.cliente, " \xB7 ", notifExito.area, " \xB7 RD$ ", notifExito.total.toLocaleString("es-DO")), /* @__PURE__ */ React.createElement("button", { onClick: () => { const iLst = (notifExito.items || []).map(i => { const dto = i.descPct > 0 ? " (-" + i.descPct + "%)" : ""; return "\u2022 " + i.nombre + dto + ": RD$" + (i.subtotal || i.precio || 0).toLocaleString("es-DO"); }).join("\n"); const businessName = vetMakeBusinessName(); const msg = "\ud83d\udc3e *\xA1Bienvenido/a a " + businessName + "!* \ud83d\udc3e\n\nHola *" + notifExito.cliente + "*, te confirmamos tu servicio de hoy:\n\n" + (iLst || ("\u2022 " + (notifExito.servicio || notifExito.area) + ": RD$" + notifExito.total.toLocaleString("es-DO"))) + "\n\n*Total: RD$" + notifExito.total.toLocaleString("es-DO") + "*\n\n\xA1Gracias por confiar en " + businessName + "! \ud83d\udc36\ud83d\udc31"; abrirWA(notifExito.telefono || "", msg); }, style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, "\ud83d\udcac WhatsApp"), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => setNotifExito(null),
@@ -11084,9 +11099,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
           onChange: e => setCobradoPor(e.target.value),
           style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }
         },
-          /* @__PURE__ */ React.createElement("option", { value:"e4" }, "\uD83D\uDCCB Laura"),
-          /* @__PURE__ */ React.createElement("option", { value:"e3" }, "\uD83D\uDC3E Leydeli"),
-          /* @__PURE__ */ React.createElement("option", { value:"ev" }, "\uD83D\uDC51 Victor")
+          /* @__PURE__ */ React.createElement("option", { value:"current" }, "\uD83D\uDC64 " + empleadoActual)
         )
       ),
       /* Selector 2: Servicio dado por — quien realizó el servicio */
@@ -11099,17 +11112,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
           onChange: e => setServicioPor(e.target.value),
           style:{ padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, fontWeight:600, background:"#fff" }
         },
-          tipoItem === "grooming" && /* @__PURE__ */ React.createElement("option", { value:"e1" }, "\u2702\uFE0F Alexander"),
-          (tipoItem === "veterinaria" || tipoItem === "farmacia") && /* @__PURE__ */ React.createElement(React.Fragment, null,
-            /* @__PURE__ */ React.createElement("option", { value:"e6" }, "\uD83E\uDE7A Dra. Naylan"),
-            /* @__PURE__ */ React.createElement("option", { value:"e5" }, "\uD83E\uDE7A Dra. Valentina")
-          ),
-          tipoItem === "farmacia" && /* @__PURE__ */ React.createElement(React.Fragment, null,
-            /* @__PURE__ */ React.createElement("option", { value:"e1" }, "\u2702\uFE0F Alexander"),
-            /* @__PURE__ */ React.createElement("option", { value:"e4" }, "\uD83D\uDCCB Laura"),
-            /* @__PURE__ */ React.createElement("option", { value:"e3" }, "\uD83D\uDC3E Leydeli"),
-            /* @__PURE__ */ React.createElement("option", { value:"ev" }, "\uD83D\uDC51 Victor")
-          )
+          /* @__PURE__ */ React.createElement("option", { value:"current" }, "\uD83D\uDC64 " + empleadoActual)
         )
       )
     ), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", minWidth: 220 } }, /* @__PURE__ */ React.createElement(
@@ -11556,16 +11559,14 @@ items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAd
         /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}, "\uD83D\uDCB0 Comisiones"),
         /* Grooming */
         ventaDetalle.area === "grooming" && ventaDetalle.comision > 0 && /* @__PURE__ */ React.createElement("div", { style: { display:"flex", justifyContent:"space-between", fontSize:13, padding:"5px 0", borderBottom:"1px solid #f0f2f0" }},
-          /* @__PURE__ */ React.createElement("span", null, "\u2702\uFE0F Alexander — Grooming"),
+          /* @__PURE__ */ React.createElement("span", null, "\u2702\uFE0F Grooming"),
           /* @__PURE__ */ React.createElement("strong", { style:{ color: C.azul }}, RD(ventaDetalle.comision))
         ),
         /* Veterinaria */
         ventaDetalle.area === "veterinaria" && ventaDetalle.comision > 0 && /* @__PURE__ */ React.createElement("div", { style: { display:"flex", justifyContent:"space-between", fontSize:13, padding:"5px 0", borderBottom:"1px solid #f0f2f0" }},
           /* @__PURE__ */ React.createElement("span", null, "\uD83E\uDE7A ", (() => {
             const r = (ventaDetalle.recibidopor||"").toLowerCase();
-            if (r.includes("valentina")) return "Dra. Valentina (40%)";
-            if (r.includes("naylan")) return "Dra. Naylan (30%)";
-            return "Dra. Aylein (30%)";
+            return String(ventaDetalle.recibidopor || ventaDetalle.recibidoPor || "Usuario actual");
           })()),
           /* @__PURE__ */ React.createElement("strong", { style:{ color: C.azul }}, RD(ventaDetalle.comision))
         ),
@@ -11573,13 +11574,7 @@ items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAd
         ventaDetalle.area === "farmacia" && ventaDetalle.comision > 0 && /* @__PURE__ */ React.createElement("div", { style: { display:"flex", justifyContent:"space-between", fontSize:13, padding:"5px 0", borderBottom:"1px solid #f0f2f0" }},
           /* @__PURE__ */ React.createElement("span", null, "\uD83D\uDC64 ", (() => {
             const r = (ventaDetalle.recibidopor||"").toLowerCase();
-            if (r.includes("alexander")) return "Alexander (5% gan. neta)";
-            if (r.includes("aylein")) return "Dra. Aylein (5% gan. neta)";
-            if (r.includes("naylan")) return "Dra. Naylan (5% gan. neta)";
-            if (r.includes("valentina")) return "Dra. Valentina (5% gan. neta)";
-            if (r.includes("leydeli")) return "Leydeli (5% gan. neta)";
-            if (r.includes("victor")) return "Victor (5% gan. neta)";
-            return "Laura (5% gan. neta)";
+            return String(ventaDetalle.recibidopor || ventaDetalle.recibidoPor || "Usuario actual");
           })()),
           /* @__PURE__ */ React.createElement("strong", { style:{ color: C.azul }}, RD(ventaDetalle.comision))
         ),
@@ -12135,20 +12130,12 @@ function RankingVentasFarmacia({ ventas, mes }) {
   const CC = { verde:"#1a6b3a", azul:"#1a4fa0", gold:"#b8860b", gris:"#5a6472" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
   const mesActual = mes || new Date().toISOString().slice(0,7);
-  const EMPLEADOS = [
-    { id:"alexander", nombre:"Alexander", emoji:"✂️" },
-    { id:"aylein",    nombre:"Aylein",    emoji:"🩺" },
-    { id:"naylan",    nombre:"Naylan",    emoji:"🩺" },
-    { id:"valentina", nombre:"Valentina", emoji:"🩺" },
-    { id:"laura",     nombre:"Laura",     emoji:"📋" },
-    { id:"leydeli",   nombre:"Leydeli",   emoji:"🐾" },
-    { id:"victor",    nombre:"Victor",    emoji:"👑" },
-  ];
   const ventasFarm = ventas.filter(v => v.area === "farmacia" && v.fecha?.slice(0,7) === mesActual);
-  const ranking = EMPLEADOS.map(emp => {
-    const misV = ventasFarm.filter(v => (v.recibidopor||"").toLowerCase().includes(emp.id));
-    return { ...emp, ventas: misV.length, comision: misV.reduce((s,v)=>s+(v.comision||0),0), total: misV.reduce((s,v)=>s+v.total,0) };
-  }).filter(e => e.ventas > 0).sort((a,b) => b.comision - a.comision);
+  const nombres = [...new Set(ventasFarm.map(v => String(v.recibidopor || v.recibidoPor || "").trim() || "Sin asignar") )];
+  const ranking = nombres.map((nombre, i) => {
+    const misV = ventasFarm.filter(v => (String(v.recibidopor || v.recibidoPor || "").trim() || "Sin asignar") === nombre);
+    return { id: "empleado-" + i, nombre, emoji: "👤", ventas: misV.length, comision: misV.reduce((s,v)=>s+(Number(v.comision)||0),0), total: misV.reduce((s,v)=>s+(Number(v.total)||0),0) };
+  }).sort((a,b) => b.comision - a.comision || b.total - a.total);
   
   const medallas = ["🥇","🥈","🥉"];
   if (ranking.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:13, padding:"12px 0" }}, "Sin ventas de farmacia registradas este mes.");
@@ -12169,12 +12156,13 @@ function RankingVentasFarmacia({ ventas, mes }) {
 }
 
 function Gastos({ gastos, setGastos }) {
+  const empleadoActual = vetMakeUserName(getStoredVetMakeSession(), "Usuario actual");
   const [fecha, setFecha] = useState(hoy());
   const [proveedor, setProv] = useState("");
   const [descripcion, setDesc] = useState("");
   const [monto, setMonto] = useState("");
   const [categoria, setCat] = useState("insumo");
-  const [pagadoPor, setPagPor] = useState("Victor Ballas");
+  const [pagadoPor, setPagPor] = useState("Usuario actual");
   const [metodo, setMetodo] = useState("efectivo");
   const [filtromes, setFiltroMes] = useState((/* @__PURE__ */ new Date()).toISOString().slice(0, 7));
   const [editingId, setEditingId] = useState(null);
@@ -12183,7 +12171,7 @@ function Gastos({ gastos, setGastos }) {
   const [editDesc, setEditDesc] = useState("");
   const [editMonto, setEditMonto] = useState("");
   const [editCat, setEditCat] = useState("insumo");
-  const [editPagPor, setEditPagPor] = useState("Victor Ballas");
+  const [editPagPor, setEditPagPor] = useState("Usuario actual");
   const [editMetodo, setEditMetodo] = useState("efectivo");
   const addGasto = () => {
     if (!descripcion || !monto) return alert("Completa descripci\xF3n y monto");
@@ -12215,7 +12203,7 @@ function Gastos({ gastos, setGastos }) {
     setEditDesc(g.descripcion || "");
     setEditMonto(String(g.monto || ""));
     setEditCat(g.categoria || "insumo");
-    setEditPagPor(g.pagadoPor || "Victor Ballas");
+    setEditPagPor(g.pagadoPor || "Usuario actual");
     setEditMetodo(g.metodo || "efectivo");
   };
   const saveEdit = () => {
@@ -12256,7 +12244,7 @@ function Gastos({ gastos, setGastos }) {
       label: "Pagado por",
       value: pagadoPor,
       onChange: setPagPor,
-      options: [{ value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }]
+      options: [{ value: "Usuario actual", label: empleadoActual }, { value: "Otro", label: "Otro" }]
     }
   ), /* @__PURE__ */ React.createElement(
     Select,
@@ -12282,7 +12270,7 @@ function Gastos({ gastos, setGastos }) {
     minWidth: 160
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 } }, "TOTAL MES"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.negro, fontWeight: 700 } }, RD(totalFiltrado)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CB} Historial de gastos"), /* @__PURE__ */ React.createElement(Input, { label: "", type: "month", value: filtromes, onChange: setFiltroMes })), gastosFiltrados.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "Sin gastos registrados en este per\xEDodo.") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Proveedor", "Descripci\xF3n", "Categor\xEDa", "Pagado por", "M\xE9todo", "Monto", ""].map(
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)
-  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, g.metodo), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
+  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, g.metodo), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Usuario actual", label: empleadoActual }, { value: "Otro", label: "Otro" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
 }
 function Reportes({ ventas, gastos, pagosNom, empleados }) {
   const [mes, setMes] = useState((/* @__PURE__ */ new Date()).toISOString().slice(0, 7));
@@ -12335,9 +12323,10 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
   }
   function imprimirReporte() {
     const win = window.open("","_blank");
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reporte ${mes} - PetColinas</title>
+    const businessName = vetMakeBusinessName();
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reporte ${mes} - ${businessName}</title>
     <style>body{font-family:Arial,sans-serif;padding:32px;color:#1a1d23;font-size:13px;}h1{color:#1a6b3a;margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th{background:#1a6b3a;color:#fff;padding:8px 10px;text-align:left;font-size:11px;}td{padding:8px 10px;border-bottom:1px solid #e0e4e8;}tr:nth-child(even){background:#f8f9fa;}.total{font-weight:900;font-size:15px;}</style></head><body>
-    <h1>\u{1F43E} PetColinas \u2014 Reporte ${mes}</h1>
+    <h1>\u{1F43E} ${businessName} \u2014 Reporte ${mes}</h1>
     <p>Generado: ${new Date().toLocaleDateString("es-DO")}</p>
     <table><thead><tr><th>Fecha</th><th>Cliente</th><th>\u00c1rea</th><th>Descripci\xF3n</th><th style="text-align:right">Total</th></tr></thead><tbody>
     ${ventasMes.map(v=>`<tr><td>${v.fecha}</td><td>${v.cliente||""}</td><td>${v.area||""}</td><td>${(v.descripcion||"").slice(0,50)}</td><td style="text-align:right;font-weight:600">RD$ ${(v.total||0).toLocaleString("es-DO")}</td></tr>`).join("")}
@@ -12491,7 +12480,7 @@ function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, c
         React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Fecha"), React.createElement("input", { type: "date", value: formH.fecha, onChange: e => setFormH(p => ({...p, fecha: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
         React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Tipo"), React.createElement("select", { value: formH.tipo, onChange: e => setFormH(p => ({...p, tipo: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } }, TIPOS_H.map(t => React.createElement("option", { key: t }, t)))),
         React.createElement("div", { style: { gridColumn: "1/-1" } }, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Descripci\xF3n *"), React.createElement("input", { value: formH.descripcion, onChange: e => setFormH(p => ({...p, descripcion: e.target.value})), placeholder: "Motivo de consulta, procedimiento realizado...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
-        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Veterinario"), React.createElement("input", { value: formH.veterinario, onChange: e => setFormH(p => ({...p, veterinario: e.target.value})), placeholder: "Naylan, Valentina...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
+        React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Veterinario"), React.createElement("input", { value: formH.veterinario, onChange: e => setFormH(p => ({...p, veterinario: e.target.value})), placeholder: "Nombre del veterinario", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
         React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Pr\xF3x. cita"), React.createElement("input", { type: "date", value: formH.proximacita, onChange: e => setFormH(p => ({...p, proximacita: e.target.value})), style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
         React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Diagn\xF3stico"), React.createElement("input", { value: formH.diagnostico, onChange: e => setFormH(p => ({...p, diagnostico: e.target.value})), placeholder: "Gastritis, Otitis...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
         React.createElement("div", null, React.createElement("label", { style: { fontSize: 10, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 3 } }, "Tratamiento"), React.createElement("input", { value: formH.tratamiento, onChange: e => setFormH(p => ({...p, tratamiento: e.target.value})), placeholder: "Antibioticoterapia...", style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 8, padding: "8px 10px", fontSize: 13 } })),
@@ -12950,7 +12939,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
         {
           value: v.veterinario || "",
           onChange: (e) => updVacuna(v.id, "veterinario", e.target.value),
-          placeholder: "Dra. Naylan...",
+          placeholder: "Nombre del veterinario...",
           style: { width: "100%", border: "1.5px solid #e0e4e8", borderRadius: 7, padding: "7px 8px", fontSize: 13 }
         }
       )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement(
@@ -13201,12 +13190,14 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
       ? "*Servicio a realizar:* Por confirmar\n\n"
       : (lineas.length === 1 ? "*Servicio:* " + lineas[0] + "\n" : "*Servicios:*\n" + lineas.map((l) => "\u2022 " + l).join("\n") + "\n") +
         "*Total:* RD$" + total.toLocaleString("es-DO") + "\n\n";
+    const businessName = vetMakeBusinessName();
+    const businessTagline = vetMakeBusinessTagline();
     abrirWA(tel,
-      "\u{1F43E} *\u00A1Bienvenido/a a PetColinas!* \u{1F43E}\n\n" +
-      "Hola " + (c.nombrePropietario || c.nombrepropietario || "estimado cliente") + ", con mucho gusto les damos la bienvenida a nuestra familia PetColinas.\n\n" +
+      "\u{1F43E} *\u00A1Bienvenido/a a " + businessName + "!* \u{1F43E}\n\n" +
+      "Hola " + (c.nombrePropietario || c.nombrepropietario || "estimado cliente") + ", con mucho gusto les damos la bienvenida a nuestra familia " + businessName + ".\n\n" +
       "*Mascota:* " + (c.nombreMascota || c.nombremascota || "") + "\n" +
       bloque +
-      "Le avisaremos por este mismo medio cuando su mascota est\xe9 lista. \u{1F4AC}\n\n_Plaza Las Colinas \u2022 809-752-6806_");
+      "Le avisaremos por este mismo medio cuando su mascota est\xe9 lista. \u{1F4AC}\n\n_" + businessTagline + "_");
   }
 }, "\u{1F4AC} WhatsApp Bienvenida"),
 /* Botón Mascota Lista */
@@ -13220,10 +13211,9 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
       "\u{1F43E} *\u00A1Su mascota est\xe1 lista!* \u{1F43E}\n\n" +
       "Hola " + (c.nombrePropietario || c.nombrepropietario || "estimado cliente") + ", le informamos que *" + (c.nombreMascota || c.nombremascota || "su mascota") + "* ya est\xe1 lista para recoger.\n\n" +
       "\u23F0 *Horario:* Lunes, Mi\xe9rcoles-Domingo\n" +
-      "\u{1F4CD} *Direcci\xF3n:* Plaza Las Colinas, Santo Domingo Oeste\n" +
-      "\u{1F4DE} *Tel\xe9fono:* 809-752-6806\n\n" +
+      "\u{1F4CD} *Informaci\xF3n:* " + vetMakeBusinessTagline() + "\n\n" +
       "\u26A0\uFE0F *Nota Importante:* Una vez pasadas las dos primeras horas de haber culminado el servicio y enviado este mensaje, se proceder\xe1 a cobrar un monto de *RD$400 adicionales por cada hora transcurrida* por servicios de Day Care.\n\n" +
-      "\u00A1Gracias por confiar en PetColinas! \u{1F496}"
+      "\u00A1Gracias por confiar en " + vetMakeBusinessName() + "! \u{1F496}"
     );
     abrirWA(tel, decodeURIComponent(msg));
   }
@@ -13366,12 +13356,14 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
     const telNum  = telRaw.length >= 11 ? telRaw : "1" + telRaw;
 
     const enviarWABienvenida = () => {
+      const businessName = vetMakeBusinessName();
+      const businessTagline = vetMakeBusinessTagline();
       const lineas = serviciosFactura.map((s,i) => (i+1) + ". " + s.nombre + " - RD$" + (s.precio||0).toLocaleString("es-DO")).join("\n");
       const msg = encodeURIComponent(
-        "Bienvenido/a a PetColinas!\n\nHola " + nomProp + ", con gusto les damos la bienvenida.\n\nMascota: " + nomMasc +
+        "Bienvenido/a a " + businessName + "!\n\nHola " + nomProp + ", con gusto les damos la bienvenida.\n\nMascota: " + nomMasc +
         "\nServicios:\n" + lineas +
         "\n\nTotal: RD$" + total.toLocaleString("es-DO") +
-        "\n\nLe avisaremos cuando este lista.\nPlaza Las Colinas - 809-752-6806"
+        "\n\nLe avisaremos cuando este lista.\n" + businessTagline
       );
       abrirWA(telNum, decodeURIComponent(msg));
     };
@@ -13467,14 +13459,12 @@ function DashboardVet({ usuario, ventas, onVerHistorias, onVerServicios }) {
     const nombre1 = usuario.nombre.split(" ")[0].toLowerCase();
     // Cada vet ve sus propios servicios (por nombre o veterinaria_id)
     if (r.includes(nombre1) || v.veterinaria_id === usuario.id) return true;
-    // REGLA CRITICA 2: solo Aylein hereda el histórico sin recibidopor (hasta Mar 2026)
-    if (usuario.id === "aylein" && r === "" && v.area === "veterinaria" && (v.fecha || "") <= "2026-03-31") return true;
     return false;
   });
   const misMes = misVentas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
   const totalMes = misMes.reduce((s, v) => s + v.total, 0);
-  // Si comision registrada es 0, calcular según porcentaje del empleado (Aylein 30%, Valentina 40%)
-  const pctCom = usuario.id === "e5" ? 0.40 : 0.30;
+  // El porcentaje de comisión pertenece al usuario/empleado del negocio.
+  const pctCom = Number(usuario.comision_pct) || 0;
   const comisionMes = misMes.filter(v => v.area === "veterinaria").reduce((s, v) => s + (v.comision > 0 ? v.comision : Math.round((v.total || 0) * pctCom)), 0);
   const consultasMes = misMes.filter((v) => v.descripcion?.toLowerCase().includes("consulta")).length;
   const vacunasMes = misMes.filter((v) => (v.descripcion || v.servicio || "")?.toLowerCase().includes("vacuna")).length;
@@ -14587,9 +14577,7 @@ function VacunasVet({ usuario, ventas, clientes = [], historias = [] }) {
   const C = { verde: "#1a6b3a", azul: "#db2777", azulL: "#fce7f3", naranja: "#d45f1e", naranjaL: "#fff0e8", gris: "#f4f5f6", grisd: "#5a6472" };
   const nb = usuario.nombre.split(" ")[0].toLowerCase();
   const esMio = (r) => {
-    if (usuario.id === "valentina") return r.includes("valentina");
     if (r.includes(nb) || r.includes(usuario.id)) return true;
-    if (usuario.id === "aylein" && !r.includes("valentina") && r === "") return true;
     return false;
   };
   const vacunasVenta = ventas.filter((v) => (v.area === "veterinaria" || v.area === "farmacia")
@@ -14619,11 +14607,7 @@ function MisServiciosVet({ usuario, ventas }) {
   const misVentas = ventas.filter((v) => (v.area === "veterinaria" || v.area === "farmacia") && (() => {
     const r = (v.recibidopor||v.recibidoPor||"").toLowerCase().trim();
     const nb = usuario.nombre.split(" ")[0].toLowerCase();
-    // Valentina solo ve los suyos
-    if (usuario.id === "valentina") return r.includes("valentina");
-    // Aylein ve los suyos + todos los vet sin recibidopor (históricos)
     if (r.includes(nb) || r.includes(usuario.id) || v.veterinaria_id === usuario.id) return true;
-    if (usuario.id === "aylein" && v.area === "veterinaria" && !r.includes("valentina") && r === "") return true;
     return false;
   })());
   const misMes = misVentas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
@@ -14633,7 +14617,7 @@ function MisServiciosVet({ usuario, ventas }) {
   const comFiltro = ventasFiltradas.reduce((s, v) => s + (v.comision || 0), 0);
   const totalHist = misVentas.reduce((s, v) => s + v.total, 0);
   const comHist = misVentas.reduce((s, v) => s + (v.comision || 0), 0);
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, marginBottom: 8 } }, "\u{1F4CB} Mis Servicios"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Historial completo de todos mis servicios en PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 20 } }, [
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, fontWeight: 800, marginBottom: 8 } }, "\u{1F4CB} Mis Servicios"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 13, marginBottom: 20 } }, "Historial completo de todos mis servicios en " + vetMakeBusinessName()), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 20 } }, [
     { label: "Este mes \u2014 Servicios", val: misMes.length, color: C.naranja, bg: C.naranjaL },
     { label: "Historia \u2014 Servicios", val: misVentas.length, color: C.azul, bg: C.azulL }
   ].map((k) => /* @__PURE__ */ React.createElement("div", { key: k.label, style: { background: k.bg, borderRadius: 12, padding: "14px", borderLeft: `3px solid ${k.color}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: k.color, fontWeight: 700, textTransform: "uppercase", marginBottom: 4 } }, k.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 900, color: k.color } }, k.val)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: C.grisd, fontWeight: 600 } }, "Filtrar:"), mesesDisp.map((m) => /* @__PURE__ */ React.createElement(
@@ -14666,14 +14650,8 @@ const TABS_VET = [
 ];
 
 // ═══════════════════════════════════════════════════════════
-// PORTAL VETERINARIO — PetColinas
+// PORTAL VETERINARIO — VetMake
 // ═══════════════════════════════════════════════════════════
-const VET_EMAILS = [
-  { email: "naylan@petcolinas.com",    nombre: "Naylan Perez",     id: "naylan",    comision_pct: 0.30 },
-  { email: "valentina@petcolinas.com", nombre: "Dra. Valentina",   id: "valentina", comision_pct: 0.40 },
-];
-
-
 // ═══════════════════════════════════════════════
 // FARMACIA / TIENDA — Portal Veterinaria
 // ═══════════════════════════════════════════════
@@ -15259,7 +15237,7 @@ function MisComisionesVet({ usuario, ventas, pagosNom }) {
 
 
 // ═══════════════════════════════════════════════════════════
-// PORTAL GROOMER — Alexander
+// PORTAL GROOMER — VetMake
 // ═══════════════════════════════════════════════════════════
 function MisCitasHoy({ empleadoNombre, acento = "#1a6b3a" }) {
   const [citasHoy, setCitasHoy] = React.useState(null);
@@ -15430,7 +15408,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
           : "";
         const tel = (clienteParaLink && clienteParaLink.telefono) || "";
         const dueno = (clienteParaLink && clienteParaLink.nombrePropietario) || "";
-        const msg = "Hola" + (dueno ? " " + dueno.split(" ")[0] : "") + "! \u{1F43E} Aquí PetColinas.\n\n" +
+        const msg = "Hola" + (dueno ? " " + dueno.split(" ")[0] : "") + "! \u{1F43E} Aquí " + vetMakeBusinessName() + ".\n\n" +
           "Puede pagar " + RD2(d.monto) + detalleRecargo + " con tarjeta desde este enlace seguro:\n" + d.url +
           "\n\nEn cuanto pague, se marca solo en nuestro sistema.";
         if (tel) window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
@@ -15447,13 +15425,15 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
   function imprimir(facturaData) {
     const fecha = facturaData.fecha || new Date().toISOString().slice(0,10);
+    const businessName = vetMakeBusinessName();
+    const businessTagline = vetMakeBusinessTagline();
     const items = (() => { try { return JSON.parse(facturaData.items||"[]"); } catch { return []; } })();
     const lineas = items.length > 0
       ? items.map(it => `<tr><td>${(it.qty>1?it.qty+"x ":"")+it.nombre}</td><td style="text-align:right">RD$ ${Math.round(it.precioUnit).toLocaleString("es-DO")}</td><td style="text-align:center">${it.qty}</td>${it.descPct>0?`<td style="text-align:center">${it.descPct}%</td>`:"<td>—</td>"}<td style="text-align:right;font-weight:700">RD$ ${Math.round(it.subtotal).toLocaleString("es-DO")}</td></tr>`).join("")
       : `<tr><td colspan="5">${facturaData.servicio||""}</td></tr>`;
     const descLine = (facturaData.descuento||0) > 0 ? `<tr><td colspan="4" style="text-align:right;color:#c0392b">Descuento</td><td style="text-align:right;color:#c0392b">- RD$ ${Math.round(facturaData.descuento).toLocaleString("es-DO")}</td></tr>` : "";
     const w = window.open("","_blank","width=420,height=620");
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura PetColinas</title>
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura ${businessName}</title>
     <style>body{font-family:'Segoe UI',sans-serif;margin:0;padding:20px;font-size:13px;color:#222}
     .logo{text-align:center;margin-bottom:8px}.logo h1{font-size:20px;margin:0;color:#1a6b3a}
     .logo p{margin:2px 0;font-size:11px;color:#666}hr{border:none;border-top:1px dashed #ccc;margin:10px 0}
@@ -15462,7 +15442,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     .total-row td{font-size:15px;font-weight:900;color:#1a6b3a;border-top:2px solid #1a6b3a;padding-top:8px}
     .footer{text-align:center;font-size:11px;color:#888;margin-top:12px}
     @media print{button{display:none}}</style></head><body>
-    <div class="logo"><h1>🐾 PetColinas</h1><p>Plaza Las Colinas · Santo Domingo Oeste</p><p>petcolinasrd@gmail.com</p></div>
+    <div class="logo"><h1>🐾 ${businessName}</h1><p>${businessTagline}</p></div>
     <hr>
     <table><tr><td><b>Cliente:</b> ${facturaData.clienteNombre||facturaData.cliente||""}</td><td style="text-align:right"><b>Fecha:</b> ${fecha}</td></tr>
     <tr><td><b>Atendido por:</b> ${facturaData.recibidopor||""}</td><td style="text-align:right"><b>Pago:</b> ${facturaData.formapago||""}</td></tr></table>
@@ -15471,7 +15451,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     <tbody>${lineas}${descLine}
     <tr class="total-row"><td colspan="4" style="text-align:right">TOTAL</td><td style="text-align:right">RD$ ${Math.round(facturaData.total).toLocaleString("es-DO")}</td></tr>
     </tbody></table>
-    <hr><div class="footer">¡Gracias por confiar en PetColinas!<br>Su mascota es nuestra familia 🐾</div>
+    <hr><div class="footer">¡Gracias por confiar en ${businessName}!<br>Su mascota es nuestra familia 🐾</div>
     <br><button onclick="window.print()" style="width:100%;padding:10px;background:#1a6b3a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🖨️ Imprimir</button>
     </body></html>`);
     w.document.close();
@@ -15587,9 +15567,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
         React.createElement("div", { style:{ marginBottom:16 }},
           React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "👩‍⚕️ Atendido por"),
           React.createElement("select", { value:atendidoPor, onChange:e=>setAtendidoPor(e.target.value), style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13 }},
-            React.createElement("option", { value:"Alexander Ramírez" }, "✂️ Alexander Ramírez"),
-            React.createElement("option", { value:"Naylan Perez" }, "🩺 Naylan Perez"),
-            React.createElement("option", { value:"Dra. Valentina" }, "🩺 Dra. Valentina")
+            React.createElement("option", { value:usuario.nombre }, "👤 " + usuario.nombre)
           )
         ),
 
@@ -15683,24 +15661,23 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   );
 }
 
-function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, clientes = [], setClientes, citas = [], setCitas }) {
+function PortalGroomer({ session, tenant, onLogout, ventas, setVentas, pagosNom, clientes = [], setClientes, citas = [], setCitas }) {
   const [tabGrm, setTabGrm] = React.useState("agenda_grm");
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
-  // Objeto usuario para compatibilidad con MiVitrina
-  const usuario = { id:"e1", nombre:"Alexander Ramírez", email:"alexander@petcolinas.com", comision_pct:0.05 };
+  // Objeto usuario para compatibilidad con los módulos compartidos.
+  const usuario = { id: session?.user?.id || "current-user", nombre: vetMakeUserName(session, "Groomer"), email: session?.user?.email || "", comision_pct: 0 };
   const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",gris:"#5a6472",grisd:"#5a6472",fondo:"#f0f4f8",gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
 
   const mesActual = new Date().toISOString().slice(0,7);
-  // Todos los grooming son de Alexander (es el único groomer)
-  // recibidopor en grooming histórico = quien cobró, no quien hizo el baño
-  // El campo "servicioPor" diferencia esto en nuevas ventas
+  // recibidopor en grooming histórico = quien cobró, no quien hizo el baño.
+  // El campo "servicioPor" diferencia esto en nuevas ventas.
   const misVentas = ventas.filter(v => {
     if (v.area !== "grooming") return false;
     const serv = (v.servicioPor || v.serviciopor || "").toLowerCase();
-    // Si hay serviciopor explícito y NO es alexander, no contarlo
-    if (serv && !serv.includes("alexander") && !serv.includes("e1")) return false;
-    return true; // todos los grooming son de Alexander por defecto
+    const identidad = [usuario.id, usuario.nombre, usuario.email].filter(Boolean).map((parte) => String(parte).toLowerCase());
+    if (serv && !identidad.some((parte) => serv.includes(parte))) return false;
+    return true;
   });
   const misMes = misVentas.filter(v => v.fecha?.slice(0,7) === mesActual);
   const totalMes = misMes.reduce((s,v)=>s+v.total,0);
@@ -15716,8 +15693,8 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
   const comFiltro   = ventasFiltro.reduce((s,v)=>s+(v.comision||0),0);
 
 
-  const pagosAlexander = (pagosNom||[]).filter(p=>p.empleadoId==="e1").sort((a,b)=>b.mes.localeCompare(a.mes));
-  const totalCobrado = pagosAlexander.reduce((s,p)=>s+(p.totalPagado||0),0);
+  const pagosUsuario = (pagosNom||[]).filter(p=>String(p.empleadoId || "") === String(usuario.id)).sort((a,b)=>b.mes.localeCompare(a.mes));
+  const totalCobrado = pagosUsuario.reduce((s,p)=>s+(p.totalPagado||0),0);
 
   const TABS_GRM = [
     { id:"facturar_grm",       icon:"🧾", label:"Facturar" },
@@ -15729,12 +15706,12 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
     // Header
     React.createElement("div", { style:{ background:"linear-gradient(135deg,#1a6b3a,#145a30)", padding:"16px 28px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 4px 18px rgba(0,0,0,0.15)" }},
       React.createElement("div", null,
-        React.createElement("div", { style:{ fontSize:19, fontWeight:800, color:"#fff" }}, "✂️ PetColinas · Portal Groomer"),
-        React.createElement("div", { style:{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:2 }}, "Plaza Las Colinas · SDO")
+        React.createElement("div", { style:{ fontSize:19, fontWeight:800, color:"#fff" }}, "✂️ " + (tenant?.negocio?.nombre || vetMakeBusinessName()) + " · Portal Groomer"),
+        React.createElement("div", { style:{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:2 }}, vetMakeBusinessTagline())
       ),
       React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:16 }},
         React.createElement("div", { style:{ fontSize:12, color:"rgba(255,255,255,0.8)", fontWeight:700, textAlign:"right" }},
-          "✂️ Alexander Ramírez",
+          "✂️ " + usuario.nombre,
           React.createElement("div", { style:{ fontSize:11, color:"rgba(255,255,255,0.6)" }}, "Groomer · Comisión fija por servicio")
         ),
         React.createElement("button", { onClick:onLogout, style:{ background:"rgba(255,255,255,0.15)", color:"#fff", border:"1px solid rgba(255,255,255,0.3)", borderRadius:10, padding:"8px 16px", cursor:"pointer", fontWeight:700, fontSize:13 }}, "Cerrar sesión")
@@ -15826,14 +15803,14 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
         tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [],
         tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [],
-        soloPropio: "Alexander"
+        soloPropio: usuario.nombre.split(" ")[0]
       }),
       tabGrm === "mi_vitrina_grm" && React.createElement(MiVitrina, {
         usuario,
         ventas,
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
         inventario: window.__inventarioGlobal || [],
-        comPct: 0.05
+        comPct: usuario.comision_pct
       }),
       tabGrm === "mis_comisiones_grm" && React.createElement("div", null,
         React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
@@ -15847,13 +15824,13 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
             React.createElement("div",{style:{fontSize:20,fontWeight:900,color:k.color,marginTop:4}},k.val)
           ))
         ),
-        pagosAlexander.length > 0 && React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}},
+        pagosUsuario.length > 0 && React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}},
           React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:12}},"✅ Historial de pagos recibidos"),
           React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:13}},
             React.createElement("thead",null,React.createElement("tr",{style:{borderBottom:"2px solid #f0f2f0"}},
               ["Mes","Sueldo base","Comisiones","Descuentos","Total"].map(t=>React.createElement("th",{key:t,style:{textAlign:"left",padding:"8px 10px",color:CC.gris,fontSize:11,fontWeight:700,textTransform:"uppercase"}},t))
             )),
-            React.createElement("tbody",null,pagosAlexander.map((p,i)=>
+            React.createElement("tbody",null,pagosUsuario.map((p,i)=>
               React.createElement("tr",{key:i,style:{borderBottom:"1px solid #f4f5f6"}},
                 React.createElement("td",{style:{padding:"8px 10px",fontWeight:600}},p.mes),
                 React.createElement("td",{style:{padding:"8px 10px"}},RD2(p.mensualidad||0)),
@@ -15978,7 +15955,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
       if (typeof dispararCalendarSync === "function") dispararCalendarSync();
       if (citaAuto.telefono && typeof abrirWA === "function") {
         const fLarga = fechaLargaRD(citaAuto.fecha);
-        const msg = "\u{1F43E} Hola " + (citaAuto.nombreCliente || "cliente") + ", te confirmamos la pr\xF3xima cita de *" + citaAuto.nombreMascota + "* en *PetColinas* para el " + fLarga + " a las " + citaAuto.hora + ".\n\n\u{1F527} Motivo: " + (form.motivo || "Evoluci\xF3n cl\xEDnica") + "\n\n\xA1Te esperamos! Cualquier cambio, escr\xEDbenos \ud83d\ude4f";
+        const msg = "\u{1F43E} Hola " + (citaAuto.nombreCliente || "cliente") + ", te confirmamos la pr\xF3xima cita de *" + citaAuto.nombreMascota + "* en *" + vetMakeBusinessName() + "* para el " + fLarga + " a las " + citaAuto.hora + ".\n\n\u{1F527} Motivo: " + (form.motivo || "Evoluci\xF3n cl\xEDnica") + "\n\n\xA1Te esperamos! Cualquier cambio, escr\xEDbenos \ud83d\ude4f";
         abrirWA(citaAuto.telefono, msg);
       }
     }
@@ -16136,11 +16113,10 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   );
 }
 
-function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas }) {
+function PortalVeterinaria({ session, tenant, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas }) {
   const [tabVet, setTabVet] = React.useState("agenda_vet");
   const userEmail = session?.user?.email || "";
-  const vetInfo   = VET_EMAILS.find(v => v.email === userEmail) || VET_EMAILS[0];
-  const usuario   = { ...vetInfo, rol: "veterinaria" };
+  const usuario   = { id: session?.user?.id || "current-user", nombre: vetMakeUserName(session, "Veterinario"), email: userEmail, rol: "veterinaria", comision_pct: 0 };
 
   const C = { verde: "#1a6b3a", azul: "#db2777", gris: "#5a6472", fondo: "#fdf2f8" };
 
@@ -16153,8 +16129,8 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       justifyContent: "space-between", boxShadow: "0 4px 18px rgba(0,0,0,0.15)"
     }},
       React.createElement("div", null,
-        React.createElement("div", { style: { fontSize: 19, fontWeight: 800, color: "#fff" } }, "🐾 PetColinas · Portal Clínico"),
-        React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 } }, "Plaza Las Colinas · SDO")
+        React.createElement("div", { style: { fontSize: 19, fontWeight: 800, color: "#fff" } }, "🐾 " + (tenant?.negocio?.nombre || vetMakeBusinessName()) + " · Portal Clínico"),
+        React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 } }, vetMakeBusinessTagline())
       ),
       React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16 } },
         React.createElement("div", { style: { textAlign: "right" } },
@@ -16267,7 +16243,7 @@ async function descargarRespaldo() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "PetColinas_respaldo_" + hoy() + ".json";
+  a.download = "VetMake_respaldo_" + hoy() + ".json";
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
   try { localStorage.setItem("pc_ultimo_respaldo", hoy()); } catch {}
@@ -16329,6 +16305,7 @@ const cobRD = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO");
 // de dividir el pago (mejor cobrar en partes que no cobrar).
 function cobMensaje(v, dueno, dias) {
   const nombre = String(dueno || "").split(" ")[0] || "buenas";
+  const businessName = vetMakeBusinessName();
   const mascota = v.cliente || "su mascota";
   // Con abonos hay que pedir el SALDO, no el total: cobrarle de nuevo lo que
   // ya pagó es la forma más rápida de perder un cliente.
@@ -16338,14 +16315,14 @@ function cobMensaje(v, dueno, dias) {
   const serv = sinEmoji(String(v.servicio || v.descripcion || "el servicio")) + notaAbono;
   const fecha = String(v.fecha || "").slice(0, 10);
   if (dias <= 30) {
-    return "Hola " + nombre + "! \u{1F43E} Le escribimos de PetColinas. Le recordamos que qued\xF3 pendiente el pago de " + monto +
+    return "Hola " + nombre + "! \u{1F43E} Le escribimos de " + businessName + ". Le recordamos que qued\xF3 pendiente el pago de " + monto +
       " por " + serv + " de " + mascota + " (" + fecha + "). Puede pasar por la cl\xEDnica o hacer transferencia cuando guste. \xA1Gracias!";
   }
   if (dias <= 90) {
-    return "Hola " + nombre + ", le saludamos de PetColinas. Tenemos registrado un saldo pendiente de " + monto +
+    return "Hola " + nombre + ", le saludamos de " + businessName + ". Tenemos registrado un saldo pendiente de " + monto +
       " por " + serv + " de " + mascota + ", del " + fecha + ". \xBFNos confirma cu\xE1ndo podemos recibirlo? Aceptamos efectivo, tarjeta y transferencia. Gracias!";
   }
-  return "Hola " + nombre + ", le escribimos de PetColinas sobre el saldo pendiente de " + monto +
+  return "Hola " + nombre + ", le escribimos de " + businessName + " sobre el saldo pendiente de " + monto +
     " por " + serv + " de " + mascota + " (" + fecha + "). Ya lleva un tiempo y nos gustar\xEDa cerrarlo. Si le queda m\xE1s c\xF3modo lo podemos dividir en dos pagos. \xBFC\xF3mo lo coordinamos?";
 }
 
@@ -16393,8 +16370,9 @@ function AvisoCitasProximas({ citas, setCitas, clientes }) {
   const mensaje = (c) => {
     const quien = String(c.nombreCliente || "").split(" ")[0];
     const cuando = c.fecha === hoyISO ? "*hoy*" : "*ma\xF1ana*";
+    const businessName = vetMakeBusinessName();
     return "\xA1Hola" + (quien ? " " + quien : "") + "! \u{1F43E} Le recordamos que " + cuando + " tiene cita de *" +
-      (c.nombreMascota || "su mascota") + "* en *PetColinas*" + (c.hora ? " a las *" + c.hora + "*" : "") + ".\n\n" +
+      (c.nombreMascota || "su mascota") + "* en *" + businessName + "*" + (c.hora ? " a las *" + c.hora + "*" : "") + ".\n\n" +
       (c.servicio ? "\u{1F527} " + c.servicio + "\n\n" : "") + "\xA1Le esperamos! Si necesita cambiarla, escr\xEDbanos \u{1F64F}";
   };
 
@@ -16648,7 +16626,7 @@ function Planes({ paquetes, setPaquetes, clientes, ventas, setVentas }) {
 // en silencio.
 async function pedirEnlacePago(venta, cliente) {
   const detalle = (Array.isArray(venta.items) && venta.items.length ? venta.items : [
-    { nombre: venta.servicio || venta.descripcion || "Servicios PetColinas", cantidad: 1, precio: Number(venta.total) || 0 }
+    { nombre: venta.servicio || venta.descripcion || ("Servicios " + vetMakeBusinessName()), cantidad: 1, precio: Number(venta.total) || 0 }
   ]).map((it) => ({
     nombre: sinEmoji(String(it.nombre || it.descripcion || "Servicio")),
     cantidad: Number(it.qty ?? it.cantidad) || 1,
@@ -16707,7 +16685,7 @@ function Cobros({ ventas, setVentas, clientes, soloPropio }) {
       const detalleRecargo = d.recargo > 0
         ? " (" + cobRD(d.subtotal) + " + " + cobRD(d.recargo) + " de cargo por pago con tarjeta)"
         : "";
-      const msg = "Hola" + (x.dueno ? " " + String(x.dueno).split(" ")[0] : "") + "! \u{1F43E} Aqu\xED PetColinas.\n\n" +
+      const msg = "Hola" + (x.dueno ? " " + String(x.dueno).split(" ")[0] : "") + "! \u{1F43E} Aqu\xED " + vetMakeBusinessName() + ".\n\n" +
         "Puede pagar " + cobRD(d.monto) + detalleRecargo + " con tarjeta desde este enlace seguro:\n" + d.url +
         "\n\nEn cuanto pague, se marca solo en nuestro sistema.";
       if (x.tel) window.open("https://wa.me/" + x.tel + "?text=" + encodeURIComponent(msg), "_blank");
@@ -17462,11 +17440,13 @@ function TabNotificaciones({ clientes, setClientes, notifLeidas, marcarNotifLeid
   function bienvenida(c) {
     const tel = String(c.telefono || "").replace(/\D/g, "");
     if (!tel) { alert("Este cliente no dejó teléfono en el formulario."); return; }
+    const businessName = vetMakeBusinessName();
+    const businessTagline = vetMakeBusinessTagline();
     const masc = c.nombreMascota || c.nombremascota || "su mascota";
     const due = String(c.nombrePropietario || c.nombrepropietario || "").split(" ")[0];
-    abrirWA(tel, "🐾 *¡Bienvenido/a a PetColinas!* 🐾\n\nHola" + (due ? " *" + due + "*" : "") +
+    abrirWA(tel, "🐾 *¡Bienvenido/a a " + businessName + "!* 🐾\n\nHola" + (due ? " *" + due + "*" : "") +
       ", recibimos el registro de *" + masc + "* en nuestro formulario. ¡Gracias por confiarnos su cuidado!\n\n" +
-      "Estamos en Plaza Las Colinas, Santo Domingo Oeste.\n¿En qué le podemos ayudar? 🐶🐱");
+      "Estamos en " + businessTagline + ".\n¿En qué le podemos ayudar? 🐶🐱");
   }
   function marcarTodos() {
     if (pendientes.length === 0) return;
@@ -17554,7 +17534,7 @@ function TabNotificaciones({ clientes, setClientes, notifLeidas, marcarNotifLeid
     E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 12 } },
       E("div", null,
         E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800 } }, "🔔 Inscripciones del formulario"),
-        E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Clientes que llenaron el formulario de admisión de PetColinas, del más reciente al más antiguo.")),
+        E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Clientes que llenaron el formulario de admisión de " + vetMakeBusinessName() + ", del más reciente al más antiguo.")),
       E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
         sub === "pendientes" && pendientes.length > 0 && E("button", {
           onClick: marcarTodos,
@@ -17643,10 +17623,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
   }
 
   function comisionLabel(t) {
-    if (esGrooming) return "RD$ " + t.comision.toLocaleString("es-DO") + " (Alexander)";
-    const pAylein = Math.round(t.precio * 0.30);
-    const pValentina = Math.round(t.precio * 0.40);
-    return "Aylein: RD$ " + pAylein.toLocaleString("es-DO") + " (30%) · Valentina: RD$ " + pValentina.toLocaleString("es-DO") + " (40%)";
+    const comision = Number(t.comision) || 0;
+    return "Comisión configurada: RD$ " + comision.toLocaleString("es-DO");
   }
 
   const thStyle = { padding: "10px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: "2px solid #e0e4e8", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
@@ -17675,8 +17653,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     // Info comisiones
     React.createElement("div", { style: { background: seccion === "grooming" ? "#e8faf0" : "#eaf4ff", border: "1.5px solid " + (seccion === "grooming" ? "#25d36644" : C.azul + "44"), borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13 } },
       seccion === "grooming"
-        ? React.createElement("span", null, "\u2702\uFE0F ", React.createElement("strong", null, "Grooming:"), " Comisión fija en RD$ por servicio (Alexander).")
-        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " Comisión: Aylein 30% · Valentina 40% sobre el precio del servicio.")
+        ? React.createElement("span", null, "\u2702\uFE0F ", React.createElement("strong", null, "Grooming:"), " La comisión se configura por servicio para este negocio.")
+        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " La comisión se configura por servicio para este negocio.")
     ),
 
     // Formulario agregar nuevo
@@ -17786,7 +17764,8 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
   const [crmOpen, setCrmOpen] = React.useState(false);
   const [svcSel, setSvcSel] = React.useState("");
   const [svcPrecio, setSvcPrecio] = React.useState("");
-  const [svcEmp, setSvcEmp] = React.useState("Alexander");
+  const usuarioAgenda = vetMakeUserName(getStoredVetMakeSession(), "Equipo");
+  const [svcEmp, setSvcEmp] = React.useState(usuarioAgenda);
   const [showHistCliente, setShowHistCliente] = React.useState(false);
   const [paginaLista, setPaginaLista] = React.useState(0);
   const [sortLista, setSortLista] = React.useState("fecha");
@@ -17802,7 +17781,10 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
     recogida:    { label: "Recogida / Entrega",   icon: "🚗",  bg: "#fef9c3", color: "#854d0e", border: "#ca8a04" },
     seguimiento: { label: "Seguimiento",          icon: "🔔",  bg: "#f3e8ff", color: "#6b21a8", border: "#7c3aed" }
   };
-  const EMPLEADOS = { "Alexander": { color: "#f97316" }, "Naylan": { color: "#f472b6" }, "Valentina": { color: "#ec4899" } };
+  const EMPLEADOS = (citas || []).reduce((mapa, cita) => {
+    if (cita.empleado) mapa[cita.empleado] = mapa[cita.empleado] || { color: "#1a6b3a" };
+    return mapa;
+  }, { [usuarioAgenda]: { color: "#1a6b3a" } });
   const ESTADOS = {
     pendiente:  { label: "Pendiente",   color: "#d97706", bg: "#fef3c7" },
     confirmada: { label: "Confirmada",  color: "#1a6b3a", bg: "#e6f4ec" },
@@ -17861,7 +17843,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
 
   const abrirModal = (data) => {
     const d = soloPropio && data.id === "nuevo" ? { ...data, empleado: soloPropio } : data;
-    setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(d.empleado||"Alexander"); setConflictoMsg(null); setShowHistCliente(false); setModalCita(d);
+    setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setSvcEmp(d.empleado||usuarioAgenda); setConflictoMsg(null); setShowHistCliente(false); setModalCita(d);
   };
   const cerrarModal = () => { setModalCita(null); setCrmQuery(""); setCrmOpen(false); setSvcSel(""); setSvcPrecio(""); setShowHistCliente(false); };
 
@@ -17948,12 +17930,14 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
     const f = cita.fecha ? parseFecha(cita.fecha).toLocaleDateString("es-DO",{weekday:"long",day:"numeric",month:"long"}) : "";
     const h = cita.hora||"", emp = cita.empleado||"", srv = cita.servicio||"";
     const pre = cita.precio ? `RD$ ${Number(cita.precio).toLocaleString("es-DO")}` : "";
+    const businessName = vetMakeBusinessName();
+    const businessTagline = vetMakeBusinessTagline();
     const msgs = {
-      confirmacion:    `¡Hola ${n}! 🐾 Te confirmamos la cita de *${m}* en *PetColinas* para el *${f}* a las *${h}*.\n\n🔧 Servicio: ${srv}\n👤 Te atenderá: ${emp}\n\n¡Te esperamos! Cualquier cambio, escríbenos 🙏`,
-      recordatorio:    `¡Hola ${n}! 🐾 Te recordamos que *mañana* tienes cita de *${m}* en *PetColinas* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡No olvides venir! 😊`,
-      recordatorio_hoy:`¡Buenos días ${n}! 🌞 Hoy tienes cita de *${m}* en *PetColinas* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡Te esperamos! 🐾`,
-      recordatorio_2h: `¡Hola ${n}! 🐾 En *2 horas* tienes cita de *${m}* en *PetColinas* (${h}).\n\n¡Te esperamos pronto! 😊`,
-      lista:           `¡Hola ${n}! 🎉 *${m}* ya está lista para ser recogida 🐾\n\n💰 Total a pagar: *${pre}*\n\n¡Puedes pasar cuando gustes! Estamos en Plaza Las Colinas 📍`,
+      confirmacion:    `¡Hola ${n}! 🐾 Te confirmamos la cita de *${m}* en *${businessName}* para el *${f}* a las *${h}*.\n\n🔧 Servicio: ${srv}\n👤 Te atenderá: ${emp}\n\n¡Te esperamos! Cualquier cambio, escríbenos 🙏`,
+      recordatorio:    `¡Hola ${n}! 🐾 Te recordamos que *mañana* tienes cita de *${m}* en *${businessName}* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡No olvides venir! 😊`,
+      recordatorio_hoy:`¡Buenos días ${n}! 🌞 Hoy tienes cita de *${m}* en *${businessName}* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡Te esperamos! 🐾`,
+      recordatorio_2h: `¡Hola ${n}! 🐾 En *2 horas* tienes cita de *${m}* en *${businessName}* (${h}).\n\n¡Te esperamos pronto! 😊`,
+      lista:           `¡Hola ${n}! 🎉 *${m}* ya está lista para ser recogida 🐾\n\n💰 Total a pagar: *${pre}*\n\n¡Puedes pasar cuando gustes! Estamos en ${businessTagline} 📍`,
       reagendar:       `¡Hola ${n}! 🙏 Necesitamos reagendar la cita de *${m}* del *${f}* a las *${h}*.\n\nPor favor escríbenos para coordinar. Disculpa los inconvenientes 😊`
     };
     return msgs[tipo] || "";
@@ -18020,7 +18004,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
           const nom=parseFecha(fechaActual).toLocaleDateString("es-DO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
           const w=window.open("","_blank");
           const ingTotal=cds.filter(x=>x.estado==="completada").reduce((s,c)=>s+(Number(c.precio)||0),0);
-          w.document.write(`<html><head><title>Agenda ${nom}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{font-size:18px;margin-bottom:16px;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px 10px;font-size:13px;text-align:left;}th{background:#f0f0f0;font-weight:700;}tr:nth-child(even){background:#f9f9f9;}.foot{font-weight:700;margin-top:12px;font-size:14px;}</style></head><body><h1>📅 Agenda PetColinas — ${nom}</h1><p style="color:#666;font-size:12px">Generado: ${new Date().toLocaleString("es-DO")}</p><table><tr><th>Hora</th><th>Mascota</th><th>Dueño</th><th>Servicio</th><th>Empleado</th><th>Estado</th><th>Precio</th></tr>${cds.map(c=>`<tr><td>${c.hora}</td><td>${c.nombreMascota||"—"}</td><td>${c.nombreCliente||"—"}</td><td>${c.servicio||c.tipo||"—"}</td><td>${c.empleado||"—"}</td><td>${(ESTADOS[c.estado||"pendiente"]||{}).label||""}</td><td>RD$ ${Number(c.precio||0).toLocaleString("es-DO")}</td></tr>`).join("")}</table><p class="foot">Total cobrado: RD$ ${ingTotal.toLocaleString("es-DO")} | ${cds.length} cita(s)</p></body></html>`);
+          w.document.write(`<html><head><title>Agenda ${nom}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{font-size:18px;margin-bottom:16px;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px 10px;font-size:13px;text-align:left;}th{background:#f0f0f0;font-weight:700;}tr:nth-child(even){background:#f9f9f9;}.foot{font-weight:700;margin-top:12px;font-size:14px;}</style></head><body><h1>📅 Agenda ${vetMakeBusinessName()} — ${nom}</h1><p style="color:#666;font-size:12px">Generado: ${new Date().toLocaleString("es-DO")}</p><table><tr><th>Hora</th><th>Mascota</th><th>Dueño</th><th>Servicio</th><th>Empleado</th><th>Estado</th><th>Precio</th></tr>${cds.map(c=>`<tr><td>${c.hora}</td><td>${c.nombreMascota||"—"}</td><td>${c.nombreCliente||"—"}</td><td>${c.servicio||c.tipo||"—"}</td><td>${c.empleado||"—"}</td><td>${(ESTADOS[c.estado||"pendiente"]||{}).label||""}</td><td>RD$ ${Number(c.precio||0).toLocaleString("es-DO")}</td></tr>`).join("")}</table><p class="foot">Total cobrado: RD$ ${ingTotal.toLocaleString("es-DO")} | ${cds.length} cita(s)</p></body></html>`);
           w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
         }, style:{...btnStyle(false),fontSize:11,background:"#f8f9fa"} }, "🖨️ Imprimir")
       ),
@@ -18030,7 +18014,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
           const citasSlot = citasDia.filter(c=>c.hora===hora);
           const hMin = horaToMin(hora);
           const esAhora = fechaActual===hoy() && ahoraMin>=hMin && ahoraMin<hMin+30;
-          return E("div", { key:hora, style:{display:"flex",minHeight:54,borderBottom:"1px solid #f4f5f6",background:esAhora?"rgba(26,107,58,0.04)":"transparent",cursor:"pointer"}, onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}) },
+          return E("div", { key:hora, style:{display:"flex",minHeight:54,borderBottom:"1px solid #f4f5f6",background:esAhora?"rgba(26,107,58,0.04)":"transparent",cursor:"pointer"}, onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:usuarioAgenda,mensajesEnviados:[]}) },
             E("div", { style:{width:62,padding:"6px 10px",fontSize:11,fontWeight:600,color:esAhora?C.verde:C.grisd,borderRight:`2px solid ${esAhora?C.verde:"#f0f0f0"}`,flexShrink:0,display:"flex",alignItems:"flex-start"} }, hora),
             E("div", { style:{flex:1,padding:"4px 8px"} }, citasSlot.map(c=>renderCitaCard(c,false)))
           );
@@ -18066,7 +18050,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
             E("td", { style:{padding:"4px 6px",fontSize:10,color:C.grisd,fontWeight:600,whiteSpace:"nowrap",verticalAlign:"top",paddingTop:6} }, hora),
             ...dias.map(dia => {
               const slot = getCitasDia(dia).filter(c=>c.hora>=hora && c.hora<(String(Number(hora.split(":")[0])+1).padStart(2,"0")+":00"));
-              return E("td", { key:dia, style:{padding:"2px 3px",verticalAlign:"top",cursor:"pointer",background:dia===hoy()?"rgba(26,107,58,0.03)":"transparent",minHeight:40}, onClick:()=>abrirModal({id:"nuevo",fecha:dia,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}) },
+              return E("td", { key:dia, style:{padding:"2px 3px",verticalAlign:"top",cursor:"pointer",background:dia===hoy()?"rgba(26,107,58,0.03)":"transparent",minHeight:40}, onClick:()=>abrirModal({id:"nuevo",fecha:dia,hora,duracion:60,tipo:"grooming",estado:"pendiente",empleado:usuarioAgenda,mensajesEnviados:[]}) },
                 slot.map(c=>renderCitaCard(c,true))
               );
             })
@@ -18106,7 +18090,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
         ),
         E("div", { style:{display:"flex",gap:10,marginBottom:14} },
           E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Tipo principal"), E("select", {value:modalCita.tipo||"grooming",onChange:e=>setF("tipo",e.target.value),style:inputStyle}, Object.entries(TIPOS).map(([k,v])=>E("option",{key:k,value:k},`${v.icon} ${v.label}`)))),
-          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Empleado principal"), E("select", {value:modalCita.empleado||"Alexander",onChange:e=>setF("empleado",e.target.value),style:inputStyle}, Object.keys(EMPLEADOS).map(e=>E("option",{key:e,value:e},e)))),
+          E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Empleado principal"), E("select", {value:modalCita.empleado||usuarioAgenda,onChange:e=>setF("empleado",e.target.value),style:inputStyle}, Object.keys(EMPLEADOS).map(e=>E("option",{key:e,value:e},e)))),
           E("div", { style:{flex:1} }, E("label", {style:labelStyle}, "Estado"), E("select", {value:modalCita.estado||"pendiente",onChange:e=>setF("estado",e.target.value),style:inputStyle}, Object.entries(ESTADOS).filter(([k])=>k!=="espera").map(([k,v])=>E("option",{key:k,value:k},v.label))))
         ),
         E("div", { style:{marginBottom:14,position:"relative"} },
@@ -18473,7 +18457,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
     E("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
       E("div",null,
         E("h2",{style:{fontFamily:"Georgia,serif",fontSize:26,margin:0}},"📅 Agenda"),
-        E("p",{style:{color:C.grisd,fontSize:13,margin:"4px 0 0"}},"Gestión de citas · PetColinas")
+        E("p",{style:{color:C.grisd,fontSize:13,margin:"4px 0 0"}},"Gestión de citas · " + vetMakeBusinessName())
       ),
       E("div",{style:{display:"flex",gap:8,alignItems:"center"}},
         E("button",{
@@ -18491,7 +18475,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
           title:"Sincronizar la agenda con Google Calendar en ambos sentidos",
           style:{background:"#fff",color:"#1a73e8",border:"1.5px solid #1a73e8",borderRadius:10,padding:"10px 14px",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}
         },"📆 Google Calendar"),
-        E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:"Alexander",mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
+        E("button",{onClick:()=>abrirModal({id:"nuevo",fecha:fechaActual,hora:"08:00",duracion:60,tipo:"grooming",estado:"pendiente",empleado:usuarioAgenda,mensajesEnviados:[]}),style:{background:C.verde,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:800,fontSize:14,cursor:"pointer"}},"➕ Nueva cita")
       )
     ),
     calMsg && E("div",{style:{background:"#e8f0fe",border:"1.5px solid #1a73e8",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,fontWeight:600,color:"#174ea6"}},calMsg),
