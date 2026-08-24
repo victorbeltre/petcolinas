@@ -47,10 +47,19 @@ función:
    `admin`, `veterinario`, `groomer` o `caja`.
 4. Busca el usuario por correo; si no existe, usa `inviteUserByEmail`.
 5. Crea o actualiza la membresía y vincula `pc_empleados.usuario_id`.
+6. El frontend recibe el enlace `invite` o `recovery`, valida el token y pide
+   crear una contraseña antes de mostrar el sistema.
 
 Un usuario ya vinculado a otra clínica o a otro empleado se rechaza. La
 función se despliega con verificación JWT activa y responde correctamente a
-CORS para el frontend hospedado.
+CORS para el frontend hospedado. La pantalla de login también permite pedir
+un enlace de recuperación de contraseña.
+
+Antes del primer piloto hay que configurar en **Authentication → URL
+Configuration** la `Site URL` y la URL exacta de VetMake (más la URL de preview
+si se usa), y habilitar un proveedor SMTP propio para que las invitaciones y
+recuperaciones sean confiables. La función usa la `Site URL` de Supabase si no
+se define `VETMAKE_SITE_URL`.
 
 ## El patrón a repetir
 
