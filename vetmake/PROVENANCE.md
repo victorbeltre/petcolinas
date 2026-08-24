@@ -16,7 +16,7 @@ se modifica como parte de este trabajo.
 | Validación de origen | `node .github/scripts/validate-index.js` → ✅ válido (1,631,389 bytes, 16 pestañas, 5 componentes, sintaxis JS OK) |
 | Validación actual | Sintaxis del script VetMake, `git diff --check` y comprobaciones de aislamiento/flags → ✅ pasan |
 | SHA-256 de origen | `b3cb6f8c2f07c5368dc096e4d74e07097708f2d99be7866c49d39e5dd1198d53` |
-| SHA-256 actual de `vetmake/index.html` | `8bf12e6373cf5aaf997a69b2227de85b415acfd3e90d75962d1fc9e6e40c4ddd` |
+| SHA-256 actual de `vetmake/index.html` | `5af57dd2d47c30ae29bac4eec4e94b31e4cc9c6881b6bf9fcc5b59806146e581` |
 | Idéntico al `index.html` de PetColinas en esta rama | No: la copia ya contiene la implementación de VetMake |
 
 ## Qué significa esto
@@ -30,8 +30,9 @@ Estado actual: la rama ya contiene la identidad generalizada del negocio, el
 panel de Configuración para perfil/equipo/comisiones, catálogos sin defaults
 heredados, portales que consumen empleados y tarifas del tenant, la
 migración `0007_configuracion_negocio_y_empleados.sql` aplicada en
-`vetmake-dev` y la Edge Function `vetmake-admin` para invitación/vinculación
-Auth. La procedencia original sigue siendo el commit indicado arriba; la
+`vetmake-dev`, la Edge Function `vetmake-admin` para invitación/vinculación
+Auth y el callback frontend para establecer/recuperar contraseñas. La
+procedencia original sigue siendo el commit indicado arriba; la
 implementación posterior se registra en el historial de esta rama.
 
 ## Próximo cambio real sobre este archivo
