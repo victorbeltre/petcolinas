@@ -10,7 +10,7 @@
   <script>
     // Auto-actualización: si la versión cambió, recarga forzada
     (function() {
-      var V = "20260616-v1";
+      var V = "20260824-auth-v1";
       var stored = localStorage.getItem("pc_app_version");
       if (stored !== V) {
         localStorage.setItem("pc_app_version", V);
@@ -1009,6 +1009,69 @@ async function supaSignIn(email, password) {
   if (!res.ok) throw new Error(data.error_description || data.msg || "Error de autenticaci\xF3n");
   return data;
 }
+function getVetMakeRedirectUrl() {
+  return window.location.origin + window.location.pathname;
+}
+function vetMakeSessionFromTokens(tokens, user) {
+  const expiresIn = Number(tokens.expires_in) || 3600;
+  return {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token || "",
+    user,
+    expires_at: Number(tokens.expires_at) || Math.floor(Date.now() / 1e3) + expiresIn
+  };
+}
+async function supaGetUser(accessToken) {
+  const res = await fetch(`${SUPA_URL_AUTH}/auth/v1/user`, {
+    headers: { "apikey": SUPA_ANON_KEY, "Authorization": `Bearer ${accessToken}` }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error_description || data.msg || "No se pudo validar la invitaci\xF3n.");
+  return data.user || data;
+}
+async function supaUpdatePassword(accessToken, password) {
+  const res = await fetch(`${SUPA_URL_AUTH}/auth/v1/user`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "apikey": SUPA_ANON_KEY, "Authorization": `Bearer ${accessToken}` },
+    body: JSON.stringify({ password })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error_description || data.msg || "No se pudo guardar la contrase\xF1a.");
+  return data.user || data;
+}
+async function supaRequestPasswordReset(email) {
+  const res = await fetch(`${SUPA_URL_AUTH}/auth/v1/recover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "apikey": SUPA_ANON_KEY },
+    body: JSON.stringify({ email, redirect_to: getVetMakeRedirectUrl() })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error_description || data.msg || "No se pudo enviar el correo de recuperaci\xF3n.");
+}
+async function supaReadAuthCallback() {
+  const rawHash = String(window.location.hash || "").replace(/^#/, "");
+  if (!rawHash) return null;
+  const params = new URLSearchParams(rawHash);
+  const clearHash = () => window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+  const errorDescription = params.get("error_description");
+  const errorCode = params.get("error_code") || params.get("error");
+  if (errorDescription || errorCode) {
+    clearHash();
+    return { error: String(errorDescription || errorCode).replace(/\+/g, " ") };
+  }
+  const accessToken = params.get("access_token");
+  if (!accessToken) return null;
+  const user = await supaGetUser(accessToken);
+  const session = vetMakeSessionFromTokens({
+    access_token: accessToken,
+    refresh_token: params.get("refresh_token") || "",
+    expires_at: params.get("expires_at") || "",
+    expires_in: params.get("expires_in") || "3600"
+  }, user);
+  const type = params.get("type");
+  clearHash();
+  return { session, mode: type === "invite" ? "invite" : type === "recovery" ? "recovery" : "" };
+}
 async function supaSignOut(accessToken) {
   await fetch(`${SUPA_URL_AUTH}/auth/v1/logout`, {
     method: "POST",
@@ -1061,12 +1124,14 @@ async function supaGetSession() {
     return null;
   }
 }
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, initialError = "" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
+  const [notice, setNotice] = useState("");
   const [showPass, setShowPass] = useState(false);
+  useEffect(() => { if (initialError) setError(initialError); }, [initialError]);
   async function handleLogin() {
     if (!email || !password) {
       setError("Ingresa usuario y contrase\xF1a");
@@ -1074,6 +1139,7 @@ function LoginScreen({ onLogin }) {
     }
     setLoading(true);
     setError("");
+    setNotice("");
     try {
       const data = await supaSignIn(email, password);
       const session = {
@@ -1086,6 +1152,23 @@ function LoginScreen({ onLogin }) {
       onLogin(session);
     } catch (err) {
       setError("Usuario o contrase\xF1a incorrectos");
+    }
+    setLoading(false);
+  }
+  async function handleRecovery() {
+    const target = String(email || "").trim().toLowerCase();
+    if (!target) {
+      setError("Escribe tu correo para enviarte el enlace de recuperaci\xF3n.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      await supaRequestPasswordReset(target);
+      setNotice("Si el correo existe, recibir\xE1s un enlace para crear una contrase\xF1a nueva.");
+    } catch (err) {
+      setError(err.message || "No se pudo enviar el correo de recuperaci\xF3n.");
     }
     setLoading(false);
   }
@@ -1164,7 +1247,7 @@ function LoginScreen({ onLogin }) {
     display: "flex",
     alignItems: "center",
     gap: 8
-  } }, "\u26A0\uFE0F ", error), /* @__PURE__ */ React.createElement(
+  } }, "\u26A0\uFE0F ", error), notice && /* @__PURE__ */ React.createElement("div", { style: { background: "#e8f5ed", border: "1px solid #b7dec4", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#166534" } }, "✅ ", notice), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: handleLogin,
@@ -1187,7 +1270,47 @@ function LoginScreen({ onLogin }) {
       }
     },
     loading ? "\u23F3 Verificando..." : "\u{1F510} Entrar al sistema"
-  ), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: 20, fontSize: 11, color: "#aaa" } }, "Acceso restringido \xB7 Solo personal autorizado")));
+  ), /* @__PURE__ */ React.createElement("button", { onClick: handleRecovery, disabled: loading, style: { display: "block", margin: "16px auto 0", background: "none", border: "none", color: "#1a6b3a", cursor: loading ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 } }, "\xBFOlvidaste tu contrase\xF1a?"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: 20, fontSize: 11, color: "#aaa" } }, "Acceso restringido \xB7 Solo personal autorizado")));
+}
+function AuthPasswordScreen({ session, mode, onComplete, onCancel }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  async function guardar() {
+    if (password.length < 8) {
+      setError("La contrase\xF1a debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Las contrase\xF1as no coinciden.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const user = await supaUpdatePassword(session.access_token, password);
+      onComplete({ ...session, user: user || session.user });
+    } catch (err) {
+      setError(err.message || "No se pudo guardar la contrase\xF1a.");
+    }
+    setLoading(false);
+  }
+  const title = mode === "invite" ? "Activa tu acceso a VetMake" : "Crea una nueva contrase\xF1a";
+  const subtitle = mode === "invite" ? "Confirma una contrase\xF1a para entrar al espacio de tu cl\xEDnica." : "Ya puedes volver a entrar con tu correo y esta contrase\xF1a.";
+  const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${error ? "#e74c3c" : "#e0e4e8"}`, fontSize: 14, outline: "none" };
+  return React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #1a6b3a 0%, #0d3d20 100%)", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", padding: 20 } },
+    React.createElement("div", { style: { background: "#fff", borderRadius: 20, padding: "42px 36px", width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } },
+      React.createElement("div", { style: { textAlign: "center", marginBottom: 26 } }, React.createElement("div", { style: { fontSize: 48, marginBottom: 8 } }, "🐾"), React.createElement("div", { style: { fontSize: 24, fontWeight: 900, color: "#1a6b3a" } }, VETMAKE_CONFIG.name), React.createElement("h2", { style: { fontSize: 18, color: "#1a1d23", marginTop: 18 } }, title), React.createElement("div", { style: { fontSize: 13, color: "#5a6472", marginTop: 8, lineHeight: 1.5 } }, subtitle)),
+      React.createElement("label", { style: { display: "block", fontSize: 12, color: "#5a6472", fontWeight: 700, marginBottom: 6 } }, "Nueva contrase\xF1a"),
+      React.createElement("input", { type: "password", value: password, onChange: (e) => setPassword(e.target.value), autoComplete: "new-password", placeholder: "M\xEDnimo 8 caracteres", style: inputStyle }),
+      React.createElement("label", { style: { display: "block", fontSize: 12, color: "#5a6472", fontWeight: 700, margin: "16px 0 6px" } }, "Repite la contrase\xF1a"),
+      React.createElement("input", { type: "password", value: confirm, onChange: (e) => setConfirm(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") guardar(); }, autoComplete: "new-password", placeholder: "Repite la contrase\xF1a", style: inputStyle }),
+      error && React.createElement("div", { style: { background: "#fdeaea", border: "1px solid #e74c3c", borderRadius: 8, padding: "10px 14px", marginTop: 16, fontSize: 13, color: "#c0392b" } }, "⚠️ ", error),
+      React.createElement("button", { onClick: guardar, disabled: loading, style: { width: "100%", marginTop: 20, padding: 14, background: loading ? "#5a6472" : "#1a6b3a", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" } }, loading ? "⏳ Guardando..." : "✅ Guardar contrase\xF1a"),
+      React.createElement("button", { onClick: onCancel, disabled: loading, style: { display: "block", margin: "16px auto 0", background: "none", border: "none", color: "#5a6472", cursor: loading ? "not-allowed" : "pointer", fontSize: 12 } }, "Cancelar")
+    )
+  );
 }
 function imprimirCarnetVacunas(mascota, cliente, ventas) {
   const nombre = (mascota || "").trim();
@@ -7693,6 +7816,7 @@ function PetColinas() {
       return false;
     } catch { return true; }
   });
+  const [authFlow, setAuthFlow] = useState(null);
   const [tenant, setTenant] = useState(() => VETMAKE_TENANT_CONTEXT);
   const [tenantChecked, setTenantChecked] = useState(() => !session);
   const [tenantError, setTenantError] = useState("");
@@ -7770,10 +7894,32 @@ function PetColinas() {
   }, []);
 
   useEffect(() => {
-    supaGetSession().then((s) => {
-      setSession(s);
-      setAuthChecked(true);
-    });
+    let vivo = true;
+    (async () => {
+      try {
+        const callback = await supaReadAuthCallback();
+        if (!vivo) return;
+        if (callback?.error) {
+          sessionStorage.removeItem(VETMAKE_SESSION_KEY);
+          setSession(null);
+          setAuthFlow({ mode: "error", error: callback.error });
+        } else if (callback?.session) {
+          sessionStorage.setItem(VETMAKE_SESSION_KEY, JSON.stringify(callback.session));
+          setSession(callback.session);
+          if (callback.mode) setAuthFlow({ mode: callback.mode, session: callback.session });
+        } else {
+          setSession(await supaGetSession());
+        }
+      } catch (err) {
+        if (vivo) {
+          sessionStorage.removeItem(VETMAKE_SESSION_KEY);
+          setSession(null);
+          setAuthFlow({ mode: "error", error: err.message || "El enlace de Auth ya no es válido." });
+        }
+      }
+      if (vivo) setAuthChecked(true);
+    })();
+    return () => { vivo = false; };
   }, []);
   useEffect(() => {
     if (!session) {
@@ -7799,18 +7945,20 @@ function PetColinas() {
     });
     return () => { vivo = false; };
   }, [session?.user?.id]);
-  function handleLogin(s) { setSession(s); }
+  function handleLogin(s) { setAuthFlow(null); setSession(s); }
   async function handleLogout() {
     if (session?.access_token) await supaSignOut(session.access_token);
     sessionStorage.removeItem(VETMAKE_SESSION_KEY);
     resetearContextoNegocio();
     window.dispatchEvent(new Event(VETMAKE_AUTH_EVENT));
+    setAuthFlow(null);
     setSession(null);
   }
 
   if (VETMAKE_ENABLE_LEGACY_INTEGRATIONS && window.location.search.includes("catalogo")) return React.createElement(CatalogoPublico, null);
   if (!authChecked) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, color: "#5a6472" } }, "Verificando sesi\xF3n...")));
-  if (!session) return /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin });
+  if (authFlow?.session && (authFlow.mode === "invite" || authFlow.mode === "recovery")) return React.createElement(AuthPasswordScreen, { session: authFlow.session, mode: authFlow.mode, onComplete: (next) => { sessionStorage.setItem(VETMAKE_SESSION_KEY, JSON.stringify(next)); setAuthFlow(null); setSession(next); }, onCancel: () => { sessionStorage.removeItem(VETMAKE_SESSION_KEY); setAuthFlow(null); setSession(null); } });
+  if (!session) return /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin, initialError: authFlow?.mode === "error" ? authFlow.error : "" });
   if (!tenantChecked) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, color: "#5a6472" } }, "Preparando tu espacio VetMake...")));
   if (!tenant) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6", padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: "32px 28px", maxWidth: 440, textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,.08)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 42, marginBottom: 10 } }, "\u{1F512}"), /* @__PURE__ */ React.createElement("h2", { style: { margin: "0 0 10px", color: "#1a6b3a" } }, "Cuenta sin clínica asignada"), /* @__PURE__ */ React.createElement("p", { style: { color: "#5a6472", lineHeight: 1.5, margin: "0 0 20px" } }, tenantError || "Esta cuenta todavía no pertenece a un negocio de VetMake. El administrador debe asignarte una clínica."), /* @__PURE__ */ React.createElement("button", { onClick: handleLogout, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 9, padding: "11px 20px", fontWeight: 700, cursor: "pointer" } }, "Cerrar sesión")));
 
