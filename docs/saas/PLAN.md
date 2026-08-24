@@ -157,10 +157,12 @@ perfil comercial, equipo, roles, estado, mensualidad y comisión predeterminada;
 Servicios permite crear el catálogo propio sin restaurar defaults heredados.
 La Edge Function `vetmake-admin` ya está desplegada con JWT obligatorio: un
 administrador puede invitar o vincular por correo a cada empleado sin exponer
-la clave administrativa en el navegador. Las comisiones nuevas se leen de los
-registros configurados y no se inventan porcentajes históricos. Pendiente para
-el MVP comercial: configurar correo/dominio de Auth, probar el primer alta real
-y completar las integraciones por negocio.
+la clave administrativa en el navegador. El frontend ya recibe los enlaces de
+invitación/recuperación, permite crear la contraseña y conserva la sesión. Las
+comisiones nuevas se leen de los registros configurados y no se inventan
+porcentajes históricos. Pendiente para el MVP comercial: configurar
+correo/dominio de Auth, probar el primer alta real y completar las
+integraciones por negocio.
 
 ---
 
@@ -257,10 +259,12 @@ inicial del frontend ya están implementados; cualquier cambio dentro de
 `vetmake/` pertenece a la Fase 1 de VetMake, no a PetColinas.
 
 El flujo técnico de invitación/vinculación de usuarios de Supabase Auth ya
-está implementado en `vetmake-admin` y conectado al panel de Configuración.
-El siguiente bloque es configurar el correo y la URL de redirección de Auth,
-probar el primer alta real y luego completar las credenciales de integraciones
-por negocio. El piloto todavía puede darse de alta manualmente con el panel.
+está implementado en `vetmake-admin` y conectado al panel de Configuración. El
+frontend también procesa el enlace recibido y permite establecer o recuperar
+la contraseña. El siguiente bloque es configurar el correo y la URL de
+redirección de Auth, probar el primer alta real y luego completar las
+credenciales de integraciones por negocio. El piloto todavía puede darse de
+alta manualmente con el panel.
 
 Solo falta una cosa de la Fase 0, y **no es algo que Claude pueda hacer**:
 registrar el dominio de VetMake. Requiere una compra real con datos de pago
