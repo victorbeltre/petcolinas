@@ -149,15 +149,18 @@ administradores sobre configuración, empleados y tarifas. Tablas específicas
 de PetColinas como candidatos y llamadas quedan fuera del MVP; `pc_paquetes`
 sí forma parte de la base de VetMake.
 
-**Estado de frontend (23 ago): ✅ identidad y configuración inicial
-generalizadas.** Paneles, mensajes, agenda, caja, CRM, facturas PDF, carnet y
+**Estado de frontend (24 ago): ✅ identidad, configuración y acceso inicial
+generalizados.** Paneles, mensajes, agenda, caja, CRM, facturas PDF, carnet y
 reportes toman el nombre/tagline/logo del negocio; las semillas y empleados
 demo de PetColinas no se cargan. El panel de Configuración permite editar el
 perfil comercial, equipo, roles, estado, mensualidad y comisión predeterminada;
 Servicios permite crear el catálogo propio sin restaurar defaults heredados.
-Las comisiones nuevas se leen de los registros configurados y no se inventan
-porcentajes históricos. Pendiente para el MVP comercial: invitaciones y
-vinculación con usuarios de Supabase Auth, más integraciones por negocio.
+La Edge Function `vetmake-admin` ya está desplegada con JWT obligatorio: un
+administrador puede invitar o vincular por correo a cada empleado sin exponer
+la clave administrativa en el navegador. Las comisiones nuevas se leen de los
+registros configurados y no se inventan porcentajes históricos. Pendiente para
+el MVP comercial: configurar correo/dominio de Auth, probar el primer alta real
+y completar las integraciones por negocio.
 
 ---
 
@@ -208,8 +211,8 @@ percibido da desde el día uno.
    perfil comercial.
 2. Configurar el equipo, roles, estado y comisiones desde el panel de
    Configuración.
-3. Crear usuarios de Supabase Auth para su personal y vincularlos a los
-   registros del equipo.
+3. Desde Configuración, enviar la invitación de Supabase Auth y vincular cada
+   usuario al registro de su empleado.
 4. Migrar su base de clientes existente si vienen de Excel u otro sistema.
 5. Google Calendar propio si quieren sincronización de citas.
 6. WhatsApp Business — número propio, webhook, prompt del bot ajustado a
@@ -224,8 +227,8 @@ percibido da desde el día uno.
 | Fase | Qué | Cuándo |
 |---|---|---|
 | 0 — Congelar | ✅ Nombre de marca (VetMake) · repo/rama limpia (`saas/plan-inicial`) · ✅ copia semilla de `index.html` validada y congelada en `vetmake/` · falta registrar el dominio | Esta semana |
-| 1 — Datos | ✅ Fundación multi-tenant aplicada en `vetmake-dev`, patrón replicado a las 15 tablas del MVP, aislamiento confirmado y frontend conectado al negocio actual | En curso: onboarding/Auth |
-| 2 — Generalizar | ✅ Identidad operativa, mensajes, documentos, semillas y empleados demo aislados; ✅ perfil comercial, equipo y tarifas configurables con escritura admin-only en `0007` | En curso: invitaciones e integraciones por negocio |
+| 1 — Datos | ✅ Fundación multi-tenant aplicada en `vetmake-dev`, patrón replicado a las 15 tablas del MVP, aislamiento confirmado y frontend conectado al negocio actual | En curso: primer alta real/Auth |
+| 2 — Generalizar | ✅ Identidad operativa, mensajes, documentos, semillas y empleados demo aislados; ✅ perfil comercial, equipo y tarifas configurables con escritura admin-only en `0007`; ✅ invitación/vinculación Auth mediante `vetmake-admin` | En curso: correo e integraciones por negocio |
 | 3 — Piloto | 1–2 veterinarias conocidas, gratis o precio simbólico | Cuando la Fase 1 esté probada con datos reales |
 | 4 — Vender | Primeras clínicas de pago, onboarding manual asistido | Tras un piloto sin incidentes de aislamiento |
 | 5 — Escalar | Autoservicio, más mercados | Más adelante, no parte de este plan todavía |
@@ -253,10 +256,11 @@ multi-tenant de Supabase, el bloque de identidad y el onboarding comercial
 inicial del frontend ya están implementados; cualquier cambio dentro de
 `vetmake/` pertenece a la Fase 1 de VetMake, no a PetColinas.
 
-El siguiente bloque técnico es crear el flujo de invitación/vinculación de
-usuarios de Supabase Auth y completar las credenciales de integraciones por
-negocio. Hasta entonces, el piloto se puede dar de alta manualmente con el
-panel de Configuración y la base de datos.
+El flujo técnico de invitación/vinculación de usuarios de Supabase Auth ya
+está implementado en `vetmake-admin` y conectado al panel de Configuración.
+El siguiente bloque es configurar el correo y la URL de redirección de Auth,
+probar el primer alta real y luego completar las credenciales de integraciones
+por negocio. El piloto todavía puede darse de alta manualmente con el panel.
 
 Solo falta una cosa de la Fase 0, y **no es algo que Claude pueda hacer**:
 registrar el dominio de VetMake. Requiere una compra real con datos de pago
