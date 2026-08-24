@@ -15,6 +15,12 @@ comercial por negocio, el equipo configurable y las políticas admin-only para
 la configuración, empleados y tarifas. No se copiaron datos reales de
 PetColinas — solo se leyó su estructura para que la prueba fuera fiel.
 
+También está desplegada en `vetmake-dev` la Edge Function `vetmake-admin`
+(JWT obligatorio, versión activa 2). Su acción `link_employee` permite que un
+administrador invite o vincule por correo a un empleado, cree su membresía en
+`usuarios_negocio` y actualice `pc_empleados.usuario_id`. La clave de servidor
+solo existe en el entorno de la función; nunca se envía al navegador.
+
 ## Los archivos
 
 | Archivo | Qué hace |
@@ -26,6 +32,25 @@ PetColinas — solo se leyó su estructura para que la prueba fuera fiel.
 | `migrations/0005_negocio_id_tablas_auxiliares.sql` | Crea y tenantiza `pc_seguimientos`, `pc_pagos`, `pc_tarifas`, `pc_historias`, `pc_fichas_clinicas`, `pc_depositos` y `pc_auditoria`, con RLS y permisos explícitos para `authenticated`. |
 | `migrations/0006_negocio_id_pc_paquetes.sql` | Crea y tenantiza `pc_paquetes`, la tabla de planes prepagados usada por Ventas y Planes. |
 | `migrations/0007_configuracion_negocio_y_empleados.sql` | Agrega datos comerciales a `negocios`, campos de contacto/rol/comisión a `pc_empleados` y restringe las escrituras de configuración, empleados y tarifas al rol `admin`. |
+| `functions/vetmake-admin/index.ts` | Edge Function protegida con JWT para invitar/vincular empleados a Auth; valida que el llamante sea `admin` del mismo negocio y usa la clave de servidor solo en backend. |
+
+## Onboarding Auth
+
+El panel de Configuración guarda primero el empleado con su correo y rol. El
+botón `✉️ Invitar` llama a `vetmake-admin` con el JWT de la sesión actual. La
+función:
+
+1. Comprueba la sesión con `auth.getUser()`.
+2. Resuelve la clínica del llamante desde `usuarios_negocio` y exige rol
+   `admin`.
+3. Comprueba que el empleado pertenece a esa clínica y que el rol es uno de
+   `admin`, `veterinario`, `groomer` o `caja`.
+4. Busca el usuario por correo; si no existe, usa `inviteUserByEmail`.
+5. Crea o actualiza la membresía y vincula `pc_empleados.usuario_id`.
+
+Un usuario ya vinculado a otra clínica o a otro empleado se rechaza. La
+función se despliega con verificación JWT activa y responde correctamente a
+CORS para el frontend hospedado.
 
 ## El patrón a repetir
 
