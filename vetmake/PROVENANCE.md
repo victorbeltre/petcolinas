@@ -16,7 +16,7 @@ se modifica como parte de este trabajo.
 | Validación de origen | `node .github/scripts/validate-index.js` → ✅ válido (1,631,389 bytes, 16 pestañas, 5 componentes, sintaxis JS OK) |
 | Validación actual | Sintaxis del script VetMake, `git diff --check` y comprobaciones de aislamiento/flags → ✅ pasan |
 | SHA-256 de origen | `b3cb6f8c2f07c5368dc096e4d74e07097708f2d99be7866c49d39e5dd1198d53` |
-| SHA-256 actual de `vetmake/index.html` | `91f1c07f0268f413f043dafafc4457f0186e19a102f49d2b82c6b9f583789c9d` |
+| SHA-256 actual de `vetmake/index.html` | `8bf12e6373cf5aaf997a69b2227de85b415acfd3e90d75962d1fc9e6e40c4ddd` |
 | Idéntico al `index.html` de PetColinas en esta rama | No: la copia ya contiene la implementación de VetMake |
 
 ## Qué significa esto
@@ -28,14 +28,15 @@ raíz del repo, que sigue siendo la app en vivo de PetColinas.
 
 Estado actual: la rama ya contiene la identidad generalizada del negocio, el
 panel de Configuración para perfil/equipo/comisiones, catálogos sin defaults
-heredados, portales que consumen empleados y tarifas del tenant y la
-migración `0007_configuracion_negocio_y_empleados.sql`, aplicada en
-`vetmake-dev`. La procedencia original sigue siendo el commit indicado arriba;
-la implementación posterior se registra en el historial de esta rama.
+heredados, portales que consumen empleados y tarifas del tenant, la
+migración `0007_configuracion_negocio_y_empleados.sql` aplicada en
+`vetmake-dev` y la Edge Function `vetmake-admin` para invitación/vinculación
+Auth. La procedencia original sigue siendo el commit indicado arriba; la
+implementación posterior se registra en el historial de esta rama.
 
 ## Próximo cambio real sobre este archivo
 
-El siguiente bloque será completar invitaciones y vinculación con usuarios de
-Supabase Auth, además de credenciales de integraciones por negocio. Cualquier
-otro cambio de este archivo debe conservar la frontera con PetColinas y
-actualizar esta nota si altera su procedencia o su validación.
+El siguiente bloque será completar correo/dominio de Auth y credenciales de
+integraciones por negocio. Cualquier otro cambio de este archivo debe
+conservar la frontera con PetColinas y actualizar esta nota si altera su
+procedencia o su validación.
