@@ -5151,6 +5151,78 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     win.document.close();
     setTimeout(() => win.print(), 500);
   }
+  function imprimirRegistroFacturas(desde, hasta) {
+    if (!desde || !hasta) { alert("Escoge la fecha de inicio y la fecha final."); return; }
+    if (desde > hasta) { alert("La fecha de inicio no puede ser posterior a la fecha final."); return; }
+    const lista = todasFacturas
+      .filter((f) => f.fecha >= desde && f.fecha <= hasta)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha) || (parseInt(a.numero) || 0) - (parseInt(b.numero) || 0));
+    if (lista.length === 0) { alert("No hay facturas entre " + desde + " y " + hasta + "."); return; }
+    const totalGeneral = lista.reduce((s, f) => s + (Number(f.total) || 0), 0);
+    const win = window.open("", "_blank");
+    win.document.write(`
+      <!DOCTYPE html><html><head>
+      <meta charset="UTF-8">
+      <title>Registro de facturas ${desde} a ${hasta} - PetColinas</title>
+      <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: Arial, sans-serif; padding:40px; color:#1a1d23; font-size:13px; }
+        .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; padding-bottom:16px; border-bottom:3px solid #1a6b3a; }
+        .header h1 { font-size:18px; color:#1a6b3a; }
+        .header .rango { text-align:right; font-size:13px; color:#5a6472; }
+        table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+        thead tr { background:#1a6b3a; color:#fff; }
+        thead th { padding:8px 10px; text-align:left; font-size:12px; }
+        tbody tr { border-bottom:1px solid #e0e4e8; }
+        tbody td { padding:7px 10px; font-size:12.5px; }
+        tbody tr:nth-child(even) { background:#f8f9fa; }
+        tfoot td { padding:10px; font-size:14px; font-weight:800; color:#1a6b3a; border-top:2px solid #1a6b3a; }
+        .footer { margin-top:24px; text-align:center; color:#5a6472; font-size:11px; }
+        @media print { body { padding:16px; } }
+      </style>
+      </head><body>
+      <div class="header">
+        <div>
+          <h1>\u{1F43E} PetColinas — Registro de facturas</h1>
+          <div style="font-size:12px;color:#5a6472;margin-top:4px;">Plaza Las Colinas, Santo Domingo Oeste \xB7 Tel: 809-752-6806</div>
+        </div>
+        <div class="rango">
+          <div><strong>Del:</strong> ${desde}</div>
+          <div><strong>Al:</strong> ${hasta}</div>
+          <div style="margin-top:4px;">${lista.length} factura(s)</div>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Fecha</th>
+            <th>Mascota</th>
+            <th>Cliente</th>
+            <th style="text-align:right">Total</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lista.map((f) => `<tr>
+            <td>#${f.numero}</td>
+            <td>${f.fecha}</td>
+            <td>${f.mascota || "—"}</td>
+            <td>${f.propietario || "—"}</td>
+            <td style="text-align:right">RD$ ${(Number(f.total) || 0).toLocaleString("es-DO")}</td>
+            <td>${f.estado === "pendiente" ? "Pendiente" : "Pagada"}</td>
+          </tr>`).join("")}
+        </tbody>
+        <tfoot>
+          <tr><td colspan="4">TOTAL</td><td style="text-align:right">RD$ ${totalGeneral.toLocaleString("es-DO")}</td><td></td></tr>
+        </tfoot>
+      </table>
+      <div class="footer">Generado el ${hoy()} \xB7 PetColinas</div>
+      </body></html>
+    `);
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  }
   function compartirWhatsApp(f) {
     // Si el telefono salio del CRM, se guarda en la factura para no volver a buscarlo.
     const tel = resolverTelFactura(f, clientes);
@@ -5201,6 +5273,9 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
   const [showSugFact, setShowSugFact] = useState(false);
   const [orden, setOrden] = useState("fecha_desc");
   const [vistaMode, setVistaMode] = useState("facturas");
+  const [showImprimirRango, setShowImprimirRango] = useState(false);
+  const [rangoDesde, setRangoDesde] = useState("");
+  const [rangoHasta, setRangoHasta] = useState("");
   const [clienteDetalle, setClienteDetalle] = useState(null);
   const facturasDeVentas = useMemo(() => {
     // Por defecto las ventas del mismo cliente y día van en UNA factura. Si se
@@ -5688,14 +5763,21 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
       style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }
     }, "\u{1F5D1}\uFE0F"))))))));
   }
-  return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: C.negro } }, "\u{1F4C4} Facturas"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14 } }, facturas.length, " factura(s) \xB7 ", resumenClientes.length, " cliente(s)")), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: C.negro } }, "\u{1F4C4} Facturas"), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 14 } }, facturas.length, " factura(s) \xB7 ", resumenClientes.length, " cliente(s)")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => { setRangoDesde(hoy().slice(0, 8) + "01"); setRangoHasta(hoy()); setShowImprimirRango(true); },
+      style: { background: "#fff", color: C.verde, border: `1.5px solid ${C.verde}`, borderRadius: 10, padding: "12px 18px", fontSize: 14, fontWeight: 700, cursor: "pointer" }
+    },
+    "\u{1F5A8}️ Imprimir registro"
+  ), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => setVista("nueva"),
       style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "12px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }
     },
     "+ Nueva Factura"
-  )), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 } }, [
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 } }, [
     { label: "Total facturado", val: RD(todasFacturas.reduce((s, f) => s + f.total, 0)), color: C.verde },
     { label: "Este mes", val: RD(todasFacturas.filter((f) => f.fecha?.slice(0, 7) === (/* @__PURE__ */ new Date()).toISOString().slice(0, 7)).reduce((s, f) => s + f.total, 0)), color: C.azul },
     { label: "Facturas emitidas", val: todasFacturas.length, color: C.gold },
@@ -5876,7 +5958,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
       /* @__PURE__ */ React.createElement("td", { style: { padding: "12px 14px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, color: libre ? C.verde : C.gold } }, c.grooming)),
       /* @__PURE__ */ React.createElement("td", { style: { padding: "12px 14px", minWidth: 160 } }, libre ? /* @__PURE__ */ React.createElement("div", { style: { background: "#d4edda", color: "#155724", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, textAlign: "center" } }, "\u{1F389} \xA1BA\xD1O GRATIS!") : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { background: "#e0e4e8", borderRadius: 20, height: 8, overflow: "hidden", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${pct}%`, height: "100%", background: pct >= 80 ? C.verde : pct >= 50 ? C.gold : C.naranja, borderRadius: 20, transition: "width 0.3s" } })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, c.grooming, "/10 \u2014 faltan ", 10 - c.grooming)))
     );
-  }))))));
+  }))))), showImprimirRango && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }, onClick: () => setShowImprimirRango(false) }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 14, padding: 24, width: 340, maxWidth: "90vw" }, onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 17, marginBottom: 4 } }, "\u{1F5A8}️ Imprimir registro de facturas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: C.grisd, marginBottom: 16 } }, "Escoge el rango de fechas a imprimir."), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 4, fontWeight: 600 } }, "Desde"), /* @__PURE__ */ React.createElement("input", { type: "date", value: rangoDesde, onChange: (e) => setRangoDesde(e.target.value), style: { width: "100%", padding: 10, borderRadius: 8, border: "1px solid #e0e4e8", marginBottom: 12, fontSize: 14, boxSizing: "border-box" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 4, fontWeight: 600 } }, "Hasta"), /* @__PURE__ */ React.createElement("input", { type: "date", value: rangoHasta, onChange: (e) => setRangoHasta(e.target.value), style: { width: "100%", padding: 10, borderRadius: 8, border: "1px solid #e0e4e8", marginBottom: 18, fontSize: 14, boxSizing: "border-box" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowImprimirRango(false), style: { flex: 1, padding: 10, borderRadius: 8, border: "1px solid #e0e4e8", background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 } }, "Cancelar"), /* @__PURE__ */ React.createElement("button", { onClick: () => { imprimirRegistroFacturas(rangoDesde, rangoHasta); setShowImprimirRango(false); }, style: { flex: 1, padding: 10, borderRadius: 8, border: "none", background: C.verde, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14 } }, "\u{1F5A8}️ Imprimir")))));
 }
 // ─────────────────────────────────────────────────────────────
 // CANDIDATOS — Aspirantes a vacantes (vet). Estado + notas de Laura se guardan
