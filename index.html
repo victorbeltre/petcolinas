@@ -1556,6 +1556,34 @@ const EMPLEADOS_INIT = [
 ];
 const RD = (n) => "RD$ " + (Math.round(Number(n) || 0) || 0).toLocaleString("es-DO");
 const hoy = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+// Deduce el area real de un servicio a partir de su nombre. Se usa para
+// reclasificar en los reportes las ventas guardadas como "mixta" (o con un
+// area vieja/incorrecta) en grooming/veterinaria/farmacia.
+function deducirAreaServicio(servicio, fallback) {
+  const t = String(servicio || "").toLowerCase().trim();
+  if (/ba[ñn]o|corte|grooming|peluquer|desenred|deslan|u[ñn]as|spa/.test(t)) return "grooming";
+  if (/consulta|vacuna|test|aplicaci|desparasit|cirug|inyecc|refuerzo|muestra|diagn|esteriliz|castraci|radiograf|ecograf|sutura/.test(t)) return "veterinaria";
+  return (fallback === "grooming" || fallback === "veterinaria" || fallback === "farmacia") ? fallback : "farmacia";
+}
+// Reparte una venta en sus servicios reales (grooming/veterinaria/farmacia).
+// Una venta "mixta" (ba\xF1o + vacuna + producto en un solo cobro) trae ese
+// desglose en items[]; si el area de un item no es una de las 3 validas
+// (viene "mixta", vacia, o el registro es viejo y no tiene items[]) se deduce
+// por el nombre del servicio. Los montos se ajustan para que la suma cuadre
+// siempre con el total real de la venta.
+function itemsClasificados(v) {
+  const base = Array.isArray(v.items) && v.items.length > 0
+    ? v.items.map((it) => ({ nombre: it.nombre || it.descripcion || v.servicio || v.descripcion || "Sin descripci\xF3n", areaRaw: it.area, monto: Number(it.subtotal ?? it.precio ?? 0) || 0 }))
+    : [{ nombre: v.servicio || v.descripcion || "Sin descripci\xF3n", areaRaw: v.area, monto: Number(v.total) || 0 }];
+  const sumaBase = base.reduce((s, it) => s + it.monto, 0);
+  const totalReal = Number(v.total) || 0;
+  const factor = sumaBase > 0 ? totalReal / sumaBase : 1;
+  return base.map((it) => ({
+    nombre: it.nombre,
+    area: (it.areaRaw === "grooming" || it.areaRaw === "veterinaria" || it.areaRaw === "farmacia") ? it.areaRaw : deducirAreaServicio(it.nombre, null),
+    total: Math.round(it.monto * factor)
+  }));
+}
 // El valor guardado es "Pago pendiente"; varios sitios comparaban con
 // "pendiente" a secas y por eso la marca ⏳ PEND. nunca aparecía.
 // ─── ABONOS · FACILIDAD DE PAGO ─────────────────────────────────────────────
@@ -4827,8 +4855,13 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
         subtotal: linea.total, area, qty: linea.qty
       }];
       if (v && l) {
-        const areaV = v.area || areaDeServicio(l.servicio);
-        actualizadas.push({ ...v, fecha: datos.fecha, cliente: datos.mascota, servicio: l.servicio, descripcion: l.servicio, total: l.total, formaPago, formapago: formaPago, items: itemDe(l, areaV) });
+        // Antes se reusaba v.area (el area de la venta ORIGINAL, antes de
+        // dividirla en lineas) y se dejaba fuera del objeto nuevo, asi que una
+        // venta "mixta" que se partia en una vacuna + un producto se quedaba
+        // con "mixta" pegado en cada linea nueva aunque ya no aplicara: la
+        // vacuna desaparecia de los reportes de veterinaria.
+        const areaV = areaDeServicio(l.servicio, v.area || base.area);
+        actualizadas.push({ ...v, fecha: datos.fecha, cliente: datos.mascota, area: areaV, servicio: l.servicio, descripcion: l.servicio, total: l.total, formaPago, formapago: formaPago, items: itemDe(l, areaV) });
       } else if (l) {
         const areaN = areaDeServicio(l.servicio, base.area);
         actualizadas.push({
@@ -12251,12 +12284,17 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
   const totalEgr = totalGastos + totalNomina;
   const utilidad = totalVentas - totalEgr;
   const margen = totalVentas > 0 ? Math.round(utilidad / totalVentas * 100) : 0;
-  const grm = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + v.total, 0);
-  const vet = ventasMes.filter((v) => v.area === "veterinaria").reduce((s, v) => s + v.total, 0);
-  const far = ventasMes.filter((v) => v.area === "farmacia").reduce((s, v) => s + v.total, 0);
-  const ctGrm = ventasMes.filter((v) => v.area === "grooming").length;
-  const ctVet = ventasMes.filter((v) => v.area === "veterinaria").length;
-  const ctFar = ventasMes.filter((v) => v.area === "farmacia").length;
+  // Se clasifica por SERVICIO (items[]), no por el area de la venta completa:
+  // una venta "mixta" (baño + vacuna + producto en un solo cobro) traía todo
+  // su ingreso invisible para el reporte porque ninguna de las 3 areas de
+  // aqui abajo coincidia con "mixta". Asi, cada servicio cae en su area real.
+  const clasifMes = useMemo(() => ventasMes.flatMap(itemsClasificados), [ventasMes]);
+  const grm = clasifMes.filter((i) => i.area === "grooming").reduce((s, i) => s + i.total, 0);
+  const vet = clasifMes.filter((i) => i.area === "veterinaria").reduce((s, i) => s + i.total, 0);
+  const far = clasifMes.filter((i) => i.area === "farmacia").reduce((s, i) => s + i.total, 0);
+  const ctGrm = clasifMes.filter((i) => i.area === "grooming").length;
+  const ctVet = clasifMes.filter((i) => i.area === "veterinaria").length;
+  const ctFar = clasifMes.filter((i) => i.area === "farmacia").length;
   const clienteMap = {};
   ventasMes.forEach((v) => {
     if (v.cliente) {
@@ -12267,12 +12305,15 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
   const productosMasVendidos = useMemo(() => {
     const ventasMesData = ventas.filter((v) => v.fecha?.slice(0, 7) === mes);
     const conteo = {};
+    // Por servicio real (item), no por venta completa: una venta "mixta" con
+    // baño + vacuna contaba como un solo "servicio" del area equivocada.
     ventasMesData.forEach((v) => {
-      const key = (v.servicio || v.area || "Sin descripci\xF3n").trim();
-      const area = v.area || "otro";
-      if (!conteo[key]) conteo[key] = { servicio: key, area, cantidad: 0, total: 0 };
-      conteo[key].cantidad++;
-      conteo[key].total += v.total || 0;
+      itemsClasificados(v).forEach((it) => {
+        const key = (it.nombre || "Sin descripci\xF3n").trim();
+        if (!conteo[key]) conteo[key] = { servicio: key, area: it.area, cantidad: 0, total: 0 };
+        conteo[key].cantidad++;
+        conteo[key].total += it.total || 0;
+      });
     });
     return Object.values(conteo).sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
   }, [ventas, mes]);
@@ -12283,11 +12324,25 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     { area: "farmacia", label: "\u{1F48A} Farmacia", color: C.azul }
   ];
   const ventasDia = useMemo(() => ventas.filter((v) => v.fecha === diaReporte), [ventas, diaReporte]);
+  // Se clasifica por servicio (items[]) y no por el area de la venta completa
+  // por la misma razon que en el resumen mensual: una venta "mixta" escondia
+  // sus vacunas/consultas fuera del reporte de veterinaria.
+  const filasDia = useMemo(() => ventasDia.flatMap((v) =>
+    itemsClasificados(v).map((it, i) => ({
+      id: String(v.id) + "_" + i,
+      ordenId: Number(v.id) || 0,
+      cliente: v.cliente,
+      formapago: v.formapago,
+      servicio: it.nombre,
+      area: it.area,
+      total: it.total
+    }))
+  ), [ventasDia]);
   const gruposDia = useMemo(() => AREAS_DIA.map(({ area, label, color }) => {
-    const items = [...ventasDia.filter((v) => v.area === area)].sort((a, b) => Number(a.id) - Number(b.id));
+    const items = [...filasDia.filter((f) => f.area === area)].sort((a, b) => a.ordenId - b.ordenId);
     const subtotal = items.reduce((s, v) => s + (v.total || 0), 0);
     return { area, label, color, items, subtotal };
-  }), [ventasDia]);
+  }), [filasDia]);
   const totalDia = gruposDia.reduce((s, g) => s + g.subtotal, 0);
   function imprimirReporteDiario() {
     const win = window.open("", "_blank");
@@ -12313,7 +12368,7 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     const rows = [["Fecha", "\xC1rea", "#", "Cliente", "Servicio", "Forma de pago", "Total"]];
     gruposDia.forEach((g) => {
       g.items.forEach((v, i) => {
-        rows.push([v.fecha, g.area, i + 1, v.cliente || "", (v.servicio || v.descripcion || "").replace(/,/g, ";"), v.formapago || "", v.total || 0]);
+        rows.push([diaReporte, g.area, i + 1, v.cliente || "", (v.servicio || v.descripcion || "").replace(/,/g, ";"), v.formapago || "", v.total || 0]);
       });
     });
     const csv = rows.map((r) => r.join(",")).join("\n");
