@@ -12276,6 +12276,53 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     });
     return Object.values(conteo).sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
   }, [ventas, mes]);
+  const [diaReporte, setDiaReporte] = useState(hoy());
+  const AREAS_DIA = [
+    { area: "grooming", label: "✂️ Grooming", color: C.verde },
+    { area: "veterinaria", label: "\u{1FA7A} Veterinaria", color: C.naranja },
+    { area: "farmacia", label: "\u{1F48A} Farmacia", color: C.azul }
+  ];
+  const ventasDia = useMemo(() => ventas.filter((v) => v.fecha === diaReporte), [ventas, diaReporte]);
+  const gruposDia = useMemo(() => AREAS_DIA.map(({ area, label, color }) => {
+    const items = [...ventasDia.filter((v) => v.area === area)].sort((a, b) => Number(a.id) - Number(b.id));
+    const subtotal = items.reduce((s, v) => s + (v.total || 0), 0);
+    return { area, label, color, items, subtotal };
+  }), [ventasDia]);
+  const totalDia = gruposDia.reduce((s, g) => s + g.subtotal, 0);
+  function imprimirReporteDiario() {
+    const win = window.open("", "_blank");
+    const seccionHtml = (g) => `
+      <h2 style="color:${g.color};margin:20px 0 6px;font-size:15px;">${g.label} (${g.items.length})</h2>
+      ${g.items.length === 0 ? '<p style="color:#888;font-size:12px;">Sin ventas registradas</p>' : `
+      <table><thead><tr><th>#</th><th>Cliente</th><th>Servicio</th><th>Forma de pago</th><th style="text-align:right">Total</th></tr></thead><tbody>
+      ${g.items.map((v, i) => `<tr><td>${i + 1}</td><td>${v.cliente || "—"}</td><td>${(v.servicio || v.descripcion || "").slice(0, 60)}</td><td>${v.formapago || "—"}</td><td style="text-align:right;font-weight:600">RD$ ${(v.total || 0).toLocaleString("es-DO")}</td></tr>`).join("")}
+      </tbody></table>
+      <div style="text-align:right;font-weight:700;margin-top:6px;">Subtotal ${g.label}: RD$ ${g.subtotal.toLocaleString("es-DO")}</div>`}
+    `;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reporte diario ${diaReporte} - PetColinas</title>
+    <style>body{font-family:Arial,sans-serif;padding:32px;color:#1a1d23;font-size:13px;}h1{color:#1a6b3a;margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:8px;}th{background:#1a6b3a;color:#fff;padding:6px 10px;text-align:left;font-size:11px;}td{padding:6px 10px;border-bottom:1px solid #e0e4e8;}tr:nth-child(even){background:#f8f9fa;}.total{font-weight:900;font-size:16px;}</style></head><body>
+    <h1>\u{1F43E} PetColinas — Reporte diario ${diaReporte}</h1>
+    <p>Generado: ${new Date().toLocaleDateString("es-DO")}</p>
+    ${gruposDia.map(seccionHtml).join("")}
+    <div style="margin-top:20px;text-align:right;" class="total">Total del d\xEDa: RD$ ${totalDia.toLocaleString("es-DO")}</div>
+    </body></html>`);
+    win.document.close();
+    setTimeout(() => win.print(), 400);
+  }
+  function exportarCSVDiario() {
+    const rows = [["Fecha", "\xC1rea", "#", "Cliente", "Servicio", "Forma de pago", "Total"]];
+    gruposDia.forEach((g) => {
+      g.items.forEach((v, i) => {
+        rows.push([v.fecha, g.area, i + 1, v.cliente || "", (v.servicio || v.descripcion || "").replace(/,/g, ";"), v.formapago || "", v.total || 0]);
+      });
+    });
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "reporte_diario_" + diaReporte + ".csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
   function exportarCSV() {
     const rows = [
       ["Fecha","Cliente","\u00c1rea","Descripci\xF3n","Total","Forma de Pago"],
@@ -12302,7 +12349,54 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     win.document.close();
     setTimeout(()=>win.print(),400);
   }
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Reportes y P&L"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Estado de resultados mensual completo"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(Input, { label: "Mes a analizar", type: "month", value: mes, onChange: setMes }), React.createElement("button", { onClick: exportarCSV, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4E5} CSV/Excel"), React.createElement("button", { onClick: imprimirReporte, style: { background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F PDF")), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 16, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4CA} Estado de Resultados \u2014 ", mes), /* @__PURE__ */ React.createElement(Badge, { color: utilidad >= 0 ? C.verde : C.rojo }, utilidad >= 0 ? "RENTABLE" : "P\xC9RDIDA")), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 } }, "INGRESOS"), [
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Reportes y P&L"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Estado de resultados mensual completo"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(Input, { label: "Mes a analizar", type: "month", value: mes, onChange: setMes }), React.createElement("button", { onClick: exportarCSV, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4E5} CSV/Excel"), React.createElement("button", { onClick: imprimirReporte, style: { background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F PDF")), React.createElement(Card, { style: { marginBottom: 24 } },
+    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 } },
+      React.createElement("div", { style: { fontWeight: 800, fontSize: 16 } }, "\u{1F4C5} Reporte Diario de Ventas"),
+      React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+        React.createElement(Input, { label: "", type: "date", value: diaReporte, onChange: setDiaReporte }),
+        React.createElement("button", { onClick: exportarCSVDiario, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 } }, "\u{1F4E5} CSV"),
+        React.createElement("button", { onClick: imprimirReporteDiario, style: { background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 } }, "\u{1F5A8}\uFE0F PDF")
+      )
+    ),
+    ventasDia.length === 0
+      ? React.createElement("div", { style: { color: C.grisd, fontSize: 13, textAlign: "center", padding: "20px 0" } }, "Sin ventas registradas este d\xEDa.")
+      : React.createElement("div", null,
+          gruposDia.map((g) => React.createElement("div", { key: g.area, style: { marginBottom: 18 } },
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 12, color: g.color, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, display: "flex", justifyContent: "space-between" } },
+              React.createElement("span", null, g.label, " (", g.items.length, ")"),
+              React.createElement("span", null, RD(g.subtotal))
+            ),
+            g.items.length === 0
+              ? React.createElement("div", { style: { color: C.grisd, fontSize: 12, padding: "6px 0" } }, "Sin ventas")
+              : React.createElement("div", { style: { overflowX: "auto" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12.5 } },
+                    React.createElement("thead", null,
+                      React.createElement("tr", { style: { textAlign: "left", color: C.grisd, textTransform: "uppercase", fontSize: 10 } },
+                        React.createElement("th", { style: { padding: "6px 8px" } }, "#"),
+                        React.createElement("th", { style: { padding: "6px 8px" } }, "Cliente"),
+                        React.createElement("th", { style: { padding: "6px 8px" } }, "Servicio"),
+                        React.createElement("th", { style: { padding: "6px 8px" } }, "Forma de pago"),
+                        React.createElement("th", { style: { padding: "6px 8px", textAlign: "right" } }, "Total")
+                      )
+                    ),
+                    React.createElement("tbody", null,
+                      g.items.map((v, i) => React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f0f2f0" } },
+                        React.createElement("td", { style: { padding: "6px 8px", color: C.grisd } }, i + 1),
+                        React.createElement("td", { style: { padding: "6px 8px", fontWeight: 600 } }, v.cliente || "\u2014"),
+                        React.createElement("td", { style: { padding: "6px 8px" } }, v.servicio || v.descripcion || "\u2014"),
+                        React.createElement("td", { style: { padding: "6px 8px" } }, v.formapago || "\u2014"),
+                        React.createElement("td", { style: { padding: "6px 8px", textAlign: "right", fontWeight: 700 } }, RD(v.total || 0))
+                      ))
+                    )
+                  )
+                )
+          )),
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "12px 14px", background: C.verdeL, borderRadius: 8, fontWeight: 800, fontSize: 14, marginTop: 8 } },
+            React.createElement("span", null, "TOTAL DEL D\xCDA"),
+            React.createElement("span", { style: { color: C.verde } }, RD(totalDia))
+          )
+        )
+  ), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 16, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F4CA} Estado de Resultados \u2014 ", mes), /* @__PURE__ */ React.createElement(Badge, { color: utilidad >= 0 ? C.verde : C.rojo }, utilidad >= 0 ? "RENTABLE" : "P\xC9RDIDA")), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 } }, "INGRESOS"), [
     ["\u{1F415} Grooming / Peluquer\xEDa", grm, ctGrm, "servicios"],
     ["\u{1FA7A} Servicios Veterinarios", vet, ctVet, "consultas"],
     ["\u{1F48A} Farmacia / Tienda", far, ctFar, "ventas"]
