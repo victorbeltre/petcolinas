@@ -12,9 +12,19 @@
  * Mismo patron que pagadito-cobro: lo que autoriza a escribir vive como
  * secret del servidor, nunca en un archivo que el cliente descarga.
  *
- * Secrets (Supabase → Edge Functions → Secrets):
- *   FORM_INTAKE_SECRET  — texto largo al azar; el mismo que va en form-to-crm.gs
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  (ya existen)
+ * Donde vive el secreto: en la tabla `public.pc_secretos` (fila
+ * FORM_INTAKE_SECRET), no como variable de entorno, para poder rotarlo por
+ * SQL sin entrar al dashboard a mano.
+ *
+ * Esta en `public` a proposito, aunque suene raro para un secreto: esta
+ * funcion llega a la base por PostgREST (la misma API REST), asi que un
+ * esquema oculto de la API tampoco seria visible para ella. La proteccion
+ * viene de otro lado: la tabla tiene RLS activo y NINGUNA politica, y no
+ * tiene grants para anon ni authenticated — nadie que use la app puede leer
+ * una sola fila. service_role tiene BYPASSRLS, y es la unica que entra.
+ *
+ * Secrets que si son de entorno: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ * (ambos ya existen en todo proyecto de Supabase).
  *
  * Desplegar SIN verificacion de JWT: Apps Script no trae sesion de Supabase,
  * su credencial es el secreto compartido.
@@ -27,11 +37,24 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const SECRETO = Deno.env.get("FORM_INTAKE_SECRET") ?? "";
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
+
+// Se cachea entre invocaciones tibias para no consultar la base en cada
+// inscripcion. Si el secreto se rota, la funcion lo recoge cuando el runtime
+// recicle el proceso (o al redesplegar).
+let secretoCache: string | null = null;
+async function obtenerSecreto(): Promise<string> {
+  if (secretoCache !== null) return secretoCache;
+  const { data, error } = await supabase
+    .from("pc_secretos")
+    .select("valor").eq("nombre", "FORM_INTAKE_SECRET").maybeSingle();
+  if (error) console.error("No se pudo leer el secreto:", error.message);
+  secretoCache = data?.valor ?? "";
+  return secretoCache;
+}
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -48,10 +71,10 @@ const COLUMNAS = new Set([
 ]);
 
 /** Comparacion en tiempo constante: no filtra el secreto por el tiempo de respuesta. */
-function secretoValido(recibido: string): boolean {
-  if (!SECRETO || !recibido || recibido.length !== SECRETO.length) return false;
+function secretoValido(esperado: string, recibido: string): boolean {
+  if (!esperado || !recibido || recibido.length !== esperado.length) return false;
   let dif = 0;
-  for (let i = 0; i < SECRETO.length; i++) dif |= SECRETO.charCodeAt(i) ^ recibido.charCodeAt(i);
+  for (let i = 0; i < esperado.length; i++) dif |= esperado.charCodeAt(i) ^ recibido.charCodeAt(i);
   return dif === 0;
 }
 
@@ -60,12 +83,16 @@ const soloDigitos = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-  if (!SECRETO) return json({ error: "Falta el secret FORM_INTAKE_SECRET en el servidor." }, 500);
+
+  const esperado = await obtenerSecreto();
+  if (!esperado) {
+    return json({ error: "Falta la fila FORM_INTAKE_SECRET en pc_secretos." }, 500);
+  }
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "JSON invalido" }, 400); }
 
-  if (!secretoValido(String(body.secreto ?? ""))) {
+  if (!secretoValido(esperado, String(body.secreto ?? ""))) {
     return json({ error: "No autorizado." }, 401);
   }
 

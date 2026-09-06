@@ -9,12 +9,12 @@
  * 3. Autoriza los permisos cuando se solicite.
  *
  * NOTA (6 sep 2026): este script ya NO escribe directo en Supabase con la
- * llave anon (que es pública). Ahora llama a la Edge Function `form-intake`
- * con un secreto compartido. Antes de que funcione hace falta, una sola vez:
- *   Supabase → Edge Functions → Secrets → nuevo secret
- *     nombre: FORM_INTAKE_SECRET
- *     valor:  el mismo texto de FORM_SECRET aquí abajo
- * Para comprobar que todo quedó bien: Ejecutar → diagnostico.
+ * llave anon (que es pública). Ahora llama a la Edge Function `form-intake`,
+ * que valida un secreto compartido y escribe con la llave de servicio.
+ *
+ * Del lado de Supabase ya está todo listo: la función está desplegada y el
+ * secreto guardado (tabla pc_secretos, invisible para la app). Aquí solo hace
+ * falta pegar este archivo. Para comprobarlo: Ejecutar → diagnostico.
  *
  * NOTA (22 ago 2026): este proyecto vive como script SUELTO en Drive, no
  * pegado dentro de la hoja de respuestas. Por eso el trigger se engancha a
@@ -39,9 +39,9 @@ var SUPA_URL = "https://ulrzzddovkioxeaarnjk.supabase.co";
 // Es el mismo patrón que ya usa el cobro con tarjeta (pagadito-cobro).
 var FUNCION_URL = SUPA_URL + "/functions/v1/form-intake";
 
-// El MISMO texto que está guardado en Supabase → Edge Functions → Secrets,
-// bajo el nombre FORM_INTAKE_SECRET. Si los dos no coinciden, la función
-// responde 401 y no se guarda nada.
+// El MISMO texto que está guardado en Supabase, en la tabla pc_secretos
+// (fila FORM_INTAKE_SECRET). Si los dos no coinciden, la función responde 401
+// y no se guarda nada. Para rotarlo: cambiarlo en los dos sitios.
 var FORM_SECRET = "1H5Evyq7fabCDJY90GVrmjaoZmTnUie_";
 
 // ID de "Ficha de Ingreso — PetColinas (respuestas)". Se saca de su URL:
@@ -312,7 +312,7 @@ function diagnostico() {
   });
   Logger.log("4. La funcion responde: HTTP " + r.getResponseCode() + "   (debe ser 401)");
   if (r.getResponseCode() === 500) {
-    Logger.log("   >>> 500 = falta poner FORM_INTAKE_SECRET en Supabase → Edge Functions → Secrets.");
+    Logger.log("   >>> 500 = la funcion no encuentra la fila FORM_INTAKE_SECRET en pc_secretos.");
   }
 
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
