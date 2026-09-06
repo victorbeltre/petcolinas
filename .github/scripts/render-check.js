@@ -123,7 +123,9 @@ render("AvisoReactivacion", sandbox.AvisoReactivacion, {
 });
 render("AvisoAntiparasitarios", sandbox.AvisoAntiparasitarios, {
   seguimientos: [{ id: 9001, mascota: "Gucci Brito", propietario: "", telefono: "",
-    tipo: "antipulgas", proximaFecha: "2026-07-08", completado: false, activo: true,
+    // Fecha relativa: con una fija (era "2026-07-08") la prueba caducó sola al
+    // quedar fuera de la ventana del aviso, y CI fallaba sin que nadie tocara nada.
+    tipo: "antipulgas", proximaFecha: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10), completado: false, activo: true,
     notas: "NexGard — toca reforzar la protección (35 días)" }],
   clientes: [{ id: 1, nombreMascota: "Gucci Brito", nombrePropietario: "Dianny Brito", telefono: "" }],
   ventas: [], setTab: () => {}
