@@ -73,6 +73,26 @@ en paralelo, en sesiones de Claude separadas de esta. Por eso:
    que ella suba rompe la app en produccion, se puede restaurar `main` a ese
    punto y reconstruir desde ahi lo que valga la pena conservar.
 
+## REGLA CRITICA 6 - Toda tabla nueva nace expuesta (6 Sep 2026)
+Supabase deja cualquier tabla nueva del esquema `public` legible por la API
+con la llave publica (anon) hasta que alguien le activa RLS. El 30 Ago 2026
+alguien creo `pc_clientes_backup_20260830` (copia completa de los 771
+clientes) y `pc_merge_map_20260830` sin RLS: cualquiera con la llave que va
+en index.html podia bajarse la lista entera con un GET. Se cerro el 6 Sep.
+Por eso, SIEMPRE que se cree o altere una tabla (a mano, por migracion o por
+script):
+1. `alter table public.X enable row level security;` en la MISMA migracion.
+   Sin politicas, RLS activo = invisible por la API; la service_role no se
+   ve afectada, asi que los scripts de mantenimiento siguen funcionando.
+2. Correr `get_advisors(type=security)` del conector de Supabase antes de
+   dar el trabajo por terminado. Cualquier `rls_disabled_in_public` es un
+   bloqueo, no una advertencia.
+3. Un respaldo con fecha (`*_backup_*`, `*_map_*`) NUNCA se queda en
+   `public`: o se borra al terminar, o se mueve a un esquema no expuesto.
+4. Nada de datos de clientes dentro de index.html (M1, 6 Sep 2026): las
+   semillas `*_SEED` y las listas de candidatos estan vacias a proposito.
+   No volver a llenarlas; todo vive en Supabase.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
@@ -86,6 +106,24 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
 1. Empleado: busca mascota CRM + producto + cantidad -> pendiente
 2. Admin: agrega datos dueno (nombre/tel/dir/email) + forma de pago -> aprueba
 3. Al aprobar: venta registrada + CRM actualizado automaticamente
+
+## PENDIENTES QUE SOLO VICTOR PUEDE HACER (6 Sep 2026)
+1. (M6) Supabase → Authentication → Providers → Email → activar
+   "Leaked password protection" (compara contra HaveIBeenPwned). Es un
+   interruptor del dashboard; no se puede por SQL ni por el conector.
+2. (M5) El esquema `hogar` (app personal de presupuesto del hogar: 13 tablas,
+   politicas `allow_all` para anon) vive en el MISMO proyecto de Supabase que
+   el negocio. Hoy NO es alcanzable por la API (`pgrst.db_schemas` no esta
+   fijado, solo se expone `public`), asi que no hay fuga. Pero mezcla datos
+   personales con datos de clientes y estorba si algun dia se alquila la app.
+   Procedimiento cuando se decida: crear un proyecto nuevo, `pg_dump -n hogar`
+   desde este y restaurar alla, apuntar la app del hogar al proyecto nuevo,
+   y despues `drop schema hogar cascade` aqui. NUNCA agregar `hogar` a los
+   esquemas expuestos de la API sin antes arreglar esas politicas.
+3. Los datos personales que se sacaron de index.html (M1) siguen en el
+   HISTORIAL de git (cualquier commit anterior al 6 Sep 2026). Purgarlos de
+   verdad requiere `git filter-repo` + force push, que reescribe todo el
+   historial y afecta a Laura: decision de Victor.
 
 ## PENDIENTES (20 Mar 2026)
 1. Boton rojo ventas pendientes en header admin
