@@ -8,6 +8,14 @@
  * 2. En el menú: Ejecutar → configurarTrigger (solo la primera vez)
  * 3. Autoriza los permisos cuando se solicite.
  *
+ * NOTA (6 sep 2026): este script ya NO escribe directo en Supabase con la
+ * llave anon (que es pública). Ahora llama a la Edge Function `form-intake`
+ * con un secreto compartido. Antes de que funcione hace falta, una sola vez:
+ *   Supabase → Edge Functions → Secrets → nuevo secret
+ *     nombre: FORM_INTAKE_SECRET
+ *     valor:  el mismo texto de FORM_SECRET aquí abajo
+ * Para comprobar que todo quedó bien: Ejecutar → diagnostico.
+ *
  * NOTA (22 ago 2026): este proyecto vive como script SUELTO en Drive, no
  * pegado dentro de la hoja de respuestas. Por eso el trigger se engancha a
  * la hoja por ID (SPREADSHEET_ID) en vez de usar
@@ -19,24 +27,22 @@
 // ─── CONFIGURACIÓN ──────────────────────────────────────────────────────────
 var SUPA_URL = "https://ulrzzddovkioxeaarnjk.supabase.co";
 
-// La llave va PARTIDA en cuatro pedazos a propósito.
+// Este script YA NO usa la llave anon de Supabase.
 //
-// Pegada de una sola pieza, el editor de Apps Script la detecta como un token
-// y la muestra enmascarada con bullets (eyJhbGci••••••). El riesgo real no es
-// verla con puntos: es que al copiar de vuelta un texto ya enmascarado, lo que
-// queda guardado son los bullets literales — una cadena que sigue midiendo 208
-// caracteres y sin espacios (por eso el diagnostico viejo la daba por buena),
-// pero que Supabase rechaza con "401 Invalid API key". Peor: los bullets no son
-// ASCII, y meterlos en una cabecera HTTP hace que UrlFetchApp reviente con un
-// "error desconocido" en vez de un error claro.
+// Antes escribía directo en la API REST con esa llave, que es pública (va
+// dentro de index.html, y cualquiera que abra la app se la puede copiar). Para
+// que funcionara hubo que abrirle permiso de escritura al rol anónimo sobre
+// pc_clientes — o sea, cualquiera podía meter fichas falsas en el CRM.
 //
-// Partida así, ningún pedazo parece un JWT, el editor no la enmascara, y se ve
-// tal cual es. Para comprobar que quedó intacta: correr diagnostico().
-var SUPA_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXB" +
-  "hYmFzZSIsInJlZiI6InVscnp6ZGRvdmtpb3hlYWFybmprIiwicm9" +
-  "sZSI6ImFub24iLCJpYXQiOjE3NzMwMjc3MDEsImV4cCI6MjA4ODY" +
-  "wMzcwMX0.mX3cei5kKAID3WhmMAojhk2QOMs8gDF1LFbYHKXrfUM";
+// Ahora llama a la Edge Function `form-intake`, que valida un secreto que solo
+// conoce este script y escribe con la llave de servicio del lado del servidor.
+// Es el mismo patrón que ya usa el cobro con tarjeta (pagadito-cobro).
+var FUNCION_URL = SUPA_URL + "/functions/v1/form-intake";
+
+// El MISMO texto que está guardado en Supabase → Edge Functions → Secrets,
+// bajo el nombre FORM_INTAKE_SECRET. Si los dos no coinciden, la función
+// responde 401 y no se guarda nada.
+var FORM_SECRET = "1H5Evyq7fabCDJY90GVrmjaoZmTnUie_";
 
 // ID de "Ficha de Ingreso — PetColinas (respuestas)". Se saca de su URL:
 // https://docs.google.com/spreadsheets/d/ESTE_PEDAZO/edit
@@ -202,30 +208,27 @@ function parsearRespuestas(namedValues) {
   return cliente;
 }
 
-// ─── INSERTAR EN SUPABASE ────────────────────────────────────────────────────
+// ─── INSERTAR EN SUPABASE (vía Edge Function) ───────────────────────────────
 function insertarEnCRM(cliente) {
-  var url = SUPA_URL + "/rest/v1/pc_clientes";
-  var payload = JSON.stringify(cliente);
-
-  var options = {
+  var response = UrlFetchApp.fetch(FUNCION_URL, {
     method: "post",
     contentType: "application/json",
-    headers: {
-      "apikey": SUPA_KEY,
-      "Authorization": "Bearer " + SUPA_KEY,
-      "Prefer": "return=minimal,resolution=merge-duplicates"
-    },
-    payload: payload,
+    payload: JSON.stringify({ secreto: FORM_SECRET, cliente: cliente }),
     muteHttpExceptions: true
-  };
-
-  var response = UrlFetchApp.fetch(url, options);
+  });
   var code = response.getResponseCode();
+  var texto = response.getContentText();
 
   if (code !== 200 && code !== 201) {
-    throw new Error("Supabase error " + code + ": " + response.getContentText());
+    throw new Error("form-intake " + code + ": " + texto);
   }
-
+  // 200 con duplicado = la ficha ya existía (misma mascota y teléfono).
+  // No es un error: alguien llenó el formulario dos veces.
+  try {
+    var r = JSON.parse(texto);
+    if (r && r.duplicado) return "HTTP 200 (ya existía, id " + r.id + ")";
+    if (r && r.id) return "HTTP " + code + " (id " + r.id + ")";
+  } catch (e) { /* respuesta sin JSON */ }
   return "HTTP " + code;
 }
 
@@ -271,13 +274,11 @@ function probarConDatosFicticios() {
  * Si la huella coincide, la llave es idéntica byte por byte a la buena.
  */
 function diagnostico() {
-  Logger.log("1. Largo: " + SUPA_KEY.length + "   (debe ser 208)");
+  Logger.log("1. Largo del secreto: " + FORM_SECRET.length + "   (debe ser 32)");
 
-  var invalidos = 0, puntos = 0, ejemplos = [];
-  for (var i = 0; i < SUPA_KEY.length; i++) {
-    var c = SUPA_KEY.charAt(i);
-    if (c === ".") { puntos++; continue; }
-    var n = SUPA_KEY.charCodeAt(i);
+  var invalidos = 0, ejemplos = [];
+  for (var i = 0; i < FORM_SECRET.length; i++) {
+    var c = FORM_SECRET.charAt(i), n = FORM_SECRET.charCodeAt(i);
     var ok = (n >= 48 && n <= 57) || (n >= 65 && n <= 90) ||
              (n >= 97 && n <= 122) || c === "-" || c === "_";
     if (!ok) {
@@ -286,21 +287,34 @@ function diagnostico() {
     }
   }
   Logger.log("2. Caracteres invalidos: " + invalidos + "   (debe ser 0)");
-  Logger.log("   Puntos separadores: " + puntos + "   (debe ser 2)");
   if (invalidos > 0) {
-    Logger.log("   >>> LLAVE CORROMPIDA. " + ejemplos.join(" | "));
-    Logger.log("   >>> Si el codigo es 8226, son bullets (•): se pego la llave ya enmascarada.");
+    Logger.log("   >>> SECRETO DAÑADO. " + ejemplos.join(" | "));
+    Logger.log("   >>> Codigo 8226 = bullets (•): se pego un texto ya enmascarado.");
   }
 
+  // Huella del secreto: el registro tambien puede enmascarar el texto, asi que
+  // se compara por hash en vez de a ojo.
   var bytes = Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256, SUPA_KEY, Utilities.Charset.UTF_8);
+    Utilities.DigestAlgorithm.SHA_256, FORM_SECRET, Utilities.Charset.UTF_8);
   var hex = "";
   for (var j = 0; j < bytes.length; j++) {
     var b = bytes[j] < 0 ? bytes[j] + 256 : bytes[j];
     hex += (b < 16 ? "0" : "") + b.toString(16);
   }
-  Logger.log("3. Huella SHA-256: " + hex.substring(0, 16) + "   (debe ser c54e8196784bb60b)");
+  Logger.log("3. Huella del secreto: " + hex.substring(0, 16) + "   (debe ser f4c7a48b2654afa2)");
+
+  // Prueba real contra la funcion, con un secreto a proposito equivocado:
+  // debe contestar 401. Si contesta otra cosa, algo esta mal configurado.
+  var r = UrlFetchApp.fetch(FUNCION_URL, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ secreto: "no-es-el-secreto", cliente: { nombremascota: "x" } }),
+    muteHttpExceptions: true
+  });
+  Logger.log("4. La funcion responde: HTTP " + r.getResponseCode() + "   (debe ser 401)");
+  if (r.getResponseCode() === 500) {
+    Logger.log("   >>> 500 = falta poner FORM_INTAKE_SECRET en Supabase → Edge Functions → Secrets.");
+  }
 
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  Logger.log("4. Hoja encontrada: " + ss.getName());
+  Logger.log("5. Hoja encontrada: " + ss.getName());
 }
