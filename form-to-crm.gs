@@ -51,64 +51,66 @@ var SPREADSHEET_ID = "15FJq5GZNtl_T_qy7aq29dyLY9Ox-um49uEA6GXirEV0";
 /**
  * MAPEO DE CAMPOS DEL FORMULARIO
  *
- * Ajusta los textos de la izquierda para que coincidan EXACTAMENTE
- * con las preguntas de tu Google Form (sin importar mayúsculas).
+ * Las claves son las preguntas REALES de "Ficha de Ingreso — PetColinas",
+ * normalizadas (minúsculas, sin tildes, sin el asterisco de obligatorio).
+ * Se comparan de forma EXACTA.
  *
- * Cada entrada es: "texto de la pregunta en el form" → campo del CRM
+ * Antes esto hacía coincidencia por subcadena y se quedaba con el valor más
+ * largo, lo que rompía las fichas de forma silenciosa (6 sep 2026):
+ *   · "¿Autorizas a PetColinas a publicar fotos de tu MASCOTA...?" contenía
+ *     "mascota", así que "✅ Sí, autorizo" terminaba guardado como el NOMBRE
+ *     de la mascota — pisando el nombre real por ser más largo.
+ *   · "Fecha de Nacimiento de mascota" hacía lo mismo.
+ *   · "Nombre y TELÉFONO del contacto de emergencia" pisaba el teléfono real.
+ * De 12 fichas que entraron así, 8 quedaron con la mascota llamada
+ * "✅ Sí, autorizo". Por eso ahora la coincidencia es exacta y sin adivinar.
  */
 var CAMPO_FORM = {
-  // Datos de la mascota
-  "nombre de la mascota":    "nombremascota",
-  "nombre mascota":          "nombremascota",
-  "mascota":                 "nombremascota",
-  "especie":                 "especie",
-  "tipo de mascota":         "especie",
-  "raza":                    "raza",
-  "sexo":                    "sexo",
-  "color":                   "color",
-  "fecha de nacimiento":     "fechanacimiento",
-  "tamaño":                  "tamano",
-  "tamano":                  "tamano",
-  "esterilizado":            "esterilizado",
-  "esterilizada":            "esterilizado",
-  "castrado":                "esterilizado",
-  "alergias":                "alergias",
-  "condiciones":             "condiciones",
-  "medicamentos":            "medicamentos",
-  "veterinario externo":     "veterinarioexterno",
-  "veterinario anterior":    "veterinarioexterno",
+  // ── Dueño ────────────────────────────────────────────────────────────────
+  "nombre completo":                        "nombrepropietario",
+  "cedula / pasaporte":                     "cedula",
+  "telefono / whatsapp":                    "telefono",
+  "correo electronico":                     "email",
+  "direccion":                              "direccion",
 
-  // Datos del dueño
-  "nombre del propietario":  "nombrepropietario",
-  "nombre del dueño":        "nombrepropietario",
-  "nombre del dueno":        "nombrepropietario",
-  "propietario":             "nombrepropietario",
-  "dueño":                   "nombrepropietario",
-  "nombre completo":         "nombrepropietario",
-  "telefono":                "telefono",
-  "teléfono":                "telefono",
-  "celular":                 "telefono",
-  "whatsapp":                "telefono",
-  "correo":                  "email",
-  "email":                   "email",
-  "correo electrónico":      "email",
-  "dirección":               "direccion",
-  "direccion":               "direccion",
-  "instagram":               "instagram",
+  // ── Mascota ──────────────────────────────────────────────────────────────
+  "nombre de la mascota":                   "nombremascota",
+  "especie":                                "especie",
+  "raza":                                   "raza",
+  "fecha de nacimiento de mascota":         "fechanacimiento",
+  "sexo":                                   "sexo",
+  "¿esta castrado/a?":                      "esterilizado",
+  "color / senas particulares":             "color",
+  "alergias conocidas":                     "alergias",
+  "condiciones medicas / medicacion actual": "condiciones",
+  "veterinario de cabecera (si tiene)":     "veterinarioexterno",
 
-  // Campos especiales
-  "¿cómo nos conociste?":    "_como_conocio",
-  "como nos conociste":      "_como_conocio",
-  "¿cómo nos conoció?":      "_como_conocio",
-  "como nos conocio":        "_como_conocio",
-  "¿cómo se enteró?":        "_como_conocio",
-  "servicio que busca":      "_servicio",
-  "servicio deseado":        "_servicio",
-  "tipo de servicio":        "_servicio",
-  "servicio":                "_servicio",
-  "¿qué servicio busca?":    "_servicio",
-  "que servicio busca":      "_servicio",
+  // ── Van al campo de notas, no tienen columna propia ───────────────────────
+  "¿como nos conociste?":                   "_como_conocio",
+  "¿que servicio deseas hoy?":              "_servicio",
+  "nombre del contacto de emergencia":      "_emergencia_nombre",
+  "nombre y telefono del contacto de emergencia": "_emergencia_tel",
+  "peso aproximado (kg)":                   "_peso",
+  "¿vacunas al dia?":                       "_vacunas",
+  "observaciones o solicitudes especiales": "_observaciones",
+
+  // ── Se ignoran a proposito ───────────────────────────────────────────────
+  // "Fecha de nacimiento" a secas es la del DUEÑO, no la de la mascota.
+  "marca temporal":                         "_ignorar",
+  "fecha de nacimiento":                    "_ignorar",
+  "¿autorizas a petcolinas a publicar fotos de tu mascota en redes sociales?": "_fotos",
+  "autorizacion y terminos de servicio":    "_ignorar",
 };
+
+/** Quita tildes, el asterisco de obligatorio y espacios de sobra. */
+function normalizarPregunta(texto) {
+  return String(texto || "")
+    .replace(/\*/g, " ")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // á → a
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 // ─── TRIGGER (ejecutar solo una vez) ────────────────────────────────────────
 function configurarTrigger() {
@@ -154,57 +156,57 @@ function onFormSubmit(e) {
 // ─── PARSEAR RESPUESTAS ──────────────────────────────────────────────────────
 function parsearRespuestas(namedValues) {
   var cliente = {};
-  var comoConoci = "";
-  var servicio = "";
+  var extra = {};          // lo que no tiene columna propia y va a notas
+  var sinMapear = [];      // preguntas nuevas del form que nadie mapeo aun
 
   Object.keys(namedValues).forEach(function(pregunta) {
     var valor = (namedValues[pregunta] || [""])[0] || "";
     valor = valor.toString().trim();
     if (!valor) return;
 
-    var campoKey = pregunta.toLowerCase().trim();
-    var campoCRM = CAMPO_FORM[campoKey];
+    // Coincidencia EXACTA sobre la pregunta normalizada. Nada de subcadenas:
+    // ahi estaba el bug que llenaba las fichas de "✅ Sí, autorizo".
+    var campoCRM = CAMPO_FORM[normalizarPregunta(pregunta)];
 
-    // Búsqueda parcial si no hay coincidencia exacta
-    if (!campoCRM) {
-      Object.keys(CAMPO_FORM).forEach(function(k) {
-        if (!campoCRM && (campoKey.includes(k) || k.includes(campoKey))) {
-          campoCRM = CAMPO_FORM[k];
-        }
-      });
-    }
+    if (!campoCRM) { sinMapear.push(pregunta); return; }
+    if (campoCRM === "_ignorar") return;
 
-    if (!campoCRM) return; // Campo del form no mapeado, ignorar
-
-    if (campoCRM === "_como_conocio") {
-      comoConoci = valor;
-    } else if (campoCRM === "_servicio") {
-      servicio = valor;
-    } else if (campoCRM === "esterilizado" || campoCRM === "castrado") {
-      cliente[campoCRM] = /s[ií]|yes|true/i.test(valor);
+    if (campoCRM.charAt(0) === "_") {          // va a notas
+      extra[campoCRM] = valor;
+    } else if (campoCRM === "esterilizado") {
+      cliente[campoCRM] = /^s[ií]\b/i.test(valor);   // "Sí" sí, "No sé" no
     } else if (campoCRM === "fechanacimiento") {
-      cliente[campoCRM] = parsearFecha(valor);
-    } else {
-      // Para especie, normalizar a Perro/Gato/Otro
-      if (campoCRM === "especie") {
-        valor = normalizarEspecie(valor);
-      }
-      // Si ya existe el campo (por preguntas duplicadas), priorizar el más largo
-      if (!cliente[campoCRM] || valor.length > cliente[campoCRM].length) {
-        cliente[campoCRM] = valor;
-      }
+      cliente[campoCRM] = parsearFecha(valor) || valor;  // si no se entiende, se guarda tal cual
+    } else if (campoCRM === "especie") {
+      cliente[campoCRM] = normalizarEspecie(valor);
+    } else if (!cliente[campoCRM]) {
+      // El PRIMERO gana. Antes ganaba el mas largo, y por eso el texto de
+      // autorizacion (largo) pisaba el nombre real de la mascota (corto).
+      cliente[campoCRM] = valor;
     }
   });
 
-  // Construir campo notas (requerido para que aparezca en Notificaciones)
-  var notasParts = ["Nos conocio"];
-  if (comoConoci) notasParts.push("via: " + comoConoci);
-  if (servicio)   notasParts.push("Servicio: " + servicio);
-  cliente.notas = notasParts.join(" | ");
+  // Notas: lo que no tiene columna propia pero la doctora necesita leer.
+  var notas = ["Nos conocio"];
+  if (extra._como_conocio)   notas.push("via: " + extra._como_conocio);
+  if (extra._servicio)       notas.push("Servicio: " + extra._servicio);
+  if (extra._peso)           notas.push("Peso: " + extra._peso);
+  if (extra._vacunas)        notas.push("Vacunas: " + extra._vacunas);
+  var emerg = extra._emergencia_tel || extra._emergencia_nombre;
+  if (emerg)                 notas.push("Emergencia: " + emerg);
+  if (extra._observaciones)  notas.push("Obs: " + extra._observaciones);
+  if (extra._fotos && /^\u274c|no autorizo/i.test(extra._fotos)) {
+    notas.push("NO autoriza fotos en redes");
+  }
+  cliente.notas = notas.join(" | ");
 
-  // Fecha de registro = hoy
   cliente.fecharegistro = Utilities.formatDate(new Date(), "America/Santo_Domingo", "yyyy-MM-dd");
 
+  // Si alguien agrega una pregunta al formulario y nadie actualiza CAMPO_FORM,
+  // el dato se perderia en silencio. Queda avisado en el registro.
+  if (sinMapear.length > 0) {
+    Logger.log("\u26a0\ufe0f Preguntas sin mapear (su respuesta NO se guardo): " + sinMapear.join(" ; "));
+  }
   return cliente;
 }
 
