@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-07 00:45Z";
+const PC_BUILD = "2026-09-07 00:47Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1078,10 +1078,73 @@ function imprimirCarnetVacunas(mascota, cliente, ventas) {
     "<div class='pie'>Generado el " + new Date().toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) + " \xB7 PetColinas Sistema de Gesti\xF3n</div>" +
     "</body></html>";
   const win = window.open("", "_blank");
-  if (!win) { alert("Activa las ventanas emergentes para imprimir el carnet."); return; }
+  if (!win) { avisar("Activa las ventanas emergentes para imprimir el carnet."); return; }
   win.document.write(html);
   win.document.close();
   setTimeout(() => win.print(), 600);
+}
+// ─── AVISOS DENTRO DE LA APP ────────────────────────────────────────────────
+// Reemplazan a alert() del navegador (sep 2026). alert() congela la pestaña
+// hasta que alguien le da OK, se ve como un error del sistema y en el telefono
+// tapa media pantalla. Esto aparece en una esquina, se va solo y no bloquea.
+//
+// Es DOM plano a proposito, no un componente de React: se llama desde
+// cualquier sitio (manejadores, funciones sueltas, codigo asincrono) sin tener
+// que pasar props ni montar un proveedor en un archivo de 18 mil lineas.
+function avisar(mensaje, tipo) {
+  var texto = String(mensaje == null ? "" : mensaje);
+  if (!texto) return;
+  // Sin tipo explicito se deduce del mensaje: lo que confirma algo va en
+  // verde, lo demas en ambar (que es casi siempre una validacion).
+  if (!tipo) {
+    tipo = /guardad|guardo|listo|correctamente|✅|actualizad|creado|enviad|copiad/i.test(texto)
+      ? "ok" : "aviso";
+  }
+  var colores = {
+    ok:     { fondo: "#ecfdf5", borde: "#059669", texto: "#065f46", icono: "✅" },
+    aviso:  { fondo: "#fffbeb", borde: "#d97706", texto: "#92400e", icono: "⚠️" },
+    error:  { fondo: "#fef2f2", borde: "#dc2626", texto: "#991b1b", icono: "\u{1F6A8}" }
+  };
+  var c = colores[tipo] || colores.aviso;
+  try {
+    var cont = document.getElementById("pc-avisos");
+    if (!cont) {
+      cont = document.createElement("div");
+      cont.id = "pc-avisos";
+      cont.style.cssText = "position:fixed;z-index:99999;left:50%;transform:translateX(-50%);" +
+        "bottom:20px;display:flex;flex-direction:column;gap:8px;align-items:center;" +
+        "width:calc(100% - 24px);max-width:460px;pointer-events:none";
+      document.body.appendChild(cont);
+    }
+    var caja = document.createElement("div");
+    caja.style.cssText = "pointer-events:auto;cursor:pointer;background:" + c.fondo +
+      ";border:2px solid " + c.borde + ";color:" + c.texto +
+      ";border-radius:12px;padding:13px 16px;font-size:14px;font-weight:600;line-height:1.4;" +
+      "box-shadow:0 8px 28px rgba(0,0,0,.16);display:flex;gap:10px;align-items:flex-start;" +
+      "width:100%;box-sizing:border-box;opacity:0;transform:translateY(8px);" +
+      "transition:opacity .18s ease,transform .18s ease";
+    var ico = document.createElement("span");
+    ico.style.cssText = "flex:none;font-size:16px;line-height:1.2";
+    ico.textContent = c.icono;
+    var msg = document.createElement("span");
+    msg.style.cssText = "flex:1";
+    msg.textContent = texto;
+    caja.appendChild(ico);
+    caja.appendChild(msg);
+    cont.appendChild(caja);
+    requestAnimationFrame(function () { caja.style.opacity = "1"; caja.style.transform = "translateY(0)"; });
+    var cerrar = function () {
+      caja.style.opacity = "0";
+      caja.style.transform = "translateY(8px)";
+      setTimeout(function () { if (caja.parentNode) caja.parentNode.removeChild(caja); }, 200);
+    };
+    caja.onclick = cerrar;
+    // Un mensaje largo necesita mas tiempo para leerse; minimo 4 s, maximo 9 s.
+    setTimeout(cerrar, Math.min(9000, Math.max(4000, texto.length * 55)));
+  } catch (e) {
+    // Sin DOM (pruebas, render-check) no se pierde el mensaje.
+    try { console.log("[aviso] " + texto); } catch (e2) {}
+  }
 }
 function normalizeRow(table, r) {
   if (table === "pc_clientes") return {
@@ -2528,11 +2591,11 @@ function PagoDeFactura({ factura, ventas, setVentas }) {
     const esAbono = modo === "abono";
     const monto = esAbono ? redondeo2(parseFloat(montoAbono)) : saldo;
     if (esAbono) {
-      if (!(monto > 0)) return alert("Escribe cu\xE1nto est\xE1 abonando el cliente.");
-      if (monto > saldo) return alert("El abono (" + RD(monto) + ") es mayor que lo que falta por pagar (" + RD(saldo) + ").");
-      if (monto < saldo && !fechaRec) return alert("Falta la fecha para recordarle al cliente que termine de pagar.");
+      if (!(monto > 0)) return avisar("Escribe cu\xE1nto est\xE1 abonando el cliente.");
+      if (monto > saldo) return avisar("El abono (" + RD(monto) + ") es mayor que lo que falta por pagar (" + RD(saldo) + ").");
+      if (monto < saldo && !fechaRec) return avisar("Falta la fecha para recordarle al cliente que termine de pagar.");
     }
-    if (!(monto > 0)) return alert("Esta factura ya est\xE1 saldada.");
+    if (!(monto > 0)) return avisar("Esta factura ya est\xE1 saldada.");
     const actualizadas = repartirCobro(misVentas, monto, forma, esAbono ? fechaRec : "", usuarioActual());
     const porId = new Map(actualizadas.map((v) => [String(v.id), v]));
     setVentas((prev) => (prev || []).map((v) => porId.get(String(v.id)) || v));
@@ -2900,7 +2963,7 @@ function VistaFondos({ depositos, saldoFondo, onNuevo, clientes, resumenClientes
       E("datalist", { id: "pc-fondo-mascotas" }, sugerencias.map((m, i) => E("option", { key: i, value: m }))),
       E("button", { onClick: () => {
           const m = busca.trim();
-          if (!m) { alert("Escribe primero el nombre de la mascota en el buscador."); return; }
+          if (!m) { avisar("Escribe primero el nombre de la mascota en el buscador."); return; }
           const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === m.toLowerCase());
           onNuevo({ mascota: cli ? cli.nombreMascota : m, propietario: cli ? cli.nombrePropietario : "", telefono: cli ? cli.telefono : "" });
         }, style: { background: "#5b21b6", color: "#fff", border: "none", borderRadius: 999, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" } },
@@ -2949,8 +3012,8 @@ function ModalAjusteFondo({ datos, saldo, onGuardar, onCerrar }) {
   const lbl = { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 5 };
 
   const guardar = () => {
-    if (n <= 0) { alert("Escribe el monto."); return; }
-    if (excede) { alert("No puedes descontar más de lo que tiene en fondo (" + fmt(saldo) + ")."); return; }
+    if (n <= 0) { avisar("Escribe el monto."); return; }
+    if (excede) { avisar("No puedes descontar más de lo que tiene en fondo (" + fmt(saldo) + ")."); return; }
     const nota = motivo + (detalle.trim() ? " — " + detalle.trim() : "") +
       (datos.facturaNumero ? " (factura #" + datos.facturaNumero + ")" : "");
     onGuardar({ ...datos, tipo, monto: n, notas: nota, fecha: hoy() });
@@ -3303,7 +3366,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
   }
   function separarFactura(f) {
     const grupo = ventasDeFactura(f);
-    if (grupo.length < 2) { alert("Esta factura tiene una sola venta; no hay nada que separar."); return; }
+    if (grupo.length < 2) { avisar("Esta factura tiene una sola venta; no hay nada que separar."); return; }
     if (!confirm("\xBFSeparar las " + grupo.length + " ventas de " + (f.mascota || "este cliente") + " del " + f.fecha + " en facturas individuales?\n\nCada una tendr\xE1 su propio n\xFAmero.")) return;
     const sep = leerSeparadas();
     grupo.slice(1).forEach((v) => { sep[String(v.id)] = true; });
@@ -3595,12 +3658,12 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     setTimeout(() => win.print(), 500);
   }
   function imprimirRegistroFacturas(desde, hasta) {
-    if (!desde || !hasta) { alert("Escoge la fecha de inicio y la fecha final."); return; }
-    if (desde > hasta) { alert("La fecha de inicio no puede ser posterior a la fecha final."); return; }
+    if (!desde || !hasta) { avisar("Escoge la fecha de inicio y la fecha final."); return; }
+    if (desde > hasta) { avisar("La fecha de inicio no puede ser posterior a la fecha final."); return; }
     const lista = todasFacturas
       .filter((f) => f.fecha >= desde && f.fecha <= hasta)
       .sort((a, b) => a.fecha.localeCompare(b.fecha) || (parseInt(a.numero) || 0) - (parseInt(b.numero) || 0));
-    if (lista.length === 0) { alert("No hay facturas entre " + desde + " y " + hasta + "."); return; }
+    if (lista.length === 0) { avisar("No hay facturas entre " + desde + " y " + hasta + "."); return; }
     const totalGeneral = lista.reduce((s, f) => s + (Number(f.total) || 0), 0);
     const win = window.open("", "_blank");
     win.document.write(`
@@ -4007,7 +4070,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
           )
         )
       )
-    )), /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota", value: form.mascota, onChange: (v) => setField("mascota", v) }), form.mascota && /* @__PURE__ */ React.createElement("button", { onClick: () => { const c = resumenClientes.find(r => r.mascota.toLowerCase() === form.mascota.toLowerCase()); if (c) setClienteDetalle(c); else alert("No hay facturas previas para " + form.mascota + " todav\xEDa."); }, style: { background: C.azulL, color: C.azul, border: "1px solid " + C.azul, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 6, width: "100%" } }, "📋 Ver historial de " + form.mascota), /* @__PURE__ */ React.createElement(AlertaMedica, { nombre: form.mascota, clientes, compacto: true }), /* @__PURE__ */ React.createElement(Input, { label: "Propietario", value: form.propietario, onChange: (v) => setField("propietario", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono", value: form.telefono, onChange: (v) => setField("telefono", v) })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Factura"), /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: form.fecha, onChange: (v) => setField("fecha", v) }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "M\xE9todo de pago *"), /* @__PURE__ */ React.createElement("select", { value: form.metodoPago || "Efectivo", onChange: (e) => setField("metodoPago", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #1a6b3a", fontSize: 13, fontWeight: 600 } }, /* @__PURE__ */ React.createElement("option", { value: "Efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "Tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Estado de pago"), /* @__PURE__ */ React.createElement("select", { value: form.estado || "pagada", onChange: (e) => setField("estado", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, fontWeight: 600, color: form.estado === "pendiente" ? "#dc2626" : "#1a6b3a" } }, /* @__PURE__ */ React.createElement("option", { value: "pagada" }, "\u2705 PAGADA"), /* @__PURE__ */ React.createElement("option", { value: "pendiente" }, "\u23F3 PENDIENTE"))), editandoId && editandoOrig && /* @__PURE__ */ React.createElement(PagoDeFactura, { factura: editandoOrig, ventas, setVentas }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "itbis", checked: form.itbis, onChange: (e) => setField("itbis", e.target.checked), style: { width: 16, height: 16, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "itbis", style: { fontSize: 13, cursor: "pointer" } }, "Aplicar ITBIS (18%)")), /* @__PURE__ */ React.createElement(Input, { label: "Notas (opcional)", value: form.notas, onChange: (v) => setField("notas", v) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Servicios / Productos"), form.items.map((item, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "3fr 80px 100px 80px auto", gap: 10, marginBottom: 10, alignItems: "end" } }, /* @__PURE__ */ React.createElement("div", null, i === 0 && /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Input, { label: "Nombre mascota", value: form.mascota, onChange: (v) => setField("mascota", v) }), form.mascota && /* @__PURE__ */ React.createElement("button", { onClick: () => { const c = resumenClientes.find(r => r.mascota.toLowerCase() === form.mascota.toLowerCase()); if (c) setClienteDetalle(c); else avisar("No hay facturas previas para " + form.mascota + " todav\xEDa."); }, style: { background: C.azulL, color: C.azul, border: "1px solid " + C.azul, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 6, width: "100%" } }, "📋 Ver historial de " + form.mascota), /* @__PURE__ */ React.createElement(AlertaMedica, { nombre: form.mascota, clientes, compacto: true }), /* @__PURE__ */ React.createElement(Input, { label: "Propietario", value: form.propietario, onChange: (v) => setField("propietario", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Tel\xE9fono", value: form.telefono, onChange: (v) => setField("telefono", v) })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Factura"), /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: form.fecha, onChange: (v) => setField("fecha", v) }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "M\xE9todo de pago *"), /* @__PURE__ */ React.createElement("select", { value: form.metodoPago || "Efectivo", onChange: (e) => setField("metodoPago", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #1a6b3a", fontSize: 13, fontWeight: 600 } }, /* @__PURE__ */ React.createElement("option", { value: "Efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "Tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 12, color: C.grisd, display: "block", marginBottom: 4 } }, "Estado de pago"), /* @__PURE__ */ React.createElement("select", { value: form.estado || "pagada", onChange: (e) => setField("estado", e.target.value), style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, fontWeight: 600, color: form.estado === "pendiente" ? "#dc2626" : "#1a6b3a" } }, /* @__PURE__ */ React.createElement("option", { value: "pagada" }, "\u2705 PAGADA"), /* @__PURE__ */ React.createElement("option", { value: "pendiente" }, "\u23F3 PENDIENTE"))), editandoId && editandoOrig && /* @__PURE__ */ React.createElement(PagoDeFactura, { factura: editandoOrig, ventas, setVentas }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "itbis", checked: form.itbis, onChange: (e) => setField("itbis", e.target.checked), style: { width: 16, height: 16, cursor: "pointer" } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "itbis", style: { fontSize: 13, cursor: "pointer" } }, "Aplicar ITBIS (18%)")), /* @__PURE__ */ React.createElement(Input, { label: "Notas (opcional)", value: form.notas, onChange: (v) => setField("notas", v) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Servicios / Productos"), form.items.map((item, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "3fr 80px 100px 80px auto", gap: 10, marginBottom: 10, alignItems: "end" } }, /* @__PURE__ */ React.createElement("div", null, i === 0 && /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Descripci\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         value: item.descripcion,
@@ -4371,7 +4434,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
       style: { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }
     },
     "\u{1F5D1}️"
-  ))))))))), ajusteFondo && React.createElement(ModalAjusteFondo, { datos: ajusteFondo, saldo: saldoFondo(ajusteFondo.mascota), onCerrar: () => setAjusteFondo(null), onGuardar: (mov) => { if (moverFondo(mov)) { setAjusteFondo(null); alert("Movimiento guardado. Nuevo saldo de " + (mov.mascota || "el cliente") + ": RD$ " + ((saldoFondo(mov.mascota) + (mov.tipo === "uso" ? -mov.monto : mov.monto)).toLocaleString("es-DO"))); } } }), vistaMode === "fondos" && React.createElement(VistaFondos, { depositos, saldoFondo, onNuevo: (d) => setAjusteFondo(d), clientes, resumenClientes }), vistaMode === "clientes" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 16, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, fontWeight: 600 } }, "Ordenar por:"), /* @__PURE__ */ React.createElement(
+  ))))))))), ajusteFondo && React.createElement(ModalAjusteFondo, { datos: ajusteFondo, saldo: saldoFondo(ajusteFondo.mascota), onCerrar: () => setAjusteFondo(null), onGuardar: (mov) => { if (moverFondo(mov)) { setAjusteFondo(null); avisar("Movimiento guardado. Nuevo saldo de " + (mov.mascota || "el cliente") + ": RD$ " + ((saldoFondo(mov.mascota) + (mov.tipo === "uso" ? -mov.monto : mov.monto)).toLocaleString("es-DO"))); } } }), vistaMode === "fondos" && React.createElement(VistaFondos, { depositos, saldoFondo, onNuevo: (d) => setAjusteFondo(d), clientes, resumenClientes }), vistaMode === "clientes" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 16, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, fontWeight: 600 } }, "Ordenar por:"), /* @__PURE__ */ React.createElement(
     "select",
     {
       value: ordenClientes,
@@ -4987,7 +5050,7 @@ function Llamadas() {
   const abrirWA = (ll) => {
     const tl = String(g(ll, "telefono", "numero", "phone")).replace(/\D/g, "");
     const w = tl.length >= 11 ? tl : (tl ? "1" + tl : "");
-    if (!w) { alert("Esta llamada no tiene teléfono registrado."); return; }
+    if (!w) { avisar("Esta llamada no tiene teléfono registrado."); return; }
     const m = g(ll, "nombremascota", "nombreMascota", "mascota") || "tu mascota";
     const cli = g(ll, "nombrecliente", "nombreCliente", "cliente");
     const msg = `Hola${cli ? " " + cli : ""}, le saludamos de PetColinas 🐾. Damos seguimiento a la llamada sobre ${m}. ¿En qué le podemos ayudar?`;
@@ -4996,7 +5059,7 @@ function Llamadas() {
 
   const llamarSofia = async (ll) => {
     const tel = g(ll, "telefono", "numero", "phone");
-    if (!tel) { alert("Esta llamada no tiene teléfono registrado."); return; }
+    if (!tel) { avisar("Esta llamada no tiene teléfono registrado."); return; }
     setCallStatus(s => ({ ...s, [ll.id]: "llamando" }));
     try {
       const r = await fetch(SUPA_URL + "/functions/v1/vapi-trigger", {
@@ -5143,7 +5206,7 @@ function WhatsAppInbox() {
       await cargarMsgs(sel);
       await cargarChats();
     } catch (e) {
-      alert("No se pudo enviar: " + e.message);
+      avisar("No se pudo enviar: " + e.message);
     }
     setEnviando(false);
   };
@@ -5153,7 +5216,7 @@ function WhatsAppInbox() {
     try {
       await accion({ accion: "bot", telefono: chat.telefono, activo });
       setChats((cs) => cs.map((c) => c.telefono === chat.telefono ? { ...c, bot: activo } : c));
-    } catch (e) { alert("No se pudo cambiar el bot: " + e.message); }
+    } catch (e) { avisar("No se pudo cambiar el bot: " + e.message); }
   };
 
   const fmtHora = (f) => {
@@ -5632,7 +5695,7 @@ function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventar
   const [exportado, setExportado] = useState(false);
   function fmt(n) { return typeof n === "number" ? n : (Number(n) || 0); }
   function exportar() {
-    if (!window.XLSX) return alert("La librer\xEDa de Excel a\xFAn se est\xE1 cargando. Intenta en unos segundos.");
+    if (!window.XLSX) return avisar("La librer\xEDa de Excel a\xFAn se est\xE1 cargando. Intenta en unos segundos.");
     setExportando(true);
     const XLSX = window.XLSX;
     const wb = XLSX.utils.book_new();
@@ -5903,7 +5966,7 @@ function WAPreviewModal() {
   const enviar = () => {
     const tel = (modal.tel || "").replace(/\D/g, "");
     const telFinal = tel.length >= 11 ? tel : (tel ? "1" + tel : "");
-    if (!telFinal) { alert("Sin teléfono registrado."); return; }
+    if (!telFinal) { avisar("Sin teléfono registrado."); return; }
     window.open("https://wa.me/" + telFinal + "?text=" + encodeURIComponent(texto), "_blank");
     setModal(null);
   };
@@ -7016,7 +7079,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
     (c) => c.nombreMascota?.toLowerCase().includes(busq.toLowerCase()) || c.nombrePropietario?.toLowerCase().includes(busq.toLowerCase())
   ).slice(0, 5) : [];
   const guardar = async () => {
-    if (!form.mascota || !form.propietario) return alert("Nombre de mascota y propietario son requeridos.");
+    if (!form.mascota || !form.propietario) return avisar("Nombre de mascota y propietario son requeridos.");
     if (vista === "editar" && sel !== null) {
       const updated = { ...form, id: sel };
       setSeguimientos(seguimientos.map((s) => s.id === sel ? updated : s));
@@ -7093,7 +7156,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   const getTelSeg = (seg) => (seg.telefono || "").trim() || ((clientes || []).find(c => (c.nombreMascota||"").toLowerCase().trim() === (seg.mascota||"").toLowerCase().trim()) || {}).telefono || "";
   const llamarSofiaSeg = async (seg) => {
     const tel = getTelSeg(seg);
-    if (!tel) return alert("Este seguimiento no tiene teléfono. Edítalo y agrega el número.");
+    if (!tel) return avisar("Este seguimiento no tiene teléfono. Edítalo y agrega el número.");
     setLlamandoSegId(seg.id);
     try {
       const r = await fetch("https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/vapi-trigger", {
@@ -7108,7 +7171,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   };
   const llamarTodosSofia = async () => {
     const pendientes = seguimientos.filter(s => s.activo && !s.completado && diasHasta(s.proximaFecha) <= 0 && getTelSeg(s));
-    if (pendientes.length === 0) return alert("No hay seguimientos vencidos con teléfono asignado.");
+    if (pendientes.length === 0) return avisar("No hay seguimientos vencidos con teléfono asignado.");
     if (!window.confirm("¿Iniciar " + pendientes.length + " llamada(s) con Sofía (IA)?\nSe llamará a cada cliente con seguimiento vencido.")) return;
     setLlamandoMasivo(true);
     for (const seg of pendientes) {
@@ -8198,7 +8261,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
     // 3. Intentar guardar en la nube — avisar honestamente si falla
     const ok = await upsertOne("pc_ventas", ventaCorregida);
     if (!ok) {
-      alert("⚠️ La fecha quedó corregida en este dispositivo y se reintentará subir a la nube automáticamente.\n\nDetalle del error: " + (window.__lastSyncError || "sin conexión con Supabase"));
+      avisar("⚠️ La fecha quedó corregida en este dispositivo y se reintentará subir a la nube automáticamente.\n\nDetalle del error: " + (window.__lastSyncError || "sin conexión con Supabase"));
     }
     setCorrigiendoId(null);
     setEditFechaModal(null);
@@ -8208,7 +8271,7 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
     let okConf = false;
     if (venta) { try { okConf = await upsertOne("pc_ventas", venta); } catch(e) {} }
     if (venta && !okConf) {
-      window.alert("⚠️ No se pudo guardar la corrección en la nube: " + (window.__lastSyncError || "error de conexión") + "\n\nLa alerta seguirá visible hasta que se logre guardar.");
+      avisar("⚠️ No se pudo guardar la corrección en la nube: " + (window.__lastSyncError || "error de conexión") + "\n\nLa alerta seguirá visible hasta que se logre guardar.");
       return;
     }
     try {
@@ -8651,7 +8714,7 @@ function EditorItemsVenta({ items, setItems, tarifasGrooming, tarifasVet, invent
 
   const agregar = () => {
     const t = catalogo.find((x) => x.nombre === sel);
-    if (!t) { alert("Selecciona un servicio o producto."); return; }
+    if (!t) { avisar("Selecciona un servicio o producto."); return; }
     const q = Math.max(1, parseInt(cant) || 1);
     const d = Math.min(100, Math.max(0, parseFloat(pct) || 0));
     const bruto = t.precio * q;
@@ -8729,7 +8792,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     const handler = (e) => {
       const id = e.detail;
       const v = ventas.find((x) => String(x.id) === String(id));
-      if (!v) { window.alert("No se encontró la venta para editar (puede estar en otro mes o dispositivo)."); return; }
+      if (!v) { avisar("No se encontró la venta para editar (puede estar en otro mes o dispositivo)."); return; }
       setVentaDetalle(v);
       setEditandoVenta(true);
       setVentaEditForm({ cliente: v.cliente || "", fecha: v.fecha || "", area: v.area || "grooming", descripcion: v.servicio || v.descripcion || "", formapago: v.formapago || v.formaPago || "", total: v.total || 0 });
@@ -8829,7 +8892,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const agregarItem = () => {
     if (tipoItem === "grooming" || tipoItem === "veterinaria") {
       if (esManual) {
-        if (!nombreManual.trim() || previewPrecio <= 0) return alert("Escribe nombre y precio del servicio");
+        if (!nombreManual.trim() || previewPrecio <= 0) return avisar("Escribe nombre y precio del servicio");
         setItems([...items, {
           id: Date.now(), tipo: tipoItem, area: tipoItem,
           nombre: nombreManual.trim(), precio: previewPrecio,
@@ -8839,8 +8902,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         setNombreManual(""); setPrecioManual(""); setDescPct(0);
         return;
       }
-      if (!servSel) return alert("Selecciona un servicio");
-      if (previewPrecio <= 0 && !casaGratis) return alert("Selecciona un servicio");
+      if (!servSel) return avisar("Selecciona un servicio");
+      if (previewPrecio <= 0 && !casaGratis) return avisar("Selecciona un servicio");
       setItems([...items, {
         id: Date.now(),
         tipo: tipoItem,
@@ -8859,7 +8922,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       setDescPct(0);
     } else if (tipoItem === "farmacia") {
       if (modoFarmacia === "catalogo") {
-        if (!prodSel) return alert("Selecciona un producto");
+        if (!prodSel) return avisar("Selecciona un producto");
         const qty = Math.max(1, parseInt(cantProd) || 1);
         // Stock 0: se permite registrar igual (puede ser reposición o error de inventario)
         const precio = prodSel.pventa * qty;
@@ -8884,7 +8947,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         setBusqProd("");
       } else {
         const precio = parseFloat(precioLibre) || 0;
-        if (!descLibre || precio <= 0) return alert("Completa descripci\xF3n y precio");
+        if (!descLibre || precio <= 0) return avisar("Completa descripci\xF3n y precio");
         const dto = Math.round(precio * pct / 100);
         setItems([...items, {
           id: Date.now(),
@@ -9012,9 +9075,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       "\xBFRegistrar la venta igual?");
   }
   const handleAdd = () => {
-    if (!fecha) return alert("Selecciona una fecha");
-    if (fecha > hoy()) return alert("⚠️ No puedes registrar ventas con fecha futura. Selecciona la fecha correcta.");
-    if (items.length === 0) return alert("Agrega al menos un servicio o producto");
+    if (!fecha) return avisar("Selecciona una fecha");
+    if (fecha > hoy()) return avisar("⚠️ No puedes registrar ventas con fecha futura. Selecciona la fecha correcta.");
+    if (items.length === 0) return avisar("Agrega al menos un servicio o producto");
     // Sin telefono no se le puede cobrar un pendiente ni recordarle que vuelva.
     // Casi la mitad de la base quedo sin numero y con eso se perdio media
     // cartera: se pide aqui, el unico momento en que el cliente esta delante.
@@ -9061,9 +9124,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     let abonosNueva = [], abonadoNueva = 0, recordatorioNueva = "";
     if (formaPago === "abono") {
       const ab = redondeo2(parseFloat(montoAbono));
-      if (!(ab > 0)) return alert("Escribe cu\xE1nto est\xE1 abonando el cliente.");
-      if (ab > totalNeto) return alert("El abono (" + RD(ab) + ") no puede ser mayor que el servicio (" + RD(totalNeto) + ").\n\nSi ya pag\xF3 todo, escoge la forma de pago normal.");
-      if (!fechaRecordatorio) return alert("Falta la fecha para recordarle al cliente que termine de pagar.");
+      if (!(ab > 0)) return avisar("Escribe cu\xE1nto est\xE1 abonando el cliente.");
+      if (ab > totalNeto) return avisar("El abono (" + RD(ab) + ") no puede ser mayor que el servicio (" + RD(totalNeto) + ").\n\nSi ya pag\xF3 todo, escoge la forma de pago normal.");
+      if (!fechaRecordatorio) return avisar("Falta la fecha para recordarle al cliente que termine de pagar.");
       abonosNueva = [{ fecha, monto: ab, forma: abonoForma, banco: abonoForma === "transferencia" ? (banco === "Otro" ? bancoOtro : banco) : "", por: nombreEmpleado(cobradoPor) }];
       abonadoNueva = ab;
       recordatorioNueva = fechaRecordatorio;
@@ -9108,7 +9171,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         if (tel) window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
         else window.open(d.url, "_blank");
       }).catch((e) => {
-        alert("La venta se guardó, pero no se pudo generar el enlace de pago.\n\n" + e.message +
+        avisar("La venta se guardó, pero no se pudo generar el enlace de pago.\n\n" + e.message +
           "\n\nPuedes generarlo después desde la pestaña Cobros.");
       });
     }
@@ -10074,7 +10137,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     return "farmaco";
   };
   const addProducto = () => {
-    if (!form.nombre || !form.stock) return alert("Nombre y stock son obligatorios");
+    if (!form.nombre || !form.stock) return avisar("Nombre y stock son obligatorios");
     const nuevo = {
       id: Date.now(),
       nombre: form.nombre,
@@ -10115,7 +10178,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
   };
   const guardarTodo = async () => {
     const items = Object.values(pendientes);
-    if (items.length === 0) return alert("No hay cambios pendientes");
+    if (items.length === 0) return avisar("No hay cambios pendientes");
     setInventario((prev) => prev.map((p) => pendientes[String(p.id)] ? pendientes[String(p.id)] : p));
     let saved = 0;
     for (const row of items) {
@@ -10124,7 +10187,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     }
     setPendientes({});
     setHayBorrados(false);
-    alert("\u2705 " + saved + " producto(s) guardados en Supabase");
+    avisar("\u2705 " + saved + " producto(s) guardados en Supabase");
   };
   const updateStock = (id, delta) => {
     const sid = String(id);
@@ -10504,7 +10567,7 @@ function Gastos({ gastos, setGastos }) {
   const [editPagPor, setEditPagPor] = useState("Victor Ballas");
   const [editMetodo, setEditMetodo] = useState("efectivo");
   const addGasto = () => {
-    if (!descripcion || !monto) return alert("Completa descripci\xF3n y monto");
+    if (!descripcion || !monto) return avisar("Completa descripci\xF3n y monto");
     const nuevo = {
       id: Date.now(),
       fecha,
@@ -10537,7 +10600,7 @@ function Gastos({ gastos, setGastos }) {
     setEditMetodo(g.metodo || "efectivo");
   };
   const saveEdit = () => {
-    if (!editDesc || !editMonto) return alert("Completa descripci\xF3n y monto");
+    if (!editDesc || !editMonto) return avisar("Completa descripci\xF3n y monto");
     const updated = gastos.find(g => g.id === editingId);
     if (updated) {
       const updatedGasto = { ...updated, fecha: editFecha, proveedor: editProv, descripcion: editDesc, monto: parseFloat(editMonto) || 0, categoria: editCat, pagadoPor: editPagPor, metodo: editMetodo };
@@ -10867,7 +10930,7 @@ function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, c
   const [guardando, setGuardando] = useState(false);
   const mis = [...historias.filter(h => String(h.clienteid) === String(clienteId))].sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
   async function guardar() {
-    if (!formH.descripcion.trim()) { alert("Escribe una descripci\xF3n."); return; }
+    if (!formH.descripcion.trim()) { avisar("Escribe una descripci\xF3n."); return; }
     setGuardando(true);
     const nueva = { ...formH, id: String(Date.now()), clienteid: String(clienteId), creadoen: hoy() };
     setHistorias(prev => [...prev, nueva]);
@@ -11092,7 +11155,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
   });
   const guardar = () => {
     if (!form.nombreMascota || !form.nombrePropietario || !form.telefono)
-      return alert("Nombre de mascota, propietario y tel\xE9fono son obligatorios.");
+      return avisar("Nombre de mascota, propietario y tel\xE9fono son obligatorios.");
     if (editando) {
       const oldName = (clienteSel.nombreMascota || "").toLowerCase().trim();
       const newName = (form.nombreMascota || "").toLowerCase().trim();
@@ -12113,8 +12176,8 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes, 
     setModalHistoria(true);
   }
   function guardarHistoria() {
-    if (tipoHistoria === "general" && !historiaForm.motivo.trim()) return alert("El motivo de consulta es obligatorio.");
-    if (tipoHistoria === "derma" && !historiaForm.motivoDescripcion.trim()) return alert("La descripción del problema es obligatoria.");
+    if (tipoHistoria === "general" && !historiaForm.motivo.trim()) return avisar("El motivo de consulta es obligatorio.");
+    if (tipoHistoria === "derma" && !historiaForm.motivoDescripcion.trim()) return avisar("La descripción del problema es obligatoria.");
     const nombre = historiaForm.mascota || pacienteVer;
     let clienteId = clienteObj && clienteObj.id ? clienteObj.id : null;
     if (!clienteId) {
@@ -13180,7 +13243,7 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05, clie
   const miComisionActual = Math.round(gananciaActual * comPct);
 
   function registrar() {
-    if (!selProd || !cliente.trim()) return alert("Selecciona producto y escribe el nombre del cliente");
+    if (!selProd || !cliente.trim()) return avisar("Selecciona producto y escribe el nombre del cliente");
     const v = {
       id: Date.now(),
       fecha: new Date().toISOString().slice(0,10),
@@ -13464,7 +13527,7 @@ function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
   const miComision = Math.round(ganancia * 0.05);
 
   function registrar() {
-    if (!selProd || !cliente.trim()) return alert("Selecciona producto y cliente");
+    if (!selProd || !cliente.trim()) return avisar("Selecciona producto y cliente");
     const v = {
       id: Date.now(),
       fecha: new Date().toISOString().slice(0,10),
@@ -13798,8 +13861,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
   function agregarItem() {
     const esLibre = servSelId === "__libre__";
-    if (esLibre && !nombreLibre.trim()) return alert("Escribe el nombre del servicio o producto.");
-    if (!esLibre && !servSel && !precioCustom) return alert("Selecciona un servicio o ingresa un precio");
+    if (esLibre && !nombreLibre.trim()) return avisar("Escribe el nombre del servicio o producto.");
+    if (!esLibre && !servSel && !precioCustom) return avisar("Selecciona un servicio o ingresa un precio");
     const nombre = esLibre ? nombreLibre.trim() : (servSel ? (servSel.nombre||servSel.servicio||servSel.descripcion||"") : (nota||"Servicio personalizado"));
     const item = {
       id: Date.now(),
@@ -13818,14 +13881,14 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   function quitarItem(id) { setCarrito(prev => prev.filter(it => it.id !== id)); }
 
   function registrar() {
-    if (!cliente.trim()) return alert("Escribe el nombre del cliente o mascota");
-    if (carrito.length === 0) return alert("Agrega al menos un servicio al carrito");
+    if (!cliente.trim()) return avisar("Escribe el nombre del cliente o mascota");
+    if (carrito.length === 0) return avisar("Agrega al menos un servicio al carrito");
     let abonosNueva = [], abonadoNueva = 0, recordatorioNueva = "";
     if (pago === "abono") {
       const ab = parseFloat(montoAbono) || 0;
-      if (!(ab > 0)) return alert("Escribe cu\xE1nto est\xE1 abonando el cliente.");
-      if (ab > totalFinal) return alert("El abono (" + RD2(ab) + ") no puede ser mayor que el total (" + RD2(totalFinal) + ").\n\nSi ya pag\xF3 todo, escoge la forma de pago normal.");
-      if (!fechaRecordatorio) return alert("Falta la fecha para recordarle al cliente que termine de pagar.");
+      if (!(ab > 0)) return avisar("Escribe cu\xE1nto est\xE1 abonando el cliente.");
+      if (ab > totalFinal) return avisar("El abono (" + RD2(ab) + ") no puede ser mayor que el total (" + RD2(totalFinal) + ").\n\nSi ya pag\xF3 todo, escoge la forma de pago normal.");
+      if (!fechaRecordatorio) return avisar("Falta la fecha para recordarle al cliente que termine de pagar.");
       abonosNueva = [{ fecha: new Date().toISOString().slice(0,10), monto: ab, forma: abonoForma, banco: "", por: usuario.nombre }];
       abonadoNueva = ab;
       recordatorioNueva = fechaRecordatorio;
@@ -13870,7 +13933,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
         if (tel) window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
         else window.open(d.url, "_blank");
       }).catch((e) => {
-        alert("La factura se guardó, pero no se pudo generar el enlace de pago.\n\n" + e.message);
+        avisar("La factura se guardó, pero no se pudo generar el enlace de pago.\n\n" + e.message);
       });
     }
     setOk({ ...v, clienteNombre: cliente.trim() });
@@ -14363,8 +14426,8 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   }
 
   function guardar() {
-    if (!form.mascota.trim()) return alert("Ingresa el nombre de la mascota.");
-    if (!form.motivo.trim()) return alert("El motivo de consulta es obligatorio.");
+    if (!form.mascota.trim()) return avisar("Ingresa el nombre de la mascota.");
+    if (!form.motivo.trim()) return avisar("El motivo de consulta es obligatorio.");
     const nueva = {
       id: Date.now(),
       clienteid: String(paciente?.id || ""),
@@ -14926,9 +14989,9 @@ function Planes({ paquetes, setPaquetes, clientes, ventas, setVentas }) {
 
   function venderPaquete(plan) {
     const mascota = String(mascotaSel || "").trim();
-    if (!mascota) { alert("Selecciona la mascota."); return; }
+    if (!mascota) { avisar("Selecciona la mascota."); return; }
     const monto = Number(precio) || precioSugerido(plan);
-    if (monto <= 0) { alert("Pon el precio del paquete."); return; }
+    if (monto <= 0) { avisar("Pon el precio del paquete."); return; }
     const cli = (clientes || []).find((c) => String(c.nombreMascota || "").toLowerCase().trim() === mascota.toLowerCase());
     const fila = {
       id: Date.now(),
@@ -15147,7 +15210,7 @@ function Cobros({ ventas, setVentas, clientes, soloPropio }) {
       if (x.tel) window.open("https://wa.me/" + x.tel + "?text=" + encodeURIComponent(msg), "_blank");
       else window.open(d.url, "_blank");
     } catch (e) {
-      alert("No se pudo generar el enlace de pago.\n\n" + e.message +
+      avisar("No se pudo generar el enlace de pago.\n\n" + e.message +
         "\n\nSi es la primera vez, revisa que la funci\xF3n pagadito-cobro est\xE9 desplegada y con sus secrets.");
     }
     setGenerando(null);
@@ -15239,8 +15302,8 @@ function Cobros({ ventas, setVentas, clientes, soloPropio }) {
     const antes = x.v;
     const m = redondeo2(monto);
     const restante = saldoDe(antes);
-    if (!(m > 0)) return alert("Escribe cuánto está abonando.");
-    if (m > restante) return alert("El abono (" + cobRD(m) + ") es mayor que lo que debe (" + cobRD(restante) + ").");
+    if (!(m > 0)) return avisar("Escribe cuánto está abonando.");
+    if (m > restante) return avisar("El abono (" + cobRD(m) + ") es mayor que lo que debe (" + cobRD(restante) + ").");
     const abonos = abonosDe(antes).concat([{ fecha: hoy(), monto: m, forma, banco: "", por: usuarioActual() }]);
     const abonado = abonadoDe({ abonos });
     const saldaTodo = redondeo2((Number(antes.total) || 0) - abonado) <= 0.5;
@@ -15733,9 +15796,9 @@ function AvisoRespaldo() {
     try {
       const n = await descargarRespaldo();
       setUltimo(hoy());
-      alert("Respaldo descargado: " + n.toLocaleString("es-DO") + " registros.\n\nGuárdalo en Google Drive o en un disco aparte. Si algún día se borra algo, con este archivo se recupera todo.");
+      avisar("Respaldo descargado: " + n.toLocaleString("es-DO") + " registros.\n\nGuárdalo en Google Drive o en un disco aparte. Si algún día se borra algo, con este archivo se recupera todo.");
     } catch (e) {
-      alert("No se pudo generar el respaldo: " + (e.message || e));
+      avisar("No se pudo generar el respaldo: " + (e.message || e));
     }
     setOcupado(false);
   };
@@ -15895,7 +15958,7 @@ function TabNotificaciones({ clientes, setClientes, notifLeidas, marcarNotifLeid
   }
   function bienvenida(c) {
     const tel = String(c.telefono || "").replace(/\D/g, "");
-    if (!tel) { alert("Este cliente no dejó teléfono en el formulario."); return; }
+    if (!tel) { avisar("Este cliente no dejó teléfono en el formulario."); return; }
     const masc = c.nombreMascota || c.nombremascota || "su mascota";
     const due = String(c.nombrePropietario || c.nombrepropietario || "").split(" ")[0];
     abrirWA(tel, "🐾 *¡Bienvenido/a a PetColinas!* 🐾\n\nHola" + (due ? " *" + due + "*" : "") +
@@ -16048,7 +16111,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     setAgregando(false);
   }
   function guardarEdicion() {
-    if (!editForm.nombre || !editForm.precio) return alert("Nombre y precio son obligatorios.");
+    if (!editForm.nombre || !editForm.precio) return avisar("Nombre y precio son obligatorios.");
     setTarifas(prev => prev.map(t => t.id === editandoId
       ? { ...t, nombre: editForm.nombre.trim(), precio: Number(editForm.precio) || 0, comision: Number(editForm.comision) || t.comision }
       : t
@@ -16060,7 +16123,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     setTarifas(prev => prev.filter(t => t.id !== id));
   }
   function agregarNuevo() {
-    if (!nuevoForm.nombre || !nuevoForm.precio) return alert("Nombre y precio son obligatorios.");
+    if (!nuevoForm.nombre || !nuevoForm.precio) return avisar("Nombre y precio son obligatorios.");
     const prefix = esGrooming ? "g" : "v";
     const newId = prefix + Date.now();
     const comision = Number(nuevoForm.comision) || (esGrooming ? 100 : 0.3);
@@ -16395,7 +16458,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
 
   const abrirWA = (tipo, cita) => setModalWA({ tipo, mensaje: generarMensajeWA(tipo, cita), telefono: cita.telefono||"", citaId: cita.id });
   const llamarConSofia = async (cita) => {
-    if (!cita.telefono) { alert("Esta cita no tiene teléfono registrado."); return; }
+    if (!cita.telefono) { avisar("Esta cita no tiene teléfono registrado."); return; }
     setSofiaStatus("llamando");
     try {
       const r = await fetch(SUPA_URL + "/functions/v1/vapi-trigger", {
@@ -16407,7 +16470,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
     } catch { setSofiaStatus("error"); }
     setTimeout(() => setSofiaStatus(null), 6000);
   };
-  const enviarWA = (tel, msg, citaId, tipo) => { const tl = (tel || "").replace(/\D/g, ""); const telWa = tl.length >= 11 ? tl : (tl ? "1" + tl : ""); if (telWa) window.open("https://wa.me/" + telWa + "?text=" + encodeURIComponent(msg || ""), "_blank"); else alert("Esta cita no tiene tel\xE9fono registrado."); registrarMensaje(citaId, tipo); if (tipo === "confirmacion") cambiarEstado(citaId, "confirmada"); setModalWA(null); };
+  const enviarWA = (tel, msg, citaId, tipo) => { const tl = (tel || "").replace(/\D/g, ""); const telWa = tl.length >= 11 ? tl : (tl ? "1" + tl : ""); if (telWa) window.open("https://wa.me/" + telWa + "?text=" + encodeURIComponent(msg || ""), "_blank"); else avisar("Esta cita no tiene tel\xE9fono registrado."); registrarMensaje(citaId, tipo); if (tipo === "confirmacion") cambiarEstado(citaId, "confirmada"); setModalWA(null); };
 
   const recordatoriosPendientes = citas.filter(c => c.fecha === manana() && c.estado !== "cancelada" && c.estado !== "noshow" && !(c.mensajesEnviados||[]).some(m => m.tipo === "recordatorio"));
 
