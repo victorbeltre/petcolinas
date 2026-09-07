@@ -32,6 +32,57 @@
     input, select, textarea, button { font-family: inherit; }
     @keyframes pendienteBlink { 0%,100%{background:#fff1f1} 50%{background:#ffe4e4} }
     .fila-pendiente { animation: pendienteBlink 1.8s ease-in-out infinite; }
+
+    /* ── TELEFONO ────────────────────────────────────────────────────────────
+       La app se escribio con estilos en linea y sin una sola media query, asi
+       que en el telefono era usable pero incomoda. Estas reglas van con
+       !important porque tienen que ganarle al style="" de cada elemento.
+       Medido con Chromium a 390 px antes de escribirlas. */
+    @media (max-width: 720px) {
+
+      /* 1. Lo mas molesto de todo: los 13 campos del formulario tenian letra
+         de 11-15 px, y iOS hace ZOOM automatico al tocar cualquier campo de
+         menos de 16 px. Cada vez que alguien escribia algo, la pantalla se
+         acercaba sola y habia que volver a alejarla a mano. */
+      input, select, textarea { font-size: 16px !important; }
+
+      /* 2. La barra de pestanas mide 2571 px con 16 pestanas. SI se puede
+         deslizar, pero nada lo indicaba: parecia que la app solo tenia las 3
+         que se ven. El degradado del borde derecho avisa que hay mas, y el
+         scroll suave con inercia hace que se sienta natural al deslizar. */
+      div[style*="overflow-x: auto"][style*="display: flex"] {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+      }
+
+      /* 3. Recuperar ancho util: 24 px de relleno a cada lado en una pantalla
+         de 390 es el 12% de la pantalla gastado en margen. */
+      div[style*="padding: 24px"]      { padding: 14px !important; }
+      div[style*="padding: 28px 24px"] { padding: 16px 14px !important; }
+      div[style*="padding: 0px 24px"]  { padding: 0 10px !important; }
+
+      /* 4. Las tarjetas de aviso son filas de icono + texto + boton. En 390 px
+         el texto quedaba en una columna de una palabra por linea. Se apilan. */
+      div[style*="display: flex"][style*="align-items: center"][style*="gap: 14px"] {
+        flex-wrap: wrap;
+      }
+
+      /* 5. Las tablas ya venian envueltas en un contenedor que hace scroll;
+         solo les faltaba la inercia del dedo. */
+      div[style*="overflow-x: auto"] { -webkit-overflow-scrolling: touch; }
+
+      /* 6. Los modales se abrian con un ancho minimo fijo que desbordaba. */
+      div[style*="min-width: 340px"] { min-width: 0 !important; width: 100% !important; }
+      div[style*="position: fixed"][style*="inset: 0"] > div { max-width: calc(100vw - 24px) !important; }
+
+      /* 7. Objetivos tactiles: un boton de 6 px de alto no se acierta con el
+         dedo. Apple recomienda 44 px; se usa 40 como compromiso para no
+         descuadrar las filas de las tablas. */
+      button { min-height: 40px; }
+      table button { min-height: 32px; }
+    }
   </style>
 </head>
 <body>
@@ -112,7 +163,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-07 00:47Z";
+const PC_BUILD = "2026-09-07 00:51Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
