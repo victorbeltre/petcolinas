@@ -163,7 +163,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-08 10:15Z";
+const PC_BUILD = "2026-09-08 22:57Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -6802,6 +6802,15 @@ function PetColinasApp({ session, onLogout }) {
   useEffect(() => {
     const poll = setInterval(() => {
       if (document.hidden) return;   // en segundo plano no se gasta nada
+      // Con Realtime vivo esto era ~1 MB cada dos minutos para no enterarse de
+      // NADA nuevo: los cambios ya llegan empujados por el WebSocket, y ademas
+      // cada tabla tiene su propio sondeo de respaldo dentro de useSupabase
+      // (que tambien comprueba si Realtime esta caido). Eran cinco tablas
+      // completas —ventas, clientes, citas, inventario, seguimientos, unas
+      // 2.600 filas— releidas todo el dia en cada pestaña abierta. Lo unico
+      // que de verdad hacia falta refrescar aqui era el reloj de
+      // "Sincronizado: hh:mm".
+      if (PCRealtime.enVivo()) { setLastSync(new Date()); return; }
       setPollingSync(true);
       refetchVentas();
       refetchCitas();
