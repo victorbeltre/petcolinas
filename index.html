@@ -163,7 +163,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-08 10:08Z";
+const PC_BUILD = "2026-09-08 10:11Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3158,6 +3158,51 @@ function VistaFondos({ depositos, saldoFondo, onNuevo, clientes, resumenClientes
 // Consumo (B02) para el dueno que viene con su perro, y Credito Fiscal (B01)
 // para la empresa que va a deducir el gasto. La nota de credito (B04) no se
 // emite desde aqui: anula una factura anterior y eso es otro flujo.
+// La historia clinica de la mascota, desde la factura. Antes, para saber que
+// se le hizo la vez pasada o que estaba tomando, habia que salirse de Facturas,
+// buscar la ficha en el CRM y volver — asi que en la practica no se miraba, y
+// se cobraba una consulta sin ver el antecedente. Es solo lectura: registrar
+// se sigue haciendo donde se registra, aqui lo que hace falta es consultar y
+// poder reimprimir la receta.
+function ModalHistoriaDesdeFactura({ factura, cliente, historias, onCerrar }) {
+  const E = React.createElement;
+  const mis = (historias || [])
+    .filter((h) => cliente && String(h.clienteid) === String(cliente.id))
+    .sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
+  const tipoColor = { "Consulta": "#1a4fa0", "Vacuna": "#1a6b3a", "Cirug\xEDa": "#b8232a",
+    "Diagn\xF3stico": "#7c3aed", "Control": "#0891b2", "Desparasitaci\xF3n": "#d45f1e", "Otro": "#5a6472" };
+  return E("div", { onClick: onCerrar, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: 20 } },
+    E("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 620, maxHeight: "88vh", overflowY: "auto", textAlign: "left" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 } },
+        E("div", null,
+          E("div", { style: { fontWeight: 800, fontSize: 18, color: "#1a6b3a" } }, "\u{1FA7A} Historia de " + (factura.mascota || "la mascota")),
+          E("div", { style: { fontSize: 12.5, color: "#6b7280", marginTop: 3 } },
+            mis.length + " registro(s) \xB7 desde la factura #" + (factura.numero || ""))),
+        E("button", { onClick: onCerrar, style: { background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9ca3af" } }, "✕")),
+
+      !cliente
+        ? E("div", { style: { background: "#fffbeb", border: "1.5px solid #d97706", color: "#92400e", borderRadius: 9, padding: "12px 14px", fontSize: 13 } },
+            "Esta factura no est\xE1 enlazada a una ficha del CRM, as\xED que no hay historia que mostrar. Crea o corrige la ficha de " +
+            (factura.mascota || "la mascota") + " en Clientes.")
+        : mis.length === 0
+          ? E("div", { style: { background: "#f8f9fa", borderRadius: 9, padding: "14px", fontSize: 13, color: "#5a6472" } },
+              "Todav\xEDa no hay registros cl\xEDnicos de " + (factura.mascota || "esta mascota") + ".")
+          : E("div", { style: { display: "grid", gap: 10 } },
+              mis.map((h) => E("div", { key: h.id, style: { background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", border: "1px solid #e8ecf0" } },
+                E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" } },
+                  E("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+                    E("span", { style: { background: tipoColor[h.tipo] || "#5a6472", color: "#fff", borderRadius: 20, fontSize: 11, fontWeight: 700, padding: "2px 10px" } }, h.tipo || "Registro"),
+                    E("span", { style: { color: "#5a6472", fontSize: 12 } }, h.fecha || ""),
+                    h.veterinario && E("span", { style: { color: "#5a6472", fontSize: 12 } }, "\xB7 " + h.veterinario)),
+                  h.medicamentos && E("button", { onClick: () => imprimirReceta(h, cliente),
+                    style: { background: "#e6f4ec", border: "1px solid #1a6b3a", color: "#1a6b3a", borderRadius: 7, cursor: "pointer", fontSize: 11.5, fontWeight: 700, padding: "4px 10px" } }, "\u{1F5A8}️ Receta")),
+                h.descripcion && E("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 3 } }, h.descripcion),
+                h.diagnostico && E("div", { style: { fontSize: 12 } }, E("strong", null, "Dx: "), h.diagnostico),
+                h.tratamiento && E("div", { style: { fontSize: 12 } }, E("strong", null, "Tx: "), h.tratamiento),
+                h.medicamentos && E("div", { style: { fontSize: 12, color: "#d45f1e" } }, "\u{1F48A} " + h.medicamentos),
+                h.proximacita && E("div", { style: { fontSize: 12, color: "#1a6b3a", fontWeight: 600 } }, "\u{1F4C5} Pr\xF3x. cita: " + h.proximacita),
+                h.notas && E("div", { style: { fontSize: 12, color: "#5a6472", fontStyle: "italic", marginTop: 2 } }, h.notas))))));
+}
 function ModalNCF({ factura, ocupado, onAsignar, onCerrar }) {
   const E = React.createElement;
   const [tipo, setTipo] = React.useState("B02");
@@ -3594,6 +3639,13 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
   // 607 completo — y eso no se descubre hasta el dia 20 del mes siguiente.
   const [ncfPara, setNcfPara] = useState(null);      // factura a la que se le asigna
   const [ncfOcupado, setNcfOcupado] = useState(false);
+  const [historiaPara, setHistoriaPara] = useState(null);   // factura cuya historia se esta viendo
+  // La factura guarda el nombre de la mascota, no el id de la ficha. Se busca
+  // por nombre igual que hace el resto de la app; si el nombre no cuadra con
+  // ninguna ficha, el modal lo dice en vez de mostrarse vacio.
+  const clienteDeFactura = (f) => (clientes || []).find(
+    (c) => String(c.nombreMascota || c.nombre || "").toLowerCase().trim()
+        === String((f && f.mascota) || "").toLowerCase().trim()) || null;
   async function asignarNCF(f, tipo, rncCliente) {
     if (f.ncf) {
       avisar("Esta factura ya tiene el NCF " + f.ncf + ". Un comprobante emitido no se reemplaza: si hay que anularlo se emite una nota de cr\xE9dito (B04).", "error");
@@ -4446,7 +4498,12 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), (f.ncf
       ? React.createElement("div", { title: "Comprobante ya emitido: no se puede cambiar", style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 800 } }, "\u{1F9FE} " + f.ncf, React.createElement("div", { style: { fontSize: 10, fontWeight: 600, opacity: 0.8 } }, NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"))
       : React.createElement("button", { onClick: () => setNcfPara(f), title: "Asignar el n\xFAmero de comprobante fiscal de la DGII", style: { background: "#fff7e6", color: "#92400e", border: "1.5px solid #d9a441", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F9FE} Asignar NCF")
-    ), ncfPara && String(ncfPara.id) === String(f.id) && React.createElement(ModalNCF, {
+    ), React.createElement("button", { onClick: () => setHistoriaPara(f), title: "Ver la historia cl\xEDnica de " + (f.mascota || "la mascota") + " sin salir de la factura",
+      style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1FA7A} Historia"),
+    historiaPara && String(historiaPara.id) === String(f.id) && React.createElement(ModalHistoriaDesdeFactura, {
+      factura: historiaPara, cliente: clienteDeFactura(historiaPara), historias,
+      onCerrar: () => setHistoriaPara(null)
+    }), ncfPara && String(ncfPara.id) === String(f.id) && React.createElement(ModalNCF, {
       factura: ncfPara, ocupado: ncfOcupado,
       onCerrar: () => { if (!ncfOcupado) setNcfPara(null); },
       onAsignar: (tipo, rnc) => asignarNCF(ncfPara, tipo, rnc)
@@ -11422,6 +11479,86 @@ const CRM_EMPTY_FORM = {
   notas: "",
   fechaRegistro: hoy()
 };
+// Receta imprimible a partir de un registro del historial. Hasta ahora los
+// medicamentos se anotaban en la historia y la indicacion para la casa se daba
+// de palabra o en un papel suelto; el dueño llegaba a la farmacia sin saber la
+// dosis. Esto imprime lo mismo que ya esta guardado, con el nombre de quien lo
+// receto y espacio para la firma.
+function imprimirReceta(h, cliente) {
+  const cfg = (typeof PC_CONFIG !== "undefined" && PC_CONFIG) || {};
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const mascota = cliente?.nombre || cliente?.nombreMascota || "";
+  const dueno = cliente?.dueno || cliente?.nombrePropietario || "";
+  // Cada medicamento en su renglon: se escriben separados por coma o por salto
+  // de linea, y en el papel tienen que quedar uno debajo del otro para que se
+  // puedan ir marcando en casa.
+  const meds = String(h.medicamentos || "").split(/\r?\n|,(?![^(]*\))/)
+    .map((s) => s.trim()).filter(Boolean);
+  if (meds.length === 0) { avisar("Este registro no tiene medicamentos que recetar.", "error"); return; }
+  const win = window.open("", "_blank");
+  if (!win) { avisar("El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio.", "error"); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Receta ${esc(mascota)} ${esc(h.fecha || "")}</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; color:#1a1d23; padding:36px; max-width:760px; margin:0 auto; }
+      .header { display:flex; justify-content:space-between; align-items:flex-start;
+                border-bottom:3px solid #1a6b3a; padding-bottom:14px; margin-bottom:22px; }
+      .marca { font-size:22px; font-weight:900; color:#1a6b3a; }
+      .sub { font-size:11.5px; color:#5a6472; margin-top:6px; line-height:1.5; }
+      .titulo { text-align:right; }
+      .titulo .t { font-size:11px; text-transform:uppercase; letter-spacing:2px; color:#5a6472; }
+      .titulo .rx { font-size:30px; font-weight:900; color:#1a6b3a; line-height:1; }
+      .datos { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:22px; }
+      .caja { background:#f8f9fa; border-radius:8px; padding:14px; }
+      .caja h4 { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#5a6472; margin:0 0 8px; }
+      .caja p { font-size:13px; margin:0 0 4px; }
+      ol { margin:0; padding-left:22px; }
+      li { font-size:14px; margin-bottom:12px; line-height:1.5; }
+      .bloque { margin-bottom:20px; }
+      .bloque h3 { font-size:11px; text-transform:uppercase; letter-spacing:1px;
+                   color:#5a6472; border-bottom:1px solid #e0e4e8; padding-bottom:5px; margin:0 0 10px; }
+      .firma { margin-top:56px; display:flex; justify-content:flex-end; }
+      .firma div { width:250px; border-top:1px solid #1a1d23; padding-top:6px;
+                   text-align:center; font-size:12px; }
+      .pie { margin-top:34px; border-top:1px solid #e0e4e8; padding-top:12px;
+             color:#5a6472; font-size:10.5px; text-align:center; line-height:1.6; }
+      @media print { body { padding:18px; } }
+    </style></head><body>
+    <div class="header">
+      <div>
+        <div class="marca">🐾 ${esc(cfg.razon_social || "PetColinas")}</div>
+        <div class="sub">${esc(cfg.direccion || "Plaza Las Colinas, Santo Domingo Oeste")}<br>
+          Tel: <strong>${esc(cfg.telefono || "809-752-6806")}</strong>
+          ${cfg.rnc ? " · RNC: " + esc(cfg.rnc) : ""}</div>
+      </div>
+      <div class="titulo"><div class="t">Receta</div><div class="rx">℞</div>
+        <div class="sub">${esc(h.fecha || hoy())}</div></div>
+    </div>
+    <div class="datos">
+      <div class="caja"><h4>Paciente</h4>
+        <p><strong>🐾 ${esc(mascota || "—")}</strong></p>
+        ${cliente?.especie ? `<p>${esc(cliente.especie)}${cliente.raza ? " · " + esc(cliente.raza) : ""}</p>` : ""}
+        ${cliente?.sexo ? `<p>${esc(cliente.sexo)}</p>` : ""}</div>
+      <div class="caja"><h4>Propietario</h4>
+        <p><strong>${esc(dueno || "—")}</strong></p>
+        ${cliente?.telefono ? `<p>${esc(cliente.telefono)}</p>` : ""}</div>
+    </div>
+    ${h.diagnostico ? `<div class="bloque"><h3>Diagnóstico</h3><div style="font-size:13.5px">${esc(h.diagnostico)}</div></div>` : ""}
+    <div class="bloque"><h3>Prescripción</h3>
+      <ol>${meds.map((m) => `<li>${esc(m)}</li>`).join("")}</ol></div>
+    ${h.tratamiento ? `<div class="bloque"><h3>Indicaciones</h3><div style="font-size:13.5px">${esc(h.tratamiento)}</div></div>` : ""}
+    ${h.notas ? `<div class="bloque"><h3>Observaciones</h3><div style="font-size:13px;color:#5a6472">${esc(h.notas)}</div></div>` : ""}
+    ${h.proximacita ? `<div class="bloque"><h3>Próximo control</h3><div style="font-size:13.5px;font-weight:700;color:#1a6b3a">${esc(h.proximacita)}</div></div>` : ""}
+    <div class="firma"><div>${esc(h.veterinario || "Médico veterinario")}<br>
+      <span style="font-size:10.5px;color:#5a6472">Médico veterinario</span></div></div>
+    <div class="pie">Esta receta corresponde únicamente al paciente indicado. No la use en otro animal
+      ni suspenda el tratamiento antes de tiempo sin consultar.<br>
+      Ante cualquier reacción, comuníquese con nosotros.</div>
+    </body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
+}
 function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, citas = [], setCitas, cliente }) {
   const TIPOS_H = ["Consulta", "Vacuna", "Diagn\xF3stico", "Cirug\xEDa", "Control", "Desparasitaci\xF3n", "Otro"];
   const emptyH = { fecha: hoy(), tipo: "Consulta", descripcion: "", veterinario: "", diagnostico: "", tratamiento: "", medicamentos: "", proximacita: "", notas: "" };
@@ -11474,7 +11611,10 @@ function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, c
           React.createElement("span", { style: { color: "#5a6472", fontSize: 12 } }, h.fecha),
           h.veterinario && React.createElement("span", { style: { color: "#5a6472", fontSize: 12 } }, "\xB7 " + h.veterinario)
         ),
-        React.createElement("button", { onClick: () => eliminar(h.id), title: "Eliminar", style: { background: "none", border: "none", cursor: "pointer", color: "#b8232a", fontSize: 18, lineHeight: 1, padding: "0 4px" } }, "\xD7")
+        React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } },
+          h.medicamentos && React.createElement("button", { onClick: () => imprimirReceta(h, cliente), title: "Imprimir la receta de este registro",
+            style: { background: "#e6f4ec", border: "1px solid #1a6b3a", color: "#1a6b3a", borderRadius: 7, cursor: "pointer", fontSize: 11.5, fontWeight: 700, padding: "4px 10px" } }, "\u{1F5A8}️ Receta"),
+          React.createElement("button", { onClick: () => eliminar(h.id), title: "Eliminar", style: { background: "none", border: "none", cursor: "pointer", color: "#b8232a", fontSize: 18, lineHeight: 1, padding: "0 4px" } }, "\xD7"))
       ),
       h.descripcion && React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#1a1d23", marginBottom: 3 } }, h.descripcion),
       h.diagnostico && React.createElement("div", { style: { fontSize: 12, color: "#1a1d23" } }, React.createElement("strong", null, "Dx: "), h.diagnostico),

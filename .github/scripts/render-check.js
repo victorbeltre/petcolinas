@@ -16,6 +16,7 @@ const React = {
   useRef: (v) => ({ current: v }), Fragment: "Fragment", memo: (f) => f,
 };
 const store = {};
+let impreso = "";
 const sandbox = {
   console: { log() {}, warn() {}, error() {} }, React,
   ReactDOM: { createRoot: () => ({ render() {} }) },
@@ -24,6 +25,9 @@ const sandbox = {
   setTimeout: () => 0, setInterval: () => 0, clearInterval() {}, clearTimeout() {},
   document: { getElementById: () => ({}), createElement: () => ({ style: {}, click() {}, remove() {} }), body: { appendChild() {} }, addEventListener() {} },
   navigator: {}, alert() {}, confirm: () => true, Blob: class {}, URL: { createObjectURL: () => "", revokeObjectURL() {} },
+  // Ventana de impresión falsa: guarda el HTML que se le escribe para poder
+  // comprobar lo que saldría en el papel (receta, factura impresa...).
+  open: () => ({ document: { write(h) { impreso = h; }, close() {} }, print() {} }),
   Intl, Date, Math, JSON, encodeURIComponent, decodeURIComponent, parseInt, parseFloat, isNaN,
   Number, String, Object, Array, Set, Map, RegExp, Error, Promise,
 };
@@ -161,10 +165,34 @@ render("ResumenMes", sandbox.ResumenMes, {
   nombreMes: (m) => m
 }, null, "punto de equilibrio");
 
+const historiaEjemplo = { id: "h1", clienteid: "9", fecha: "2026-09-01", tipo: "Consulta",
+  descripcion: "Otitis externa", veterinario: "Dra. Valentina", diagnostico: "Otitis",
+  tratamiento: "Limpieza diaria del oído", medicamentos: "Otomax 1 gota c/12h, Amoxicilina 250mg c/12h x 7 días",
+  proximacita: "2026-09-15", notas: "" };
+render("ModalHistoriaDesdeFactura", sandbox.ModalHistoriaDesdeFactura, {
+  factura, cliente: { ...clientes[0], nombre: "Rocky" }, historias: [historiaEjemplo], onCerrar: () => {}
+}, null, "Receta");
+// La receta no es un componente: se comprueba el papel que produce. Sin esto,
+// un error ahi no sale hasta que alguien le da a imprimir con el cliente
+// delante.
+(() => {
+  impreso = "";
+  try { sandbox.imprimirReceta(historiaEjemplo, { ...clientes[0], nombre: "Rocky" }); }
+  catch (e) { errores.push("imprimirReceta: " + e.message); return; }
+  ["Otomax", "Amoxicilina", "Rocky", "Dra. Valentina", "Otitis"].forEach((t) => {
+    if (!impreso.includes(t)) errores.push(`imprimirReceta: falta "${t}" en la receta impresa`);
+  });
+  // Los medicamentos van uno por renglon: si se pierde la separacion, el dueño
+  // recibe un parrafo en vez de una lista.
+  if ((impreso.match(/<li>/g) || []).length !== 2) {
+    errores.push("imprimirReceta: los medicamentos no quedaron en renglones separados");
+  }
+})();
+
 if (errores.length) {
   console.error("❌ Vistas que se romperían en pantalla:\n");
   errores.forEach((e) => console.error("  • " + e));
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (18 comprobadas).`);
+console.log(`✓ Vistas principales renderizan sin errores (19 comprobadas + la receta impresa).`);
