@@ -107,10 +107,22 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
 2. Admin: agrega datos dueno (nombre/tel/dir/email) + forma de pago -> aprueba
 3. Al aprobar: venta registrada + CRM actualizado automaticamente
 
-## PENDIENTES QUE SOLO VICTOR PUEDE HACER (6 Sep 2026)
+## PENDIENTES QUE SOLO VICTOR PUEDE HACER (act. 8 Sep 2026)
 1. (M6) Supabase → Authentication → Providers → Email → activar
    "Leaked password protection" (compara contra HaveIBeenPwned). Es un
    interruptor del dashboard; no se puede por SQL ni por el conector.
+   AL 8 SEP SIGUE APAGADO: el advisor lo reporta en cada revision.
+1b. (M4) Pegar el nuevo `form-to-crm.gs` en Apps Script (Extensiones → Apps
+   Script del formulario) y correr `diagnostico()`. Solo DESPUES de eso se
+   puede quitar la politica `"pc_clientes insert formulario web"`, que hoy
+   deja a `anon` insertar en pc_clientes con la llave publica. Es lo unico
+   que queda abierto de M4: la Edge Function `form-intake` ya esta
+   desplegada y probada, pero mientras el Apps Script viejo siga corriendo,
+   quitar la politica dejaria de entrar las inscripciones.
+1c. (M16) Cargar el rango REAL de NCF autorizado por la DGII desde la
+   Oficina Virtual, en Dashboard → Datos del negocio → "Registrar un rango
+   nuevo". Sin eso las facturas se emiten pero salen sin comprobante fiscal.
+   No se puede inventar: seria emitir numeros que la DGII no reconoce.
 2. (M5) El esquema `hogar` (app personal de presupuesto del hogar: 13 tablas,
    politicas `allow_all` para anon) vive en el MISMO proyecto de Supabase que
    el negocio. Hoy NO es alcanzable por la API (`pgrst.db_schemas` no esta
