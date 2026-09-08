@@ -189,10 +189,27 @@ render("ModalHistoriaDesdeFactura", sandbox.ModalHistoriaDesdeFactura, {
   }
 })();
 
+// Las comisiones estaban escritas a mano en quince sitios y ahora salen de una
+// sola funcion. Esto fija los valores vigentes: si alguien los cambia sin
+// querer, se paga mal a alguien y no se nota hasta que reclame.
+[["grooming", 0.12], ["vet", 0.30], ["vet_valentina", 0.40], ["farmacia", 0.05]].forEach(([k, v]) => {
+  const r = sandbox.comisionPct(k);
+  if (r !== v) errores.push(`comisionPct("${k}") devolvió ${r}, se esperaba ${v}`);
+});
+// Y que acepte las dos formas de escribirlo: "30" y "0.30" son el mismo 30%.
+// PC_CONFIG se declara con `let`, y eso en un contexto de vm NO queda como
+// propiedad del objeto global: hay que tocarlo desde dentro.
+const enVM = (codigo) => vm.runInContext(codigo, sandbox);
+[["35", 0.35], ["0.35", 0.35], ["", 0.30]].forEach(([valor, esperado]) => {
+  const r = enVM(`PC_CONFIG.comision_vet = ${JSON.stringify(valor)}; comisionPct("vet");`);
+  if (r !== esperado) errores.push(`comisionPct con "${valor}" devolvió ${r}, se esperaba ${esperado}`);
+});
+enVM('delete PC_CONFIG.comision_vet;');
+
 if (errores.length) {
   console.error("❌ Vistas que se romperían en pantalla:\n");
   errores.forEach((e) => console.error("  • " + e));
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (19 comprobadas + la receta impresa).`);
+console.log(`✓ Vistas principales renderizan sin errores (19 comprobadas + la receta impresa y las comisiones).`);

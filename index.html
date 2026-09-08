@@ -163,7 +163,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-08 10:11Z";
+const PC_BUILD = "2026-09-08 10:15Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1018,7 +1018,10 @@ function LoginScreen({ onLogin }) {
       // cargar el archivo, o sea ANTES de este momento, asi que sin esta
       // segunda lectura el RNC y la razon social quedarian vacios toda la
       // sesion y las facturas saldrian sin datos fiscales.
-      cargarConfig();
+      // Se ESPERA a que termine: de ahi salen tambien los porcentajes de
+      // comision y el punto de equilibrio, y si la app se pintara antes,
+      // esa primera pantalla mostraria los valores de reserva.
+      await cargarConfig();
       onLogin(session);
     } catch (err) {
       setError("Usuario o contrase\xF1a incorrectos");
@@ -1662,6 +1665,19 @@ const NCF_NOMBRE = {
 // Dashboard usaba 203.739 (el real) y Reportes 125.000, asi que Reportes
 // felicitaba por un mes que en realidad iba casi 80 mil por debajo. Ahora hay
 // un solo numero y sale de pc_config, para poder cambiarlo sin tocar codigo.
+// Porcentajes de comision. Estaban escritos a mano en quince sitios del
+// archivo: subir la comision de grooming un punto obligaba a encontrarlos todos
+// y no olvidar ninguno — y olvidar uno es pagarle mal a alguien y no enterarse
+// hasta que reclame. Ahora hay un solo sitio y sale de pc_config, con los
+// valores de hoy de reserva por si la configuracion no llega a cargar.
+const COMISIONES_POR_DEFECTO = { grooming: 0.12, vet: 0.30, vet_valentina: 0.40, farmacia: 0.05 };
+function comisionPct(clave) {
+  const crudo = String((PC_CONFIG && PC_CONFIG["comision_" + clave]) || "").replace(/[^0-9.]/g, "");
+  const v = Number(crudo);
+  if (!crudo || !Number.isFinite(v) || v <= 0) return COMISIONES_POR_DEFECTO[clave];
+  // Se acepta tanto 0.30 como 30: "treinta por ciento" es lo que uno escribe.
+  return v > 1 ? v / 100 : v;
+}
 const PE_POR_DEFECTO = 203739;
 function puntoEquilibrio() {
   const n = Number(String((PC_CONFIG && PC_CONFIG.punto_equilibrio) || "").replace(/[^0-9.]/g, ""));
@@ -6209,8 +6225,8 @@ function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventar
       "Área": "Veterinaria",
       "Servicio": t.nombre || "",
       "Precio (RD$)": fmt(t.precio),
-      "Comisión Aylein (30%)": Math.round(fmt(t.precio) * 0.30),
-      "Comisión Valentina (40%)": Math.round(fmt(t.precio) * 0.40)
+      "Comisión Aylein (30%)": Math.round(fmt(t.precio) * comisionPct("vet")),
+      "Comisión Valentina (40%)": Math.round(fmt(t.precio) * comisionPct("vet_valentina"))
     }));
     const wsTar = XLSX.utils.json_to_sheet([...tarGroomData, ...tarVetData].length ? [...tarGroomData, ...tarVetData] : [{ "Sin datos": "" }]);
     wsTar["!cols"] = [8,14,35,14,20,22].map(w => ({ wch: w }));
@@ -6930,11 +6946,11 @@ function PetColinasApp({ session, onLogout }) {
   const totalEgresos = totalGastos + totalNomina;
   const utilidad = totalVentas - totalEgresos;
   // Para grooming: si comision === 0, calcular ~12% del total (promedio real de la tarifa de Alexander)
-  const calcComGrm = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.12);
+  const calcComGrm = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * comisionPct("grooming"));
   const comGrmSistema = ventasMes.filter((v) => v.area === "grooming").reduce((s, v) => s + calcComGrm(v), 0);
   // Para vet: si comision === 0 en el registro historico, calculamos 30% Aylein / 40% Valentina sobre el total
-  const calcComVetAylein = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.30);
-  const calcComVetValen  = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.40);
+  const calcComVetAylein = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * comisionPct("vet"));
+  const calcComVetValen  = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * comisionPct("vet_valentina"));
   const comAyleinSistema = ventasMes.filter((v) => v.area === "veterinaria" && !(v.recibidopor || v.recibidoPor || "").toLowerCase().includes("valentina")).reduce((s, v) => s + calcComVetAylein(v), 0);
   const comValenSistema = ventasMes.filter((v) => v.area === "veterinaria" && (v.recibidopor || v.recibidoPor || "").toLowerCase().includes("valentina")).reduce((s, v) => s + calcComVetValen(v), 0);
   const comVetSistema = comAyleinSistema + comValenSistema;
@@ -8556,8 +8572,8 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
   const mix = ventasMes.filter((v) => v.area==="mixta").reduce((s,v)=>s+v.total,0);
   const med = ventasMes.filter((v) => v.area==="medicamentos").reduce((s,v)=>s+v.total,0);
   // Usar los valores ya calculados con fallback desde PetColinasApp (props _cgs y comAyleinSistema)
-  const calcComGrmD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.12);
-  const calcComVetD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * 0.30);
+  const calcComGrmD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * comisionPct("grooming"));
+  const calcComVetD = (v) => v.comision > 0 ? v.comision : Math.round((v.total || 0) * comisionPct("vet"));
   const comGrmSistema = _cgs > 0 ? _cgs : ventasMes.filter((v)=>v.area==="grooming").reduce((s,v)=>s+calcComGrmD(v),0);
   const comVetSistema = comAyleinSistema > 0 ? comAyleinSistema : ventasMes.filter((v)=>v.area==="veterinaria").reduce((s,v)=>s+calcComVetD(v),0);
   const comisionesGrm = comGrmSistema;
@@ -9038,6 +9054,14 @@ function ConfigFiscal() {
     ["telefono", "Tel\xE9fono", "809-752-6806"],
     ["punto_equilibrio", "Punto de equilibrio mensual (RD$)", "203739"]
   ];
+  // Se guardan aparte porque son dinero de la gente: van en su propia seccion,
+  // con el aviso de que solo afectan a lo que se registre de aqui en adelante.
+  const COMISIONES = [
+    ["comision_grooming", "Grooming", "12"],
+    ["comision_vet", "Veterinaria", "30"],
+    ["comision_vet_valentina", "Veterinaria (Dra. Valentina)", "40"],
+    ["comision_farmacia", "Farmacia (sobre la ganancia)", "5"]
+  ];
   const [datos, setDatos] = React.useState({});
   const [secuencias, setSecuencias] = React.useState([]);
   const [guardando, setGuardando] = React.useState(false);
@@ -9060,7 +9084,9 @@ function ConfigFiscal() {
   async function guardarDatos() {
     setGuardando(true);
     try {
-      const filas = CAMPOS.map(([clave]) => ({ clave, valor: String(datos[clave] || "").trim(), actualizado: new Date().toISOString() }));
+      const filas = CAMPOS.concat(COMISIONES)
+        .map(([clave]) => ({ clave, valor: String(datos[clave] || "").trim(), actualizado: new Date().toISOString() }))
+        .filter((f) => f.valor !== "");
       const r = await supaFetch("pc_config", "POST", filas);
       if (r && r.error) throw new Error(JSON.stringify(r.error));
       // La copia en memoria que usan la factura impresa y el PDF se actualiza
@@ -9120,7 +9146,17 @@ function ConfigFiscal() {
           E("label", { style: lbl }, titulo),
           E("input", { value: datos[clave] || "", placeholder: ejemplo,
             onChange: (e) => setDatos((d) => ({ ...d, [clave]: e.target.value })), style: inp })))),
-    E("button", { onClick: guardarDatos, disabled: guardando, style: { padding: "9px 18px", borderRadius: 9, border: "none", background: guardando ? "#c9ced4" : "#1a6b3a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: guardando ? "default" : "pointer" } }, guardando ? "Guardando…" : "Guardar datos fiscales"),
+    E("div", { style: { fontWeight: 700, fontSize: 13, marginTop: 18, marginBottom: 4 } }, "Comisiones (%)"),
+    E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 10 } },
+      "Se usan cuando la venta no trae comisi\xF3n propia. Cambiarlas NO recalcula lo ya pagado: aplica a lo que se registre de aqu\xED en adelante."),
+    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 14 } },
+      COMISIONES.map(([clave, titulo, ejemplo]) =>
+        E("div", { key: clave },
+          E("label", { style: lbl }, titulo),
+          E("input", { type: "number", min: "0", max: "100", step: "0.5",
+            value: datos[clave] || "", placeholder: ejemplo,
+            onChange: (e) => setDatos((d) => ({ ...d, [clave]: e.target.value })), style: inp })))),
+    E("button", { onClick: guardarDatos, disabled: guardando, style: { padding: "9px 18px", borderRadius: 9, border: "none", background: guardando ? "#c9ced4" : "#1a6b3a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: guardando ? "default" : "pointer" } }, guardando ? "Guardando…" : "Guardar datos del negocio"),
 
     E("div", { style: { fontWeight: 700, fontSize: 14, marginTop: 26, marginBottom: 4 } }, "N\xFAmeros de comprobante (NCF) autorizados"),
     E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 12 } },
@@ -9343,7 +9379,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     if (casaGratis) return 0;   // cortesía de la casa: no genera comisión
     if (tipoItem === "grooming") return esManual ? 0 : (servSel ? servSel.comision * cantidad : 0);
     if (tipoItem === "veterinaria") {
-      const pctVet = servicioPor === "e5" ? 0.40 : 0.30;
+      const pctVet = servicioPor === "e5" ? comisionPct("vet_valentina") : comisionPct("vet");
       return Math.round(previewNeto * pctVet);
     }
     if (tipoItem === "farmacia") {
@@ -9351,7 +9387,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       const prodFarm = modoFarmacia === "catalogo" ? prodSel : null;
       const costo = prodFarm?.costo || 0;
       const ganancia = previewNeto - (costo * (prodFarm ? parseInt(cantProd||1) : 1));
-      return Math.round(Math.max(0, ganancia) * 0.05);
+      return Math.round(Math.max(0, ganancia) * comisionPct("farmacia"));
     }
     return 0;
   })();
@@ -12611,7 +12647,7 @@ function DashboardVet({ usuario, ventas, onVerHistorias, onVerServicios }) {
   const misMes = misVentas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
   const totalMes = misMes.reduce((s, v) => s + v.total, 0);
   // Si comision registrada es 0, calcular según porcentaje del empleado (Aylein 30%, Valentina 40%)
-  const pctCom = usuario.id === "e5" ? 0.40 : 0.30;
+  const pctCom = usuario.id === "e5" ? comisionPct("vet_valentina") : comisionPct("vet");
   const comisionMes = misMes.filter(v => v.area === "veterinaria").reduce((s, v) => s + (v.comision > 0 ? v.comision : Math.round((v.total || 0) * pctCom)), 0);
   const consultasMes = misMes.filter((v) => v.descripcion?.toLowerCase().includes("consulta")).length;
   const vacunasMes = misMes.filter((v) => (v.descripcion || v.servicio || "")?.toLowerCase().includes("vacuna")).length;
@@ -13805,10 +13841,16 @@ const TABS_VET = [
 // ═══════════════════════════════════════════════════════════
 // PORTAL VETERINARIO — PetColinas
 // ═══════════════════════════════════════════════════════════
-const VET_EMAILS = [
-  { email: "naylan@petcolinas.com",    nombre: "Naylan Perez",     id: "naylan",    comision_pct: 0.30 },
-  { email: "valentina@petcolinas.com", nombre: "Dra. Valentina",   id: "valentina", comision_pct: 0.40 },
-];
+// Es una FUNCION y no una constante a proposito: la comision sale de
+// pc_config, que se carga con la sesion. Una constante de modulo se evaluaria
+// al abrir el archivo — antes de que exista sesion — y la doctora se quedaria
+// con el porcentaje de reserva toda la sesion aunque Victor lo hubiera cambiado.
+function vetEmails() {
+  return [
+    { email: "naylan@petcolinas.com",    nombre: "Naylan Perez",     id: "naylan",    comision_pct: comisionPct("vet") },
+    { email: "valentina@petcolinas.com", nombre: "Dra. Valentina",   id: "valentina", comision_pct: comisionPct("vet_valentina") },
+  ];
+}
 
 
 // ═══════════════════════════════════════════════
@@ -13819,7 +13861,7 @@ const VET_EMAILS = [
 // MI VITRINA — Sistema de motivación de ventas
 // Componente compartido para vet y groomer
 // ═══════════════════════════════════════════════════════════
-function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = 0.05, clientes = [] }) {
+function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = comisionPct("farmacia"), clientes = [] }) {
   const [busq, setBusq] = React.useState("");
   const [selProd, setSelProd] = React.useState(null);
   const [qty, setQty] = React.useState(1);
@@ -14147,7 +14189,7 @@ function HistorialGanancias({ usuario, ventas, comPct, mesActual }) {
 
 function FarmaciaVet({ usuario, ventas, setVentas, inventario, clientes }) {
   // Usa MiVitrina con comisión del usuario (30% vet, 5% farmacia)
-  const comPct = 0.05; // 5% ganancia neta de farmacia
+  const comPct = comisionPct("farmacia"); // sobre la ganancia neta de farmacia
   return React.createElement(MiVitrina, { usuario, ventas, setVentas, inventario, comPct, clientes });
 }
 function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
@@ -14164,7 +14206,7 @@ function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
     .filter(p => p.pventa > 0 && (busq.length < 2 || p.nombre.toLowerCase().includes(busq.toLowerCase())));
 
   const ganancia = selProd ? Math.max(0, (selProd.pventa - selProd.costo) * qty) : 0;
-  const miComision = Math.round(ganancia * 0.05);
+  const miComision = Math.round(ganancia * comisionPct("farmacia"));
 
   function registrar() {
     if (!selProd || !cliente.trim()) return avisar("Selecciona producto y cliente");
@@ -14233,7 +14275,7 @@ function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
       React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:10, maxHeight:300, overflowY:"auto" }},
         prods.slice(0,30).map(p => {
           const gan = Math.max(0, p.pventa - p.costo);
-          const com5 = Math.round(gan * 0.05);
+          const com5 = Math.round(gan * comisionPct("farmacia"));
           const sel = selProd?.id === p.id;
           return React.createElement("div", {
             key: p.id,
@@ -14824,7 +14866,7 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
   const [tabGrm, setTabGrm] = React.useState("agenda_grm");
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
   // Objeto usuario para compatibilidad con MiVitrina
-  const usuario = { id:"e1", nombre:"Alexander Ramírez", email:"alexander@petcolinas.com", comision_pct:0.05 };
+  const usuario = { id:"e1", nombre:"Alexander Ramírez", email:"alexander@petcolinas.com", comision_pct: comisionPct("farmacia") };
   const CC = { verde:"#1a6b3a",verdeL:"#e8f5ed",azul:"#1a4fa0",gris:"#5a6472",grisd:"#5a6472",fondo:"#f0f4f8",gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
 
@@ -14970,7 +15012,7 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
         ventas,
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
         inventario: window.__inventarioGlobal || [],
-        comPct: 0.05
+        comPct: comisionPct("farmacia")
       }),
       tabGrm === "mis_comisiones_grm" && React.createElement("div", null,
         React.createElement("h2", { style:{ fontSize:20, fontWeight:800, marginBottom:4 }}, "💰 Mis Comisiones"),
@@ -15276,7 +15318,8 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
 function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas }) {
   const [tabVet, setTabVet] = React.useState("agenda_vet");
   const userEmail = session?.user?.email || "";
-  const vetInfo   = VET_EMAILS.find(v => v.email === userEmail) || VET_EMAILS[0];
+  const VETS      = vetEmails();
+  const vetInfo   = VETS.find(v => v.email === userEmail) || VETS[0];
   const usuario   = { ...vetInfo, rol: "veterinaria" };
 
   const C = { verde: "#1a6b3a", azul: "#db2777", gris: "#5a6472", fondo: "#fdf2f8" };
@@ -16781,8 +16824,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
 
   function comisionLabel(t) {
     if (esGrooming) return "RD$ " + t.comision.toLocaleString("es-DO") + " (Alexander)";
-    const pAylein = Math.round(t.precio * 0.30);
-    const pValentina = Math.round(t.precio * 0.40);
+    const pAylein = Math.round(t.precio * comisionPct("vet"));
+    const pValentina = Math.round(t.precio * comisionPct("vet_valentina"));
     return "Aylein: RD$ " + pAylein.toLocaleString("es-DO") + " (30%) · Valentina: RD$ " + pValentina.toLocaleString("es-DO") + " (40%)";
   }
 
