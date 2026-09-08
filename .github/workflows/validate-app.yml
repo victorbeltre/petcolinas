@@ -9,10 +9,16 @@ name: Validar app PetColinas
 on:
   pull_request:
     branches: [main]
-    paths: ['index.html']
+    # Tambien cuando cambian las propias comprobaciones o el sello de version:
+    # si solo se vigila index.html, se puede romper render-check.js y pasar
+    # limpio, y entonces la guardia deja de guardar sin que nadie se entere.
+    paths: ['index.html', 'version.txt', '.github/scripts/**', '.github/workflows/validate-app.yml']
   push:
     branches: [main]
-    paths: ['index.html']
+    # Tambien cuando cambian las propias comprobaciones o el sello de version:
+    # si solo se vigila index.html, se puede romper render-check.js y pasar
+    # limpio, y entonces la guardia deja de guardar sin que nadie se entere.
+    paths: ['index.html', 'version.txt', '.github/scripts/**', '.github/workflows/validate-app.yml']
 
 jobs:
   validar:
