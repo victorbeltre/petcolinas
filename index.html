@@ -163,7 +163,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-08 10:04Z";
+const PC_BUILD = "2026-09-08 10:08Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1657,6 +1657,28 @@ const NCF_NOMBRE = {
   B14: "R\xE9gimen Especial",
   B15: "Gubernamental"
 };
+// Punto de equilibrio: lo que hay que vender en el mes para no perder dinero.
+// Estaba escrito a mano en tres sitios y con DOS valores distintos: el
+// Dashboard usaba 203.739 (el real) y Reportes 125.000, asi que Reportes
+// felicitaba por un mes que en realidad iba casi 80 mil por debajo. Ahora hay
+// un solo numero y sale de pc_config, para poder cambiarlo sin tocar codigo.
+const PE_POR_DEFECTO = 203739;
+function puntoEquilibrio() {
+  const n = Number(String((PC_CONFIG && PC_CONFIG.punto_equilibrio) || "").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : PE_POR_DEFECTO;
+}
+// Los domingos no se abre, asi que el ritmo diario se mide sobre los dias que
+// de verdad se factura.
+function diasLaborables(desde, hasta) {
+  let n = 0;
+  const d = new Date(desde + "T12:00:00");
+  const fin = new Date(hasta + "T12:00:00");
+  while (d <= fin) {
+    if (d.getDay() !== 0) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
 let PC_CONFIG = {};
 async function cargarConfig() {
   try {
@@ -7029,7 +7051,7 @@ const HISTORICO = {
   "2026-04": { grm: 113692, far: 29324, vet: 15500, med: 0, total: 158516, servicios: 112, gastos: 0, nomina: 0 },
   "2026-05": { grm: 112288, far: 46027, vet: 17250, med: 0, total: 175565, servicios: 134, gastos: 0, nomina: 0 }
 };
-const _PE_DIA = Math.round(203739 / 26);
+const _PE_DIA = Math.round(PE_POR_DEFECTO / 26);
 const MARZO_SEMANAS = [
   { sem: "Semana 1", dias: "1\u20137 mar", meta: _PE_DIA * 6, real: 0, color: C.azul },
   { sem: "Semana 2", dias: "9\u201314 mar", meta: _PE_DIA * 7, real: 0, color: C.verde },
@@ -8455,7 +8477,7 @@ function AlertaClientesInactivos({ clientes = [], ventas = [], onIr }) {
 function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNomina: _tn, totalGastos: _tg, ventasMes: _vm, comisionesGrm: _cg, comisionesVet: _cv, comisionesValen = 0, comGrmSistema: _cgs, comVetSistema: _cvs, comAyleinSistema = 0, comValenSistema = 0, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos = [], clientes = [], ventas = [], inventario = [], setVentas, setTab, citas = [], gastos = [], pagosNom = [] }) {
   const mesHoy = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const [mesSel, setMesSel] = React.useState(mesHoy);
-  const PDE_BASE = 203739;
+  const PDE_BASE = puntoEquilibrio();
   const prevMes = () => { const [y,m] = mesSel.split("-").map(Number); setMesSel(new Date(y,m-2,1).toISOString().slice(0,7)); };
   const nextMes = () => { const [y,m] = mesSel.split("-").map(Number); const nk = new Date(y,m,1).toISOString().slice(0,7); if(nk <= mesHoy) setMesSel(nk); };
   const mesNombreActual = new Date(mesSel + "-15").toLocaleDateString("es-DO", { month: "long", year: "numeric" }).replace(/^\w/, c => c.toUpperCase());
@@ -8956,7 +8978,8 @@ function ConfigFiscal() {
     ["razon_social", "Raz\xF3n social", "PetColinas SRL"],
     ["rnc", "RNC", "133-71409-4"],
     ["direccion", "Direcci\xF3n fiscal", "Plaza Las Colinas, Santo Domingo Oeste"],
-    ["telefono", "Tel\xE9fono", "809-752-6806"]
+    ["telefono", "Tel\xE9fono", "809-752-6806"],
+    ["punto_equilibrio", "Punto de equilibrio mensual (RD$)", "203739"]
   ];
   const [datos, setDatos] = React.useState({});
   const [secuencias, setSecuencias] = React.useState([]);
@@ -9031,8 +9054,9 @@ function ConfigFiscal() {
   const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 4 };
 
   return E(Card, null,
-    E("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 4 } }, "\u{1F9FE} Datos fiscales"),
-    E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 12 } }, "Salen impresos en cada factura y en el PDF que se manda por WhatsApp."),
+    E("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 4 } }, "\u{1F9FE} Datos del negocio"),
+    E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 12 } },
+      "Los datos fiscales salen impresos en cada factura y en el PDF que se manda por WhatsApp. El punto de equilibrio es contra lo que Reportes mide el mes."),
     E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 } },
       CAMPOS.map(([clave, titulo, ejemplo]) =>
         E("div", { key: clave },
@@ -11054,6 +11078,51 @@ function Gastos({ gastos, setGastos }) {
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)
   ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, g.metodo), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
 }
+// Cabecera de Reportes: donde va el mes contra el punto de equilibrio y contra
+// los dos meses con los que tiene sentido compararse (el anterior y el mismo
+// del año pasado, que en una veterinaria manda: diciembre no se parece a
+// febrero). Antes esta pantalla solo daba totales sueltos.
+function ResumenMes({ comparativa, PE, ritmoPE, nombreMes }) {
+  const E = React.createElement;
+  const { actual, anterior, anioPasado, vsAnterior, vsAnioPasado } = comparativa;
+  const pct = PE > 0 ? Math.round(actual.ingresos / PE * 100) : 0;
+  const falta = Math.max(0, PE - actual.ingresos);
+  const color = pct >= 100 ? C.verde : pct >= 75 ? C.gold : C.rojo;
+
+  const flecha = (v) => v == null ? "" : v > 0 ? "▲ " : v < 0 ? "▼ " : "= ";
+  const colorVar = (v) => v == null ? C.grisd : v > 0 ? C.verde : v < 0 ? C.rojo : C.grisd;
+  const columna = (titulo, datos, variacion) => E("div", { style: { flex: "1 1 160px", minWidth: 150 } },
+    E("div", { style: { fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 5 } }, titulo),
+    E("div", { style: { fontSize: 19, fontWeight: 800 } }, RD(datos.ingresos)),
+    E("div", { style: { fontSize: 11.5, color: C.grisd, marginTop: 2 } },
+      datos.servicios + " venta(s) \xB7 utilidad " + RD(datos.utilidad)),
+    variacion !== undefined && E("div", { style: { fontSize: 12, fontWeight: 800, marginTop: 4, color: colorVar(variacion) } },
+      variacion == null ? "sin datos para comparar" : "este mes " + flecha(variacion) + Math.abs(variacion) + "%"));
+
+  return E(Card, { style: { marginBottom: 24 } },
+    E("div", { style: { fontWeight: 800, fontSize: 16, marginBottom: 4 } }, "\u{1F4C8} C\xF3mo va " + nombreMes(actual.mes)),
+    E("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 16 } },
+      "Contra el punto de equilibrio (" + RD(PE) + " al mes) y contra los meses con los que tiene sentido compararse."),
+
+    E("div", { style: { background: "#f8f9fa", borderRadius: 10, padding: 14, marginBottom: 18 } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 8 } },
+        E("div", { style: { fontSize: 13, fontWeight: 700 } },
+          pct >= 100 ? "✅ Punto de equilibrio cubierto" : "Falta " + RD(falta) + " para cubrir el mes"),
+        E("div", { style: { fontSize: 20, fontWeight: 900, color } }, pct + "%")),
+      E("div", { style: { background: "#e6e8ea", borderRadius: 6, height: 12, overflow: "hidden" } },
+        E("div", { style: { width: Math.min(100, pct) + "%", height: "100%", background: color, borderRadius: 6, transition: "width .3s" } })),
+      ritmoPE && E("div", { style: { fontSize: 12, color: C.grisd, marginTop: 9 } },
+        ritmoPE.falta <= 0
+          ? "El resto del mes ya es ganancia."
+          : ritmoPE.diasQuedan > 0
+            ? "Quedan " + ritmoPE.diasQuedan + " d\xEDa(s) h\xE1bil(es): hay que facturar " + RD(ritmoPE.porDia) + " al d\xEDa para llegar."
+            : "No quedan d\xEDas h\xE1biles en el mes.")),
+
+    E("div", { style: { display: "flex", gap: 16, flexWrap: "wrap" } },
+      columna("Este mes", actual),
+      columna(nombreMes(anterior.mes) + " (mes anterior)", anterior, vsAnterior),
+      columna(nombreMes(anioPasado.mes) + " (año pasado)", anioPasado, vsAnioPasado)));
+}
 function Reportes({ ventas, gastos, pagosNom, empleados }) {
   const [mes, setMes] = useState((/* @__PURE__ */ new Date()).toISOString().slice(0, 7));
   const ventasMes = ventas.filter((v) => v.fecha?.slice(0, 7) === mes);
@@ -11099,6 +11168,48 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     });
     return Object.values(conteo).sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
   }, [ventas, mes]);
+  // ── Comparacion con el mes anterior y con el mismo mes del año pasado ──────
+  // Un total suelto no dice nada: RD$180.000 puede ser un mes bueno o el peor
+  // del año. Lo que se necesita ver de un vistazo es contra que se compara y
+  // cuanto falta para el punto de equilibrio.
+  const totalesDe = useCallback((m) => {
+    const vs = ventas.filter((v) => v.fecha?.slice(0, 7) === m);
+    const ing = vs.reduce((s, v) => s + (v.total || 0), 0);
+    const egr = gastos.filter((g) => g.fecha?.slice(0, 7) === m).reduce((s, g) => s + (g.monto || 0), 0)
+      + pagosNom.filter((p) => p.mes === m).reduce((s, p) => s + (p.totalPagado || 0), 0);
+    return { mes: m, ingresos: ing, egresos: egr, utilidad: ing - egr, servicios: vs.length };
+  }, [ventas, gastos, pagosNom]);
+  const mesDesplazado = (m, meses) => {
+    const [y, mm] = m.split("-").map(Number);
+    return new Date(y, mm - 1 - meses, 1).toISOString().slice(0, 7);
+  };
+  const nombreMes = (m) => new Date(m + "-15").toLocaleDateString("es-DO", { month: "short", year: "numeric" });
+  const comparativa = useMemo(() => {
+    const actual = totalesDe(mes);
+    const anterior = totalesDe(mesDesplazado(mes, 1));
+    const anioPasado = totalesDe(mesDesplazado(mes, 12));
+    // Sin base con que comparar, un porcentaje seria inventado: se devuelve
+    // null y la tarjeta muestra "sin datos" en vez de un +100%.
+    const variacion = (hoyN, base) => (base > 0 ? Math.round((hoyN - base) / base * 100) : null);
+    return {
+      actual, anterior, anioPasado,
+      vsAnterior: variacion(actual.ingresos, anterior.ingresos),
+      vsAnioPasado: variacion(actual.ingresos, anioPasado.ingresos)
+    };
+  }, [mes, totalesDe]);
+  const PE = puntoEquilibrio();
+  // Ritmo: cuanto hay que vender por dia HABIL de los que quedan para llegar al
+  // punto de equilibrio. Solo tiene sentido en el mes en curso; en un mes ya
+  // cerrado el numero seria una ilusion.
+  const ritmoPE = useMemo(() => {
+    const hoyStr = hoy();
+    if (mes !== hoyStr.slice(0, 7)) return null;
+    const falta = Math.max(0, PE - totalVentas);
+    const [y, mm] = mes.split("-").map(Number);
+    const ultimoDia = new Date(y, mm, 0).toISOString().slice(0, 10);
+    const diasQuedan = Math.max(0, diasLaborables(hoyStr, ultimoDia));
+    return { falta, diasQuedan, porDia: diasQuedan > 0 ? Math.ceil(falta / diasQuedan) : falta };
+  }, [mes, totalVentas, PE]);
   const [diaReporte, setDiaReporte] = useState(hoy());
   const AREAS_DIA = [
     { area: "grooming", label: "✂️ Grooming", color: C.verde },
@@ -11186,7 +11297,7 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     win.document.close();
     setTimeout(()=>win.print(),400);
   }
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Reportes y P&L"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Estado de resultados mensual completo"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(Input, { label: "Mes a analizar", type: "month", value: mes, onChange: setMes }), React.createElement("button", { onClick: exportarCSV, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4E5} CSV/Excel"), React.createElement("button", { onClick: imprimirReporte, style: { background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F PDF")), React.createElement(Card, { style: { marginBottom: 24 } },
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Reportes y P&L"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Estado de resultados mensual completo"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginBottom: 24, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(Input, { label: "Mes a analizar", type: "month", value: mes, onChange: setMes }), React.createElement("button", { onClick: exportarCSV, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F4E5} CSV/Excel"), React.createElement("button", { onClick: imprimirReporte, style: { background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F PDF")), React.createElement(ResumenMes, { comparativa, PE, ritmoPE, nombreMes }), React.createElement(Card, { style: { marginBottom: 24 } },
     React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 } },
       React.createElement("div", { style: { fontWeight: 800, fontSize: 16 } }, "\u{1F4C5} Reporte Diario de Ventas"),
       React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
@@ -11250,7 +11361,7 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     marginTop: 8,
     background: utilidad >= 0 ? C.verdeL : C.rojoL,
     border: `2px solid ${utilidad >= 0 ? C.verde : C.rojo}40`
-  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18 } }, utilidad >= 0 ? "\u2705 UTILIDAD NETA" : "\u26A0\uFE0F P\xC9RDIDA NETA"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Margen: ", margen, "% \xB7 Punto de equilibrio: ", RD(125e3))), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 32, fontWeight: 700, color: utilidad >= 0 ? C.verde : C.rojo } }, RD(Math.abs(utilidad))))), topClientes.length > 0 && /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 16 } }, "\u{1F3C6} Top Clientes del Mes"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, topClientes.map(([nombre, total], i) => /* @__PURE__ */ React.createElement("div", { key: nombre, style: { display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("span", { style: {
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 18 } }, utilidad >= 0 ? "\u2705 UTILIDAD NETA" : "\u26A0\uFE0F P\xC9RDIDA NETA"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "Margen: ", margen, "% \xB7 Punto de equilibrio: ", RD(PE))), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 32, fontWeight: 700, color: utilidad >= 0 ? C.verde : C.rojo } }, RD(Math.abs(utilidad))))), topClientes.length > 0 && /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 16 } }, "\u{1F3C6} Top Clientes del Mes"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, topClientes.map(([nombre, total], i) => /* @__PURE__ */ React.createElement("div", { key: nombre, style: { display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("span", { style: {
     width: 28,
     height: 28,
     borderRadius: "50%",
@@ -11262,7 +11373,7 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     fontSize: 12,
     fontWeight: 800,
     flexShrink: 0
-  } }, i + 1), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, fontSize: 14 } }, nombre), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.verde } }, RD(total))), /* @__PURE__ */ React.createElement("div", { style: { background: "#f0f2f0", borderRadius: 4, height: 6, marginTop: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${Math.round(total / topClientes[0][1] * 100)}%`, height: "100%", background: C.verde, borderRadius: 4 } }))))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u26A1 Alertas Gerenciales"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, totalVentas < 125e3 && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.rojo}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u{1F534} CR\xCDTICO:"), " Los ingresos (", RD(totalVentas), ") est\xE1n por debajo del punto de equilibrio. Faltan ", RD(125e3 - totalVentas), "."), totalVentas >= 125e3 && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.verde}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.verde } }, "\u2705 POSITIVO:"), " Superaste el punto de equilibrio. Utilidad neta de ", RD(utilidad), " (", margen, "% de margen)."), totalNomina > totalVentas * 0.5 && /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.naranja}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.naranja } }, "\u26A0\uFE0F ATENCI\xD3N:"), " La n\xF3mina representa m\xE1s del 50% de los ingresos (", Math.round(totalNomina / totalVentas * 100), "%). Considera aumentar el volumen de ventas."), grm > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.azul}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.azul } }, "\u{1F4CA} INFO:"), " Ticket promedio grooming: ", RD(Math.round(grm / (ctGrm || 1))), ". Servicios este mes: ", ctGrm, "."))), /* @__PURE__ */ React.createElement(Card, { style: { marginTop: 28 } }, /* @__PURE__ */ React.createElement("h3", { style: { fontFamily: "Georgia,serif", fontSize: 20, marginBottom: 4 } }, "\u{1F3C6} M\xE1s vendidos del mes"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 12, marginBottom: 16 } }, "Por cantidad de ventas \xB7 ", mes), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 } }, [
+  } }, i + 1), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, fontSize: 14 } }, nombre), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.verde } }, RD(total))), /* @__PURE__ */ React.createElement("div", { style: { background: "#f0f2f0", borderRadius: 4, height: 6, marginTop: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { width: `${Math.round(total / topClientes[0][1] * 100)}%`, height: "100%", background: C.verde, borderRadius: 4 } }))))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u26A1 Alertas Gerenciales"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, totalVentas < PE && /* @__PURE__ */ React.createElement("div", { style: { background: C.rojoL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.rojo}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.rojo } }, "\u{1F534} CR\xCDTICO:"), " Los ingresos (", RD(totalVentas), ") est\xE1n por debajo del punto de equilibrio. Faltan ", RD(PE - totalVentas), "."), totalVentas >= PE && /* @__PURE__ */ React.createElement("div", { style: { background: C.verdeL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.verde}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.verde } }, "\u2705 POSITIVO:"), " Superaste el punto de equilibrio. Utilidad neta de ", RD(utilidad), " (", margen, "% de margen)."), totalNomina > totalVentas * 0.5 && /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.naranja}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.naranja } }, "\u26A0\uFE0F ATENCI\xD3N:"), " La n\xF3mina representa m\xE1s del 50% de los ingresos (", Math.round(totalNomina / totalVentas * 100), "%). Considera aumentar el volumen de ventas."), grm > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${C.azul}`, fontSize: 13 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: C.azul } }, "\u{1F4CA} INFO:"), " Ticket promedio grooming: ", RD(Math.round(grm / (ctGrm || 1))), ". Servicios este mes: ", ctGrm, "."))), /* @__PURE__ */ React.createElement(Card, { style: { marginTop: 28 } }, /* @__PURE__ */ React.createElement("h3", { style: { fontFamily: "Georgia,serif", fontSize: 20, marginBottom: 4 } }, "\u{1F3C6} M\xE1s vendidos del mes"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 12, marginBottom: 16 } }, "Por cantidad de ventas \xB7 ", mes), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 } }, [
     { area: "grooming", label: "\u2702\uFE0F Grooming", color: C.verde },
     { area: "farmacia", label: "\u{1F48A} Farmacia / Tienda", color: C.azul },
     { area: "veterinaria", label: "\u{1FA7A} Veterinaria", color: C.naranja }

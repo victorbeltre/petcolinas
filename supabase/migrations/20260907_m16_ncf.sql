@@ -37,6 +37,9 @@ insert into public.pc_config (clave, valor, nota) values
   ('telefono',      '809-752-6806',                           'Telefono que sale en la factura.')
 on conflict (clave) do nothing;
 
+-- M13 usa la misma tabla para el punto de equilibrio (ver
+-- 20260908_m13_punto_equilibrio.sql).
+
 -- Todo el personal lee (la factura la emite caja, no solo el admin); escribir
 -- los datos fiscales del negocio es cosa del admin.
 drop policy if exists pc_config_leer on public.pc_config;

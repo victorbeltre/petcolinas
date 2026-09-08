@@ -133,6 +133,33 @@ render("AvisoAntiparasitarios", sandbox.AvisoAntiparasitarios, {
 render("Candidatos", sandbox.Candidatos, {});
 render("WhatsAppInbox", sandbox.WhatsAppInbox, {});
 render("Llamadas", sandbox.Llamadas, {});
+// Reportes no estaba cubierto y es donde se leen las cifras del mes: si algo
+// aqui revienta, Victor ve una pantalla en blanco justo cuando va a decidir.
+// Las ventas van con la fecha del mes en curso para que la comparativa y el
+// ritmo diario se ejerciten de verdad (en un mes cerrado no se calcula ritmo).
+const mesActual = new Date().toISOString().slice(0, 7);
+render("Reportes", sandbox.Reportes, {
+  ventas: ventas.map((v) => ({ ...v, fecha: mesActual + "-08" })),
+  gastos: [{ id: "g1", fecha: mesActual + "-03", monto: 5000, categoria: "Alquiler" }],
+  pagosNom: [{ id: "p1", mes: mesActual, totalPagado: 20000, comisiones: 3000 }],
+  empleados: []
+}, null, "punto de equilibrio");
+render("ConfigFiscal", sandbox.ConfigFiscal, {}, null, "Datos del negocio");
+// ResumenMes se renderiza dentro de Reportes, pero el React falso no baja a los
+// hijos: createElement(ResumenMes, ...) devuelve el nodo sin ejecutar el
+// componente. Hay que llamarlo aparte o la prueba de arriba no lo tocaria.
+const mesTotales = (m, ing) => ({ mes: m, ingresos: ing, egresos: 25e3, utilidad: ing - 25e3, servicios: 3 });
+render("ResumenMes", sandbox.ResumenMes, {
+  comparativa: {
+    actual: mesTotales(mesActual, 18e4),
+    anterior: mesTotales("2026-08", 15e4),
+    anioPasado: mesTotales("2025-09", 0),
+    vsAnterior: 20, vsAnioPasado: null
+  },
+  PE: 203739,
+  ritmoPE: { falta: 23739, diasQuedan: 5, porDia: 4748 },
+  nombreMes: (m) => m
+}, null, "punto de equilibrio");
 
 if (errores.length) {
   console.error("❌ Vistas que se romperían en pantalla:\n");
@@ -140,4 +167,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (15 comprobadas).`);
+console.log(`✓ Vistas principales renderizan sin errores (18 comprobadas).`);
