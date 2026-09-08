@@ -22,6 +22,10 @@ archivo de esta carpeta, aunque se haya ejecutado desde el conector.
    es la razón (qué se rompió, qué se intentó antes y no sirvió).
 6. Al terminar, correr `get_advisors(type=security)` del conector de Supabase.
    Cualquier `rls_disabled_in_public` es un bloqueo, no una advertencia.
+7. Al crear una función, `revoke ... from public, anon` **no alcanza**:
+   Supabase le otorga `EXECUTE` a `authenticated` por privilegios por defecto,
+   así que hay que nombrarlo. Y en Postgres toda función nace con `EXECUTE`
+   para `PUBLIC`, que `anon` hereda aunque se le revoque a él solo.
 
 ## Cómo verificar un cambio antes de darlo por bueno
 
@@ -59,6 +63,8 @@ Correos por rol: `admin@petcolinas.com` (admin), `naylan@petcolinas.com` y
 | `20260906_reparar_fichas_formulario.sql` | Arregló las fichas que el formulario había guardado mal mientras el mapeo de preguntas estaba roto. |
 | `20260907_m16_ncf.sql` | Comprobante fiscal: `pc_config`, `pc_ncf_secuencias`, columnas de NCF en `pc_facturas` y `pc_asignar_ncf(tipo)`, que entrega el siguiente número de forma atómica. |
 | `20260908_m13_punto_equilibrio.sql` | El punto de equilibrio deja de estar escrito a mano en el código (estaba en tres sitios y con dos valores distintos). |
+| `20260908_m10_comisiones.sql` | Los porcentajes de comisión (12/30/40/5) salen del código, donde estaban repetidos en quince sitios. |
+| `20260908_m8_procesos_programados.sql` | `pg_cron`, la bitácora `pc_tareas_log` y la primera tarea (`pc_resumen_diario`, cada día a las 5:30). Base para los recordatorios de la lista 2. Ninguna tarea manda mensajes a clientes. |
 
 ## Lo que NO está aquí
 
