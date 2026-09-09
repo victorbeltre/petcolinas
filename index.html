@@ -112,7 +112,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-08-22 17:27Z";
+const PC_BUILD = "2026-09-09 14:41Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -13977,7 +13977,7 @@ function HistoriasClinicas({ usuario, ventas, setVentas, clientes, setClientes, 
       { label: "Vacunas recibidas", val: vacunas.length },
       { label: "Ticket promedio", val: visitas.length > 0 ? RD(Math.round(totalGast / visitas.length)) : "\u2014" }
     ].map((i) => /* @__PURE__ */ React.createElement("div", { key: i.label, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.grisd } }, i.label), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: i.color || C.negro } }, i.val)))), vacunas.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "\u{1F489} Vacunas"), vacunas.map((v) => /* @__PURE__ */ React.createElement("div", { key: v.id, style: { padding: "6px 0", borderBottom: "1px solid #f4f5f6", fontSize: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, color: C.negro } }, (v.descripcion || v.servicio || "")?.split("(")[0]?.trim()), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 11 } }, v.fecha))))), (() => {
-      const hists = fichas.filter(f => clienteObj && clienteObj.id && String(f.clienteid) === String(clienteObj.id)).map(f => ({ ...(f.datos || {}), id: f.id })).sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
+      const hists = fichas.filter(f => clienteObj && clienteObj.id && String(f.clienteid) === String(clienteObj.id) && String(f.tipo || "").indexOf("lab_") !== 0).map(f => ({ ...(f.datos || {}), id: f.id })).sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
       if (hists.length === 0) return null;
       return React.createElement(Card, null,
         React.createElement("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 14, color: C.verde } }, "\u{1F4CB} Formularios de consulta (" + hists.length + ")"),
@@ -14706,7 +14706,16 @@ function VacunasVet({ usuario, ventas, clientes = [], historias = [] }) {
       const paciente = (cli && (cli.nombreMascota || cli.nombre)) || h.descripcion || "\u2014";
       return h.vacunas.map((v) => ({ id: "h" + h.id + "-" + (v.id || v.tipo), fecha: v.fecha, paciente, detalle: v.tipo + (v.lote ? " \xB7 lote " + v.lote : ""), total: 0 }));
     });
-  const vacunas = [...vacunasVenta, ...vacunasHistoria].sort((a, b) => (b.fecha||"").localeCompare(a.fecha||""));
+  const claveVac = (fecha, paciente, detalle) => {
+    // "Vacuna rabia" (venta) y "Rabia \xB7 lote R-88" (evoluci\xF3n) son la misma vacuna:
+    // se quita el lote, los par\xE9ntesis y la palabra "vacuna" antes de comparar.
+    const tipo = String(detalle || "").split("(")[0].split("\xB7")[0]
+      .toLowerCase().replace(/vacuna/g, "").replace(/[^a-z\xE1\xE9\xED\xF3\xFA\xF1]/g, "");
+    return (fecha || "") + "|" + (paciente || "").toLowerCase().trim() + "|" + tipo;
+  };
+  const clavesVenta = new Set(vacunasVenta.map(v => claveVac(v.fecha, v.paciente, v.detalle)));
+  const vacunas = [...vacunasVenta, ...vacunasHistoria.filter(v => !clavesVenta.has(claveVac(v.fecha, v.paciente, v.detalle)))]
+    .sort((a, b) => (b.fecha||"").localeCompare(a.fecha||""));
   const tipos = {};
   vacunas.forEach((v) => {
     (v.detalle || "").split("+").filter((p) => p.toLowerCase().includes("vacuna") || true).forEach((p) => {
@@ -14759,6 +14768,399 @@ function MisServiciosVet({ usuario, ventas }) {
     m === "todos" ? "Todos" : (/* @__PURE__ */ new Date(m + "-01")).toLocaleDateString("es-DO", { month: "long", year: "numeric" })
   ))), /* @__PURE__ */ React.createElement("div", { style: { background: C.azulL, borderRadius: 10, padding: "10px 16px", marginBottom: 16, display: "flex", gap: 24, fontSize: 13 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.azul, fontWeight: 700 } }, ventasFiltradas.length, " servicio(s)")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Paciente", "Descripci\xF3n"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, ventasFiltradas.map((v) => /* @__PURE__ */ React.createElement("tr", { key: v.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, v.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, v.cliente), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, (v.descripcion || v.servicio || "")?.slice(0, 80), (v.descripcion || v.servicio || "")?.length > 80 ? "\u2026" : ""))), ventasFiltradas.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, style: { textAlign: "center", padding: 30, color: C.grisd } }, "Sin servicios en este per\xEDodo."))))));
 }
+// ═══════════════════════════════════════════════════════════
+// REPORTES DE LABORATORIO — coprológico, dermatológico y pruebas rápidas
+// La doctora los completa, quedan guardados en la plataforma
+// (pc_fichas_clinicas, tipo lab_*) y se le envían al propietario por
+// WhatsApp o impresos/PDF.
+// ═══════════════════════════════════════════════════════════
+const LAB_TIPOS = [
+  { id: "lab_coprologico",   label: "Coprológico",    icon: "🔬", color: "#8b5a00", bg: "#fdf6e3" },
+  { id: "lab_dermatologico", label: "Dermatológico",  icon: "🧫", color: "#7c3aed", bg: "#f3e8ff" },
+  { id: "lab_prueba_rapida", label: "Prueba rápida",  icon: "🧪", color: "#0d9488", bg: "#e6fffa" }
+];
+const LAB_TIPO_INFO = (t) => LAB_TIPOS.find(x => x.id === t) || LAB_TIPOS[0];
+const LAB_METODOS_COPRO = ["Directo (solución salina)", "Flotación (Sheather)", "Tinción de Lugol", "Sedimentación"];
+const LAB_PARASITOS = ["Ancylostoma", "Toxocara", "Trichuris", "Giardia", "Coccidias (Isospora)", "Dipylidium", "Strongyloides", "Amebas", "Levaduras", "Sangre oculta"];
+const LAB_TECNICAS_DERMA = ["Raspado superficial", "Raspado profundo", "Tricograma", "Citología por impronta", "Cinta adhesiva", "Cultivo micológico", "Lámpara de Wood"];
+const LAB_HALLAZGOS_DERMA = ["Demodex canis", "Sarcoptes scabiei", "Cheyletiella", "Otodectes cynotis", "Malassezia", "Cocos", "Bacilos", "Dermatofitos (hongos)", "Pulgas / garrapatas", "Sin hallazgos"];
+const LAB_PRUEBAS_RAPIDAS = ["Parvovirus", "Moquillo (Distemper)", "Coronavirus", "Giardia", "Ehrlichia / Anaplasma", "Dirofilaria (4Dx)", "FeLV (Leucemia felina)", "FIV (Inmunodeficiencia felina)", "Panleucopenia felina", "Otra"];
+
+function labResumenTexto(d) {
+  const t = d.tipo || "lab_coprologico";
+  const L = [];
+  L.push("🐾 *PetColinas* — Resultado de " + LAB_TIPO_INFO(t).label.toLowerCase());
+  L.push("");
+  L.push("*Paciente:* " + (d.mascota || "—") + (d.especie ? " (" + d.especie + ")" : ""));
+  if (d.propietario) L.push("*Propietario:* " + d.propietario);
+  L.push("*Fecha:* " + (d.fecha || "—"));
+  if (d.muestra) L.push("*Muestra:* " + d.muestra);
+  L.push("");
+  if (t === "lab_coprologico") {
+    if ((d.metodos || []).length) L.push("*Método:* " + d.metodos.join(", "));
+    const fis = [d.aspecto && "aspecto " + d.aspecto, d.color && "color " + d.color, d.moco === "Sí" && "con moco", d.sangre === "Sí" && "con sangre"].filter(Boolean);
+    if (fis.length) L.push("*Examen macroscópico:* " + fis.join(", "));
+    L.push("*Resultado:* " + (d.resultado || "—"));
+    if ((d.hallazgos || []).length) L.push("*Hallazgos:* " + d.hallazgos.join(", "));
+  } else if (t === "lab_dermatologico") {
+    if ((d.tecnicas || []).length) L.push("*Técnica:* " + d.tecnicas.join(", "));
+    if (d.zona) L.push("*Zona muestreada:* " + d.zona);
+    L.push("*Resultado:* " + (d.resultado || "—"));
+    if ((d.hallazgos || []).length) L.push("*Hallazgos:* " + d.hallazgos.join(", "));
+    if (d.grado) L.push("*Grado:* " + d.grado);
+  } else {
+    (d.pruebas || []).forEach(p => L.push("*" + (p.nombre || "Prueba") + ":* " + (p.resultado || "—") + (p.lote ? " (lote " + p.lote + ")" : "")));
+  }
+  if (d.observaciones) { L.push(""); L.push("*Observaciones:* " + d.observaciones); }
+  if (d.recomendaciones) { L.push(""); L.push("*Recomendaciones:* " + d.recomendaciones); }
+  L.push("");
+  L.push("Atendido por " + (d.veterinario || "el equipo de PetColinas") + ".");
+  L.push("Cualquier duda, escríbanos por aquí 🙏");
+  return L.join("\n");
+}
+
+function imprimirReporteLab(d) {
+  const info = LAB_TIPO_INFO(d.tipo);
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const fila = (k, v) => v ? "<tr><th>" + esc(k) + "</th><td>" + esc(v) + "</td></tr>" : "";
+  let cuerpo = "";
+  if (d.tipo === "lab_coprologico") {
+    cuerpo =
+      fila("Método", (d.metodos || []).join(", ")) +
+      fila("Aspecto", d.aspecto) + fila("Color", d.color) +
+      fila("Moco", d.moco) + fila("Sangre visible", d.sangre) +
+      fila("Hallazgos microscópicos", (d.hallazgos || []).join(", ")) +
+      fila("Resultado", d.resultado);
+  } else if (d.tipo === "lab_dermatologico") {
+    cuerpo =
+      fila("Técnica", (d.tecnicas || []).join(", ")) +
+      fila("Zona muestreada", d.zona) +
+      fila("Hallazgos", (d.hallazgos || []).join(", ")) +
+      fila("Grado", d.grado) +
+      fila("Resultado", d.resultado);
+  } else {
+    cuerpo = (d.pruebas || []).map(p => "<tr><th>" + esc(p.nombre || "Prueba") + "</th><td><b>" + esc(p.resultado || "—") + "</b>" + (p.lote ? " · lote " + esc(p.lote) : "") + "</td></tr>").join("");
+  }
+  const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" + esc(info.label) + " — " + esc(d.mascota || "") + "</title><style>" +
+    "body{font-family:Georgia,serif;margin:0;padding:30px;color:#1a1d23}" +
+    ".cab{background:#1a6b3a;color:#fff;padding:20px 26px;border-radius:14px}" +
+    ".cab h1{margin:0;font-size:21px}.cab p{margin:4px 0 0;font-size:12px;opacity:.85}" +
+    ".tit{margin:22px 0 6px;font-size:17px;color:" + info.color + ";font-weight:700}" +
+    ".fich{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin:16px 0;padding:16px 20px;background:#f4f5f6;border-radius:12px;font-size:13px}" +
+    "table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}" +
+    "th{text-align:left;background:#f4f5f6;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#5a6472;width:38%}" +
+    "td{padding:8px 10px;border-bottom:1px solid #eee}" +
+    ".obs{margin-top:18px;padding:14px 18px;background:#fdf6e3;border-left:4px solid #b8860b;border-radius:8px;font-size:13px}" +
+    ".rec{margin-top:12px;padding:14px 18px;background:#e8f5ee;border-left:4px solid #1a6b3a;border-radius:8px;font-size:13px}" +
+    ".pie{margin-top:34px;font-size:12px;color:#5a6472;text-align:center;border-top:1px solid #ddd;padding-top:14px}" +
+    ".firma{margin-top:40px;text-align:right;font-size:13px}" +
+    "@media print{button{display:none}}</style></head><body>" +
+    "<div class='cab'><h1>🐾 PetColinas · Laboratorio Clínico</h1><p>Plaza Las Colinas · Santo Domingo Oeste · petcolinasrd@gmail.com</p></div>" +
+    "<div class='tit'>" + info.icon + " Reporte " + esc(info.label.toLowerCase()) + "</div>" +
+    "<div class='fich'>" +
+      "<div><b>Paciente:</b> " + esc(d.mascota || "—") + "</div>" +
+      "<div><b>Fecha:</b> " + esc(d.fecha || "—") + "</div>" +
+      "<div><b>Propietario:</b> " + esc(d.propietario || "—") + "</div>" +
+      "<div><b>Especie / raza:</b> " + esc([d.especie, d.raza].filter(Boolean).join(" · ") || "—") + "</div>" +
+      "<div><b>Muestra:</b> " + esc(d.muestra || "—") + "</div>" +
+      "<div><b>Veterinaria:</b> " + esc(d.veterinario || "—") + "</div>" +
+    "</div>" +
+    "<table>" + cuerpo + "</table>" +
+    (d.observaciones ? "<div class='obs'><b>Observaciones:</b><br>" + esc(d.observaciones).replace(/\n/g, "<br>") + "</div>" : "") +
+    (d.recomendaciones ? "<div class='rec'><b>Recomendaciones:</b><br>" + esc(d.recomendaciones).replace(/\n/g, "<br>") + "</div>" : "") +
+    "<div class='firma'>_______________________________<br>" + esc(d.veterinario || "") + "<br>Médico Veterinario</div>" +
+    "<div class='pie'>Este reporte corresponde únicamente a la muestra analizada.<br>PetColinas · Su mascota es nuestra familia 🐾</div>" +
+    "<br><button onclick='window.print()' style='width:100%;padding:12px;background:#1a6b3a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer'>🖨️ Imprimir / Guardar PDF</button>" +
+    "</body></html>";
+  const w = window.open("", "_blank", "width=780,height=800");
+  if (!w) return alert("El navegador bloqueó la ventana. Permite las ventanas emergentes para imprimir el reporte.");
+  w.document.write(html);
+  w.document.close();
+}
+
+function LabChk({ label, checked, onChange, color }) {
+  return React.createElement("label", {
+    style: {
+      display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 11px", margin: "0 6px 6px 0",
+      borderRadius: 20, border: "1.5px solid " + (checked ? (color || "#db2777") : "#dde1e7"),
+      background: checked ? (color || "#db2777") : "#fff", color: checked ? "#fff" : "#5a6472",
+      fontSize: 12, fontWeight: 700, cursor: "pointer"
+    }
+  },
+    React.createElement("input", { type: "checkbox", checked: !!checked, onChange, style: { display: "none" } }),
+    (checked ? "✓ " : "") + label
+  );
+}
+
+function ReportesLab({ usuario, clientes = [], fichas = [], setFichas }) {
+  const C = { azul: "#db2777", azulL: "#fce7f3", verde: "#1a6b3a", verdeL: "#e8f5ed", gris: "#f4f5f7", grisd: "#5a6472", rojo: "#c0392b" };
+  const [busqueda, setBusqueda] = useState("");
+  const [paciente, setPaciente] = useState(null);
+  const [modal, setModal] = useState(false);
+  const [editId, setEditId] = useState(null);
+
+  const EMPTY = {
+    tipo: "lab_coprologico", fecha: hoy(), mascota: "", propietario: "", telefono: "",
+    especie: "", raza: "", muestra: "", veterinario: usuario?.nombre || "",
+    metodos: [], aspecto: "", color: "", moco: "", sangre: "", hallazgos: [], resultado: "",
+    tecnicas: [], zona: "", grado: "",
+    pruebas: [],
+    observaciones: "", recomendaciones: "", estado: "finalizado"
+  };
+  const [form, setForm] = useState(EMPTY);
+  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const togF = (k, val) => setForm(f => {
+    const arr = f[k] || [];
+    return { ...f, [k]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] };
+  });
+  const addPrueba = () => setF("pruebas", [...(form.pruebas || []), { id: Date.now(), nombre: LAB_PRUEBAS_RAPIDAS[0], resultado: "Negativo", lote: "" }]);
+  const updPrueba = (id, campo, val) => setF("pruebas", (form.pruebas || []).map(p => p.id === id ? { ...p, [campo]: val } : p));
+  const delPrueba = (id) => setF("pruebas", (form.pruebas || []).filter(p => p.id !== id));
+
+  const clientesNorm = clientes.map(c => ({
+    ...c, nombre: c.nombre || c.nombreMascota || "", dueno: c.dueno || c.nombrePropietario || ""
+  }));
+  const listaPacientes = clientesNorm
+    .filter(c => c.nombre && c.nombre.toLowerCase().includes(busqueda.toLowerCase()))
+    .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+
+  const esLab = (f) => String(f.tipo || "").indexOf("lab_") === 0;
+  const reportesDe = (cli) => (fichas || [])
+    .filter(f => esLab(f) && cli && String(f.clienteid) === String(cli.id))
+    .map(f => ({ ...(f.datos || {}), __id: f.id, tipo: (f.datos && f.datos.tipo) || f.tipo }))
+    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+  const reportes = paciente ? reportesDe(paciente) : [];
+
+  function abrirNuevo(tipo) {
+    setEditId(null);
+    setForm({
+      ...EMPTY, tipo: tipo || "lab_coprologico",
+      mascota: paciente?.nombre || "", propietario: paciente?.dueno || "",
+      telefono: paciente?.telefono || "", especie: paciente?.especie || "", raza: paciente?.raza || ""
+    });
+    setModal(true);
+  }
+  function abrirEdicion(r) {
+    setEditId(r.__id);
+    setForm({ ...EMPTY, ...r });
+    setModal(true);
+  }
+  function guardar() {
+    if (!form.mascota.trim()) return alert("Falta el nombre de la mascota.");
+    if (form.tipo === "lab_prueba_rapida") {
+      if ((form.pruebas || []).length === 0) return alert("Agrega al menos una prueba con su resultado.");
+    } else if (!form.resultado.trim() && (form.hallazgos || []).length === 0) {
+      return alert("Escribe el resultado o marca al menos un hallazgo.");
+    }
+    const cli = paciente || clientesNorm.find(c => c.nombre.toLowerCase() === form.mascota.trim().toLowerCase());
+    const datos = { ...form, mascota: form.mascota.trim(), actualizadoen: hoy() };
+    const ficha = {
+      id: editId || String(Date.now()),
+      clienteid: String((cli && cli.id) || ""),
+      tipo: form.tipo,
+      datos,
+      creadoen: hoy()
+    };
+    setFichas(prev => {
+      const resto = (prev || []).filter(f => String(f.id) !== String(ficha.id));
+      return [ficha, ...resto];
+    });
+    upsertOne("pc_fichas_clinicas", ficha).catch(e => console.error("[ReportesLab]", e));
+    setModal(false);
+    setEditId(null);
+  }
+  function enviarWA(r) {
+    const tel = r.telefono || paciente?.telefono || "";
+    if (!tel) return alert("Este propietario no tiene teléfono registrado en el CRM.\n\nAgrégalo en Clientes y vuelve a intentarlo.");
+    if (typeof abrirWA === "function") abrirWA(tel, labResumenTexto(r));
+    else window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(labResumenTexto(r)), "_blank");
+  }
+
+  const infoActual = LAB_TIPO_INFO(form.tipo);
+
+  return React.createElement("div", { style: { display: "flex", gap: 20, alignItems: "flex-start" } },
+
+    // ── Panel izquierdo: pacientes ──────────────────────────
+    React.createElement("div", { style: { width: 260, flexShrink: 0, background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" } },
+      React.createElement("div", { style: { background: C.azul, padding: "14px 16px", color: "#fff", fontWeight: 800, fontSize: 14 } }, "🔬 Pacientes"),
+      React.createElement("div", { style: { padding: "10px 12px" } },
+        React.createElement(EvINP, { placeholder: "Buscar mascota…", value: busqueda, onChange: e => setBusqueda(e.target.value) })
+      ),
+      React.createElement("div", { style: { maxHeight: 520, overflowY: "auto" } },
+        listaPacientes.length === 0 && React.createElement("div", { style: { padding: "20px 16px", color: C.grisd, fontSize: 13, textAlign: "center" } }, "Sin pacientes en CRM"),
+        listaPacientes.map(c => React.createElement("div", {
+          key: c.id || c.nombre, onClick: () => setPaciente(c),
+          style: {
+            padding: "10px 16px", cursor: "pointer", borderBottom: "1px solid #f0f0f0",
+            background: paciente?.nombre === c.nombre ? C.azulL : "#fff",
+            borderLeft: paciente?.nombre === c.nombre ? "4px solid " + C.azul : "4px solid transparent"
+          }
+        },
+          React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "#1a1a2e" } }, c.nombre),
+          React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, c.dueno || "Sin propietario"),
+          React.createElement("div", { style: { fontSize: 10, color: C.azul, marginTop: 1 } }, reportesDe(c).length + " reporte(s)")
+        ))
+      )
+    ),
+
+    // ── Panel derecho ───────────────────────────────────────
+    React.createElement("div", { style: { flex: 1 } },
+      !paciente
+        ? React.createElement("div", { style: { background: "#fff", borderRadius: 14, padding: 40, textAlign: "center", color: C.grisd, boxShadow: "0 2px 12px rgba(0,0,0,0.07)" } },
+            React.createElement("div", { style: { fontSize: 40, marginBottom: 12 } }, "🔬"),
+            React.createElement("div", { style: { fontSize: 16, fontWeight: 700 } }, "Selecciona una mascota"),
+            React.createElement("div", { style: { fontSize: 13, marginTop: 6 } }, "Completa reportes coprológicos, dermatológicos y de pruebas rápidas, guárdalos en la plataforma y envíaselos al propietario.")
+          )
+        : React.createElement(React.Fragment, null,
+            React.createElement("div", { style: { background: "#fff", borderRadius: 14, padding: "16px 20px", marginBottom: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.07)" } },
+              React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 } },
+                React.createElement("div", null,
+                  React.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: "#1a1a2e" } }, "🐾 " + paciente.nombre),
+                  React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 3 } },
+                    [paciente.dueno, paciente.especie, paciente.raza].filter(Boolean).join(" · ") || "Sin datos en ficha")
+                ),
+                React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                  LAB_TIPOS.map(t => React.createElement("button", {
+                    key: t.id, onClick: () => abrirNuevo(t.id),
+                    style: { background: t.color, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer" }
+                  }, "+ " + t.icon + " " + t.label))
+                )
+              )
+            ),
+
+            reportes.length === 0
+              ? React.createElement("div", { style: { background: "#fff", borderRadius: 14, padding: 32, textAlign: "center", color: C.grisd, boxShadow: "0 2px 12px rgba(0,0,0,0.07)" } },
+                  "Este paciente todavía no tiene reportes de laboratorio.",
+                  React.createElement("br", null),
+                  React.createElement("span", { style: { fontSize: 13 } }, "Usa los botones de arriba para completar el primero."))
+              : React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } },
+                  reportes.map((r, i) => {
+                    const info = LAB_TIPO_INFO(r.tipo);
+                    return React.createElement("div", { key: r.__id || i, style: { background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" } },
+                      React.createElement("div", { style: { background: info.bg, borderLeft: "5px solid " + info.color, padding: "11px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 } },
+                        React.createElement("div", { style: { fontWeight: 800, fontSize: 13, color: info.color } },
+                          info.icon + " " + info.label + " · 📅 " + (r.fecha || "—")),
+                        React.createElement("div", { style: { display: "flex", gap: 6 } },
+                          React.createElement("button", { onClick: () => abrirEdicion(r), style: { background: "#fff", border: "1.5px solid " + info.color, color: info.color, borderRadius: 8, padding: "5px 11px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "✏️ Editar"),
+                          React.createElement("button", { onClick: () => imprimirReporteLab(r), style: { background: "#fff", border: "1.5px solid #5a6472", color: "#5a6472", borderRadius: 8, padding: "5px 11px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "🖨️ Imprimir / PDF"),
+                          React.createElement("button", { onClick: () => enviarWA(r), style: { background: "#25D366", border: "none", color: "#fff", borderRadius: 8, padding: "5px 11px", fontSize: 11, fontWeight: 700, cursor: "pointer" } }, "📱 Enviar al dueño")
+                        )
+                      ),
+                      React.createElement("div", { style: { padding: "14px 18px", display: "grid", gap: 8, fontSize: 13 } },
+                        r.muestra && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "MUESTRA: "), r.muestra),
+                        (r.metodos || []).length > 0 && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "MÉTODO: "), r.metodos.join(", ")),
+                        (r.tecnicas || []).length > 0 && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "TÉCNICA: "), r.tecnicas.join(", ")),
+                        r.zona && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "ZONA: "), r.zona),
+                        (r.hallazgos || []).length > 0 && React.createElement("div", { style: { background: "#fdf6e3", borderRadius: 8, padding: "8px 12px" } },
+                          React.createElement("span", { style: { fontSize: 11, color: "#b8860b", fontWeight: 700 } }, "HALLAZGOS: "), r.hallazgos.join(", ")),
+                        (r.pruebas || []).length > 0 && React.createElement("div", { style: { display: "grid", gap: 4 } },
+                          r.pruebas.map(p => React.createElement("div", { key: p.id, style: { display: "flex", justifyContent: "space-between", background: (p.resultado === "Positivo" ? "#fdecea" : "#e8f5ed"), borderRadius: 8, padding: "6px 12px" } },
+                            React.createElement("span", null, p.nombre),
+                            React.createElement("b", { style: { color: p.resultado === "Positivo" ? C.rojo : C.verde } }, p.resultado || "—")
+                          ))),
+                        r.resultado && React.createElement("div", { style: { background: C.verdeL, borderRadius: 8, padding: "8px 12px" } },
+                          React.createElement("span", { style: { fontSize: 11, color: C.verde, fontWeight: 700 } }, "RESULTADO: "),
+                          React.createElement("b", null, r.resultado)),
+                        r.observaciones && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "OBSERVACIONES: "), r.observaciones),
+                        r.recomendaciones && React.createElement("div", null, React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "RECOMENDACIONES: "), r.recomendaciones),
+                        React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, "👩‍⚕️ " + (r.veterinario || "—"))
+                      )
+                    );
+                  })
+                )
+          )
+    ),
+
+    // ── Modal del reporte ───────────────────────────────────
+    modal && React.createElement("div", {
+      style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "20px 16px", overflowY: "auto" }
+    },
+      React.createElement("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 680, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } },
+        React.createElement("div", { style: { background: infoActual.color, padding: "16px 22px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          React.createElement("div", { style: { color: "#fff", fontWeight: 800, fontSize: 16 } }, infoActual.icon + " Reporte " + infoActual.label.toLowerCase()),
+          React.createElement("button", { onClick: () => { setModal(false); setEditId(null); }, style: { background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16, fontWeight: 800 } }, "✕")
+        ),
+        React.createElement("div", { style: { padding: "20px 22px" } },
+
+          React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" } },
+            LAB_TIPOS.map(t => React.createElement("button", {
+              key: t.id, onClick: () => setF("tipo", t.id),
+              style: {
+                padding: "8px 14px", borderRadius: 20, cursor: "pointer", fontSize: 12, fontWeight: 700,
+                border: "2px solid " + (form.tipo === t.id ? t.color : "#e0e4e8"),
+                background: form.tipo === t.id ? t.color : "#fff",
+                color: form.tipo === t.id ? "#fff" : C.grisd
+              }
+            }, t.icon + " " + t.label))
+          ),
+
+          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" } },
+            React.createElement(EvFLD, { label: "Mascota *" }, React.createElement(EvINP, { value: form.mascota, onChange: e => setF("mascota", e.target.value) })),
+            React.createElement(EvFLD, { label: "Propietario" }, React.createElement(EvINP, { value: form.propietario, onChange: e => setF("propietario", e.target.value) })),
+            React.createElement(EvFLD, { label: "Teléfono (para enviar el reporte)" }, React.createElement(EvINP, { value: form.telefono, onChange: e => setF("telefono", e.target.value), placeholder: "8091234567" })),
+            React.createElement(EvFLD, { label: "Fecha" }, React.createElement(EvINP, { type: "date", value: form.fecha, onChange: e => setF("fecha", e.target.value) })),
+            React.createElement(EvFLD, { label: "Muestra" }, React.createElement(EvINP, { value: form.muestra, onChange: e => setF("muestra", e.target.value), placeholder: "Heces frescas / Sangre / Raspado…" })),
+            React.createElement(EvFLD, { label: "Veterinaria" }, React.createElement(EvINP, { value: form.veterinario, onChange: e => setF("veterinario", e.target.value) }))
+          ),
+
+          form.tipo === "lab_coprologico" && React.createElement(React.Fragment, null,
+            React.createElement(EvFLD, { label: "Método" }, React.createElement("div", null,
+              LAB_METODOS_COPRO.map(m => React.createElement(LabChk, { key: m, label: m, color: infoActual.color, checked: (form.metodos || []).includes(m), onChange: () => togF("metodos", m) })))),
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0 12px" } },
+              React.createElement(EvFLD, { label: "Aspecto" }, React.createElement("select", { value: form.aspecto, onChange: e => setF("aspecto", e.target.value), style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 10px", fontSize: 13 } },
+                ["", "Formadas", "Blandas", "Pastosas", "Líquidas"].map(o => React.createElement("option", { key: o, value: o }, o || "—")))),
+              React.createElement(EvFLD, { label: "Color" }, React.createElement(EvINP, { value: form.color, onChange: e => setF("color", e.target.value), placeholder: "Marrón…" })),
+              React.createElement(EvFLD, { label: "Moco" }, React.createElement("select", { value: form.moco, onChange: e => setF("moco", e.target.value), style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 10px", fontSize: 13 } },
+                ["", "No", "Sí"].map(o => React.createElement("option", { key: o, value: o }, o || "—")))),
+              React.createElement(EvFLD, { label: "Sangre" }, React.createElement("select", { value: form.sangre, onChange: e => setF("sangre", e.target.value), style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 10px", fontSize: 13 } },
+                ["", "No", "Sí"].map(o => React.createElement("option", { key: o, value: o }, o || "—"))))
+            ),
+            React.createElement(EvFLD, { label: "Hallazgos microscópicos" }, React.createElement("div", null,
+              LAB_PARASITOS.map(p => React.createElement(LabChk, { key: p, label: p, color: infoActual.color, checked: (form.hallazgos || []).includes(p), onChange: () => togF("hallazgos", p) })))),
+            React.createElement(EvFLD, { label: "Resultado" }, React.createElement(EvINP, { value: form.resultado, onChange: e => setF("resultado", e.target.value), placeholder: "Negativo / Positivo a …" }))
+          ),
+
+          form.tipo === "lab_dermatologico" && React.createElement(React.Fragment, null,
+            React.createElement(EvFLD, { label: "Técnica utilizada" }, React.createElement("div", null,
+              LAB_TECNICAS_DERMA.map(t => React.createElement(LabChk, { key: t, label: t, color: infoActual.color, checked: (form.tecnicas || []).includes(t), onChange: () => togF("tecnicas", t) })))),
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" } },
+              React.createElement(EvFLD, { label: "Zona muestreada" }, React.createElement(EvINP, { value: form.zona, onChange: e => setF("zona", e.target.value), placeholder: "Dorso, orejas, abdomen…" })),
+              React.createElement(EvFLD, { label: "Grado" }, React.createElement("select", { value: form.grado, onChange: e => setF("grado", e.target.value), style: { width: "100%", border: "1.5px solid #dde1e7", borderRadius: 8, padding: "8px 10px", fontSize: 13 } },
+                ["", "Leve", "Moderado", "Severo"].map(o => React.createElement("option", { key: o, value: o }, o || "—"))))
+            ),
+            React.createElement(EvFLD, { label: "Hallazgos" }, React.createElement("div", null,
+              LAB_HALLAZGOS_DERMA.map(h => React.createElement(LabChk, { key: h, label: h, color: infoActual.color, checked: (form.hallazgos || []).includes(h), onChange: () => togF("hallazgos", h) })))),
+            React.createElement(EvFLD, { label: "Resultado" }, React.createElement(EvINP, { value: form.resultado, onChange: e => setF("resultado", e.target.value), placeholder: "Negativo / Positivo a Demodex…" }))
+          ),
+
+          form.tipo === "lab_prueba_rapida" && React.createElement("div", { style: { marginBottom: 14 } },
+            React.createElement("label", { style: { display: "block", fontSize: 11, fontWeight: 700, color: "#5a6472", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 } }, "Pruebas realizadas"),
+            (form.pruebas || []).map(p => React.createElement("div", { key: p.id, style: { display: "flex", gap: 6, marginBottom: 6, alignItems: "center" } },
+              React.createElement("select", { value: p.nombre, onChange: e => updPrueba(p.id, "nombre", e.target.value), style: { flex: 2.2, border: "1.5px solid #dde1e7", borderRadius: 8, padding: "7px 8px", fontSize: 12 } },
+                LAB_PRUEBAS_RAPIDAS.map(n => React.createElement("option", { key: n }, n))),
+              React.createElement("select", { value: p.resultado, onChange: e => updPrueba(p.id, "resultado", e.target.value), style: { flex: 1.4, border: "1.5px solid " + (p.resultado === "Positivo" ? C.rojo : "#dde1e7"), borderRadius: 8, padding: "7px 8px", fontSize: 12, fontWeight: 700, color: p.resultado === "Positivo" ? C.rojo : C.verde } },
+                ["Negativo", "Positivo", "No concluyente"].map(n => React.createElement("option", { key: n }, n))),
+              React.createElement("input", { value: p.lote || "", onChange: e => updPrueba(p.id, "lote", e.target.value), placeholder: "Lote", style: { flex: 1, border: "1.5px solid #dde1e7", borderRadius: 8, padding: "7px 8px", fontSize: 12 } }),
+              React.createElement("button", { onClick: () => delPrueba(p.id), style: { background: "#fee2e2", color: C.rojo, border: "none", borderRadius: 6, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 } }, "✕")
+            )),
+            React.createElement("button", { onClick: addPrueba, style: { background: "#e6fffa", color: "#0d9488", border: "1.5px solid #0d9488", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "+ Agregar prueba")
+          ),
+
+          React.createElement(EvFLD, { label: "Observaciones" }, React.createElement(EvTEA, { value: form.observaciones, onChange: e => setF("observaciones", e.target.value), placeholder: "Lo que viste en la muestra, detalles para el dueño…" })),
+          React.createElement(EvFLD, { label: "Recomendaciones / tratamiento" }, React.createElement(EvTEA, { value: form.recomendaciones, onChange: e => setF("recomendaciones", e.target.value), placeholder: "Desparasitar, repetir en 15 días, dieta…" })),
+
+          React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 8 } },
+            React.createElement("button", { onClick: () => { setModal(false); setEditId(null); }, style: { flex: 1, background: C.gris, border: "none", borderRadius: 10, padding: "12px", fontWeight: 700, fontSize: 14, cursor: "pointer", color: C.grisd } }, "Cancelar"),
+            React.createElement("button", { onClick: guardar, style: { flex: 2, background: infoActual.color, color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 800, fontSize: 14, cursor: "pointer" } }, editId ? "✅ Guardar cambios" : "✅ Guardar reporte")
+          ),
+          React.createElement("div", { style: { fontSize: 11, color: C.grisd, textAlign: "center", marginTop: 10 } },
+            "El reporte queda guardado en la plataforma y aparece también en la evolución clínica del paciente.")
+        )
+      )
+    )
+  );
+}
+
 const TABS_VET = [
   { id: "facturar_vet",    icon: "\u{1F9FE}", label: "Facturar" },
   { id: "cobros_vet",      icon: "\u{1F4B0}", label: "Cobros" },
@@ -14766,6 +15168,7 @@ const TABS_VET = [
   { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" },
   { id: "historias",       icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
   { id: "evolucion_vet",   icon: "\u{1F4C8}", label: "Evoluci\xF3n Cl\xEDnica" },
+  { id: "reportes_lab",    icon: "\u{1F52C}", label: "Reportes de Lab" },
   { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" }
 ];
 
@@ -15403,6 +15806,16 @@ function MisCitasHoy({ empleadoNombre, acento = "#1a6b3a" }) {
 // ═══════════════════════════════════════════════════════════
 // FACTURAR — Componente compartido para empleados (sin totales)
 // ═══════════════════════════════════════════════════════════
+// Los ítems de una factura pueden venir como lista (formato nuevo, el que
+// Supabase sí guarda) o como texto JSON (facturas viejas). Lee ambos.
+function parseItemsFactura(x) {
+  if (Array.isArray(x)) return x;
+  if (typeof x === "string") {
+    try { const p = JSON.parse(x || "[]"); return Array.isArray(p) ? p : []; } catch { return []; }
+  }
+  return [];
+}
+
 function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], acento }) {
   const [categoria, setCategoria] = React.useState("grooming");
   const [cliente, setCliente] = React.useState("");
@@ -15424,6 +15837,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [abonoRecibido, setAbonoRecibido] = React.useState("");
   const [fechaRecordatorio, setFechaRecordatorio] = React.useState("");
   const [ok, setOk] = React.useState(null);
+  const [editV, setEditV] = React.useState(null);
+  const [verSemana, setVerSemana] = React.useState(false);
 
   const CC = { verde:"#1a6b3a", azul: acento || "#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
@@ -15510,7 +15925,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       area: carrito[0].categoria,
       servicio: descripcion,
       descripcion,
-      items: JSON.stringify(carrito),
+      items: carrito,
       subtotal: subtotalCarrito,
       descuento: descGlobalMonto,
       total: totalFinal,
@@ -15549,9 +15964,98 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     setTimeout(() => setOk(null), 8000);
   }
 
+  // ── Editar una factura ya registrada ──────────────────────
+  function abrirEdicion(v) {
+    const its = parseItemsFactura(v.items);
+    setEditV({
+      original: v,
+      cliente: v.cliente || "",
+      fecha: v.fecha || new Date().toISOString().slice(0,10),
+      items: its.length > 0
+        ? its.map((it, i) => ({
+            key: "e" + i + "_" + Date.now(),
+            nombre: it.nombre || it.descripcion || "",
+            qty: Number(it.qty ?? it.cantidad) || 1,
+            precioUnit: Number(it.precioUnit ?? it.precio) || 0,
+            descPct: Number(it.descPct) || 0,
+            categoria: it.categoria || v.area || "veterinaria",
+            nota: it.nota || ""
+          }))
+        : [{ key: "u_" + Date.now(), nombre: v.servicio || v.descripcion || "Servicio",
+             qty: 1, precioUnit: Number(v.subtotal ?? v.total) || 0, descPct: 0,
+             categoria: v.area || "veterinaria", nota: "" }],
+      descuento: Number(v.descuento) || 0,
+      pago: v.formapago || v.formaPago || "efectivo",
+      atendido: v.recibidopor || v.recibidoPor || usuario.nombre,
+      motivo: ""
+    });
+  }
+  const setEV = (k, val) => setEditV(e => ({ ...e, [k]: val }));
+  const setEItem = (key, campo, val) => setEditV(e => ({ ...e, items: e.items.map(it => it.key === key ? { ...it, [campo]: val } : it) }));
+  const quitarEItem = (key) => setEditV(e => ({ ...e, items: e.items.filter(it => it.key !== key) }));
+  const agregarEItem = () => setEditV(e => ({ ...e, items: [...e.items, { key: "n_" + Date.now(), nombre: "", qty: 1, precioUnit: 0, descPct: 0, categoria: e.original.area || "veterinaria", nota: "" }] }));
+  const lineaSubtotal = (it) => {
+    const pu = Number(it.precioUnit) || 0, q = Number(it.qty) || 1, d = Number(it.descPct) || 0;
+    return Math.max(0, pu - pu * d / 100) * q;
+  };
+  const editSubtotal = editV ? editV.items.reduce((s, it) => s + lineaSubtotal(it), 0) : 0;
+  const editTotal = Math.max(0, editSubtotal - (editV ? Math.min(Number(editV.descuento) || 0, editSubtotal) : 0));
+
+  function guardarEdicion() {
+    if (!editV) return;
+    if (!editV.cliente.trim()) return alert("Escribe el nombre del cliente o mascota.");
+    const items = editV.items.filter(it => (it.nombre || "").trim());
+    if (items.length === 0) return alert("La factura tiene que llevar al menos un servicio o producto.");
+    if (!editV.motivo.trim()) return alert("Escribe por qu\xE9 se cambia la factura. Queda guardado en el registro de cambios.");
+    const itemsCalc = items.map(it => ({
+      id: it.key, categoria: it.categoria, nombre: it.nombre.trim(),
+      qty: Number(it.qty) || 1, precioUnit: Number(it.precioUnit) || 0,
+      descPct: Number(it.descPct) || 0, subtotal: lineaSubtotal(it), nota: it.nota || ""
+    }));
+    const sub = itemsCalc.reduce((s, it) => s + it.subtotal, 0);
+    const desc = Math.min(Number(editV.descuento) || 0, sub);
+    const tot = Math.max(0, sub - desc);
+    const o = editV.original;
+    const descripcion = itemsCalc.map(it => (it.qty > 1 ? it.qty + "x " : "") + it.nombre).join(" + ");
+    const cambios = [];
+    if ((o.cliente || "") !== editV.cliente.trim()) cambios.push("Cliente: " + (o.cliente || "\u2014") + " \u2192 " + editV.cliente.trim());
+    if ((o.fecha || "") !== editV.fecha) cambios.push("Fecha: " + (o.fecha || "\u2014") + " \u2192 " + editV.fecha);
+    if ((o.servicio || o.descripcion || "") !== descripcion) cambios.push("Servicios: " + (o.servicio || o.descripcion || "\u2014") + " \u2192 " + descripcion);
+    if (Math.round(Number(o.total) || 0) !== Math.round(tot)) cambios.push("Total: " + RD2(o.total || 0) + " \u2192 " + RD2(tot));
+    if (Math.round(Number(o.descuento) || 0) !== Math.round(desc)) cambios.push("Descuento: " + RD2(o.descuento || 0) + " \u2192 " + RD2(desc));
+    if ((o.formapago || "") !== editV.pago) cambios.push("Forma de pago: " + (o.formapago || "\u2014") + " \u2192 " + editV.pago);
+    if ((o.recibidopor || "") !== editV.atendido) cambios.push("Atendido por: " + (o.recibidopor || "\u2014") + " \u2192 " + editV.atendido);
+    if (cambios.length === 0) { setEditV(null); return; }
+    cambios.push("Motivo: " + editV.motivo.trim());
+    const comisionPct = (Number(o.total) || 0) > 0 ? (Number(o.comision) || 0) / (Number(o.total) || 1) : 0;
+    const actualizada = {
+      ...o,
+      cliente: editV.cliente.trim(),
+      fecha: editV.fecha,
+      area: itemsCalc[0].categoria || o.area,
+      servicio: descripcion,
+      descripcion,
+      items: itemsCalc,
+      subtotal: sub,
+      descuento: desc,
+      total: tot,
+      comision: Math.round(tot * comisionPct),
+      formapago: editV.pago,
+      recibidopor: editV.atendido,
+      editadopor: usuario.nombre,
+      notas: [o.notas, "Editada el " + new Date().toISOString().slice(0,10) + " por " + usuario.nombre + ": " + editV.motivo.trim()].filter(Boolean).join(" \xB7 ")
+    };
+    setVentas(prev => (prev || []).map(v => String(v.id) === String(o.id) ? actualizada : v));
+    upsertOne("pc_ventas", { ...actualizada, __cambios: cambios })
+      .catch(e => console.warn("[FacturarEmpleado] error al guardar la edici\xF3n", e));
+    setEditV(null);
+    setOk({ ...actualizada, clienteNombre: actualizada.cliente });
+    setTimeout(() => setOk(null), 8000);
+  }
+
   function imprimir(facturaData) {
     const fecha = facturaData.fecha || new Date().toISOString().slice(0,10);
-    const items = (() => { try { return JSON.parse(facturaData.items||"[]"); } catch { return []; } })();
+    const items = parseItemsFactura(facturaData.items);
     const lineas = items.length > 0
       ? items.map(it => `<tr><td>${(it.qty>1?it.qty+"x ":"")+it.nombre}</td><td style="text-align:right">RD$ ${Math.round(it.precioUnit).toLocaleString("es-DO")}</td><td style="text-align:center">${it.qty}</td>${it.descPct>0?`<td style="text-align:center">${it.descPct}%</td>`:"<td>—</td>"}<td style="text-align:right;font-weight:700">RD$ ${Math.round(it.subtotal).toLocaleString("es-DO")}</td></tr>`).join("")
       : `<tr><td colspan="5">${facturaData.servicio||""}</td></tr>`;
@@ -15764,23 +16268,112 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
         // Facturas del día
         React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }},
-          React.createElement("div", { style:{ fontWeight:800, fontSize:14, marginBottom:12 }}, "📋 Facturas de hoy"),
+          React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }},
+            React.createElement("div", { style:{ fontWeight:800, fontSize:14 }}, "📋 Mis facturas"),
+            React.createElement("button", { onClick:()=>setVerSemana(s=>!s), style:{ background:verSemana?CC.azul:"#f4f5f7", color:verSemana?"#fff":CC.gris, border:"none", borderRadius:8, padding:"5px 11px", fontSize:11, fontWeight:700, cursor:"pointer" }},
+              verSemana ? "Últimos 7 días" : "Solo hoy")
+          ),
           (() => {
             const hoyStr = new Date().toISOString().slice(0,10);
+            const desde = (() => { const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().slice(0,10); })();
             const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
-            const propias = (ventas||[]).filter(v => v.fecha === hoyStr && (v.recibidopor||"").toLowerCase().includes(nombreBase)).slice(-8).reverse();
-            if (propias.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:12, textAlign:"center", padding:"12px 0" }}, "Sin facturas hoy");
-            return propias.map((v,i) => React.createElement("div", { key:i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:12 }},
-              React.createElement("div", null,
+            const enRango = v => verSemana ? (v.fecha >= desde && v.fecha <= hoyStr) : v.fecha === hoyStr;
+            const propias = (ventas||[])
+              .filter(v => enRango(v) && (v.recibidopor||"").toLowerCase().includes(nombreBase))
+              .sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)) || (Number(b.id)||0) - (Number(a.id)||0))
+              .slice(0, verSemana ? 25 : 10);
+            if (propias.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:12, textAlign:"center", padding:"12px 0" }}, verSemana ? "Sin facturas en los últimos 7 días" : "Sin facturas hoy");
+            return propias.map((v,i) => React.createElement("div", { key:v.id||i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:12 }},
+              React.createElement("div", { style:{ flex:1, minWidth:0 }},
                 React.createElement("div", { style:{ fontWeight:600 }}, v.cliente||"—"),
-                React.createElement("div", { style:{ color:CC.gris, fontSize:11 }}, (v.servicio||"").slice(0,30))
+                React.createElement("div", { style:{ color:CC.gris, fontSize:11 }}, (verSemana ? v.fecha + " · " : "") + (v.servicio||"").slice(0,30))
               ),
-              React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:8 }},
+              React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:6 }},
                 React.createElement("div", { style:{ fontWeight:700, color:CC.verde }}, RD2(v.total)),
+                React.createElement("button", { onClick:()=>abrirEdicion(v), title:"Corregir esta factura", style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "✏️"),
                 React.createElement("button", { onClick:()=>imprimir({...v, clienteNombre:v.cliente}), style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "🖨️")
               )
             ));
           })()
+        )
+      )
+    ),
+
+    // ── Modal: corregir una factura ya registrada ──
+    editV && React.createElement("div", {
+      style:{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:9999, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"20px 16px", overflowY:"auto" }
+    },
+      React.createElement("div", { style:{ background:"#fff", borderRadius:16, width:"100%", maxWidth:640, boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }},
+        React.createElement("div", { style:{ background:CC.azul, padding:"16px 22px", borderRadius:"16px 16px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center" }},
+          React.createElement("div", { style:{ color:"#fff", fontWeight:800, fontSize:16 }}, "✏️ Corregir factura"),
+          React.createElement("button", { onClick:()=>setEditV(null), style:{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, width:32, height:32, cursor:"pointer", fontSize:16, fontWeight:800 }}, "✕")
+        ),
+        React.createElement("div", { style:{ padding:"20px 22px" }},
+
+          React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:12, marginBottom:14 }},
+            React.createElement("div", null,
+              React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Cliente / Mascota"),
+              React.createElement("input", { value:editV.cliente, onChange:e=>setEV("cliente", e.target.value), style:{ width:"100%", padding:"8px 11px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13, boxSizing:"border-box" }})
+            ),
+            React.createElement("div", null,
+              React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Fecha"),
+              React.createElement("input", { type:"date", value:editV.fecha, onChange:e=>setEV("fecha", e.target.value), style:{ width:"100%", padding:"8px 11px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13, boxSizing:"border-box" }})
+            )
+          ),
+
+          React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Servicios y productos"),
+          editV.items.map(it => React.createElement("div", { key:it.key, style:{ display:"flex", gap:6, marginBottom:6, alignItems:"center" }},
+            React.createElement("input", { value:it.nombre, onChange:e=>setEItem(it.key,"nombre",e.target.value), placeholder:"Servicio o producto", style:{ flex:3, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
+            React.createElement("input", { type:"number", min:0, value:it.precioUnit, onChange:e=>setEItem(it.key,"precioUnit",e.target.value), title:"Precio", style:{ flex:1.2, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
+            React.createElement("input", { type:"number", min:1, value:it.qty, onChange:e=>setEItem(it.key,"qty",e.target.value), title:"Cantidad", style:{ flex:0.8, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
+            React.createElement("input", { type:"number", min:0, max:100, value:it.descPct, onChange:e=>setEItem(it.key,"descPct",e.target.value), title:"Descuento %", style:{ flex:0.8, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
+            React.createElement("div", { style:{ flex:1.2, textAlign:"right", fontSize:12, fontWeight:700, color:CC.verde }}, RD2(lineaSubtotal(it))),
+            React.createElement("button", { onClick:()=>quitarEItem(it.key), style:{ background:"#fee2e2", color:CC.rojo, border:"none", borderRadius:6, padding:"6px 9px", cursor:"pointer", fontSize:12, fontWeight:700 }}, "✕")
+          )),
+          React.createElement("button", { onClick:agregarEItem, style:{ background:"#eef2ff", color:CC.azul, border:"1.5px solid "+CC.azul, borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, cursor:"pointer", marginBottom:14 }}, "+ Agregar línea"),
+
+          React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }},
+            React.createElement("div", null,
+              React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Descuento RD$"),
+              React.createElement("input", { type:"number", min:0, value:editV.descuento, onChange:e=>setEV("descuento", e.target.value), style:{ width:"100%", padding:"8px 11px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13, boxSizing:"border-box" }})
+            ),
+            React.createElement("div", null,
+              React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Forma de pago"),
+              React.createElement("select", { value:editV.pago, onChange:e=>setEV("pago", e.target.value), style:{ width:"100%", padding:"8px 11px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13 }},
+                ["efectivo","Transferencia Popular","Transferencia Reservas","tarjeta","Pago pendiente","pendiente"].concat(
+                  ["efectivo","Transferencia Popular","Transferencia Reservas","tarjeta","Pago pendiente","pendiente"].includes(editV.pago) ? [] : [editV.pago]
+                ).map(p => React.createElement("option", { key:p, value:p }, p))
+              )
+            )
+          ),
+
+          React.createElement("div", { style:{ marginBottom:14 }},
+            React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "Atendido por"),
+            React.createElement("select", { value:editV.atendido, onChange:e=>setEV("atendido", e.target.value), style:{ width:"100%", padding:"8px 11px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13 }},
+              ["Alexander Ramírez","Naylan Perez","Dra. Valentina"].concat(
+                ["Alexander Ramírez","Naylan Perez","Dra. Valentina"].includes(editV.atendido) ? [] : [editV.atendido]
+              ).map(p => React.createElement("option", { key:p, value:p }, p))
+            )
+          ),
+
+          React.createElement("div", { style:{ marginBottom:14 }},
+            React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:4 }}, "¿Por qué se corrige? *"),
+            React.createElement("input", { value:editV.motivo, onChange:e=>setEV("motivo", e.target.value), placeholder:"Ej: se cobró de más, faltó la vacuna, cliente equivocado…", style:{ width:"100%", padding:"8px 11px", border:"1.5px solid #dde0e4", borderRadius:8, fontSize:13, boxSizing:"border-box" }}),
+            React.createElement("div", { style:{ fontSize:11, color:CC.gris, marginTop:5 }}, "Todo cambio queda guardado en el registro de auditoría con tu nombre y la hora.")
+          ),
+
+          React.createElement("div", { style:{ background:"#f0f4f8", borderRadius:10, padding:"10px 14px", marginBottom:14 }},
+            React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:12, color:CC.gris }},
+              React.createElement("span", null, "Subtotal"), React.createElement("span", null, RD2(editSubtotal))),
+            React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:16, fontWeight:900, color:CC.verde, marginTop:4 }},
+              React.createElement("span", null, "TOTAL"), React.createElement("span", null, RD2(editTotal))),
+            React.createElement("div", { style:{ fontSize:11, color:CC.gris, marginTop:4 }}, "Antes: " + RD2(editV.original.total || 0))
+          ),
+
+          React.createElement("div", { style:{ display:"flex", gap:10 }},
+            React.createElement("button", { onClick:()=>setEditV(null), style:{ flex:1, background:"#f4f5f7", border:"none", borderRadius:10, padding:"12px", fontWeight:700, fontSize:14, cursor:"pointer", color:CC.gris }}, "Cancelar"),
+            React.createElement("button", { onClick:guardarEdicion, style:{ flex:2, background:CC.verde, color:"#fff", border:"none", borderRadius:10, padding:"12px", fontWeight:800, fontSize:14, cursor:"pointer" }}, "✅ Guardar cambios")
+          )
         )
       )
     )
@@ -15995,7 +16588,7 @@ function EvTEA(props) {
   });
 }
 
-function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias = [], setHistorias }) {
+function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], ventas = [], setVentas }) {
   const [busqueda, setBusqueda] = useState("");
   const [paciente, setPaciente] = useState(null);
   const [modal, setModal] = useState(false);
@@ -16008,7 +16601,14 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   const TIPOS_VACUNA = ["Qu\xEDntuple", "Rabia", "Giardia", "Bordetella", "Coronavirus", "Parvovirus", "Leptospirosis", "S\xE9xtuple", "Otra"];
   const [form, setForm] = useState(EMPTY);
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const addVacuna = () => setF("vacunas", [...(form.vacunas || []), { id: Date.now(), tipo: "Qu\xEDntuple", fecha: hoy(), lote: "" }]);
+  const addVacuna = () => setF("vacunas", [...(form.vacunas || []), { id: Date.now(), tipo: "Qu\xEDntuple", fecha: hoy(), lote: "", precio: "" }]);
+  // Precios de referencia para que la vacuna quede cobrada al registrarla.
+  const PRECIO_VACUNA = (tipo) => {
+    const t = (tipo || "").toLowerCase();
+    const tar = (typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [])
+      .find(s => /vacuna/i.test(s.nombre || "") && (s.nombre || "").toLowerCase().indexOf(t.split(" ")[0]) >= 0);
+    return tar ? tar.precio : 0;
+  };
   const updVacuna = (id, campo, val) => setF("vacunas", (form.vacunas || []).map(v => v.id === id ? { ...v, [campo]: val } : v));
   const delVacuna = (id) => setF("vacunas", (form.vacunas || []).filter(v => v.id !== id));
 
@@ -16026,6 +16626,72 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
     ? historias.filter(h => String(h.clienteid) === String(paciente.id))
         .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""))
     : [];
+
+  // Todo lo que se llena en "Historia clínica" (y en Reportes de Lab) aparece
+  // también aquí, en la misma línea de tiempo, para llevar un solo control.
+  const fichasPaciente = paciente
+    ? (fichas || [])
+        .filter(f => paciente.id && String(f.clienteid) === String(paciente.id))
+        .map(f => {
+          const d = f.datos || {};
+          return { __ficha: true, id: f.id, tipoFicha: d.tipo || f.tipo || "general", fecha: d.fecha || f.creadoen || "", datos: d };
+        })
+    : [];
+  const registrosDe = (cli) =>
+    (historias || []).filter(h => String(h.clienteid) === String(cli.id)).length +
+    (fichas || []).filter(f => cli.id && String(f.clienteid) === String(cli.id)).length;
+  const timeline = [...evPaciente, ...fichasPaciente]
+    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+
+  const FICHA_ETIQUETA = {
+    general:            { icon: "\u{1F4CB}", label: "Historia cl\xEDnica",       color: "#1a6b3a", bg: "#e8f5ed" },
+    derma:              { icon: "\u{1F52C}", label: "Historia dermatol\xF3gica", color: "#7c3aed", bg: "#f3e8ff" },
+    lab_coprologico:    { icon: "\u{1F52C}", label: "Reporte coprol\xF3gico",    color: "#8b5a00", bg: "#fdf6e3" },
+    lab_dermatologico:  { icon: "\u{1F9EB}", label: "Reporte dermatol\xF3gico",  color: "#7c3aed", bg: "#f3e8ff" },
+    lab_prueba_rapida:  { icon: "\u{1F9EA}", label: "Prueba r\xE1pida",          color: "#0d9488", bg: "#e6fffa" }
+  };
+  // Campos del formulario de historia clínica que vale la pena resumir aquí.
+  const FICHA_CAMPOS = [
+    ["motivo", "Motivo"], ["motivoDescripcion", "Problema dermatol\xF3gico"],
+    ["muestra", "Muestra"], ["zona", "Zona"], ["grado", "Grado"], ["resultado", "Resultado"],
+    ["vacunadoAlDia", "Vacunado al d\xEDa"], ["ultimaVacunacion", "\xDAltima vacunaci\xF3n"],
+    ["desparasitacion", "Desparasitaci\xF3n"], ["ultimaDesparasitacion", "\xDAltima desparasitaci\xF3n"],
+    ["garrapatas", "Garrapatas/pulgas"], ["preventivoAlDia", "Preventivo al d\xEDa"],
+    ["intensidadPrurito", "Intensidad del prurito"], ["tipoAlimentacion", "Alimentaci\xF3n"],
+    ["cambioApetito", "Cambio de apetito"], ["cambioPeso", "Cambio de peso"],
+    ["vomitos", "V\xF3mitos"], ["observaciones", "Observaciones"], ["recomendaciones", "Recomendaciones"]
+  ];
+  function renderFicha(item, i) {
+    const et = FICHA_ETIQUETA[item.tipoFicha] || FICHA_ETIQUETA.general;
+    const d = item.datos || {};
+    const listas = [
+      ["metodos", "M\xE9todo"], ["tecnicas", "T\xE9cnica"], ["hallazgos", "Hallazgos"],
+      ["zonasPrurito", "Zonas con prurito"], ["motivoDerma", "Motivo dermatol\xF3gico"]
+    ].map(([k, lab]) => Array.isArray(d[k]) && d[k].length ? [lab, d[k].join(", ")] : null).filter(Boolean);
+    const campos = FICHA_CAMPOS
+      .map(([k, lab]) => (d[k] && String(d[k]).trim()) ? [lab, String(d[k])] : null)
+      .filter(Boolean)
+      .concat(listas)
+      .concat((d.pruebas || []).map(p => [p.nombre || "Prueba", p.resultado || "\u2014"]));
+    return React.createElement("div", {
+      key: "f" + (item.id || i),
+      style: { background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" }
+    },
+      React.createElement("div", { style: { background: et.bg, borderLeft: "5px solid " + et.color, padding: "10px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 } },
+        React.createElement("div", { style: { fontWeight: 800, fontSize: 13, color: et.color } },
+          "\u{1F4C5} " + (item.fecha || "\u2014") + " \xB7 " + et.icon + " " + et.label),
+        React.createElement("div", { style: { fontSize: 12, color: C.grisd } }, "\u{1F469}\u200D\u2695\uFE0F " + (d.veterinario || "\u2014"))
+      ),
+      campos.length === 0
+        ? React.createElement("div", { style: { padding: "12px 18px", fontSize: 12, color: C.grisd } }, "Formulario guardado sin detalles adicionales.")
+        : React.createElement("div", { style: { padding: "12px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" } },
+            campos.map(([lab, val], k) => React.createElement("div", { key: k, style: { gridColumn: String(val).length > 45 ? "1/-1" : "auto" } },
+              React.createElement("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, lab.toUpperCase() + ": "),
+              React.createElement("span", { style: { fontSize: 13 } }, val)
+            ))
+          )
+    );
+  }
 
   function abrirNueva() {
     setForm({ ...EMPTY, mascota: paciente?.nombre || "", propietario: paciente?.dueno || "" });
@@ -16058,6 +16724,38 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
     };
     setHistorias(prev => [nueva, ...(prev || [])]);
     upsertOne("pc_historias", nueva).catch(e => console.warn("[EvolucionClinica]", e));
+
+    // Cada vacuna que la doctora anota queda registrada de una vez en el
+    // programa: aparece en el carnet de la mascota, en la alerta de refuerzos
+    // y en la pestaña Vacunas, sin tener que volver a facturarla aparte.
+    const vacsNuevas = (form.vacunas || []).filter(v => (v.tipo || "").trim());
+    if (vacsNuevas.length > 0 && typeof setVentas === "function") {
+      const pacienteNombre = (form.mascota || paciente?.nombre || "").trim();
+      const ventasVacuna = vacsNuevas.map((v, idx) => {
+        const nombreVac = /vacuna/i.test(v.tipo) ? v.tipo : "Vacuna " + v.tipo.toLowerCase();
+        const detalle = nombreVac + (v.lote ? " (lote " + v.lote + ")" : "");
+        const precio = Number(v.precio) || 0;
+        return {
+          id: Date.now() + 1000 + idx,
+          fecha: v.fecha || form.fecha,
+          cliente: pacienteNombre,
+          area: "veterinaria",
+          servicio: detalle,
+          descripcion: detalle,
+          items: [{ id: "vac" + idx, nombre: detalle, qty: 1, precioUnit: precio, descPct: 0, subtotal: precio, categoria: "veterinaria" }],
+          subtotal: precio,
+          descuento: 0,
+          total: precio,
+          comision: Math.round(precio * (usuario?.comision_pct || 0.3)),
+          formapago: precio > 0 ? "pendiente" : "sin cobro",
+          recibidopor: form.veterinario || usuario?.nombre || "",
+          veterinaria_id: usuario?.id || "",
+          notas: "Registrada autom\xE1ticamente desde Evoluci\xF3n Cl\xEDnica" + (precio > 0 ? " \xB7 pendiente de cobro en caja" : " \xB7 sin cargo")
+        };
+      });
+      setVentas(prev => [...(prev || []), ...ventasVacuna]);
+      ventasVacuna.forEach(v => upsertOne("pc_ventas", v).catch(e => console.warn("[EvolucionClinica\u2192vacuna]", e)));
+    }
     if (form.proxima_cita && typeof setCitas === "function") {
       const citaAuto = {
         id: Date.now() + 1,
@@ -16112,7 +16810,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
           React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "#1a1a2e" } }, c.nombre),
           React.createElement("div", { style: { fontSize: 11, color: C.grisd, marginTop: 2 } }, c.dueno || "Sin propietario"),
           React.createElement("div", { style: { fontSize: 10, color: C.azul, marginTop: 1 } },
-            (historias.filter(h => String(h.clienteid) === String(c.id)).length || 0) + " registros"
+            registrosDe(c) + " registros"
           )
         ))
       )
@@ -16142,14 +16840,14 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
             ),
 
             // Línea de tiempo
-            evPaciente.length === 0
+            timeline.length === 0
               ? React.createElement("div", { style: { background: "#fff", borderRadius: 14, padding: 32, textAlign: "center", color: C.grisd, boxShadow: "0 2px 12px rgba(0,0,0,0.07)" } },
                   "No hay registros de evolución clínica para este paciente.",
                   React.createElement("br", null),
                   React.createElement("span", { style: { fontSize: 13 } }, "Haz clic en '+ Nueva Evolución' para agregar el primer registro.")
                 )
               : React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } },
-                  evPaciente.map((ev, i) => React.createElement("div", {
+                  timeline.map((ev, i) => ev.__ficha ? renderFicha(ev, i) : React.createElement("div", {
                     key: ev.id || i,
                     style: { background: "#fff", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" }
                   },
@@ -16222,9 +16920,13 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
               ),
               React.createElement("input", { type: "date", value: v.fecha, onChange: e => updVacuna(v.id, "fecha", e.target.value), style: { flex: 1.5, border: "1.5px solid #dde1e7", borderRadius: 8, padding: "7px 8px", fontSize: 12 } }),
               React.createElement("input", { value: v.lote || "", onChange: e => updVacuna(v.id, "lote", e.target.value), placeholder: "Lote", style: { flex: 1, border: "1.5px solid #dde1e7", borderRadius: 8, padding: "7px 8px", fontSize: 12 } }),
+              React.createElement("input", { type: "number", min: 0, value: v.precio === undefined ? "" : v.precio, onChange: e => updVacuna(v.id, "precio", e.target.value), placeholder: "RD$", title: "Precio a cobrar (d\xE9jalo vac\xEDo si no se cobra)", style: { flex: 1, border: "1.5px solid #dde1e7", borderRadius: 8, padding: "7px 8px", fontSize: 12 } }),
+              React.createElement("button", { onClick: () => updVacuna(v.id, "precio", PRECIO_VACUNA(v.tipo)), title: "Usar el precio de la lista", style: { background: "#f4f5f7", color: "#5a6472", border: "none", borderRadius: 6, padding: "6px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 } }, "\u{1F4B2}"),
               React.createElement("button", { onClick: () => delVacuna(v.id), style: { background: "#fee2e2", color: "#c0392b", border: "none", borderRadius: 6, padding: "6px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 } }, "\u2715")
             )),
-            React.createElement("button", { onClick: addVacuna, style: { background: "#fce7f3", color: "#db2777", border: "1.5px solid #db2777", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "+ Agregar vacuna")
+            React.createElement("button", { onClick: addVacuna, style: { background: "#fce7f3", color: "#db2777", border: "1.5px solid #db2777", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "+ Agregar vacuna"),
+            (form.vacunas || []).length > 0 && React.createElement("div", { style: { marginTop: 8, background: "#e8f5ed", border: "1px solid #1a6b3a", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "#1a6b3a", fontWeight: 600 } },
+              "\u{1F489} Al guardar, estas vacunas se registran solas en el programa: entran al carnet de la mascota, a la alerta de refuerzos y a la pesta\xF1a Vacunas. Si pones precio, quedan pendientes de cobro en caja.")
           ),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" } },
             React.createElement(EvFLD, { label: "Próxima cita" }, React.createElement(EvINP, { type: "date", value: form.proxima_cita, onChange: e => setF("proxima_cita", e.target.value) })),
@@ -16304,7 +17006,8 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
         })
       ),
       tabVet === "historias"     && React.createElement(HistoriasClinicas, { usuario, ventas, setVentas, clientes, setClientes, fichas, setFichas }),
-      tabVet === "evolucion_vet" && React.createElement(EvolucionClinica, { usuario, clientes, citas, setCitas, historias, setHistorias }),
+      tabVet === "evolucion_vet" && React.createElement(EvolucionClinica, { usuario, clientes, citas, setCitas, historias, setHistorias, fichas, ventas, setVentas }),
+      tabVet === "reportes_lab"  && React.createElement(ReportesLab, { usuario, clientes, fichas, setFichas }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas, clientes, historias }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
       tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [], acento: "#db2777" }),
