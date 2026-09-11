@@ -122,11 +122,20 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
 1a. (M17) WhatsApp con IA. TODO el codigo esta listo y probado; falta conectar
    el numero, y eso son pasos en Meta que solo puedes hacer tu. El orden exacto
    esta en `docs/whatsapp-puesta-en-marcha.md`.
-   OJO CON ESTO ANTES DE EMPEZAR: migrar el 809-752-6806 a la Cloud API hace
-   que ese numero DEJE de funcionar en la app de WhatsApp del telefono. Los
-   mensajes pasan a la pestaña WhatsApp de la app y los chats viejos del
-   telefono no se migran (exportarlos antes). La alternativa es un numero
-   nuevo solo para el bot; esta contemplada en el documento.
+   EL NUMERO NO SE PIERDE (act. 11 sep 2026): con "Coexistencia" de Meta el
+   809-752-6806 sigue funcionando en el telefono Y a la vez en la Cloud API,
+   con hasta 6 meses de historial sincronizado. Se activa por el flujo
+   Embedded Signup (app propia como Tech Provider, o un BSP que lo soporte).
+   Lo que si se pierde: las listas de difusion quedan de solo lectura, y se
+   apagan mensajes temporales, "ver una vez", ubicacion en vivo y editar/
+   eliminar. Si PetColinas usa difusion para promociones, mirarlo antes.
+   Hay que suscribirse a `message_echoes` ademas de `messages`: sin eso, la
+   doctora contesta desde el telefono, el bot no se entera y contesta tambien,
+   y el cliente recibe dos respuestas. La funcion ya trata el eco apagando el
+   bot en ese chat.
+   NO usar Baileys/whatsapp-web.js ni nodos de n8n no oficiales: funcionan,
+   pero van contra los terminos de WhatsApp y el riesgo es que baneen el
+   numero del negocio, que es justo lo que se quiere evitar.
    Nada sale a clientes sin aprobar: `wa_auto` esta en `no` y la reactivacion
    tiene tope de 15 al dia (`wa_max_reactivacion_dia`).
 1c. (M16) Cargar el rango REAL de NCF autorizado por la DGII desde la

@@ -286,8 +286,47 @@ async function procesarWebhook(body: Record<string, unknown>): Promise<void> {
       for (const m of mensajes) {
         await procesarMensaje(m, nombrePerfil);
       }
+
+      // Eco: lo que alguien de PetColinas escribio DESDE EL TELEFONO.
+      //
+      // Esto solo llega en modo coexistencia (el numero sigue vivo en la app
+      // del telefono y a la vez conectado a la Cloud API), y hay que
+      // suscribirse al campo `message_echoes` en Meta ademas de `messages`.
+      //
+      // Importa mucho: sin esto, la doctora contesta desde su telefono y el bot
+      // NO se entera, asi que contesta tambien. El cliente recibe dos respuestas
+      // a la misma pregunta, posiblemente distintas, y parece que nadie se
+      // coordina. Con el eco, escribir desde el telefono apaga el bot en ese
+      // chat — la misma regla que ya existe cuando se escribe desde la app.
+      const ecos = (value.message_echoes as Array<Record<string, unknown>>) ?? [];
+      for (const m of ecos) {
+        await procesarEco(m);
+      }
     }
   }
+}
+
+async function procesarEco(m: Record<string, unknown>): Promise<void> {
+  // En el eco, `to` es el cliente (`from` somos nosotros).
+  const telefono = normTel(String(m.to ?? ""));
+  if (!telefono) return;
+  const waid = String(m.id ?? "");
+  const texto = String((m.text as Record<string, unknown>)?.body ?? "[mensaje desde el telefono]");
+
+  if (waid) {
+    const { data: yaEsta } = await supabase.from("pc_wa_mensajes").select("id").eq("waid", waid).limit(1);
+    if (yaEsta && yaEsta.length > 0) return;
+  }
+
+  await asegurarChat(telefono, "");
+  await guardarMensaje(telefono, "humano", texto, waid);
+  await supabase.from("pc_wa_chats").update({
+    bot: false,                      // alguien de carne y hueso tomo este chat
+    noleidos: 0,
+    ultimomensaje: texto.slice(0, 200),
+    ultimafecha: new Date().toISOString(),
+  }).eq("telefono", telefono);
+  console.log("Eco desde el telefono para", telefono, "— bot apagado en ese chat.");
 }
 
 async function procesarMensaje(m: Record<string, unknown>, nombrePerfil: string): Promise<void> {

@@ -1,94 +1,194 @@
 # WhatsApp con IA — cómo se enciende
 
-Todo el código está listo y probado. Lo que falta es conectar el número, y eso
-son pasos en Meta que solo puedes hacer tú. Este documento es el orden exacto.
+Todo el código está listo y probado. Falta conectar el número, y eso son pasos
+en Meta que solo puedes hacer tú.
 
-**Léete primero el punto 1.** Tiene una consecuencia que conviene entender antes
-de empezar, porque después no hay vuelta atrás fácil.
-
----
-
-## 1. Lo que hay que decidir antes de tocar nada
-
-Para que la IA pueda leer y contestar mensajes, el número tiene que estar en la
-**WhatsApp Cloud API** de Meta. Y aquí está el detalle importante:
-
-> Cuando un número se migra a la Cloud API, **deja de funcionar en la app de
-> WhatsApp Business del teléfono**. Los mensajes ya no llegan al celular: llegan
-> a la pestaña WhatsApp de la app de PetColinas, y desde ahí se contestan.
-
-No es un problema técnico que se pueda evitar: es cómo funciona. Un número está
-en la app del teléfono **o** en la API, nunca en las dos.
-
-Qué significa en la práctica para PetColinas:
-
-- Quien atiende WhatsApp deja de hacerlo desde el celular y pasa a hacerlo desde
-  la app, en la computadora o en el teléfono con el navegador.
-- Se pierden los chats viejos que hay en el teléfono. Meta migra el número, no
-  el historial. **Exporta las conversaciones que te importen antes.**
-- Los estados de WhatsApp Business, el catálogo y los mensajes de difusión de la
-  app del teléfono ya no están disponibles igual.
-
-**Si eso no te conviene**, la alternativa es usar un número nuevo solo para el
-bot y dejar el 809-752-6806 tal como está. El costo es que el cliente ve dos
-números; la ventaja es que no cambias nada de lo que ya funciona. Dímelo y
-adapto la configuración.
-
-El resto de este documento asume que sigues adelante con el 809-752-6806.
+> **Cambio importante (11 sep 2026).** La primera versión de este documento
+> decía que migrar el número lo sacaba del teléfono para siempre. **Eso ya no
+> es cierto.** Meta sacó *Coexistencia*, que permite tener el mismo número a la
+> vez en la app del teléfono y en la Cloud API. Es el camino recomendado y es
+> el que se explica aquí.
 
 ---
 
-## 2. Crear la app en Meta
+## La pregunta de fondo: ¿se pierde el número del teléfono?
 
-1. Entra a [business.facebook.com](https://business.facebook.com) con la cuenta
-   de PetColinas y verifica el negocio si no lo está (te pedirá RNC y
-   documentos: **es lo que más tarda, a veces días**; empieza por aquí).
-2. Ve a [developers.facebook.com](https://developers.facebook.com) → **Mis apps**
-   → **Crear app** → tipo **Empresa**.
-3. Dentro de la app, añade el producto **WhatsApp**.
-4. En WhatsApp → **Configuración de la API**, añade el número 809-752-6806.
-   Meta te va a pedir confirmar por SMS o llamada. **Ese es el momento en que el
-   número deja de funcionar en el teléfono.**
-5. Apunta el **Identificador del número de teléfono** (`Phone number ID`). Es un
-   número largo, no el teléfono.
+**No, si usas Coexistencia.** Antes había que elegir: o el número estaba en la
+app de WhatsApp Business del teléfono, o estaba en la API. Coexistencia rompe
+esa disyuntiva:
 
-## 3. El token permanente
+- El 809-752-6806 **sigue funcionando igual en el teléfono**. Se contesta desde
+  ahí como siempre.
+- Y a la vez la app de PetColinas puede leer y escribir por ese mismo número.
+- Se sincronizan hasta **6 meses** de conversaciones uno a uno (los grupos no).
 
-El token que Meta te enseña al principio caduca en 24 horas y no sirve. Hace
-falta uno permanente:
+### Lo que sí se pierde al activarla
 
-1. Business Manager → **Configuración del negocio** → **Usuarios** →
-   **Usuarios del sistema** → crear uno (rol: Administrador).
-2. **Agregar activos** → tu app de WhatsApp → control total.
-3. **Generar nuevo token** → elige la app → marca los permisos
-   `whatsapp_business_messaging` y `whatsapp_business_management` →
-   **caducidad: nunca**.
-4. Cópialo. **Solo se enseña una vez.**
+Esto conviene mirarlo antes de decidir, porque son cosas de la app del teléfono
+que dejan de estar:
 
-## 4. Las tres plantillas
+| Se pierde o se limita | Detalle |
+|---|---|
+| **Listas de difusión** | Quedan de solo lectura. No se pueden crear nuevas. **Si usas difusión para promociones, este es el punto que más te afecta.** |
+| Mensajes temporales, "ver una vez", ubicación en tiempo real | Se apagan en los chats individuales |
+| Editar y eliminar mensajes enviados | Deja de funcionar |
+| Grupos | Siguen en el teléfono, pero no se ven en la app de PetColinas |
+| Llamadas de voz y video, estados | Solo en el teléfono |
+| Dispositivos vinculados | Se desvinculan todos al activar. Se vuelven a vincular después |
 
-Esto no es opcional y conviene entender por qué:
+Además: **hay que abrir la app del teléfono cada 10-14 días** o la conexión
+caduca por seguridad. Con el uso normal de la clínica eso pasa solo.
 
-> Meta solo deja mandar texto libre **dentro de las 24 horas siguientes al
-> último mensaje del cliente**. Un recordatorio de vacuna es, por definición,
-> fuera de esa ventana. Así que los seguimientos van con plantillas que Meta
-> revisa y aprueba una por una.
+Lo que **no** cambia: fuera de las 24 h desde el último mensaje del cliente
+sigue haciendo falta una plantilla aprobada. Coexistencia no levanta esa regla.
+Por eso el código de los seguimientos (M17) **funciona igual, sin tocar nada**.
 
-Por eso la IA **no redacta** los seguimientos: rellena los huecos de una
-plantilla aprobada. Donde sí escribe libre es contestando, que ahí sí estamos
-dentro de la ventana.
+---
 
-En **WhatsApp Manager → Plantillas de mensaje → Crear**, crea estas tres. El
-nombre y el idioma tienen que ser **exactos** o el envío falla con error 132001:
+## Sobre las otras ideas que planteaste
+
+Vale la pena decir por qué no son el camino, para no perder tiempo ahí:
+
+**n8n** es un orquestador: encadena pasos, no cambia tu relación con WhatsApp.
+Acabaría llamando a la misma Cloud API (mismas reglas) o a una librería no
+oficial (ver abajo). No resuelve el problema, añade una pieza más que mantener
+y que ya tenemos resuelta con la Edge Function.
+
+**Cloudflare** es hosting y red. Tampoco cambia cómo WhatsApp registra un
+número. Nuestra función ya vive en Supabase y funciona.
+
+**Meta Business Suite** tiene bandeja de WhatsApp, pero es para que la use una
+persona. No expone una API para que la IA lea y escriba.
+
+**"Dispositivo adicional" con librerías no oficiales** (Baileys,
+whatsapp-web.js, WPPConnect, y lo que usan casi todos los tutoriales de "conecta
+WhatsApp sin perder el número") — esto **sí** funciona técnicamente y sí deja el
+número en el teléfono. Se conecta como si fuera WhatsApp Web. Pero:
+
+- **Va contra los términos de servicio de WhatsApp.** El riesgo real es que
+  baneen el número — justo lo que estás tratando de evitar. Y mandar
+  seguimientos automáticos es exactamente el uso que más lo dispara.
+- Necesita un servidor encendido todo el tiempo guardando la sesión. Las Edge
+  Functions de Supabase no sirven (son efímeras) y Cloudflare Workers tampoco.
+  Haría falta un VPS aparte.
+- Se rompe cada vez que WhatsApp cambia el protocolo.
+
+Con Coexistencia consigues lo mismo por la vía oficial. No vale la pena arriesgar
+el número del negocio.
+
+---
+
+## Cómo se activa Coexistencia
+
+El detalle incómodo: **Coexistencia solo se activa por el flujo "Embedded
+Signup" de Meta**, que está pensado para plataformas que dan de alta a sus
+clientes. No aparece en el alta normal de un número. Hay dos formas:
+
+### Camino A — Nuestra propia app de Meta (recomendado)
+
+Registramos la app de PetColinas como *Tech Provider* y corremos el Embedded
+Signup una vez, para el propio PetColinas.
+
+- ✅ Sin cuota mensual de nadie. Solo pagas a Meta por conversación.
+- ✅ Los webhooks llegan directo a nuestra función. El código ya escrito sirve.
+- ✅ Nadie más se sienta en medio de las conversaciones con tus clientes.
+- ❌ Más trámite: verificación del negocio y revisión de la app en Meta.
+
+### Camino B — Un proveedor (BSP) que soporte Coexistencia
+
+Wati, 360dialog, respond.io y otros ya tienen el Embedded Signup montado.
+
+- ✅ Se activa en pocos clics, sin revisión de app.
+- ❌ Cuota mensual, y muchos cobran recargo sobre cada mensaje.
+- ❌ Hay que reescribir la capa de envío: nuestra función hablaría con su API en
+  vez de con la de Meta.
+- ❌ Un tercero con acceso a las conversaciones de tus clientes.
+
+**Mi recomendación: camino A.** El trámite es de una vez; la cuota del BSP es
+para siempre, y no queremos otro intermediario con los datos de los clientes.
+Si el trámite se atasca, el camino B siempre está ahí.
+
+---
+
+## Pasos, en orden
+
+### 1. Verificar el negocio en Meta
+
+[business.facebook.com](https://business.facebook.com) → Configuración del
+negocio → Información del negocio → **Verificación**. Te pedirá RNC y
+documentos. **Es lo que más tarda (a veces días). Empieza por aquí**, lo demás
+son minutos.
+
+### 2. Crear la app
+
+[developers.facebook.com](https://developers.facebook.com) → Mis apps → Crear
+app → tipo **Empresa** → añadir el producto **WhatsApp**.
+
+En **Configuración → Básica** apunta el **ID de la app** y la **Clave secreta**.
+
+### 3. Ponerla como Tech Provider y pedir los permisos
+
+En la app: **Casos de uso / Permisos**, solicita acceso avanzado a
+`whatsapp_business_messaging` y `whatsapp_business_management`.
+
+Aquí es donde te pueden pedir explicar para qué es. La respuesta honesta y
+suficiente: *software propio de gestión de una clínica veterinaria, para
+atender a sus propios clientes y enviarles recordatorios de citas y vacunas.*
+
+### 4. Correr el Embedded Signup
+
+Cuando tengas el ID de la app y el ID de configuración, dímelo y **te preparo la
+página** que lanza el flujo — es un botón. Ahí eliges **"usar mi cuenta de
+WhatsApp Business existente"**, que es la opción que activa Coexistencia, y
+aceptas sincronizar el historial.
+
+Al terminar, Meta devuelve el token y el **Phone number ID**.
+
+> Ojo: al activar se desvinculan los dispositivos vinculados (WhatsApp Web, etc.).
+> Se vuelven a vincular después sin problema.
+
+### 5. Los secretos en Supabase
+
+Supabase → **Edge Functions** → **Secrets**:
+
+| Secreto | De dónde sale |
+|---|---|
+| `WA_TOKEN` | El token del paso 4 |
+| `WA_PHONE_NUMBER_ID` | El Phone number ID del paso 4 |
+| `WA_VERIFY_TOKEN` | Te lo inventas tú. Cualquier texto largo. Se repite en el paso 7 |
+| `WA_APP_SECRET` | La clave secreta del paso 2 |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → API Keys. **Se cobra por uso: ponle límite mensual** |
+
+### 6. Desplegar la función
+
+Me avisas y la despliego yo. Es un comando.
+
+### 7. Enganchar el webhook
+
+Meta → tu app → WhatsApp → Configuración → Webhooks:
+
+- **URL:** `https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/whatsapp-bot`
+- **Token de verificación:** el mismo `WA_VERIFY_TOKEN` del paso 5.
+
+Suscríbete a **`messages`** y también a **`message_echoes`**.
+
+`message_echoes` no es opcional en coexistencia, y esta es la razón: cuando la
+doctora contesta **desde su teléfono**, el eco es lo único que se lo dice al
+bot. Sin eso, el bot no se entera, contesta también, y el cliente recibe dos
+respuestas distintas a la misma pregunta. Con el eco, escribir desde el teléfono
+apaga el bot en ese chat automáticamente.
+
+### 8. Las tres plantillas
+
+Los seguimientos van fuera de la ventana de 24 h, así que necesitan plantilla
+aprobada. En **WhatsApp Manager → Plantillas de mensaje → Crear**. El nombre y
+el idioma tienen que ser **exactos** o el envío falla con error 132001:
 
 | Nombre | Idioma | Categoría |
 |---|---|---|
 | `cita_recordatorio` | Español (`es`) | Utilidad |
 | `vacuna_recordatorio` | Español (`es`) | Utilidad |
 | `reactivacion` | Español (`es`) | **Marketing** |
-
-Los textos, copiados tal cual (el `{{1}}`, `{{2}}`… los pone Meta con el botón
-de añadir variable):
 
 **cita_recordatorio**
 ```
@@ -105,48 +205,26 @@ Hola {{1}} 👋 A {{2}} le toca {{3}} ({{4}}). Respóndanos por aquí y le busca
 Hola {{1}} 👋 Hace tiempo que no vemos a {{2}} por PetColinas. Si quiere agendar un baño o una consulta, respóndanos por aquí y buscamos el día que mejor le quede.
 ```
 
-Meta pide ejemplos de las variables para aprobarlas. Usa: `Viannesa`, `Shayna`,
-`11/09`, `10:00`.
+Ejemplos de variables para que Meta las apruebe: `Viannesa`, `Shayna`, `11/09`,
+`10:00`.
 
-La aprobación suele tardar de minutos a un día. Si rechaza alguna, dime el
-motivo que dé y la reescribo.
-
-> **Sobre el costo:** Meta cobra por conversación y **marketing cuesta bastante
-> más que utilidad**. Las de cita y vacuna son utilidad; la de reactivación es
-> marketing. Mira la tarifa vigente para República Dominicana en la
-> [lista de precios de Meta](https://business.whatsapp.com/products/platform-pricing)
+> **Costo:** Meta cobra por conversación y **marketing cuesta bastante más que
+> utilidad**. Cita y vacuna son utilidad; reactivación es marketing. Mira la
+> tarifa vigente para República Dominicana en la
+> [lista de precios](https://business.whatsapp.com/products/platform-pricing)
 > antes de subir el tope diario de reactivaciones.
 
-## 5. Los secretos en Supabase
+---
 
-Supabase → **Edge Functions** → **Secrets**. Añade:
+## Si prefieres no tocar el número: segundo número
 
-| Secreto | De dónde sale |
-|---|---|
-| `WA_TOKEN` | El token permanente del paso 3 |
-| `WA_PHONE_NUMBER_ID` | El Phone number ID del paso 2.5 |
-| `WA_VERIFY_TOKEN` | Te lo inventas tú. Cualquier texto largo. Lo vuelves a usar en el paso 7 |
-| `WA_APP_SECRET` | Meta → tu app → Configuración → Básica → "Clave secreta de la app" |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → API Keys. **Se cobra por uso**, ponle un límite de gasto mensual |
+Sigue siendo una opción válida y la más rápida: un número nuevo solo para el
+bot, alta normal en Cloud API (sin Coexistencia, sin Embedded Signup, sin
+revisión de app). El 809-752-6806 no se toca.
 
-## 6. Desplegar la función
-
-Desde esta conversación, cuando me digas que ya están los secretos. Es un
-comando y lo corro yo.
-
-## 7. Enganchar el webhook
-
-Meta → tu app → **WhatsApp** → **Configuración** → **Webhooks** → Editar:
-
-- **URL de devolución de llamada:**
-  `https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/whatsapp-bot`
-- **Token de verificación:** el mismo `WA_VERIFY_TOKEN` que pusiste en Supabase.
-
-Dale a **Verificar y guardar**. Si da error, la función no está desplegada o el
-token no coincide.
-
-Después, en **Campos del webhook**, suscríbete a **`messages`**. Sin eso el bot
-no se entera de nada.
+El costo es que el cliente ve otro número, y que las respuestas a los
+seguimientos llegan ahí en vez de al teléfono de siempre. Dímelo y adapto la
+configuración.
 
 ---
 
@@ -155,8 +233,8 @@ no se entera de nada.
 **Lo que el cliente escribe** → la IA contesta sola con los datos reales de la
 clínica (tarifas, agenda, la ficha de su mascota) y puede agendar citas
 respetando el horario. Todo queda en la pestaña WhatsApp → Conversaciones. Si
-alguien de PetColinas escribe en un chat, el bot se calla en ese chat para no
-pisarse.
+alguien de PetColinas escribe en ese chat —desde la app **o desde el teléfono**—
+el bot se calla ahí para no pisarse.
 
 **Lo que salimos a mandar nosotros** → cada mañana a las 5:45 la base arma sola
 la lista de seguimientos y la deja en WhatsApp → **Seguimientos**, esperando.
@@ -167,13 +245,10 @@ Los frenos que trae puestos, y por qué:
 - **Nada sale sin aprobación.** El interruptor `wa_auto` de `pc_config` está en
   `no`. Se enciende cuando lleve semanas proponiendo bien, no antes.
 - **Tope de 15 reactivaciones al día** (`wa_max_reactivacion_dia`). La primera
-  prueba en seco propuso **83 de una sentada**: aprobar eso de golpe en un
-  número recién migrado es la forma más rápida de que Meta lo bloquee.
+  prueba en seco propuso **83 de una sentada**.
 - **Una por casa**, no una por mascota.
-- **Reactivación solo a quien lleva entre 90 y 400 días sin venir**, y como
-  mucho una vez cada 60 días.
-- **Recordatorio de vacuna hasta 30 días después de vencida.** Más atrás ya no
-  es recordar, es perseguir a la gente.
+- **Reactivación solo entre 90 y 400 días sin venir**, y como mucho cada 60 días.
+- **Vacuna hasta 30 días después de vencida.** Más atrás ya no es recordar.
 - **Teléfonos mal formados no se proponen.** Un número incompleto es el número
   de otra persona.
 - **`pc_wa_optout`**: quien diga "no me escriban más" se mete ahí por teléfono y
@@ -182,11 +257,10 @@ Los frenos que trae puestos, y por qué:
 ## Antes de mandar el primero
 
 Manda **uno solo, a tu propio número**, y míralo en tu teléfono. La vista previa
-de la app enseña exactamente el texto que va a salir, pero verlo llegar es otra
-cosa.
+enseña el texto exacto, pero verlo llegar es otra cosa.
 
 ## Si Meta bloquea el número
 
-Pasa cuando mucha gente reporta los mensajes. Business Manager → Calidad del
-número te dice el estado (verde/amarillo/rojo). Si se pone amarillo: para las
-reactivaciones, deja solo citas y vacunas, y avísame.
+Business Manager → Calidad del número te dice el estado (verde/amarillo/rojo).
+Si se pone amarillo: para las reactivaciones, deja solo citas y vacunas, y
+avísame.
