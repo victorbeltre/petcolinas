@@ -148,6 +148,8 @@ Deno.serve(async (req: Request) => {
     const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const auth = req.headers.get("authorization") ?? "";
     if (ANON && !auth.includes(ANON)) return json({ error: "No autorizado." }, 401);
+    // Esta no lleva teléfono: la fila de la cola dice a quién se le manda.
+    if (accion === "cola_enviar") return await enviarCola(body);
     return await manejarAccion(accion, body);
   }
 
@@ -200,6 +202,70 @@ async function manejarAccion(accion: string, body: Record<string, unknown>): Pro
   }
 
   return json({ error: "Acción desconocida: " + accion }, 400);
+}
+
+// ---------------------------------------------------------------------------
+// Cola de seguimientos (M17)
+//
+// La app manda SOLO los ids de la cola, nunca el texto ni el teléfono: la fila
+// se lee aquí. Así, aunque alguien con la llave anon llame a esta función, lo
+// único que puede hacer es disparar mensajes que la tarea nocturna ya había
+// propuesto — no inventar un destinatario ni un texto.
+async function enviarCola(body: Record<string, unknown>): Promise<Response> {
+  const ids = (Array.isArray(body.ids) ? body.ids : []).map(Number).filter((n) => Number.isFinite(n));
+  if (ids.length === 0) return json({ error: "No se indicó qué enviar." }, 400);
+  if (ids.length > 100) return json({ error: "Demasiados de una vez (máximo 100)." }, 400);
+  const quien = String(body.usuario ?? "").slice(0, 120);
+
+  const { data: filas, error } = await supabase
+    .from("pc_wa_cola")
+    .select("id, telefono, texto, plantilla, variables, estado")
+    .in("id", ids)
+    .in("estado", ["pendiente", "aprobado"]);   // enviado/descartado no se re-envían
+  if (error) return json({ error: "No se pudo leer la cola: " + error.message }, 500);
+
+  const plantillas = new Map<string, Record<string, unknown>>();
+  const { data: ps } = await supabase.from("pc_wa_plantillas").select("clave, nombre_meta, idioma, activa");
+  for (const p of ps ?? []) plantillas.set(String(p.clave), p);
+
+  let enviados = 0;
+  const fallos: Array<{ id: number; error: string }> = [];
+
+  for (const f of filas ?? []) {
+    const tel = String(f.telefono ?? "");
+    const p = plantillas.get(String(f.plantilla));
+    if (!p || p.activa === false) {
+      fallos.push({ id: Number(f.id), error: "La plantilla " + f.plantilla + " no está activa." });
+      await supabase.from("pc_wa_cola").update({ estado: "error", error: "Plantilla inactiva" }).eq("id", f.id);
+      continue;
+    }
+    // Un seguimiento va siempre FUERA de la ventana de 24 h, así que tiene que
+    // ir como plantilla aprobada. Meta rechaza el texto libre ahí.
+    const vars = (Array.isArray(f.variables) ? f.variables : []).map((v) => String(v ?? ""));
+    const r = await enviarPlantilla(tel, String(p.nombre_meta), String(p.idioma || "es"), vars);
+
+    if (!r.ok) {
+      fallos.push({ id: Number(f.id), error: r.error });
+      await supabase.from("pc_wa_cola").update({ estado: "error", error: r.error.slice(0, 500) }).eq("id", f.id);
+      continue;
+    }
+    enviados++;
+    await supabase.from("pc_wa_cola").update({
+      estado: "enviado", enviado_en: new Date().toISOString(), waid: r.waid,
+      error: null, aprobado_por: quien || null, aprobado_en: new Date().toISOString(),
+    }).eq("id", f.id);
+
+    // Queda en la conversación: si el cliente responde, quien atienda ve lo que
+    // le mandamos. Sin esto, la respuesta llegaría sin contexto ninguno.
+    await asegurarChat(tel, "");
+    await guardarMensaje(tel, "bot", String(f.texto ?? ""), r.waid);
+    await supabase.from("pc_wa_chats").update({
+      ultimomensaje: String(f.texto ?? "").slice(0, 200),
+      ultimafecha: new Date().toISOString(),
+    }).eq("telefono", tel);
+  }
+
+  return json({ ok: true, enviados, fallos, pedidos: ids.length });
 }
 
 // ---------------------------------------------------------------------------
@@ -704,6 +770,46 @@ async function enviarWhatsApp(telefono: string, texto: string): Promise<string> 
   } catch (e) {
     console.error("Fallo de red enviando WhatsApp:", String(e));
     return "";
+  }
+}
+
+// Envío por PLANTILLA. Es lo único que Meta permite fuera de las 24 horas
+// siguientes al último mensaje del cliente, y un seguimiento cae siempre fuera
+// de esa ventana. `nombre` e `idioma` tienen que existir tal cual en Meta →
+// WhatsApp Manager → Plantillas, y estar APROBADAS: si no, Meta responde 132001
+// y no se manda nada.
+async function enviarPlantilla(
+  telefono: string, nombre: string, idioma: string, variables: string[],
+): Promise<{ ok: boolean; waid: string; error: string }> {
+  if (!WA_TOKEN || !WA_PHONE_NUMBER_ID) {
+    return { ok: false, waid: "", error: "Faltan WA_TOKEN o WA_PHONE_NUMBER_ID: el número todavía no está conectado." };
+  }
+  try {
+    const componentes = variables.length > 0
+      ? [{ type: "body", parameters: variables.map((v) => ({ type: "text", text: v })) }]
+      : [];
+    const r = await fetch(`${GRAPH}/${WA_PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: telefono,
+        type: "template",
+        template: { name: nombre, language: { code: idioma }, components: componentes },
+      }),
+    });
+    const j = await r.json() as Record<string, unknown>;
+    if (!r.ok) {
+      const e = (j.error as Record<string, unknown>) ?? {};
+      const msg = String(e.message ?? JSON.stringify(j));
+      console.error("Error enviando plantilla:", r.status, msg);
+      return { ok: false, waid: "", error: msg };
+    }
+    const msgs = (j.messages as Array<Record<string, unknown>>) ?? [];
+    return { ok: true, waid: String(msgs[0]?.id ?? ""), error: "" };
+  } catch (e) {
+    return { ok: false, waid: "", error: "Fallo de red: " + String(e) };
   }
 }
 

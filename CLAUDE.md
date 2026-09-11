@@ -119,6 +119,16 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
    que queda abierto de M4: la Edge Function `form-intake` ya esta
    desplegada y probada, pero mientras el Apps Script viejo siga corriendo,
    quitar la politica dejaria de entrar las inscripciones.
+1a. (M17) WhatsApp con IA. TODO el codigo esta listo y probado; falta conectar
+   el numero, y eso son pasos en Meta que solo puedes hacer tu. El orden exacto
+   esta en `docs/whatsapp-puesta-en-marcha.md`.
+   OJO CON ESTO ANTES DE EMPEZAR: migrar el 809-752-6806 a la Cloud API hace
+   que ese numero DEJE de funcionar en la app de WhatsApp del telefono. Los
+   mensajes pasan a la pestaña WhatsApp de la app y los chats viejos del
+   telefono no se migran (exportarlos antes). La alternativa es un numero
+   nuevo solo para el bot; esta contemplada en el documento.
+   Nada sale a clientes sin aprobar: `wa_auto` esta en `no` y la reactivacion
+   tiene tope de 15 al dia (`wa_max_reactivacion_dia`).
 1c. (M16) Cargar el rango REAL de NCF autorizado por la DGII desde la
    Oficina Virtual, en Dashboard → Datos del negocio → "Registrar un rango
    nuevo". Sin eso las facturas se emiten pero salen sin comprobante fiscal.

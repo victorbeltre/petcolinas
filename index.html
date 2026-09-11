@@ -163,7 +163,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-08 22:57Z";
+const PC_BUILD = "2026-09-11 14:36Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -5490,6 +5490,196 @@ function Llamadas() {
 
 // Bandeja de WhatsApp: conversaciones que atiende Sofía (bot) por WhatsApp Business.
 // Laura puede leerlas, tomar el control de un chat y responder ella misma.
+// Seguimientos por WhatsApp: la cola que arma sola la tarea de las 5:45 y que
+// alguien tiene que aprobar antes de que salga (M17).
+//
+// Es de solo aprobar/descartar a propósito. El texto no se edita aquí porque no
+// se puede: fuera de las 24 h desde el último mensaje del cliente, Meta solo
+// deja mandar una plantilla que ellos aprobaron, palabra por palabra. Lo único
+// que cambia son las variables, y esas salen de la ficha. Si un mensaje está
+// mal escrito, se arregla la plantilla en Meta, no aquí.
+function SeguimientosWA() {
+  const E = React.createElement;
+  const C = { border: "#e5e7eb", grisd: "#6b7280", verde: "#1a6b3a", rojo: "#b8232a", ambar: "#92400e" };
+  const [filas, setFilas] = React.useState([]);
+  const [sel, setSel] = React.useState(() => new Set());
+  const [cargando, setCargando] = React.useState(true);
+  const [enviando, setEnviando] = React.useState(false);
+  const [verEnviados, setVerEnviados] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  const ETIQUETA = {
+    cita: { txt: "Cita mañana", color: "#1a4fa0", fondo: "#e8effd" },
+    vacuna: { txt: "Vacuna / antiparasitario", color: "#1a6b3a", fondo: "#e6f4ec" },
+    reactivacion: { txt: "Hace tiempo que no viene", color: "#92400e", fondo: "#fff7e6" }
+  };
+
+  const cargar = React.useCallback(async () => {
+    try {
+      const estados = verEnviados ? "in.(enviado,error,descartado)" : "in.(pendiente,aprobado)";
+      const rows = await supaFetch("pc_wa_cola", "GET", null,
+        "?estado=" + estados + "&order=creado.desc&limit=300");
+      setFilas(Array.isArray(rows) ? rows : []);
+      setError("");
+    } catch (e) {
+      setError("No se pudo leer la cola de seguimientos: " + e.message);
+    }
+    setCargando(false);
+  }, [verEnviados]);
+  React.useEffect(() => { setCargando(true); setSel(new Set()); cargar(); }, [cargar]);
+
+  const alternar = (id) => setSel((s) => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const todos = () => setSel((s) => s.size === filas.length ? new Set() : new Set(filas.map((f) => f.id)));
+
+  async function descartar() {
+    const ids = [...sel];
+    if (ids.length === 0) { avisar("Marca primero cuáles quieres descartar."); return; }
+    try {
+      await supaFetch("pc_wa_cola", "PATCH", { estado: "descartado" }, "?id=in.(" + ids.join(",") + ")");
+      avisar(ids.length + " descartado(s). No se le escribirá a esa gente.", "ok");
+      setSel(new Set()); cargar();
+    } catch (e) { avisar("No se pudieron descartar: " + e.message, "error"); }
+  }
+
+  async function enviar() {
+    const ids = [...sel];
+    if (ids.length === 0) { avisar("Marca primero cuáles quieres enviar."); return; }
+    // Aquí no hay deshacer: una vez que sale, salió. Por eso se confirma con el
+    // número delante y no con un "¿seguro?" genérico.
+    if (!confirm("Se van a enviar " + ids.length + " mensaje(s) de WhatsApp a clientes reales.\n\n" +
+                 "Esto NO se puede deshacer. ¿Seguir?")) return;
+    setEnviando(true);
+    try {
+      const r = await fetch(SUPA_URL + "/functions/v1/whatsapp-bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPA_KEY },
+        body: JSON.stringify({ accion: "cola_enviar", ids, usuario: usuarioActual() })
+      });
+      let j = {}; try { j = await r.json(); } catch {}
+      if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+      const fallos = (j.fallos || []).length;
+      if (fallos > 0) {
+        avisar("Se enviaron " + j.enviados + ". " + fallos + " fallaron — mira el detalle en la lista de enviados.",
+          j.enviados > 0 ? "aviso" : "error");
+      } else {
+        avisar("Enviados " + j.enviados + " mensaje(s).", "ok");
+      }
+      setSel(new Set()); cargar();
+    } catch (e) {
+      avisar("No se pudo enviar: " + e.message, "error");
+    }
+    setEnviando(false);
+  }
+
+  const btn = (fondo, color, borde) => ({
+    background: fondo, color, border: "1.5px solid " + (borde || fondo), borderRadius: 9,
+    padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700
+  });
+  const porTipo = (t) => filas.filter((f) => f.tipo === t).length;
+
+  return E("div", { style: { padding: 16 } },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 6 } },
+      E("div", null,
+        E("div", { style: { fontWeight: 800, fontSize: 17 } }, "\u{1F4E4} Seguimientos por enviar"),
+        E("div", { style: { fontSize: 12, color: C.grisd, marginTop: 3 } },
+          "La lista se arma sola cada mañana a las 5:45. Nada sale hasta que alguien lo aprueba aquí.")),
+      E("button", { onClick: () => setVerEnviados((v) => !v), style: btn("#fff", "#334155", C.border) },
+        verEnviados ? "← Ver los pendientes" : "Ver los ya enviados")),
+
+    error && E("div", { style: { background: "#fdeaea", border: "1.5px solid " + C.rojo, color: C.rojo, borderRadius: 9, padding: "10px 12px", fontSize: 12.5, margin: "10px 0", fontWeight: 600 } }, error),
+
+    !verEnviados && filas.length > 0 && E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0" } },
+      ["cita", "vacuna", "reactivacion"].map((t) => porTipo(t) > 0 && E("div", { key: t, style: {
+        background: ETIQUETA[t].fondo, color: ETIQUETA[t].color, borderRadius: 20,
+        padding: "4px 12px", fontSize: 11.5, fontWeight: 700
+      } }, porTipo(t) + " \xB7 " + ETIQUETA[t].txt))),
+
+    cargando ? E("div", { style: { color: C.grisd, fontSize: 13, padding: "20px 0" } }, "Cargando…")
+    : filas.length === 0
+      ? E("div", { style: { background: "#f8f9fa", borderRadius: 10, padding: 16, fontSize: 13, color: C.grisd } },
+          verEnviados ? "Todavía no se ha enviado ningún seguimiento."
+                      : "No hay nada pendiente. La lista se vuelve a armar mañana a las 5:45.")
+      : E(React.Fragment, null,
+          !verEnviados && E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
+            E("button", { onClick: todos, style: btn("#fff", "#334155", C.border) },
+              sel.size === filas.length ? "Desmarcar todos" : "Marcar todos (" + filas.length + ")"),
+            E("button", { onClick: enviar, disabled: enviando || sel.size === 0,
+              style: { ...btn(enviando || sel.size === 0 ? "#c9ced4" : C.verde, "#fff"), cursor: enviando || sel.size === 0 ? "default" : "pointer" } },
+              enviando ? "Enviando…" : "\u{1F4F2} Enviar " + (sel.size || "") + " seleccionado(s)"),
+            E("button", { onClick: descartar, disabled: sel.size === 0,
+              style: { ...btn("#fff", C.rojo, "#f3c4c4"), cursor: sel.size === 0 ? "default" : "pointer" } }, "Descartar")),
+
+          E("div", { style: { display: "grid", gap: 8 } },
+            filas.map((f) => {
+              const et = ETIQUETA[f.tipo] || { txt: f.tipo, color: C.grisd, fondo: "#f4f5f6" };
+              const marcado = sel.has(f.id);
+              return E("div", { key: f.id, onClick: verEnviados ? null : () => alternar(f.id), style: {
+                display: "flex", gap: 10, alignItems: "flex-start",
+                background: marcado ? "#f0fdf4" : "#fff",
+                border: "1.5px solid " + (marcado ? C.verde : C.border),
+                borderRadius: 10, padding: "11px 13px", cursor: verEnviados ? "default" : "pointer"
+              } },
+                !verEnviados && E("input", { type: "checkbox", checked: marcado, readOnly: true,
+                  style: { marginTop: 3, width: 17, height: 17, flexShrink: 0, pointerEvents: "none" } }),
+                E("div", { style: { flex: 1, minWidth: 0 } },
+                  E("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 5 } },
+                    E("span", { style: { background: et.fondo, color: et.color, borderRadius: 20, fontSize: 10.5, fontWeight: 800, padding: "2px 9px" } }, et.txt),
+                    E("span", { style: { fontSize: 12, fontWeight: 700 } }, f.propietario || "—"),
+                    E("span", { style: { fontSize: 11.5, color: C.grisd } }, "\u{1F43E} " + (f.mascota || "")),
+                    E("span", { style: { fontSize: 11.5, color: C.grisd } }, "\xB7 " + (f.telefono || "")),
+                    f.estado === "enviado" && E("span", { style: { fontSize: 11, color: C.verde, fontWeight: 700 } }, "✓ enviado"),
+                    f.estado === "error" && E("span", { style: { fontSize: 11, color: C.rojo, fontWeight: 700 } }, "⚠ fall\xF3"),
+                    f.estado === "descartado" && E("span", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "descartado")),
+                  E("div", { style: { fontSize: 13, lineHeight: 1.45, background: "#dcf8c6", borderRadius: 8, padding: "8px 10px", color: "#1f2937" } }, f.texto),
+                  f.motivo && E("div", { style: { fontSize: 11, color: C.grisd, marginTop: 4 } }, f.motivo),
+                  f.error && E("div", { style: { fontSize: 11, color: C.rojo, marginTop: 4, fontWeight: 600 } }, f.error)));
+            }))));
+}
+// La pestaña de WhatsApp tiene dos mitades: las conversaciones (lo que el
+// cliente escribe y la IA contesta) y los seguimientos (lo que salimos a
+// mandar nosotros). Son cosas distintas y por eso no se mezclan en una lista:
+// una se atiende, la otra se aprueba.
+function PantallaWhatsApp() {
+  const E = React.createElement;
+  const [vista, setVista] = React.useState("chats");
+  const [pendientes, setPendientes] = React.useState(null);
+  // El contador va en la propia pestaña para que se vea que hay algo esperando
+  // sin tener que entrar a mirar.
+  React.useEffect(() => {
+    let vivo = true;
+    const contar = () => {
+      supaFetch("pc_wa_cola", "GET", null, "?select=id&estado=in.(pendiente,aprobado)&limit=500")
+        .then((r) => { if (vivo) setPendientes(Array.isArray(r) ? r.length : null); })
+        .catch(() => {});
+    };
+    contar();
+    const t = setInterval(() => { if (!document.hidden) contar(); }, 120000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [vista]);
+
+  const tab = (id, txt, insignia) => E("button", {
+    key: id, onClick: () => setVista(id), style: {
+      background: vista === id ? "#fff" : "transparent",
+      border: "none", borderBottom: "3px solid " + (vista === id ? "#25D366" : "transparent"),
+      padding: "11px 16px", cursor: "pointer", fontSize: 13.5,
+      fontWeight: vista === id ? 800 : 600, color: vista === id ? "#128C7E" : "#6b7280",
+      display: "flex", alignItems: "center", gap: 7
+    }
+  }, txt, insignia > 0 && E("span", { style: {
+    background: "#dc2626", color: "#fff", borderRadius: 20, fontSize: 10.5,
+    fontWeight: 800, padding: "1px 7px", minWidth: 18, textAlign: "center"
+  } }, insignia));
+
+  return E("div", null,
+    E("div", { style: { display: "flex", gap: 2, borderBottom: "1px solid #e5e7eb", background: "#f8f9fa", flexWrap: "wrap" } },
+      tab("chats", "\u{1F4AC} Conversaciones", 0),
+      tab("seguimientos", "\u{1F4E4} Seguimientos", pendientes || 0)),
+    vista === "chats" ? E(WhatsAppInbox, null) : E(SeguimientosWA, null));
+}
 function WhatsAppInbox() {
   const E = React.createElement;
   const C = { card:"#fff", border:"#e5e7eb", texto:"#1f2937", grisd:"#6b7280", verde:"#25D366", verdeO:"#128C7E", burbuja:"#dcf8c6", fondo:"#efeae2" };
@@ -6714,7 +6904,7 @@ function PortalCaja({ session, onLogout, ventas, setVentas, deleteVenta, cliente
       tab === "agenda" && E(Agenda, { citas, setCitas, deleteCita, clientes: clientesCaja, ventas, setVentas,
         tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }),
       tab === "seguimientos" && E(Seguimientos, { seguimientos, setSeguimientos, clientes: clientesCaja, ventas }),
-      tab === "whatsapp" && E(WhatsAppInbox, null),
+      tab === "whatsapp" && E(PantallaWhatsApp, null),
       tab === "notificaciones" && E(TabNotificaciones, { clientes, setClientes, notifLeidas,
         marcarNotifLeida, marcarNotifLeidas, desmarcarNotif, setTab,
         setCrmClienteInicial: (d) => setClienteInicial(d ? { ...d, modo: "ventaCliente" } : null) })),
@@ -7058,7 +7248,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
     tab === "llamadas" && React.createElement(Llamadas, null),
-    tab === "whatsapp" && React.createElement(WhatsAppInbox, null),
+    tab === "whatsapp" && React.createElement(PantallaWhatsApp, null),
     tab === "cobros" && React.createElement(Cobros, { ventas, setVentas, clientes: todosClientes }),
     tab === "planes" && React.createElement(Planes, { paquetes, setPaquetes, clientes: todosClientes, ventas, setVentas }),
     tab === "caja" && React.createElement(CierreCaja, { ventas, gastos }),

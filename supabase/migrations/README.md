@@ -65,6 +65,7 @@ Correos por rol: `admin@petcolinas.com` (admin), `naylan@petcolinas.com` y
 | `20260908_m13_punto_equilibrio.sql` | El punto de equilibrio deja de estar escrito a mano en el código (estaba en tres sitios y con dos valores distintos). |
 | `20260908_m10_comisiones.sql` | Los porcentajes de comisión (12/30/40/5) salen del código, donde estaban repetidos en quince sitios. |
 | `20260908_m8_procesos_programados.sql` | `pg_cron`, la bitácora `pc_tareas_log` y la primera tarea (`pc_resumen_diario`, cada día a las 5:30). Base para los recordatorios de la lista 2. Ninguna tarea manda mensajes a clientes. |
+| `20260910_m17_wa_seguimientos.sql` | Seguimientos por WhatsApp: plantillas, cola con aprobación, opt-out y la tarea de las 5:45 que **propone** (no manda). Puesta en marcha en `docs/whatsapp-puesta-en-marcha.md`. |
 
 ## Lo que NO está aquí
 

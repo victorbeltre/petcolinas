@@ -136,6 +136,18 @@ render("AvisoAntiparasitarios", sandbox.AvisoAntiparasitarios, {
 }, null, "sin tel");
 render("Candidatos", sandbox.Candidatos, {});
 render("WhatsAppInbox", sandbox.WhatsAppInbox, {});
+render("PantallaWhatsApp", sandbox.PantallaWhatsApp, {}, null, "Seguimientos");
+// La cola de seguimientos: se prepara el estado con una fila para que se
+// ejercite la tarjeta de verdad y no solo el "no hay nada pendiente".
+render("SeguimientosWA", sandbox.SeguimientosWA, {}, (h) => {
+  const i = h.findIndex((x) => Array.isArray(x) && x.length === 0);
+  if (i < 0) throw new Error("no se encontró el estado 'filas'");
+  h[i] = [{ id: 1, telefono: "18095551212", propietario: "Viannesa", mascota: "Shayna",
+    tipo: "vacuna", estado: "pendiente", motivo: "Toca su baño medicado el 2026-09-09",
+    texto: "Hola Viannesa 👋 A Shayna le toca su baño medicado (09/09)." }];
+  const j = h.findIndex((x) => x === true);   // cargando
+  if (j >= 0) h[j] = false;
+}, "le toca su baño medicado");
 render("Llamadas", sandbox.Llamadas, {});
 // Reportes no estaba cubierto y es donde se leen las cifras del mes: si algo
 // aqui revienta, Victor ve una pantalla en blanco justo cuando va a decidir.
@@ -212,4 +224,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (19 comprobadas + la receta impresa y las comisiones).`);
+console.log(`✓ Vistas principales renderizan sin errores (21 comprobadas + la receta impresa y las comisiones).`);
