@@ -143,12 +143,31 @@ En **Configuración → Básica** apunta el **ID de la app** y la **Clave secret
 
 ### 3. Ponerla como Tech Provider y pedir los permisos
 
-En la app: **Casos de uso / Permisos**, solicita acceso avanzado a
-`whatsapp_business_messaging` y `whatsapp_business_management`.
+> App creada el 11 sep 2026. **App ID: `1955388105141536`** (es público, por eso
+> puede vivir aquí; la clave secreta NO).
 
-Aquí es donde te pueden pedir explicar para qué es. La respuesta honesta y
-suficiente: *software propio de gestión de una clínica veterinaria, para
-atender a sus propios clientes y enviarles recordatorios de citas y vacunas.*
+En **Casos de uso → Personalizar → Permisos y funciones**, deja exactamente
+estos tres y ninguno más — pedir permisos de sobra complica la revisión:
+
+- `whatsapp_business_messaging`
+- `whatsapp_business_management`
+- `business_management`
+
+Los que NO hacen falta: `email`, `manage_app_solution`,
+`whatsapp_business_manage_events`.
+
+Luego, en la barra lateral: **Conviértete en socio → Conviértete en proveedor
+de tecnología**. Ese paso es el que desbloquea el Embedded Signup; sin él no
+aparece la opción de crear la configuración y no hay Config ID.
+
+**Ojo con el estado de los permisos.** "Listo para la prueba" es acceso
+*estándar*: solo deja mandar a números de prueba. Para escribirle a clientes
+reales hace falta **acceso avanzado**, que pasa por revisión de la app. Es el
+camino normal, pero es lo que puede tardar.
+
+Si piden explicar para qué es, la respuesta honesta y suficiente: *software
+propio de gestión de una clínica veterinaria, para atender a sus propios
+clientes y enviarles recordatorios de citas y vacunas.*
 
 ### 4. Los secretos en Supabase
 
@@ -176,10 +195,10 @@ La página ya está hecha: **`meta-signup.html`**, en el repo. Se abre con los d
 ids en la dirección (así no hay que editar ni volver a subir nada):
 
 ```
-https://victorbeltre.github.io/petcolinas/meta-signup.html?app=EL_APP_ID&config=EL_CONFIG_ID
+https://victorbeltre.github.io/petcolinas/meta-signup.html?app=1955388105141536&config=EL_CONFIG_ID
 ```
 
-- El **App ID** está en Meta → tu app → Configuración → Básica.
+- El **App ID** ya está puesto arriba (`1955388105141536`).
 - El **Config ID** sale al crear la configuración de Embedded Signup, en la
   sección de WhatsApp de la app.
 - En Meta → Configuración → Básica → **Dominios de la app**, añade
