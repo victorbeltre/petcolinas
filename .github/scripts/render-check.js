@@ -125,11 +125,14 @@ render("AvisoReactivacion", sandbox.AvisoReactivacion, {
     cliente: "Doky Diaz", total: 1289 }],
   setTab: () => {}
 });
+// OJO: la fecha va relativa a hoy, no fija. El aviso solo muestra lo que cae
+// dentro de su ventana (unos días por delante y 45 hacia atrás), así que una
+// fecha escrita a mano caduca sola con el tiempo y la prueba deja de llegar a
+// la vista aunque el componente esté perfecto.
 render("AvisoAntiparasitarios", sandbox.AvisoAntiparasitarios, {
   seguimientos: [{ id: 9001, mascota: "Gucci Brito", propietario: "", telefono: "",
-    // Fecha relativa: con una fija (era "2026-07-08") la prueba caducó sola al
-    // quedar fuera de la ventana del aviso, y CI fallaba sin que nadie tocara nada.
-    tipo: "antipulgas", proximaFecha: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10), completado: false, activo: true,
+    tipo: "antipulgas", proximaFecha: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10),
+    completado: false, activo: true,
     notas: "NexGard — toca reforzar la protección (35 días)" }],
   clientes: [{ id: 1, nombreMascota: "Gucci Brito", nombrePropietario: "Dianny Brito", telefono: "" }],
   ventas: [], setTab: () => {}
