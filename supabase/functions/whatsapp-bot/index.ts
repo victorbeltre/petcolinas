@@ -12,13 +12,19 @@
  *   POST { accion: "enviar", telefono, texto }   → Laura escribe desde la app
  *   POST { accion: "bot", telefono, activo }     → prender/apagar el bot del chat
  *
+ *   POST { accion: "cola_enviar", ids }         → seguimientos aprobados (M17)
+ *   POST { accion: "onboarding", code, ... }    → alta del número con coexistencia
+ *
  * Secrets (Supabase → Edge Functions → Secrets):
  *   ANTHROPIC_API_KEY   — clave de console.anthropic.com (se cobra por uso)
- *   WA_TOKEN            — token permanente de la app de Meta (WhatsApp)
- *   WA_PHONE_NUMBER_ID  — Phone number ID del número de WhatsApp Business
+ *   WA_APP_ID           — ID de la app de Meta (para el alta)
+ *   WA_APP_SECRET       — clave secreta de la app: canje del código y firma del webhook
  *   WA_VERIFY_TOKEN     — texto que tú inventas; el mismo que pones en Meta
- *   WA_APP_SECRET       — (opcional) para validar X-Hub-Signature-256
  *   WA_HORARIO_HUMANO   — (opcional) "1" para que el bot avise cuando está cerrado
+ *
+ * WA_TOKEN y WA_PHONE_NUMBER_ID NO hacen falta como secrets: los guarda el alta
+ * en pc_secretos. Si existen como variables de entorno, mandan (sirve para
+ * rotar el token a mano).
  *
  * Tablas: pc_wa_chats, pc_wa_mensajes (ver el SQL que acompaña esta función).
  */
@@ -34,7 +40,10 @@ const WA_PHONE_NUMBER_ID = Deno.env.get("WA_PHONE_NUMBER_ID") ?? "";
 const WA_VERIFY_TOKEN = Deno.env.get("WA_VERIFY_TOKEN") ?? "";
 const WA_APP_SECRET = Deno.env.get("WA_APP_SECRET") ?? "";
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+// v23 y no v21: el alta con coexistencia y `message_echoes` son recientes, y la
+// pagina de alta (meta-signup.html) inicializa el SDK con esta misma version.
+// Tenerlas descuadradas es de los fallos que solo aparecen el dia del alta.
+const GRAPH = "https://graph.facebook.com/v23.0";
 const MODELO = "claude-opus-5";
 const TZ = "America/Santo_Domingo";
 const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
@@ -43,10 +52,33 @@ const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
+const WA_APP_ID = Deno.env.get("WA_APP_ID") ?? "";
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
+
+// El token y el número salen del alta (meta-signup.html) y quedan guardados en
+// pc_secretos, así no hay que copiarlos a mano a los secrets de Supabase — que
+// es justo donde se cuela una errata que luego cuesta media hora encontrar.
+// Las variables de entorno siguen mandando si existen: sirven para rotar el
+// token a mano sin depender de la base.
+let waCache: { token: string; phoneId: string } | null = null;
+async function configWA(): Promise<{ token: string; phoneId: string }> {
+  if (waCache && waCache.token && waCache.phoneId) return waCache;
+  let token = WA_TOKEN, phoneId = WA_PHONE_NUMBER_ID;
+  if (!token || !phoneId) {
+    const { data } = await supabase.from("pc_secretos").select("nombre, valor")
+      .in("nombre", ["WA_TOKEN", "WA_PHONE_NUMBER_ID"]);
+    for (const f of data ?? []) {
+      if (f.nombre === "WA_TOKEN" && !token) token = String(f.valor ?? "");
+      if (f.nombre === "WA_PHONE_NUMBER_ID" && !phoneId) phoneId = String(f.valor ?? "");
+    }
+  }
+  waCache = { token, phoneId };
+  return waCache;
+}
 
 // ---------------------------------------------------------------------------
 // Fecha / hora de República Dominicana
@@ -147,6 +179,10 @@ Deno.serve(async (req: Request) => {
     // así que las acciones del panel se filtran aquí con la anon key de la app.
     const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const auth = req.headers.get("authorization") ?? "";
+    // El alta (meta-signup.html) corre ANTES de que exista nada configurado y
+    // no lleva la llave de la app. Se protege sola de otra forma: sin un código
+    // válido de Meta no hay nada que canjear, y solo se deja hacer una vez.
+    if (accion === "onboarding") return await onboarding(body);
     if (ANON && !auth.includes(ANON)) return json({ error: "No autorizado." }, 401);
     // Esta no lleva teléfono: la fila de la cola dice a quién se le manda.
     if (accion === "cola_enviar") return await enviarCola(body);
@@ -202,6 +238,70 @@ async function manejarAccion(accion: string, body: Record<string, unknown>): Pro
   }
 
   return json({ error: "Acción desconocida: " + accion }, 400);
+}
+
+// ---------------------------------------------------------------------------
+// Alta del número (coexistencia)
+//
+// El Embedded Signup devuelve un CÓDIGO al navegador, no el token. Canjearlo
+// exige la clave secreta de la app, que no puede estar en una página pública:
+// por eso el canje ocurre aquí. El token resultante se guarda en pc_secretos,
+// que tiene RLS y ninguna política — solo la service_role entra.
+async function onboarding(body: Record<string, unknown>): Promise<Response> {
+  const code = String(body.code ?? "").trim();
+  if (!code) return json({ error: "Falta el código de Meta." }, 400);
+  if (!WA_APP_ID || !WA_APP_SECRET) {
+    return json({ error: "Faltan WA_APP_ID o WA_APP_SECRET en los secrets de Supabase." }, 500);
+  }
+
+  // Una sola vez: si ya hay un número conectado, esto no lo pisa. Sin este
+  // freno, cualquiera que complete el alta de nuestra app dejaría a PetColinas
+  // apuntando a OTRO número, y los seguimientos saldrían desde ahí.
+  const { data: yaHay } = await supabase.from("pc_secretos")
+    .select("valor").eq("nombre", "WA_TOKEN").maybeSingle();
+  if (yaHay && String(yaHay.valor ?? "").length > 20) {
+    return json({ error: "Ya hay un número conectado. Para rehacer el alta, borra la fila WA_TOKEN de pc_secretos." }, 409);
+  }
+
+  const url = `${GRAPH}/oauth/access_token?client_id=${encodeURIComponent(WA_APP_ID)}` +
+              `&client_secret=${encodeURIComponent(WA_APP_SECRET)}&code=${encodeURIComponent(code)}`;
+  const r = await fetch(url);
+  const j = await r.json() as Record<string, unknown>;
+  if (!r.ok || !j.access_token) {
+    const e = (j.error as Record<string, unknown>) ?? {};
+    return json({ error: "Meta no dio el token: " + String(e.message ?? JSON.stringify(j)) }, 502);
+  }
+  const token = String(j.access_token);
+  const phoneId = String(body.phone_number_id ?? "").trim();
+  const wabaId = String(body.waba_id ?? "").trim();
+
+  const filas = [{ nombre: "WA_TOKEN", valor: token }];
+  if (phoneId) filas.push({ nombre: "WA_PHONE_NUMBER_ID", valor: phoneId });
+  if (wabaId) filas.push({ nombre: "WA_WABA_ID", valor: wabaId });
+  const { error: errGuardar } = await supabase.from("pc_secretos").upsert(filas, { onConflict: "nombre" });
+  if (errGuardar) return json({ error: "No se pudo guardar el token: " + errGuardar.message }, 500);
+  waCache = null;   // que la próxima llamada lo relea
+
+  // Suscribir la app a los webhooks de esa cuenta. Sin esto el alta queda
+  // "hecha" pero no llega ni un solo mensaje, que es un fallo silencioso de los
+  // que cuestan un rato entender.
+  let avisoSuscripcion = "";
+  if (wabaId) {
+    const s = await fetch(`${GRAPH}/${wabaId}/subscribed_apps`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!s.ok) {
+      const sj = await s.json().catch(() => ({})) as Record<string, unknown>;
+      avisoSuscripcion = "El token se guardó, pero la suscripción a los webhooks falló: " +
+        String(((sj.error as Record<string, unknown>) ?? {}).message ?? s.status) +
+        ". Hay que suscribir la app a mano en Meta.";
+      console.error(avisoSuscripcion);
+    }
+  } else {
+    avisoSuscripcion = "Meta no devolvió el waba_id; hay que suscribir la app a los webhooks a mano.";
+  }
+
+  return json({ ok: true, phone_number_id: phoneId, waba_id: wabaId, aviso: avisoSuscripcion || undefined });
 }
 
 // ---------------------------------------------------------------------------
@@ -789,11 +889,12 @@ async function cargarHistorial(telefono: string): Promise<Anthropic.MessageParam
 // WhatsApp Cloud API
 
 async function enviarWhatsApp(telefono: string, texto: string): Promise<string> {
-  if (!WA_TOKEN || !WA_PHONE_NUMBER_ID) { console.error("Faltan WA_TOKEN o WA_PHONE_NUMBER_ID"); return ""; }
+  const { token, phoneId } = await configWA();
+  if (!token || !phoneId) { console.error("El numero todavia no esta conectado (faltan token o phone number id)"); return ""; }
   try {
-    const r = await fetch(`${GRAPH}/${WA_PHONE_NUMBER_ID}/messages`, {
+    const r = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
         recipient_type: "individual",
@@ -820,16 +921,17 @@ async function enviarWhatsApp(telefono: string, texto: string): Promise<string> 
 async function enviarPlantilla(
   telefono: string, nombre: string, idioma: string, variables: string[],
 ): Promise<{ ok: boolean; waid: string; error: string }> {
-  if (!WA_TOKEN || !WA_PHONE_NUMBER_ID) {
-    return { ok: false, waid: "", error: "Faltan WA_TOKEN o WA_PHONE_NUMBER_ID: el número todavía no está conectado." };
+  const { token, phoneId } = await configWA();
+  if (!token || !phoneId) {
+    return { ok: false, waid: "", error: "El número todavía no está conectado a la Cloud API." };
   }
   try {
     const componentes = variables.length > 0
       ? [{ type: "body", parameters: variables.map((v) => ({ type: "text", text: v })) }]
       : [];
-    const r = await fetch(`${GRAPH}/${WA_PHONE_NUMBER_ID}/messages`, {
+    const r = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
         recipient_type: "individual",

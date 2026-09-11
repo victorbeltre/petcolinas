@@ -135,33 +135,49 @@ Aquí es donde te pueden pedir explicar para qué es. La respuesta honesta y
 suficiente: *software propio de gestión de una clínica veterinaria, para
 atender a sus propios clientes y enviarles recordatorios de citas y vacunas.*
 
-### 4. Correr el Embedded Signup
-
-Cuando tengas el ID de la app y el ID de configuración, dímelo y **te preparo la
-página** que lanza el flujo — es un botón. Ahí eliges **"usar mi cuenta de
-WhatsApp Business existente"**, que es la opción que activa Coexistencia, y
-aceptas sincronizar el historial.
-
-Al terminar, Meta devuelve el token y el **Phone number ID**.
-
-> Ojo: al activar se desvinculan los dispositivos vinculados (WhatsApp Web, etc.).
-> Se vuelven a vincular después sin problema.
-
-### 5. Los secretos en Supabase
+### 4. Los secretos en Supabase
 
 Supabase → **Edge Functions** → **Secrets**:
 
 | Secreto | De dónde sale |
 |---|---|
-| `WA_TOKEN` | El token del paso 4 |
-| `WA_PHONE_NUMBER_ID` | El Phone number ID del paso 4 |
-| `WA_VERIFY_TOKEN` | Te lo inventas tú. Cualquier texto largo. Se repite en el paso 7 |
+| `WA_APP_ID` | El ID de la app del paso 2 |
 | `WA_APP_SECRET` | La clave secreta del paso 2 |
+| `WA_VERIFY_TOKEN` | Te lo inventas tú. Cualquier texto largo. Se repite en el paso 7 |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → API Keys. **Se cobra por uso: ponle límite mensual** |
 
-### 6. Desplegar la función
+El token de WhatsApp y el Phone number ID **no van aquí**: los guarda solo el
+alta del paso 6. Copiarlos a mano es justo donde se cuela una errata que luego
+cuesta media hora encontrar.
 
-Me avisas y la despliego yo. Es un comando.
+### 5. Desplegar la función
+
+Me avisas y la despliego yo. Es un comando. Tiene que estar desplegada **antes**
+del paso 6, porque el alta le habla a ella.
+
+### 6. Correr el Embedded Signup
+
+La página ya está hecha: **`meta-signup.html`**, en el repo. Se abre con los dos
+ids en la dirección (así no hay que editar ni volver a subir nada):
+
+```
+https://victorbeltre.github.io/petcolinas/meta-signup.html?app=EL_APP_ID&config=EL_CONFIG_ID
+```
+
+- El **App ID** está en Meta → tu app → Configuración → Básica.
+- El **Config ID** sale al crear la configuración de Embedded Signup, en la
+  sección de WhatsApp de la app.
+- En Meta → Configuración → Básica → **Dominios de la app**, añade
+  `victorbeltre.github.io`, o el botón no arranca.
+
+Le das a **Conectar con Meta** y en la ventana que abre eliges **«usar mi cuenta
+de WhatsApp Business existente»** — *esa* es la opción que activa la
+coexistencia — y aceptas sincronizar el historial.
+
+Al terminar, la página guarda el token sola y te dice el número conectado.
+
+> Ojo: al activar se desvinculan los dispositivos vinculados (WhatsApp Web y
+> similares). Se vuelven a vincular después sin problema.
 
 ### 7. Enganchar el webhook
 

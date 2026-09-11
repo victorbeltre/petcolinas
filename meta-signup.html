@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conectar WhatsApp · PetColinas</title>
+<!--
+  Alta del número de PetColinas en la Cloud API CON COEXISTENCIA.
+
+  Por qué existe esta página: coexistencia (el número sigue vivo en el teléfono
+  Y habla con la API) solo se activa por el flujo "Embedded Signup" de Meta. Ese
+  flujo no está en el panel: hay que lanzarlo desde una página propia con el SDK
+  de Facebook. Esta es esa página. Se usa UNA vez.
+
+  Cómo se abre (los dos ids salen de la app de Meta):
+    https://victorbeltre.github.io/petcolinas/meta-signup.html?app=APP_ID&config=CONFIG_ID
+
+  Van por la URL a propósito, para no tener que editar y volver a subir el
+  archivo cuando Victor los tenga. El App ID es público (va en cualquier página
+  que use el SDK); la CLAVE SECRETA no está aquí ni puede estar: el canje del
+  código por el token se hace en el servidor, en la Edge Function whatsapp-bot.
+
+  En Meta hay que añadir victorbeltre.github.io a los dominios permitidos de la
+  app (Configuración → Básica → Dominios de la app) o el SDK no arranca.
+-->
+<style>
+  :root { color-scheme: light; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Arial, sans-serif;
+         background: #f4f5f6; color: #1a1d23; margin: 0; padding: 24px;
+         display: flex; justify-content: center; }
+  .caja { background: #fff; border-radius: 16px; padding: 28px; max-width: 560px; width: 100%;
+          box-shadow: 0 4px 20px rgba(0,0,0,.07); }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #1a6b3a; }
+  .sub { font-size: 13px; color: #5a6472; margin-bottom: 22px; line-height: 1.5; }
+  button { background: #25D366; color: #fff; border: none; border-radius: 10px;
+           padding: 13px 22px; font-size: 15px; font-weight: 700; cursor: pointer; width: 100%; }
+  button:disabled { background: #c9ced4; cursor: default; }
+  .aviso { border-radius: 10px; padding: 13px 15px; font-size: 13px; line-height: 1.55; margin-bottom: 18px; }
+  .malo { background: #fdeaea; border: 1.5px solid #b8232a; color: #8c1a20; }
+  .ok   { background: #e6f4ec; border: 1.5px solid #1a6b3a; color: #145530; }
+  .info { background: #f8f9fa; border: 1.5px solid #e0e4e8; color: #5a6472; }
+  code { background: #eef0f2; padding: 2px 6px; border-radius: 5px; font-size: 12px;
+         word-break: break-all; }
+  ul { margin: 8px 0 0; padding-left: 20px; font-size: 13px; color: #5a6472; line-height: 1.7; }
+  #salida { margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="caja">
+  <h1>🐾 Conectar WhatsApp de PetColinas</h1>
+  <div class="sub">
+    Esto conecta el <strong>809-752-6806</strong> a la app sin sacarlo del teléfono.
+    Se hace una sola vez.
+  </div>
+
+  <div class="aviso info">
+    Al terminar, Meta desvincula los dispositivos vinculados (WhatsApp Web y
+    similares). Se vuelven a vincular después sin problema.
+    <ul>
+      <li>Elige <strong>«usar mi cuenta de WhatsApp Business existente»</strong> — esa es la opción que activa la coexistencia.</li>
+      <li>Acepta sincronizar el historial cuando lo pregunte.</li>
+    </ul>
+  </div>
+
+  <div id="config"></div>
+  <button id="btn" disabled>Conectar con Meta</button>
+  <div id="salida"></div>
+</div>
+
+<script>
+const params  = new URLSearchParams(location.search);
+const APP_ID  = params.get("app")    || "";
+const CONFIG  = params.get("config") || "";
+const FUNCION = "https://ulrzzddovkioxeaarnjk.supabase.co/functions/v1/whatsapp-bot";
+
+const $config = document.getElementById("config");
+const $btn    = document.getElementById("btn");
+const $salida = document.getElementById("salida");
+const pinta   = (el, clase, html) => { el.innerHTML = '<div class="aviso ' + clase + '">' + html + "</div>"; };
+
+if (!APP_ID || !CONFIG) {
+  pinta($config, "malo",
+    "<strong>Faltan los identificadores.</strong> Abre esta página así:<br><br>" +
+    "<code>meta-signup.html?app=EL_APP_ID&config=EL_CONFIG_ID</code><br><br>" +
+    "El <em>App ID</em> está en Meta → tu app → Configuración → Básica. " +
+    "El <em>Config ID</em> sale al crear la configuración de Embedded Signup.");
+} else {
+  $btn.disabled = false;
+}
+
+// Meta manda los datos del alta por postMessage, no por el callback del login:
+// el callback solo trae el código. El phone_number_id y el waba_id llegan aquí.
+let datosAlta = null;
+window.addEventListener("message", (ev) => {
+  if (!/facebook\.com$/.test(new URL(ev.origin).hostname)) return;
+  try {
+    const d = JSON.parse(ev.data);
+    if (d.type === "WA_EMBEDDED_SIGNUP") {
+      if (d.event === "FINISH" || d.event === "FINISH_ONLY_WABA") datosAlta = d.data || null;
+      // CANCEL llega si cierra la ventana a medias: no es un error, pero hay que decirlo.
+      if (d.event === "CANCEL") pinta($salida, "malo", "Se cerró la ventana antes de terminar. Puedes volver a intentarlo.");
+    }
+  } catch (e) { /* Facebook manda otros mensajes que no son JSON; se ignoran */ }
+});
+
+window.fbAsyncInit = function () {
+  FB.init({ appId: APP_ID, autoLogAppEvents: true, xfbml: false, version: "v23.0" });
+};
+
+$btn.addEventListener("click", () => {
+  $btn.disabled = true;
+  $salida.innerHTML = "";
+  FB.login((resp) => {
+    const code = resp && resp.authResponse && resp.authResponse.code;
+    if (!code) {
+      $btn.disabled = false;
+      pinta($salida, "malo", "Meta no devolvió el código. Si cerraste la ventana, vuelve a intentarlo.");
+      return;
+    }
+    canjear(code);
+  }, {
+    config_id: CONFIG,
+    response_type: "code",
+    override_default_response_type: true,
+    extras: {
+      setup: {},
+      // Esta es la pieza que pide el alta CON coexistencia en vez de migrar el
+      // número. Si Meta cambia el nombre de la función, es lo primero a revisar.
+      featureType: "whatsapp_business_app_onboarding",
+      sessionInfoVersion: "3"
+    }
+  });
+});
+
+// El canje del código por el token necesita la CLAVE SECRETA de la app, que no
+// puede vivir en una página del navegador: la haría pública. Por eso se manda
+// el código al servidor y el canje ocurre allí.
+async function canjear(code) {
+  pinta($salida, "info", "Conectando con Meta…");
+  try {
+    const r = await fetch(FUNCION, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accion: "onboarding",
+        code,
+        phone_number_id: (datosAlta && datosAlta.phone_number_id) || "",
+        waba_id: (datosAlta && datosAlta.waba_id) || ""
+      })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+    pinta($salida, "ok",
+      "<strong>✅ Conectado.</strong><br>" +
+      "Número: <code>" + (j.phone_number_id || "—") + "</code><br>" +
+      "Cuenta: <code>" + (j.waba_id || "—") + "</code><br><br>" +
+      "El token quedó guardado en el servidor. Ya puedes cerrar esta página y avisarme.");
+  } catch (e) {
+    $btn.disabled = false;
+    pinta($salida, "malo",
+      "<strong>No se pudo completar.</strong><br>" + String(e.message || e) +
+      "<br><br>Si dice que la función no existe, todavía falta desplegarla. " +
+      "Avísame con este mensaje.");
+  }
+}
+</script>
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+</body>
+</html>
