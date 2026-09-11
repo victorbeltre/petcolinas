@@ -119,10 +119,25 @@ negocio → Información del negocio → **Verificación**. Te pedirá RNC y
 documentos. **Es lo que más tarda (a veces días). Empieza por aquí**, lo demás
 son minutos.
 
-### 2. Crear la app
+### 2. Crear la app — una NUEVA, no la de Lead Ads
 
 [developers.facebook.com](https://developers.facebook.com) → Mis apps → Crear
 app → tipo **Empresa** → añadir el producto **WhatsApp**.
+
+> **Por qué una app nueva y no la que ya existe.** PetColinas ya tiene una app
+> de Meta para Lead Ads (la que alimenta `pc_candidatos` por la función
+> `meta-leads`). Técnicamente se le podría añadir WhatsApp, pero no conviene:
+>
+> - Pedir acceso avanzado a `whatsapp_business_messaging` pone **esa** app en
+>   revisión, y lo que queda en el aire es el reclutamiento que ya funciona.
+> - Compartirían la clave secreta: rotarla por un motivo rompe las dos cosas.
+> - No se ahorra nada. La verificación del negocio vive en el Business Manager,
+>   no en la app, así que una app nueva la hereda.
+> - Una app cuyo único propósito es mensajería de la clínica es un caso más
+>   fácil de explicar en la revisión.
+>
+> Eso sí: la app nueva tiene que quedar **dentro del mismo Business Manager**
+> ya verificado. Ponle un nombre que se distinga, tipo "PetColinas WhatsApp".
 
 En **Configuración → Básica** apunta el **ID de la app** y la **Clave secreta**.
 
