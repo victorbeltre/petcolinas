@@ -140,6 +140,24 @@ render("AvisoAntiparasitarios", sandbox.AvisoAntiparasitarios, {
 render("Candidatos", sandbox.Candidatos, {});
 render("WhatsAppInbox", sandbox.WhatsAppInbox, {});
 render("PantallaWhatsApp", sandbox.PantallaWhatsApp, {}, null, "Seguimientos");
+// El menu lateral: si esto se rompe no se pierde una vista, se pierde la
+// navegacion entera y la app queda inservible.
+render("MenuLateral", sandbox.MenuLateral, {
+  tab: "dashboard", setTab: () => {}, badges: { ventas: 3 },
+  abierto: false, setAbierto: () => {}, mini: false, setMini: () => {}
+}, null, "Cierre de caja");
+render("MenuLateral (encogido)", sandbox.MenuLateral, {
+  tab: "ventas", setTab: () => {}, badges: {},
+  abierto: true, setAbierto: () => {}, mini: true, setMini: () => {}
+}, null, "pc-menu-abierto");
+// Toda pestaña tiene que caer en un grupo del menu, o desaparece de la
+// navegacion sin que nada falle: seguiria existiendo pero sin forma de llegar.
+(() => {
+  const sinGrupo = (sandbox.TABS || []).filter((t) => !sandbox.GRUPOS_MENU.includes(t.grupo));
+  if (sinGrupo.length) {
+    errores.push("Pestañas que no salen en el menú: " + sinGrupo.map((t) => t.id).join(", "));
+  }
+})();
 // La cola de seguimientos: se prepara el estado con una fila para que se
 // ejercite la tarjeta de verdad y no solo el "no hay nada pendiente".
 render("SeguimientosWA", sandbox.SeguimientosWA, {}, (h) => {
@@ -227,4 +245,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (21 comprobadas + la receta impresa y las comisiones).`);
+console.log(`✓ Vistas principales renderizan sin errores (23 comprobadas + la receta impresa, las comisiones y el menú).`);

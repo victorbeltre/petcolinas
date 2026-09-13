@@ -33,6 +33,41 @@
     @keyframes pendienteBlink { 0%,100%{background:#fff1f1} 50%{background:#ffe4e4} }
     .fila-pendiente { animation: pendienteBlink 1.8s ease-in-out infinite; }
 
+    /* ── MENU LATERAL ────────────────────────────────────────────────────────
+       El ancho lo decide React (la variable --pc-menu, que cambia al encoger);
+       CUANDO se aplica lo decide el CSS. Asi no hace falta escuchar el tamaño
+       de la ventana desde JavaScript, que es de donde salen los parpadeos al
+       cargar y al girar el telefono. */
+    .pc-menu {
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 900;
+      background: linear-gradient(180deg, #176034 0%, #124d2a 100%);
+      display: flex; flex-direction: column;
+      box-shadow: 2px 0 16px rgba(0,0,0,.18);
+      transition: transform .22s ease, width .16s ease;
+    }
+    .pc-menu-fondo { display: none; }
+
+    /* Telefono y tablet: el menu esta fuera de la pantalla hasta que se abre. */
+    @media (max-width: 899px) {
+      .pc-menu { transform: translateX(-100%); width: 260px !important; }
+      .pc-menu.pc-menu-abierto { transform: translateX(0); }
+      .pc-menu-encoger { display: none; }      /* encoger no tiene sentido en un cajon */
+      .pc-menu-fondo {
+        display: block; position: fixed; inset: 0; z-index: 899;
+        background: rgba(0,0,0,.45); opacity: 0; pointer-events: none;
+        transition: opacity .22s ease;
+      }
+      .pc-menu-fondo.pc-menu-abierto { opacity: 1; pointer-events: auto; }
+    }
+
+    /* Escritorio: el menu vive siempre abierto y empuja el contenido. */
+    @media (min-width: 900px) {
+      .pc-app { padding-left: var(--pc-menu, 236px); transition: padding-left .16s ease; }
+      .pc-menu-cerrar, .pc-burger { display: none !important; }
+      /* La marca ya la pone el menu lateral: repetirla en la cabecera es ruido. */
+      .pc-marca-cabecera { display: none; }
+    }
+
     /* ── TELEFONO ────────────────────────────────────────────────────────────
        La app se escribio con estilos en linea y sin una sola media query, asi
        que en el telefono era usable pero incomoda. Estas reglas van con
@@ -46,10 +81,11 @@
          acercaba sola y habia que volver a alejarla a mano. */
       input, select, textarea { font-size: 16px !important; }
 
-      /* 2. La barra de pestanas mide 2571 px con 16 pestanas. SI se puede
-         deslizar, pero nada lo indicaba: parecia que la app solo tenia las 3
-         que se ven. El degradado del borde derecho avisa que hay mas, y el
-         scroll suave con inercia hace que se sienta natural al deslizar. */
+      /* 2. Cualquier tira que se deslice de lado (las pestanas de los portales
+         de caja y de la doctora, las tablas anchas). SI se puede deslizar, pero
+         nada lo indicaba: parecia que solo existia lo que se ve. El degradado
+         del borde derecho avisa que hay mas.
+         El menu principal ya NO entra aqui: paso a ser lateral (sep 2026). */
       div[style*="overflow-x: auto"][style*="display: flex"] {
         -webkit-overflow-scrolling: touch;
         scroll-behavior: smooth;
@@ -163,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-11 14:37Z";
+const PC_BUILD = "2026-09-13 03:01Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2047,28 +2083,141 @@ const Select = ({ label, value, onChange, options }) => /* @__PURE__ */ React.cr
   options.map((o) => /* @__PURE__ */ React.createElement("option", { key: o.value, value: o.value }, o.label))
 ));
 const KPI = ({ label, val, color = C.verde, sub }) => /* @__PURE__ */ React.createElement(Card, { style: { textAlign: "center", borderTop: `4px solid ${color}` } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 } }, label), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 28, color, fontWeight: 700, lineHeight: 1 } }, val), sub && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 6 } }, sub));
+// Las 20 pestanas, agrupadas. El grupo no es decoracion: en una sola tira
+// horizontal de 20, encontrar "Cierre de caja" era recorrer la barra con la
+// vista. Agrupadas por el momento del dia en que se usan, el ojo va directo.
 const TABS = [
-  { id: "dashboard", icon: "\u{1F4CA}", label: "Dashboard" },
-  { id: "agenda", icon: "\u{1F4C5}", label: "Agenda" },
-  { id: "ventas", icon: "\u{1F4B0}", label: "Ventas" },
-  { id: "clientes", icon: "\u{1F43E}", label: "Clientes / CRM" },
-  { id: "seguimientos", icon: "\u{1F514}", label: "Seguimientos" },
-  { id: "inventario", icon: "\u{1F4E6}", label: "Inventario" },
-  { id: "nomina", icon: "\u{1F465}", label: "N\xF3mina" },
-  { id: "gastos", icon: "\u{1F4B8}", label: "Gastos" },
-  { id: "reportes", icon: "\u{1F4C8}", label: "Reportes" },
-  { id: "facturas", icon: "\u{1F4C4}", label: "Facturas" },
-  { id: "cobros", icon: "\u{1F4B5}", label: "Cobros" },
-  { id: "planes", icon: "\u{1F4B3}", label: "Planes" },
-  { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios" },
-  { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel" },
-  { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA" },
-  { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa" },
-  { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp" },
-  { id: "caja", icon: "\u{1F9FE}", label: "Cierre de caja" },
-  { id: "candidatos", icon: "\u{1F9D1}‍⚕️", label: "Candidatos" },
-  { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones" }
+  { id: "dashboard", icon: "\u{1F4CA}", label: "Dashboard", grupo: "Operaci\xF3n" },
+  { id: "agenda", icon: "\u{1F4C5}", label: "Agenda", grupo: "Operaci\xF3n" },
+  { id: "ventas", icon: "\u{1F4B0}", label: "Ventas", grupo: "Operaci\xF3n" },
+  { id: "facturas", icon: "\u{1F4C4}", label: "Facturas", grupo: "Operaci\xF3n" },
+  { id: "cobros", icon: "\u{1F4B5}", label: "Cobros", grupo: "Operaci\xF3n" },
+  { id: "caja", icon: "\u{1F9FE}", label: "Cierre de caja", grupo: "Operaci\xF3n" },
+
+  { id: "clientes", icon: "\u{1F43E}", label: "Clientes / CRM", grupo: "Clientes" },
+  { id: "seguimientos", icon: "\u{1F514}", label: "Seguimientos", grupo: "Clientes" },
+  { id: "planes", icon: "\u{1F4B3}", label: "Planes", grupo: "Clientes" },
+  { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones", grupo: "Clientes" },
+
+  { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp", grupo: "Comunicaci\xF3n" },
+  { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa", grupo: "Comunicaci\xF3n" },
+  { id: "vozia", icon: "\u{1F3A4}", label: "Voz IA", grupo: "Comunicaci\xF3n" },
+
+  { id: "reportes", icon: "\u{1F4C8}", label: "Reportes", grupo: "Negocio" },
+  { id: "gastos", icon: "\u{1F4B8}", label: "Gastos", grupo: "Negocio" },
+  { id: "nomina", icon: "\u{1F465}", label: "N\xF3mina", grupo: "Negocio" },
+  { id: "inventario", icon: "\u{1F4E6}", label: "Inventario", grupo: "Negocio" },
+
+  { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios", grupo: "Ajustes" },
+  { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel", grupo: "Ajustes" },
+  { id: "candidatos", icon: "\u{1F9D1}‍⚕️", label: "Candidatos", grupo: "Ajustes" }
 ];
+const GRUPOS_MENU = ["Operaci\xF3n", "Clientes", "Comunicaci\xF3n", "Negocio", "Ajustes"];
+const MENU_ANCHO = 236, MENU_MINI = 64;
+
+// Menu lateral. Antes las 20 pestañas eran una sola tira horizontal que medía
+// mas de dos pantallas de ancho: habia que deslizarla para ver que existia, y
+// en el telefono parecia que la app tenia tres pestañas. De lado caben todas a
+// la vista, agrupadas, y el nombre de cada una se lee entero.
+//
+// En pantalla grande vive siempre abierto (se puede encoger a solo iconos, y
+// esa eleccion se recuerda). En el telefono se esconde y sale como cajon desde
+// el boton de hamburguesa de la cabecera.
+function MenuLateral({ tab, setTab, badges = {}, abierto, setAbierto, mini, setMini }) {
+  const E = React.createElement;
+
+  // Escape cierra el cajon: en el telefono, tocar fuera es lo natural, pero con
+  // teclado (Victor en la laptop) lo natural es Escape.
+  React.useEffect(() => {
+    if (!abierto) return;
+    const fn = (e) => { if (e.key === "Escape") setAbierto(false); };
+    window.addEventListener("keydown", fn);
+    return () => window.removeEventListener("keydown", fn);
+  }, [abierto, setAbierto]);
+
+  const elegir = (id) => { setTab(id); setAbierto(false); };
+
+  const item = (t) => {
+    const activo = tab === t.id;
+    const n = badges[t.id] || 0;
+    return E("button", {
+      key: t.id, onClick: () => elegir(t.id),
+      title: mini ? t.label : undefined,
+      style: {
+        display: "flex", alignItems: "center", gap: 11, width: "100%",
+        background: activo ? "rgba(255,255,255,.14)" : "transparent",
+        border: "none", borderLeft: "3px solid " + (activo ? "#7ee2a8" : "transparent"),
+        color: activo ? "#fff" : "rgba(255,255,255,.72)",
+        padding: mini ? "11px 0" : "10px 14px",
+        justifyContent: mini ? "center" : "flex-start",
+        cursor: "pointer", fontSize: 13.5, fontWeight: activo ? 800 : 600,
+        textAlign: "left", position: "relative", transition: "background .12s, color .12s"
+      }
+    },
+      E("span", { style: { fontSize: 17, lineHeight: 1, flexShrink: 0 } }, t.icon),
+      !mini && E("span", { style: { flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, t.label),
+      n > 0 && E("span", { style: {
+        background: "#e53e3e", color: "#fff", borderRadius: 20, fontSize: 10,
+        fontWeight: 800, padding: "1px 6px", minWidth: 18, textAlign: "center",
+        // Encogido no cabe el numero al lado del icono: se pone encima, como
+        // la insignia de un icono de telefono.
+        position: mini ? "absolute" : "static", top: mini ? 5 : undefined, right: mini ? 9 : undefined
+      } }, n > 99 ? "99+" : n));
+  };
+
+  const panel = E("nav", {
+    className: "pc-menu" + (abierto ? " pc-menu-abierto" : ""),
+    style: { width: mini ? MENU_MINI : MENU_ANCHO },
+    "aria-label": "Men\xFA principal"
+  },
+    E("div", { style: {
+      display: "flex", alignItems: "center", gap: 9, padding: mini ? "16px 0" : "16px 14px",
+      justifyContent: mini ? "center" : "space-between", borderBottom: "1px solid rgba(255,255,255,.12)"
+    } },
+      !mini && E("div", { style: { color: "#fff", fontWeight: 800, fontSize: 15, whiteSpace: "nowrap" } }, "\u{1F43E} PetColinas"),
+      E("button", {
+        onClick: () => setMini(!mini),
+        className: "pc-menu-encoger",
+        title: mini ? "Expandir el men\xFA" : "Encoger a solo iconos",
+        style: {
+          background: "rgba(255,255,255,.12)", border: "none", color: "#fff",
+          borderRadius: 7, width: 28, height: 28, cursor: "pointer", fontSize: 13, flexShrink: 0
+        }
+      }, mini ? "»" : "«"),
+      E("button", {
+        onClick: () => setAbierto(false),
+        className: "pc-menu-cerrar",
+        title: "Cerrar",
+        style: {
+          background: "rgba(255,255,255,.12)", border: "none", color: "#fff",
+          borderRadius: 7, width: 30, height: 30, cursor: "pointer", fontSize: 16, flexShrink: 0
+        }
+      }, "✕")),
+
+    E("div", { style: { flex: 1, overflowY: "auto", overflowX: "hidden", paddingBottom: 18 } },
+      GRUPOS_MENU.map((g) => {
+        const items = TABS.filter((t) => t.grupo === g);
+        if (items.length === 0) return null;
+        return E("div", { key: g, style: { marginTop: 12 } },
+          // Encogido, la raya hace de separador entre grupos: sin ella los 20
+          // iconos serian una columna indistinguible.
+          mini
+            ? E("div", { style: { height: 1, background: "rgba(255,255,255,.13)", margin: "0 14px 8px" } })
+            : E("div", { style: {
+                fontSize: 10, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase",
+                color: "rgba(255,255,255,.4)", padding: "0 14px 6px"
+              } }, g),
+          items.map(item));
+      })));
+
+  return E(React.Fragment, null,
+    // Fondo oscuro: solo existe en el telefono, cuando el cajon esta abierto.
+    E("div", {
+      className: "pc-menu-fondo" + (abierto ? " pc-menu-abierto" : ""),
+      onClick: () => setAbierto(false)
+    }),
+    panel);
+}
 // VENTAS_SEED: vacía a propósito (M1, sep 2026). Antes traía ventas históricas (661 filas: cliente, fecha, monto)
 // incrustados en este archivo, que es público. Todo vive en Supabase; el hook
 // useSupabase ya contempla semilla vacía (no sube nada, no rompe).
@@ -6933,6 +7082,16 @@ function PetColinasApp({ session, onLogout }) {
     return () => { vivo = false; clearTimeout(t0); clearInterval(t); };
   }, []);
   // IDs de notificaciones marcadas como "listas/vistas" — persiste en localStorage
+  // Menu lateral. `mini` se recuerda entre sesiones: quien trabaja en una
+  // pantalla chica lo deja encogido y no quiere volver a encogerlo cada vez.
+  // `abierto` NO se recuerda: es el cajon del telefono y siempre arranca cerrado.
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [menuMini, setMenuMini] = useState(() => {
+    try { return localStorage.getItem("pc_menu_mini") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("pc_menu_mini", menuMini ? "1" : "0"); } catch {}
+  }, [menuMini]);
   const [notifLeidas, setNotifLeidas] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("pc_notif_leidas") || "[]")); }
     catch { return new Set(); }
@@ -7095,6 +7254,16 @@ function PetColinasApp({ session, onLogout }) {
     const nuevos = clientesDeVentas.filter((c) => !existentes.has((c.nombreMascota || "").toLowerCase().trim()));
     return [...clientes, ...nuevos];
   }, [clientes, clientesDeVentas]);
+  // Los numeritos rojos del menu. Estaban calculados dentro del bucle que
+  // pintaba la tira de pestañas, o sea que se recorrian los 735 clientes y las
+  // 1.700 ventas UNA VEZ POR PESTAÑA — veinte veces — en cada repintado.
+  const badgesMenu = useMemo(() => ({
+    notificaciones: (todosClientes || []).filter((c) =>
+      esInscripcionWeb(c) && !notifArchivada(c) &&
+      !notifAtendida(c, notifLeidas instanceof Set ? notifLeidas : new Set())).length,
+    ventas: (ventas || []).filter((v) =>
+      (v.formaPago || v.formapago || "") === "Pago pendiente").length
+  }), [todosClientes, ventas, notifLeidas]);
   const inventarioDeGastos = useMemo(() => {
     const existentes = new Set(inventario.map((p) => String(p.id)));
     const parseProductosGasto = (g) => {
@@ -7166,14 +7335,23 @@ function PetColinasApp({ session, onLogout }) {
   // Con abonos hay que contar el SALDO, no el total: si de RD$2,000 ya abonó
   // RD$800, lo que queda por cobrar es RD$1,200, no los RD$2,000.
   const ventasPendientesMonto = ventasPend.reduce((n, v) => n + saldoDe(v), 0);
-  return /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh" } }, /* @__PURE__ */ React.createElement("div", { style: {
+  return /* @__PURE__ */ React.createElement("div", { className: "pc-app", style: { fontFamily: "'Segoe UI',sans-serif", background: "#f0f2f0", minHeight: "100vh", "--pc-menu": (menuMini ? MENU_MINI : MENU_ANCHO) + "px" } }, React.createElement(MenuLateral, { tab, setTab, badges: badgesMenu, abierto: menuAbierto, setAbierto: setMenuAbierto, mini: menuMini, setMini: setMenuMini }), /* @__PURE__ */ React.createElement("div", { style: {
     background: `linear-gradient(135deg, ${C.verde} 0%, ${C.verde2} 100%)`,
     padding: "20px 32px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
-  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), React.createElement(EstadoSync, null), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("button", {
+    className: "pc-burger",
+    onClick: () => setMenuAbierto(true),
+    "aria-label": "Abrir el men\xFA",
+    style: {
+      background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)",
+      color: "#fff", borderRadius: 9, width: 40, height: 40, cursor: "pointer",
+      fontSize: 19, lineHeight: 1, flexShrink: 0
+    }
+  }, "\u2630"), /* @__PURE__ */ React.createElement("div", { className: "pc-marca-cabecera" }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -0.5 } }, "\u{1F43E} PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 } }, "Sistema de Gesti\xF3n \xB7 Plaza Las Colinas, SDO"))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 700 } }, (/* @__PURE__ */ new Date()).toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "rgba(255,255,255,0.6)" } }, "Victor Ballas \u2014 Administrador"), React.createElement(EstadoSync, null), ventasPendientesCount > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setTab("cobros"), title: "Ir a la pesta\xF1a de Cobros", style: { background: "#e53e3e", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 800, marginTop: 2, display: "flex", alignItems: "center", gap: 5, animation: "pulse 1.5s infinite" } }, "\uD83D\uDD34 RD$ " + ventasPendientesMonto.toLocaleString("es-DO") + " por cobrar (" + ventasPendientesCount + ")"), /* @__PURE__ */ React.createElement("button", { onClick: onLogout, style: {
     background: "rgba(255,255,255,0.15)",
     border: "1px solid rgba(255,255,255,0.3)",
     color: "#fff",
@@ -7206,44 +7384,7 @@ function PetColinasApp({ session, onLogout }) {
     disabled: pollingSync,
     style: { background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"#fff", borderRadius:6, padding:"2px 8px", fontSize:10, cursor:"pointer", fontWeight:700, opacity: pollingSync ? 0.6 : 1 }
   }, pollingSync ? "⏳ Sincronizando..." : "🔄 Sincronizar ahora")
-)), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: {
-    background: "#fff",
-    borderBottom: "2px solid #eef0f2",
-    display: "flex",
-    gap: 0,
-    overflowX: "auto",
-    padding: "0 24px"
-  } }, TABS.map((t) => {
-    const pendientes = t.id === "notificaciones"
-      ? (todosClientes || []).filter(c => esInscripcionWeb(c) && !notifArchivada(c) && !notifAtendida(c, notifLeidas instanceof Set ? notifLeidas : new Set())).length
-      : t.id === "ventas"
-      ? (ventas || []).filter(v => (v.formaPago || v.formapago || "") === "Pago pendiente").length
-      : 0;
-    return /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTab(t.id), style: {
-      background: "none",
-      border: "none",
-      cursor: "pointer",
-      padding: "14px 20px",
-      fontSize: 13,
-      fontWeight: 700,
-      color: tab === t.id ? C.verde : C.grisd,
-      borderBottom: tab === t.id ? `3px solid ${C.verde}` : "3px solid transparent",
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      whiteSpace: "nowrap",
-      transition: "color .15s"
-    } },
-      /* @__PURE__ */ React.createElement("span", null, t.icon),
-      t.label,
-      pendientes > 0 && /* @__PURE__ */ React.createElement("span", { style: {
-        background: "#e53e3e", color: "#fff", borderRadius: "50%",
-        fontSize: 10, fontWeight: 800, minWidth: 18, height: 18,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "0 4px", marginLeft: 2
-      }}, pendientes)
-    );
-  })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
+)), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
         tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "vozia" && React.createElement(VozIA, null),
