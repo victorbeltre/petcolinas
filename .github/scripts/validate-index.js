@@ -13,11 +13,14 @@ if (bytes < 1_000_000) {
   errores.push(`index.html demasiado pequeño (${bytes} bytes). La app completa pesa >1 MB. Posible versión regresada/incompleta.`);
 }
 
-// 2) Pestañas obligatorias (TABS). Una regresión típica elimina agenda/servicios/vozia/notificaciones.
+// 2) Pestañas obligatorias (TABS). Una regresión típica elimina agenda/servicios/notificaciones.
+// "vozia" salió de esta lista el 14 sep 2026 porque la pestaña se ELIMINÓ a
+// propósito (Victor: "no se usa"), no porque se perdiera. Si algún día vuelve a
+// aparecer aquí sin que nadie la haya reconstruido, es que se revirtió algo.
 const TABS_OBLIGATORIAS = [
   "dashboard", "agenda", "ventas", "clientes", "seguimientos",
   "inventario", "nomina", "gastos", "reportes", "facturas",
-  "servicios", "importar", "vozia", "notificaciones", "cobros", "planes",
+  "servicios", "importar", "notificaciones", "cobros", "planes",
 ];
 for (const id of TABS_OBLIGATORIAS) {
   if (!html.includes(`id: "${id}"`)) {
@@ -30,7 +33,7 @@ const COMPONENTES = [
   "function Agenda",
   "function PortalVeterinaria",
   "function PortalGroomer",
-  "function VozIA",
+  "function MenuLateral",
   "function ExportarExcel",
 ];
 for (const c of COMPONENTES) {

@@ -50,11 +50,16 @@ GitHub Pages desde `main`. El codigo fuente de desarrollo esta en
 completa. Un deploy desde petcolinas-app pisó la version buena con una vieja
 de 10 pestañas (PR #33) — no repetir.
 ANTES de commitear index.html, correr: node .github/scripts/validate-index.js
-Debe tener 16 pestañas: dashboard, agenda, ventas, clientes, seguimientos,
-inventario, nomina, gastos, reportes, facturas, cobros, planes, servicios,
-importar(Exportar Excel), vozia, notificaciones. Y los componentes Agenda, PortalVeterinaria,
-PortalGroomer, VozIA, ExportarExcel. Peso >1 MB. El workflow validate-app.yml
-bloquea el merge a main si falla.
+Debe tener 15 pestanas obligatorias: dashboard, agenda, ventas, clientes,
+seguimientos, inventario, nomina, gastos, reportes, facturas, cobros, planes,
+servicios, importar(Exportar Excel), notificaciones. Y los componentes Agenda,
+PortalVeterinaria, PortalGroomer, MenuLateral, ExportarExcel. Peso >1 MB. El
+workflow validate-app.yml bloquea el merge a main si falla.
+OJO: la pestana "vozia" y el componente VozIA se ELIMINARON el 14 sep 2026
+porque no se usaban (decision de Victor), no por una regresion. Si vuelven a
+aparecer en la lista de obligatorias sin que nadie los haya reconstruido, es
+que se revirtio algo. MenuLateral ocupa ese sitio en la guardia: si ESE
+desaparece, la app queda entera pero sin forma de navegarla.
 
 ## REGLA CRITICA 5 - Laura tambien contribuye (desde 19 Ago 2026)
 Laura (menos experimentada con este stack) empezo a abrir PRs directo a main
