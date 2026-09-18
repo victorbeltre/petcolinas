@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-14 01:40Z";
+const PC_BUILD = "2026-09-18 15:25Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2991,7 +2991,22 @@ function PagoDeFactura({ factura, ventas, setVentas }) {
 // jsPDF con las fuentes estándar no dibuja emojis: salían como "Ø=Ü>".
 const sinEmoji = (t) => String(t || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, "").replace(/\s{2,}/g, " ").trim();
 
-function generarFacturaPDFDoc(f) {
+// Una cotizacion no vale para siempre: 15 dias es lo que aguantan los precios
+// de los proveedores. Llevar la fecha impresa evita el "pero usted me dijo"
+// de tres meses atras.
+const COTIZ_DIAS_VALIDEZ = 15;
+function venceCotiz(fechaISO) {
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(String(fechaISO || "")) ? new Date(fechaISO + "T12:00:00") : new Date();
+  base.setDate(base.getDate() + COTIZ_DIAS_VALIDEZ);
+  const dd = String(base.getDate()).padStart(2, "0"), mm = String(base.getMonth() + 1).padStart(2, "0");
+  return dd + "/" + mm + "/" + base.getFullYear();
+}
+// Dos documentos con el mismo cuerpo. modo "cotizacion" es un presupuesto: NO
+// lleva NCF, no es comprobante fiscal, vence, y no arrastra pagos, lealtad ni
+// chequeo (nada de eso ocurrio todavia). La factura normal estampa PAGADA
+// cuando no queda saldo, que es el papel que el cliente pide de recibo.
+function generarFacturaPDFDoc(f, modo) {
+  const esCotiz = modo === "cotizacion";
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const verde = [26, 107, 58], gr = [90, 100, 114], ng = [26, 29, 35];
@@ -3008,11 +3023,11 @@ function generarFacturaPDFDoc(f) {
   doc.text("Tel: 809-752-6806 \xB7 petcolinasrd@gmail.com", M, 27);
   if (rncNegocio) doc.text("RNC: " + rncNegocio, M, 34);
   doc.setFont("helvetica","bold"); doc.setFontSize(14);
-  doc.text("FACTURA #" + f.numero, W-M, 13, {align:"right"});
+  doc.text(esCotiz ? ("COTIZACI\xD3N" + (f.numero ? " #C-" + f.numero : "")) : ("FACTURA #" + f.numero), W-M, 13, {align:"right"});
   doc.setFont("helvetica","normal"); doc.setFontSize(9);
   doc.text("Fecha: " + (f.fecha||""), W-M, 20, {align:"right"});
-  doc.text(f.estado==="pendiente" ? "PENDIENTE" : "EMITIDA", W-M, 27, {align:"right"});
-  if (f.ncf) {
+  doc.text(esCotiz ? "V\xE1lida hasta " + venceCotiz(f.fecha) : (f.estado==="pendiente" ? "PENDIENTE" : "PAGADA"), W-M, 27, {align:"right"});
+  if (f.ncf && !esCotiz) {
     doc.setFont("helvetica","bold"); doc.setFontSize(9);
     doc.text("NCF: " + f.ncf, W-M, 34, {align:"right"});
     doc.setFont("helvetica","normal"); doc.setFontSize(7);
@@ -3035,7 +3050,7 @@ function generarFacturaPDFDoc(f) {
   doc.setTextColor(...gr); doc.setFontSize(8);
   doc.text("Plaza Las Colinas, SDO", W/2+5, y+15);
   doc.text("Tel: 809-752-6806", W/2+5, y+21);
-  if(f.metodoPago) doc.text("Pago: " + f.metodoPago, W/2+5, y+27);
+  if(f.metodoPago && !esCotiz) doc.text("Pago: " + f.metodoPago, W/2+5, y+27);
   // Tabla items
   y += 40;
   doc.setFillColor(...verde); doc.rect(M, y-4, W-2*M, 8, "F");
@@ -3069,7 +3084,7 @@ function generarFacturaPDFDoc(f) {
   // Pagos recibidos. Va impreso para que el cliente vea de una lo que ya pagó,
   // cuándo lo pagó y cuánto le falta, sin tener que preguntar.
   const pg = pagosFactura(f, total);
-  if (pg.hay) {
+  if (pg.hay && !esCotiz) {
     y += 12;
     doc.setTextColor(...ng); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
     doc.text("PAGOS RECIBIDOS", 134, y);
@@ -3099,9 +3114,37 @@ function generarFacturaPDFDoc(f) {
       doc.text("PAGADA EN SU TOTALIDAD", 134, y+1.5);
     }
   }
+  // Sello PAGADA. Es lo que el cliente busca de un vistazo cuando pide "el
+  // papel de que ya pague", y lo que la aseguradora o la empresa le exige.
+  const saldadoDoc = !esCotiz && (pg.hay ? pg.saldo <= 0 : f.estado !== "pendiente");
+  if (saldadoDoc) {
+    y += 14;
+    doc.setFillColor(209,250,229); doc.setDrawColor(6,95,70); doc.setLineWidth(0.6);
+    doc.roundedRect(M, y-5, 80, 18, 2, 2, "FD");
+    doc.setTextColor(6,95,70); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    doc.text("PAGADA", M+6, y+3);
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+    doc.text("Recibido conforme" + (f.metodoPago ? " \xB7 " + f.metodoPago : "") + " \xB7 " + (f.fecha||""), M+6, y+9.5);
+    y += 14;
+  }
+  // Aviso de cotizacion: lo que evita que la confundan con una factura y la
+  // lleven a su contable, o que reclamen el precio medio ano despues.
+  if (esCotiz) {
+    y += 14;
+    doc.setFillColor(255,247,237); doc.setDrawColor(217,119,6); doc.setLineWidth(0.5);
+    doc.rect(M, y-5, W-2*M, 23, "FD");
+    doc.setTextColor(180,83,9); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    doc.text("Esto es una cotizaci\xF3n, no un comprobante fiscal", M+4, y+1);
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...gr);
+    doc.text("V\xE1lida hasta el " + venceCotiz(f.fecha) + " (" + COTIZ_DIAS_VALIDEZ + " d\xEDas). Los precios pueden variar si cambia el estado del", M+4, y+7);
+    doc.text("paciente o si hace falta alg\xFAn procedimiento extra. No incluye complicaciones no previstas.", M+4, y+12);
+    doc.setFont("helvetica","bold"); doc.setTextColor(180,83,9);
+    doc.text("Para aceptarla ll\xE1menos al 809-752-6806 y le apartamos la cita.", M+4, y+17.5);
+    y += 19;
+  }
   // Lealtad grooming
   const grm=Number(f.groomingCount)||0;
-  if(grm>=0 && f.groomingCount!=null){y+=16;doc.setFillColor(255,251,234);doc.rect(M,y-4,W-2*M,16,"F");
+  if(!esCotiz && grm>=0 && f.groomingCount!=null){y+=16;doc.setFillColor(255,251,234);doc.rect(M,y-4,W-2*M,16,"F");
     doc.setDrawColor(240,192,48);doc.rect(M,y-4,W-2*M,16,"S");
     doc.setTextColor(184,134,11);doc.setFont("helvetica","bold");doc.setFontSize(9);
     doc.text("Programa de Lealtad: "+grm+" de 10 ba\xF1os acumulados", M+4, y+2);
@@ -3109,7 +3152,7 @@ function generarFacturaPDFDoc(f) {
     doc.text(grm>=10?"\xA1BA\xD1O GRATIS DISPONIBLE en su pr\xF3xima visita!":"Faltan "+(10-grm)+" ba\xF1o(s) para el ba\xF1o gratis", M+4, y+9);}
   // Chequeo de 5 puntos: el regalo que abre la consulta. Si hay hallazgos, van
   // impresos para que el dueno los lea en su casa y llame.
-  if(f.chequeo && f.chequeo.detalle && f.chequeo.detalle.length){
+  if(!esCotiz && f.chequeo && f.chequeo.detalle && f.chequeo.detalle.length){
     const ch=f.chequeo; const alto=18+ch.detalle.length*4.5+(ch.reco.length?6+ch.reco.length*4.5:0);
     y+=20;doc.setFillColor(245,240,255);doc.rect(M,y-4,W-2*M,alto,"F");
     doc.setDrawColor(124,58,237);doc.rect(M,y-4,W-2*M,alto,"S");
@@ -3127,7 +3170,7 @@ function generarFacturaPDFDoc(f) {
   // Proxima cita: llevarla impresa es lo que convierte "vuelva cuando quiera"
   // en una fecha concreta. Sale la cita agendada de verdad si existe; si no,
   // la sugerida por el tipo de servicio.
-  if(f.proximaCita && f.proximaCita.fecha){
+  if(!esCotiz && f.proximaCita && f.proximaCita.fecha){
     const pc=f.proximaCita;
     y+=20;doc.setFillColor(238,244,255);doc.rect(M,y-4,W-2*M,16,"F");
     doc.setDrawColor(26,79,160);doc.rect(M,y-4,W-2*M,16,"S");
@@ -3958,16 +4001,24 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     setVista("ver");
     setForm({ clienteId: "", mascota: "", propietario: "", telefono: "", fecha: hoy(), items: [{ descripcion: "", cantidad: 1, precio: 0, descuento: 0 }], itbis: true, metodoPago: "Efectivo", estado: "pagada", notas: "" }); setBusqFact("");
   }
-  function imprimirFactura(f) {
+  // modo "cotizacion" imprime el MISMO cuerpo como presupuesto: sin NCF, sin
+  // pagos, sin lealtad ni chequeo, con fecha de vencimiento y el aviso de que
+  // no es comprobante fiscal. Se puede llamar con una factura guardada o con
+  // el formulario a medio llenar (todavia sin numero).
+  function imprimirFactura(f, modo) {
+    const esCotiz = modo === "cotizacion";
     const { subtotal, itbisAmt, total } = calcTotales(f.items, f.itbis);
-    f = { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas), chequeo: f.chequeo || chequeoDeFactura(f, historias, clientes) };
+    f = esCotiz ? { ...f, groomingCount: null, proximaCita: null, chequeo: null }
+      : { ...f, groomingCount: facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : null, proximaCita: f.proximaCita || proximaCitaDeFactura(f, citas), chequeo: f.chequeo || chequeoDeFactura(f, historias, clientes) };
+    const tituloDoc = esCotiz ? "Cotizaci\xF3n" : "Factura";
+    const numDoc = esCotiz ? (f.numero ? "#C-" + f.numero : "") : "#" + f.numero;
     const clienteData = clientes.find(c => String(c.id) === String(f.clienteId));
     const cedulaCliente = clienteData?.cedula || "";
     const win = window.open("", "_blank");
     win.document.write(`
       <!DOCTYPE html><html><head>
       <meta charset="UTF-8">
-      <title>Factura #${f.numero} - PetColinas</title>
+      <title>${tituloDoc} ${numDoc} - PetColinas</title>
       <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family: Arial, sans-serif; padding:40px; color:#1a1d23; font-size:13px; }
@@ -4007,10 +4058,12 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
           </div>
         </div>
         <div class="factura-num">
-          <div style="font-size:11px;color:#5a6472;text-transform:uppercase;letter-spacing:1px;">Factura</div>
-          <div class="num">#${f.numero}</div>
+          <div style="font-size:11px;color:#5a6472;text-transform:uppercase;letter-spacing:1px;">${tituloDoc}</div>
+          <div class="num">${numDoc}</div>
           <div class="fecha">Fecha: ${f.fecha}</div>
-          <div class="pago-badge">\u2713 EMITIDA</div>
+          ${esCotiz
+            ? `<div class="pago-badge" style="background:#fff7ed;color:#b45309;">V\xE1lida hasta ${venceCotiz(f.fecha)}</div>`
+            : `<div class="pago-badge">\u2713 EMITIDA</div>`}
         </div>
       </div>
 
@@ -4027,13 +4080,17 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
           <p style="font-size:12px;color:#5a6472;">Plaza Las Colinas, SDO</p>
           <p style="font-size:12px;color:#5a6472;">Tel: 809-752-6806</p>
           ${(PC_CONFIG.rnc || window._petcolinasRNC || PETCOLINAS_RNC) ? `<p style="font-size:12px;color:#5a6472;">RNC: ${PC_CONFIG.rnc || window._petcolinasRNC || PETCOLINAS_RNC}</p>` : ""}
-          ${f.ncf ? `<p style="font-size:13px;color:#12324a;font-weight:800;margin-top:6px;border-top:1px dashed #c9ced4;padding-top:6px;">NCF: ${f.ncf}</p><p style="font-size:11px;color:#5a6472;">${NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"}</p>` : ""}
+          ${f.ncf && !esCotiz ? `<p style="font-size:13px;color:#12324a;font-weight:800;margin-top:6px;border-top:1px dashed #c9ced4;padding-top:6px;">NCF: ${f.ncf}</p><p style="font-size:11px;color:#5a6472;">${NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"}</p>` : ""}
           ${f.rncCliente ? `<p style="font-size:12px;color:#5a6472;">RNC del cliente: ${f.rncCliente}</p>` : ""}
           <p style="margin-top:8px;font-weight:700;">\uD83D\uDC3E ${f.mascota || "\u2014"}</p>
         </div>
       </div>
 
       ${(() => {
+        if (esCotiz) return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+          <span style="background:#fff7ed;color:#b45309;border:1.5px solid #f0c030;border-radius:20px;padding:5px 16px;font-weight:900;font-size:13px;letter-spacing:1px;">COTIZACI\xD3N</span>
+          <span style="color:#5a6472;font-size:12px;">Presupuesto estimado \u2014 a\xFAn no se ha facturado nada</span>
+        </div>`;
         const estadoFact = f.estado === "pendiente" ? "PENDIENTE" : "PAGADA";
         const estadoColor = f.estado === "pendiente" ? "#dc2626" : "#1a6b3a";
         const estadoBg = f.estado === "pendiente" ? "#fee2e2" : "#d4edda";
@@ -4079,6 +4136,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
           <div class="totales-row total"><span>TOTAL</span><span>RD$ ${total.toLocaleString("es-DO")}</span></div>
           ${(() => {
             // Pagos recibidos: el cliente ve lo que ya abonó y lo que falta.
+            if (esCotiz) return "";
             const pg = pagosFactura(f, total);
             if (!pg.hay) return "";
             return `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;">
@@ -4092,6 +4150,28 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
           })()}
         </div>
       </div>
+
+      ${(() => {
+        // Sello PAGADA: el papel que el cliente pide como recibo.
+        if (esCotiz) return "";
+        const pgs = pagosFactura(f, total);
+        const saldado = pgs.hay ? pgs.saldo <= 0 : f.estado !== "pendiente";
+        if (!saldado) return "";
+        return `<div style="margin-top:24px;display:inline-block;background:#d1fae5;border:2.5px solid #065f46;border-radius:10px;padding:12px 22px;">
+          <div style="font-size:26px;font-weight:900;color:#065f46;letter-spacing:3px;line-height:1;">PAGADA</div>
+          <div style="font-size:11px;color:#065f46;margin-top:5px;">Recibido conforme${f.metodoPago ? " \xB7 " + f.metodoPago : ""} \xB7 ${f.fecha || ""}</div>
+        </div>`;
+      })()}
+
+      ${esCotiz ? `<div style="margin-top:24px;background:#fff7ed;border:2px solid #f0c030;border-radius:12px;padding:16px 18px;">
+        <div style="font-weight:800;color:#b45309;font-size:14px;">Esto es una cotizaci\xF3n, no un comprobante fiscal</div>
+        <ul style="margin:8px 0 0;padding-left:18px;font-size:12.5px;color:#7c4a03;line-height:1.7;">
+          <li>V\xE1lida hasta el <strong>${venceCotiz(f.fecha)}</strong> (${COTIZ_DIAS_VALIDEZ} d\xEDas desde hoy).</li>
+          <li>Los precios pueden variar si cambia el estado del paciente o si hace falta alg\xFAn procedimiento extra. No incluye complicaciones no previstas.</li>
+          <li>No genera cobro ni compromiso hasta que usted la acepte.</li>
+        </ul>
+        <div style="margin-top:10px;font-weight:700;color:#b45309;font-size:12.5px;">Para aceptarla ll\xE1menos al 809-752-6806 y le apartamos la cita.</div>
+      </div>` : ""}
 
       ${f.notas ? `<div style="margin-top:24px;background:#f8f9fa;border-radius:8px;padding:14px;font-size:12px;"><strong>Notas:</strong> ${f.notas}</div>` : ""}
 
@@ -4107,7 +4187,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
         <div style="font-size:12.5px;color:#3a4a63;margin-top:4px;">${f.proximaCita.agendada ? "Ya está apartada a su nombre. " : ""}${f.proximaCita.label} — le escribimos un día antes para recordarle.</div>
       </div>` : ""}
 
-      ${(() => {
+      ${esCotiz ? "" : (() => {
       const grm = f.groomingCount || 0;
       const faltan = Math.max(0, 10 - grm);
       const pct = Math.min(100, grm / 10 * 100);
@@ -4651,6 +4731,17 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
         style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "14px 28px", fontSize: 15, fontWeight: 700, cursor: "pointer" }
       },
       editandoId ? "\ud83d\udcbe Guardar cambios" : "\u2705 Emitir Factura"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => {
+          if (!hayServicios) { avisar("Agrega al menos un servicio con descripci\xF3n para poder cotizar."); return; }
+          imprimirFactura({ ...form, numero: editandoNum || "", total }, "cotizacion");
+        },
+        title: "Imprime un presupuesto para el cliente. NO guarda la factura ni registra la venta.",
+        style: { background: "#fff7ed", color: "#b45309", border: "1.5px solid #f0c030", borderRadius: 10, padding: "14px 22px", fontSize: 14, fontWeight: 700, cursor: "pointer" }
+      },
+      "\uD83D\uDCDD Cotizaci\xF3n (no guarda)"
     ), /* @__PURE__ */ React.createElement("button", { onClick: () => { setEditandoId(null); setEditandoNum(""); setEditandoOrig(null); setSugItem(null); setVista("lista"); }, style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 10, padding: "14px 20px", fontSize: 14, cursor: "pointer" } }, "Cancelar"), motivoBloqueo && React.createElement("div", { style: { alignSelf: "center", fontSize: 12.5, color: "#b45309", fontWeight: 600 } }, "\u26A0\uFE0F " + motivoBloqueo)));
   }
   if (vista === "ver" && facturaActual) {
@@ -4659,7 +4750,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     const gLealtad = facturaTieneBano(f) ? calcGroomingLealtad(f.mascota) : 0;
     const movsFondo = (depositos || []).filter((d) => String(d.facturaId || "") === String(f.id));
     const saldoActualFondo = saldoFondo(f.mascota);
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), (f.ncf
+    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), React.createElement("button", { onClick: () => imprimirFactura(f, "cotizacion"), title: "Imprime el mismo detalle como presupuesto: sin NCF y sin valor fiscal", style: { background: "#fff7ed", color: "#b45309", border: "1.5px solid #f0c030", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\uD83D\uDCDD Cotizaci\xF3n"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), (f.ncf
       ? React.createElement("div", { title: "Comprobante ya emitido: no se puede cambiar", style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 800 } }, "\u{1F9FE} " + f.ncf, React.createElement("div", { style: { fontSize: 10, fontWeight: 600, opacity: 0.8 } }, NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"))
       : React.createElement("button", { onClick: () => setNcfPara(f), title: "Asignar el n\xFAmero de comprobante fiscal de la DGII", style: { background: "#fff7e6", color: "#92400e", border: "1.5px solid #d9a441", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F9FE} Asignar NCF")
     ), React.createElement("button", { onClick: () => setHistoriaPara(f), title: "Ver la historia cl\xEDnica de " + (f.mascota || "la mascota") + " sin salir de la factura",
