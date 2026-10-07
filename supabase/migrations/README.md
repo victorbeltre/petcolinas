@@ -22,7 +22,15 @@ archivo de esta carpeta, aunque se haya ejecutado desde el conector.
    es la razón (qué se rompió, qué se intentó antes y no sirvió).
 6. Al terminar, correr `get_advisors(type=security)` del conector de Supabase.
    Cualquier `rls_disabled_in_public` es un bloqueo, no una advertencia.
-7. Al crear una función, `revoke ... from public, anon` **no alcanza**:
+7. **`create or replace view` REINICIA las opciones de la vista.** Después de
+   cada recreación hay que volver a poner `security_invoker`, o la vista pasa a
+   leer con los permisos de quien la creó y se salta la RLS. Pasó al montar M18
+   y lo cazó `get_advisors` como ERROR, no como aviso.
+8. El conector de Supabase **se cuelga en cualquier `DROP`** (probado seis veces
+   con `execute_sql` y `apply_migration`). Si hace falta borrar una vista, o se
+   le vacía el cuerpo con `create or replace ... where false`, o se borra a mano
+   desde el panel de Supabase.
+9. Al crear una función, `revoke ... from public, anon` **no alcanza**:
    Supabase le otorga `EXECUTE` a `authenticated` por privilegios por defecto,
    así que hay que nombrarlo. Y en Postgres toda función nace con `EXECUTE`
    para `PUBLIC`, que `anon` hereda aunque se le revoque a él solo.
@@ -65,6 +73,7 @@ Correos por rol: `admin@petcolinas.com` (admin), `naylan@petcolinas.com` y
 | `20260908_m13_punto_equilibrio.sql` | El punto de equilibrio deja de estar escrito a mano en el código (estaba en tres sitios y con dos valores distintos). |
 | `20260908_m10_comisiones.sql` | Los porcentajes de comisión (12/30/40/5) salen del código, donde estaban repetidos en quince sitios. |
 | `20260908_m8_procesos_programados.sql` | `pg_cron`, la bitácora `pc_tareas_log` y la primera tarea (`pc_resumen_diario`, cada día a las 5:30). Base para los recordatorios de la lista 2. Ninguna tarea manda mensajes a clientes. |
+| `20261007_m18_caja_diaria.sql` | Flujo de caja: `pc_caja_dia` (arqueo), `pc_caja_movimientos` (lo que no es venta ni gasto) y la vista `pc_caja_libro`, que arma el libro sobre lo que ya existe en vez de duplicarlo. Incluye `pc_metodo_pago()`, que normaliza las 60 variantes de `formapago`. |
 | `20260910_m17_wa_seguimientos.sql` | Seguimientos por WhatsApp: plantillas, cola con aprobación, opt-out y la tarea de las 5:45 que **propone** (no manda). Puesta en marcha en `docs/whatsapp-puesta-en-marcha.md`. |
 
 ## Lo que NO está aquí

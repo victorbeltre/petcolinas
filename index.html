@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-09-14 01:40Z";
+const PC_BUILD = "2026-10-07 13:55Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1816,6 +1816,11 @@ const EMPLEADOS_INIT = [
   { id: "e6", nombre: "Naylan Perez", cargo: "M\xE9dico Veterinaria (por llamado)", mensualidad: 0, comPct: 0.30, comTipo: "pct" }
 ];
 const RD = (n) => "RD$ " + (Math.round(Number(n) || 0) || 0).toLocaleString("es-DO");
+// Con centavos. RD() redondea a pesos enteros, que esta bien para un panel de
+// ventas pero NO para el libro de caja: ahi un redondeo por fila se acumula y
+// el arqueo deja de cuadrar sin que nadie sepa por que. No se cambia RD()
+// porque lo usa toda la app; el modulo de caja usa este.
+const RDc = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const hoy = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 // Deduce el area real de un servicio a partir de su nombre. Se usa para
 // reclasificar en los reportes las ventas guardadas como "mixta" (o con un
@@ -2092,7 +2097,7 @@ const TABS = [
   { id: "ventas", icon: "\u{1F4B0}", label: "Ventas", grupo: "Operaci\xF3n" },
   { id: "facturas", icon: "\u{1F4C4}", label: "Facturas", grupo: "Operaci\xF3n" },
   { id: "cobros", icon: "\u{1F4B5}", label: "Cobros", grupo: "Operaci\xF3n" },
-  { id: "caja", icon: "\u{1F9FE}", label: "Cierre de caja", grupo: "Operaci\xF3n" },
+  { id: "caja", icon: "\u{1F9FE}", label: "Caja", grupo: "Operaci\xF3n" },
 
   { id: "clientes", icon: "\u{1F43E}", label: "Clientes / CRM", grupo: "Clientes" },
   { id: "seguimientos", icon: "\u{1F514}", label: "Seguimientos", grupo: "Clientes" },
@@ -7053,7 +7058,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "whatsapp" && React.createElement(PantallaWhatsApp, null),
     tab === "cobros" && React.createElement(Cobros, { ventas, setVentas, clientes: todosClientes }),
     tab === "planes" && React.createElement(Planes, { paquetes, setPaquetes, clientes: todosClientes, ventas, setVentas }),
-    tab === "caja" && React.createElement(CierreCaja, { ventas, gastos }),
+    tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, marcarNotifLeidas, desmarcarNotif,
@@ -16887,112 +16892,455 @@ function Cobros({ ventas, setVentas, clientes, soloPropio }) {
   );
 }
 
-function CierreCaja({ ventas, gastos }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// CAJA · Libro de caja y arqueo diario (M18, oct 2026)
+//
+// Saldo Inicial + Entradas - Salidas = Saldo Final.
+//
+// El libro NO guarda movimientos propios: los lee de pc_caja_libro, una vista
+// sobre lo que ya existe (ventas, abonos, gastos) mas los movimientos sueltos
+// que no son ni venta ni gasto. Copiar las ventas a una tabla de caja daria dos
+// fuentes de verdad para el mismo dinero.
+//
+// El arqueo es SOBRE EFECTIVO: una transferencia no esta en la gaveta. El libro
+// de abajo si muestra todos los metodos, con filtro.
+function CierreCaja() {
   const E = React.createElement;
-  const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b", gold: "#b8860b" };
+  const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b",
+              gold: "#b8860b", borde: "#e0e4e8" };
+  const METODOS = ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "CHEQUE"];
+
   const [fecha, setFecha] = React.useState(hoy());
+  const [libro, setLibro] = React.useState([]);
+  const [dia, setDia] = React.useState(null);        // fila de pc_caja_dia
+  const [resumen, setResumen] = React.useState(null);
+  const [cargando, setCargando] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const [guardando, setGuardando] = React.useState(false);
+  const [filtroMetodo, setFiltroMetodo] = React.useState("");
+  const [filtroCategoria, setFiltroCategoria] = React.useState("");
+  const [modal, setModal] = React.useState("");       // "abrir" | "movimiento" | "cerrar"
 
-  const delDia = (ventas || []).filter((v) => String(v.fecha || "").slice(0, 10) === fecha);
-  const gastosDia = (gastos || []).filter((g) => String(g.fecha || "").slice(0, 10) === fecha);
+  const cargar = React.useCallback(async () => {
+    setCargando(true);
+    try {
+      const [mov, d, r] = await Promise.all([
+        supaFetch("pc_caja_libro", "GET", null, "?fecha=eq." + fecha + "&order=fecha_hora.asc&limit=1000"),
+        supaFetch("pc_caja_dia", "GET", null, "?fecha=eq." + fecha),
+        supaRPC("pc_caja_resumen", { p_fecha: fecha })
+      ]);
+      setLibro(Array.isArray(mov) ? mov : []);
+      setDia(Array.isArray(d) && d.length ? d[0] : null);
+      setResumen(Array.isArray(r) && r.length ? r[0] : null);
+      setError("");
+    } catch (e) {
+      setError("No se pudo cargar la caja: " + e.message);
+    }
+    setCargando(false);
+  }, [fecha]);
+  React.useEffect(() => { cargar(); }, [cargar]);
 
-  // Clasificar por forma de pago. Las transferencias se agrupan por banco.
-  const etiquetaDe = (formaCruda) => {
-    const fp = String(formaCruda || "").trim() || "Sin especificar";
-    const l = fp.toLowerCase();
-    return l.includes("efectivo") ? "💵 Efectivo"
-      : l.includes("tarjeta") ? "💳 Tarjeta"
-      : l.includes("transfer") ? "🏦 " + (fp.replace(/transferencias?/i, "").trim() || "Transferencia")
-      : fp;
-  };
-  const grupos = {};
-  let pendiente = 0, cobrado = 0;
-  delDia.forEach((v) => {
-    const monto = Number(v.total) || 0;
-    // Con abonos el dinero NO se cuenta aquí: cada abono se suma abajo, en el
-    // día en que entró. Aquí solo queda lo que todavía falta por cobrar. Si se
-    // contaran los dos lados, el mismo dinero saldría dos veces.
-    if (tieneAbonos(v)) { pendiente += saldoDe(v); return; }
-    if (esPagoPendiente(v)) { pendiente += monto; return; }
-    cobrado += monto;
-    grupos[etiquetaDe(v.formaPago || v.formapago)] = (grupos[etiquetaDe(v.formaPago || v.formapago)] || 0) + monto;
-  });
-  // Abonos recibidos ESTE día, vengan de la venta que vengan: el servicio pudo
-  // ser la semana pasada, pero el dinero entró al cajón hoy.
-  (ventas || []).forEach((v) => {
-    abonosDe(v).forEach((ab) => {
-      if (String(ab.fecha || "").slice(0, 10) !== fecha) return;
-      const monto = Number(ab.monto) || 0;
-      if (!monto) return;
-      cobrado += monto;
-      const forma = ab.forma === "transferencia" && ab.banco ? "Transferencia " + ab.banco : ab.forma;
-      grupos[etiquetaDe(forma)] = (grupos[etiquetaDe(forma)] || 0) + monto;
+  const abierta = dia && dia.estado === "abierta";
+  const cerrada = dia && dia.estado === "cerrada";
+  const num = (x) => Number(x) || 0;
+
+  // El saldo acumulado (la 8ª columna) se calcula al leer, no se guarda: depende
+  // del rango y del orden que se este mirando.
+  const filas = React.useMemo(() => {
+    let saldo = num(resumen && resumen.saldo_inicial);
+    return (libro || [])
+      .filter((m) => !filtroMetodo || m.metodo_pago === filtroMetodo)
+      .filter((m) => !filtroCategoria || m.categoria === filtroCategoria)
+      .map((m) => {
+        saldo += num(m.entrada) - num(m.salida);
+        return { ...m, saldo };
+      });
+  }, [libro, resumen, filtroMetodo, filtroCategoria]);
+
+  const porMetodo = React.useMemo(() => {
+    const g = {};
+    (libro || []).forEach((m) => {
+      const k = m.metodo_pago || "SIN ANOTAR";
+      if (!g[k]) g[k] = { entrada: 0, salida: 0 };
+      g[k].entrada += num(m.entrada); g[k].salida += num(m.salida);
     });
+    return Object.entries(g).sort((a, b) => (b[1].entrada - b[1].salida) - (a[1].entrada - a[1].salida));
+  }, [libro]);
+
+  const porCategoria = React.useMemo(() => {
+    const g = {};
+    (libro || []).forEach((m) => {
+      const k = m.categoria || "Sin categoría";
+      if (!g[k]) g[k] = { entrada: 0, salida: 0 };
+      g[k].entrada += num(m.entrada); g[k].salida += num(m.salida);
+    });
+    return Object.entries(g).sort((a, b) => (b[1].entrada + b[1].salida) - (a[1].entrada + a[1].salida));
+  }, [libro]);
+
+  // ── Acciones ──────────────────────────────────────────────────────────────
+  async function abrirDia(saldoInicial) {
+    setGuardando(true);
+    try {
+      const r = await supaFetch("pc_caja_dia", "POST", [{
+        fecha, estado: "abierta", saldo_inicial: saldoInicial,
+        abierta_en: new Date().toISOString(), abierta_por: usuarioActual(),
+        actualizado: new Date().toISOString()
+      }]);
+      if (r && r.error) throw new Error(JSON.stringify(r.error));
+      avisar("Caja del " + fecha + " abierta con " + RDc(saldoInicial) + ".", "ok");
+      setModal(""); cargar();
+    } catch (e) { avisar("No se pudo abrir la caja: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  async function registrarMovimiento(m) {
+    setGuardando(true);
+    try {
+      const r = await supaFetch("pc_caja_movimientos", "POST", [{
+        fecha, hora: m.hora || null, tipo: m.tipo, concepto: m.concepto,
+        categoria: m.categoria || null, metodo_pago: m.metodo_pago,
+        referencia: m.referencia || null, monto: m.monto, usuario: usuarioActual()
+      }]);
+      if (r && r.error) throw new Error(JSON.stringify(r.error));
+      avisar((m.tipo === "ENTRADA" ? "Entrada" : "Salida") + " de " + RDc(m.monto) + " registrada.", "ok");
+      setModal(""); cargar();
+    } catch (e) { avisar("No se pudo registrar: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  async function cerrarDia(contado, notas) {
+    setGuardando(true);
+    try {
+      // Se guarda la FOTO del momento del cierre, no un calculo que se rehaga.
+      // Si una venta se corrige la semana que viene, el arqueo tiene que seguir
+      // diciendo lo que de verdad se conto esta noche.
+      const teorico = num(resumen && resumen.teorico_efectivo);
+      const r = await supaFetch("pc_caja_dia", "POST", [{
+        fecha, estado: "cerrada", saldo_inicial: num(resumen && resumen.saldo_inicial),
+        cerrada_en: new Date().toISOString(), cerrada_por: usuarioActual(),
+        efectivo_contado: contado,
+        entradas_efectivo: num(resumen && resumen.entradas_efectivo),
+        salidas_efectivo: num(resumen && resumen.salidas_efectivo),
+        teorico_efectivo: teorico,
+        diferencia: Number((contado - teorico).toFixed(2)),
+        notas: notas || null, actualizado: new Date().toISOString()
+      }]);
+      if (r && r.error) throw new Error(JSON.stringify(r.error));
+      const dif = contado - teorico;
+      avisar(Math.abs(dif) < 0.005
+        ? "Caja cerrada y cuadrada exacta."
+        : "Caja cerrada con " + (dif > 0 ? "SOBRANTE" : "FALTANTE") + " de " + RDc(Math.abs(dif)) + ".",
+        Math.abs(dif) < 0.005 ? "ok" : "aviso");
+      setModal(""); cargar();
+    } catch (e) { avisar("No se pudo cerrar la caja: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  async function reabrir() {
+    if (!confirm("¿Reabrir la caja del " + fecha + "?\n\nEl arqueo guardado se conserva, pero el día vuelve a aceptar movimientos.")) return;
+    setGuardando(true);
+    try {
+      await supaFetch("pc_caja_dia", "PATCH", { estado: "abierta", actualizado: new Date().toISOString() }, "?fecha=eq." + fecha);
+      avisar("Caja reabierta.", "ok"); cargar();
+    } catch (e) { avisar("No se pudo reabrir: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  function exportarCSV() {
+    const cab = ["Fecha y hora", "Referencia", "Concepto", "Categoría", "Método de pago", "Entrada", "Salida", "Saldo acumulado"];
+    const esc = (s) => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+    const csv = [cab.map(esc).join(",")].concat(filas.map((m) => [
+      m.fecha_hora ? String(m.fecha_hora).replace("T", " ").slice(0, 16) : m.fecha,
+      m.referencia, m.concepto, m.categoria, m.metodo_pago,
+      num(m.entrada).toFixed(2), num(m.salida).toFixed(2), m.saldo.toFixed(2)
+    ].map(esc).join(","))).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }));
+    a.download = "libro_caja_" + fecha + ".csv"; a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ── Pintado ───────────────────────────────────────────────────────────────
+  const tarjeta = (titulo, valor, color, nota) => E("div", { style: {
+    background: "#fff", border: "1.5px solid " + C.borde, borderRadius: 11, padding: "13px 15px", flex: "1 1 150px", minWidth: 140
+  } },
+    E("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 5 } }, titulo),
+    E("div", { style: { fontSize: 19, fontWeight: 800, color: color || "#1a1d23" } }, valor),
+    nota && E("div", { style: { fontSize: 11, color: C.grisd, marginTop: 3 } }, nota));
+
+  const btn = (fondo, color, borde) => ({
+    background: fondo, color, border: "1.5px solid " + (borde || fondo), borderRadius: 9,
+    padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700
   });
-  const totalGastos = gastosDia.reduce((n, g) => n + (Number(g.monto) || 0), 0);
-  const efectivo = grupos["💵 Efectivo"] || 0;
-  const gastosEfectivo = gastosDia.filter((g) => String(g.formaPago || g.formapago || "").toLowerCase().includes("efectivo")).reduce((n, g) => n + (Number(g.monto) || 0), 0);
+  const th = { padding: "9px 10px", textAlign: "left", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#fff" };
+  const td = { padding: "8px 10px", fontSize: 12.5, borderBottom: "1px solid #f0f2f4" };
 
-  const porArea = {};
-  delDia.forEach((v) => { const a = v.area || "otros"; porArea[a] = (porArea[a] || 0) + (Number(v.total) || 0); });
+  const dif = dia && dia.diferencia != null ? num(dia.diferencia) : null;
 
-  const fmt = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO");
-  const card = (hijos, extra) => E("div", { style: { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 14, padding: "18px 20px", ...(extra || {}) } }, hijos);
-  const fila = (lbl, val, color, grande) => E("div", { key: lbl, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: grande ? "10px 0" : "6px 0", borderTop: grande ? "2px solid " + (color || C.verde) : "none", marginTop: grande ? 8 : 0 } },
-    E("span", { style: { fontSize: grande ? 15 : 13.5, fontWeight: grande ? 800 : 500, color: grande ? (color || C.verde) : C.grisd } }, lbl),
-    E("span", { style: { fontSize: grande ? 18 : 14, fontWeight: grande ? 800 : 700, color: color || "#1f2937" } }, val));
+  return E("div", null,
+    E("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Caja"),
+    E("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 18 } },
+      "Saldo inicial + entradas − salidas = saldo final. El arqueo cuadra el EFECTIVO de la gaveta; el libro muestra todos los métodos."),
 
-  return E("div", { style: { maxWidth: 820, margin: "0 auto" } },
-    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 18 } },
+    E("div", { style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 } },
       E("div", null,
-        E("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800 } }, "🧾 Cierre de caja"),
-        E("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Lo que entró en el día, separado por forma de pago, para cuadrar la gaveta.")),
-      E("input", { type: "date", value: fecha, max: hoy(), onChange: (e) => setFecha(e.target.value),
-        style: { border: "1.5px solid #e0e4e8", borderRadius: 10, padding: "9px 13px", fontSize: 14, fontWeight: 600 } })),
+        E("label", { style: { fontSize: 10.5, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Día"),
+        E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value),
+          style: { padding: "8px 11px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 13 } })),
+      E("div", { style: {
+        padding: "7px 14px", borderRadius: 20, fontSize: 12, fontWeight: 800,
+        background: cerrada ? "#fdeaea" : abierta ? "#e6f4ec" : "#f4f5f6",
+        color: cerrada ? C.rojo : abierta ? C.verde : C.grisd
+      } }, cerrada ? "🔒 Cerrada" : abierta ? "🔓 Abierta" : "Sin abrir"),
+      !dia && E("button", { onClick: () => setModal("abrir"), style: btn(C.verde, "#fff") }, "Abrir el día"),
+      abierta && E("button", { onClick: () => setModal("movimiento"), style: btn(C.azul, "#fff") }, "＋ Movimiento"),
+      abierta && E("button", { onClick: () => setModal("cerrar"), style: btn("#fff", C.rojo, "#f3c4c4") }, "Cerrar y arquear"),
+      cerrada && E("button", { onClick: reabrir, style: btn("#fff", "#334155", C.borde) }, "Reabrir"),
+      E("button", { onClick: exportarCSV, style: btn("#fff", "#334155", C.borde) }, "⬇ CSV"),
+      E("button", { onClick: () => window.print(), style: btn("#fff", "#334155", C.borde) }, "🖨 Imprimir")),
 
-    delDia.length === 0
-      ? E("div", { style: { textAlign: "center", padding: "60px 20px", color: "#94a3b8", background: "#fff", borderRadius: 14, border: "1px dashed #e0e4e8" } },
-          E("div", { style: { fontSize: 42, marginBottom: 10 } }, "🗓️"),
-          E("div", { style: { fontWeight: 700, fontSize: 15, color: "#475569" } }, "No hay ventas registradas ese día"))
-      : E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 } },
-          card([
-            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Entradas por forma de pago"),
-            ...Object.keys(grupos).sort((a, b) => grupos[b] - grupos[a]).map((k) => fila(k, fmt(grupos[k]))),
-            pendiente > 0 && fila("⏳ Pendiente de cobro", fmt(pendiente), C.rojo),
-            fila("Total cobrado", fmt(cobrado), C.verde, true)
-          ]),
-          card([
-            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Efectivo en gaveta"),
-            fila("Ventas en efectivo", fmt(efectivo)),
-            fila("Gastos pagados en efectivo", "− " + fmt(gastosEfectivo), C.rojo),
-            fila("Debe haber en gaveta", fmt(efectivo - gastosEfectivo), C.gold, true),
-            E("div", { key: "n", style: { fontSize: 11.5, color: C.grisd, marginTop: 10, lineHeight: 1.5 } },
-              "Cuenta el efectivo físico y compáralo con este número. Si no cuadra, revisa las ventas del día.")
-          ]),
-          card([
-            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Por área"),
-            ...Object.keys(porArea).sort((a, b) => porArea[b] - porArea[a]).map((a) => fila(a.charAt(0).toUpperCase() + a.slice(1), fmt(porArea[a]))),
-            fila(delDia.length + " venta(s) del día", fmt(cobrado + pendiente), C.azul, true)
-          ]),
-          totalGastos > 0 && card([
-            E("div", { key: "t", style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 } }, "Gastos del día"),
-            ...gastosDia.slice(0, 8).map((g, i) => fila((g.descripcion || g.categoria || "Gasto") + (i === 7 && gastosDia.length > 8 ? " …" : ""), fmt(g.monto))),
-            fila("Total gastos", "− " + fmt(totalGastos), C.rojo, true)
-          ])
-        ),
+    error && E("div", { style: { background: "#fdeaea", border: "1.5px solid " + C.rojo, color: C.rojo, borderRadius: 9, padding: "11px 13px", fontSize: 13, marginBottom: 14, fontWeight: 600 } }, error),
 
-    E(MovimientosAuditoria, { fecha }),
+    cargando ? E("div", { style: { color: C.grisd, padding: "28px 0" } }, "Cargando…") : E(React.Fragment, null,
+      E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 } },
+        tarjeta("Saldo inicial", RDc(resumen && resumen.saldo_inicial), null, dia ? null : "aún sin abrir"),
+        tarjeta("Entradas en efectivo", RDc(resumen && resumen.entradas_efectivo), C.verde),
+        tarjeta("Salidas en efectivo", RDc(resumen && resumen.salidas_efectivo), C.rojo),
+        tarjeta("Efectivo que debe haber", RDc(resumen && resumen.teorico_efectivo), C.azul, "saldo inicial + entradas − salidas"),
+        cerrada && tarjeta("Efectivo contado", RDc(dia.efectivo_contado), null, dia.cerrada_por || ""),
+        cerrada && dif != null && tarjeta(
+          Math.abs(dif) < 0.005 ? "Cuadre" : dif > 0 ? "Sobrante" : "Faltante",
+          Math.abs(dif) < 0.005 ? "Exacto" : RDc(Math.abs(dif)),
+          Math.abs(dif) < 0.005 ? C.verde : dif > 0 ? C.gold : C.rojo)),
 
-    delDia.length > 0 && E("div", { style: { marginTop: 18, background: "#f0fdf4", border: "2px solid " + C.verde, borderRadius: 14, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 } },
-      E("div", null,
-        E("div", { style: { fontSize: 12, color: "#166534", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 } }, "Resultado del día"),
-        E("div", { style: { fontSize: 12.5, color: C.grisd, marginTop: 3 } }, "Cobrado menos gastos registrados")),
-      E("div", { style: { fontSize: 26, fontWeight: 900, color: cobrado - totalGastos >= 0 ? C.verde : C.rojo } }, fmt(cobrado - totalGastos)))
-  );
+      // El arqueo guardado es una foto. Si el dato de hoy ya no coincide, eso
+      // es informacion (alguien corrigio una venta despues de cerrar), no un error.
+      cerrada && resumen && dia.teorico_efectivo != null &&
+        Math.abs(num(dia.teorico_efectivo) - num(resumen.teorico_efectivo)) > 0.005 &&
+        E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", color: "#92400e", borderRadius: 9, padding: "11px 13px", fontSize: 12.5, marginBottom: 14 } },
+          "Al cerrar, el efectivo teórico era " + RDc(dia.teorico_efectivo) + ". Hoy el mismo día calcula " +
+          RDc(resumen.teorico_efectivo) + " — alguien corrigió un movimiento después del cierre. El arqueo conserva lo que se contó esa noche."),
+
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
+        E("span", { style: { fontSize: 12, color: C.grisd, fontWeight: 600 } }, "Filtrar:"),
+        E("select", { value: filtroMetodo, onChange: (e) => setFiltroMetodo(e.target.value),
+          style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5 } },
+          E("option", { value: "" }, "Todos los métodos"),
+          porMetodo.map(([m]) => E("option", { key: m, value: m }, m))),
+        E("select", { value: filtroCategoria, onChange: (e) => setFiltroCategoria(e.target.value),
+          style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5 } },
+          E("option", { value: "" }, "Todas las categorías"),
+          porCategoria.map(([k]) => E("option", { key: k, value: k }, k))),
+        (filtroMetodo || filtroCategoria) && E("button", {
+          onClick: () => { setFiltroMetodo(""); setFiltroCategoria(""); }, style: btn("#fff", "#334155", C.borde)
+        }, "Quitar filtros"),
+        E("span", { style: { fontSize: 12, color: C.grisd, marginLeft: "auto" } }, filas.length + " movimiento(s)")),
+
+      E("div", { style: { overflowX: "auto", border: "1.5px solid " + C.borde, borderRadius: 11, marginBottom: 18 } },
+        E("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 860 } },
+          E("thead", null, E("tr", { style: { background: C.verde } },
+            E("th", { style: th }, "Fecha y hora"), E("th", { style: th }, "Referencia"),
+            E("th", { style: th }, "Concepto"), E("th", { style: th }, "Categoría"),
+            E("th", { style: th }, "Método"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Entrada"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Salida"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Saldo"))),
+          E("tbody", null,
+            filas.length === 0
+              ? E("tr", null, E("td", { colSpan: 8, style: { ...td, textAlign: "center", color: C.grisd, padding: 24 } },
+                  "Sin movimientos ese día."))
+              : filas.map((m, i) => E("tr", { key: m.id, style: { background: i % 2 ? "#fafbfc" : "#fff" } },
+                  E("td", { style: td }, m.fecha_hora ? String(m.fecha_hora).replace("T", " ").slice(0, 16) : m.fecha),
+                  E("td", { style: { ...td, color: C.grisd, fontSize: 11.5 } }, m.referencia || "—"),
+                  E("td", { style: td }, m.concepto),
+                  E("td", { style: { ...td, color: C.grisd } }, m.categoria),
+                  E("td", { style: { ...td, fontSize: 11.5 } }, m.metodo_pago + (m.banco ? " · " + m.banco : "")),
+                  E("td", { style: { ...td, textAlign: "right", color: C.verde, fontWeight: num(m.entrada) ? 700 : 400 } },
+                    num(m.entrada) ? RDc(m.entrada) : "—"),
+                  E("td", { style: { ...td, textAlign: "right", color: C.rojo, fontWeight: num(m.salida) ? 700 : 400 } },
+                    num(m.salida) ? RDc(m.salida) : "—"),
+                  E("td", { style: { ...td, textAlign: "right", fontWeight: 700 } }, RDc(m.saldo))))))),
+
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 14 } },
+        E(Card, null,
+          E("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "Por método de pago"),
+          porMetodo.length === 0 ? E("div", { style: { color: C.grisd, fontSize: 12.5 } }, "Sin movimientos.")
+          : porMetodo.map(([m, v]) => E("div", { key: m, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12.5, borderBottom: "1px solid #f0f2f4" } },
+              E("span", null, m),
+              E("span", { style: { fontWeight: 700 } },
+                RDc(v.entrada - v.salida),
+                v.salida > 0 && E("span", { style: { color: C.grisd, fontWeight: 400, fontSize: 11 } }, "  (−" + RDc(v.salida) + ")"))))),
+        E(Card, null,
+          E("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "Por categoría"),
+          porCategoria.length === 0 ? E("div", { style: { color: C.grisd, fontSize: 12.5 } }, "Sin movimientos.")
+          : porCategoria.slice(0, 12).map(([k, v]) => E("div", { key: k, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12.5, borderBottom: "1px solid #f0f2f4" } },
+              E("span", null, k),
+              E("span", { style: { fontWeight: 700, color: v.entrada >= v.salida ? C.verde : C.rojo } },
+                RDc(v.entrada - v.salida))))))),
+
+    modal === "abrir" && E(ModalAbrirCaja, {
+      fecha, ocupado: guardando, onCerrar: () => setModal(""), onAbrir: abrirDia
+    }),
+    modal === "movimiento" && E(ModalMovimientoCaja, {
+      fecha, metodos: METODOS, ocupado: guardando, onCerrar: () => setModal(""), onGuardar: registrarMovimiento
+    }),
+    modal === "cerrar" && E(ModalArqueo, {
+      fecha, resumen, ocupado: guardando, onCerrar: () => setModal(""), onCerrarCaja: cerrarDia
+    }));
 }
 
-// ─── FECHAS EN EL FUTURO ────────────────────────────────────────────────────
-// Una venta no puede estar fechada mañana. Casi siempre es un dedo al teclear
-// el mes ("10" por "01"). Se detectan, se propone la corrección y Victor decide.
+// Abrir el día. El saldo inicial se sugiere con el efectivo contado al cerrar
+// el día anterior: si se teclea de memoria, el descuadre del primer día ya nace
+// mal y se arrastra.
+function ModalAbrirCaja({ fecha, ocupado, onAbrir, onCerrar }) {
+  const E = React.createElement;
+  const [saldo, setSaldo] = React.useState("");
+  const [sugerido, setSugerido] = React.useState(null);
+  React.useEffect(() => {
+    supaFetch("pc_caja_dia", "GET", null, "?fecha=lt." + fecha + "&estado=eq.cerrada&order=fecha.desc&limit=1")
+      .then((r) => {
+        if (Array.isArray(r) && r.length && r[0].efectivo_contado != null) {
+          setSugerido({ monto: Number(r[0].efectivo_contado), fecha: r[0].fecha });
+          setSaldo(String(r[0].efectivo_contado));
+        }
+      }).catch(() => {});
+  }, [fecha]);
+  return E(ModalCaja, { titulo: "🔓 Abrir la caja del " + fecha, onCerrar },
+    E("label", { style: ModalCaja.lbl }, "Saldo inicial en efectivo (RD$)"),
+    E("input", { type: "number", step: "0.01", min: "0", autoFocus: true, value: saldo,
+      onChange: (e) => setSaldo(e.target.value), placeholder: "0.00", style: ModalCaja.inp }),
+    sugerido
+      ? E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 7 } },
+          "Sugerido: lo que se contó al cerrar el " + sugerido.fecha + " (" + RDc(sugerido.monto) + ").")
+      : E("div", { style: { fontSize: 12, color: "#92400e", marginTop: 7 } },
+          "No hay un cierre anterior con efectivo contado, así que no hay nada que sugerir. Cuenta la gaveta antes de escribir el monto."),
+    E("div", { style: ModalCaja.pie },
+      E("button", { onClick: onCerrar, disabled: ocupado, style: ModalCaja.btnGris }, "Cancelar"),
+      E("button", {
+        onClick: () => {
+          const n = parseFloat(saldo);
+          if (!Number.isFinite(n) || n < 0) { avisar("Escribe el efectivo con el que abre la caja."); return; }
+          onAbrir(Number(n.toFixed(2)));
+        },
+        disabled: ocupado, style: ModalCaja.btnVerde
+      }, ocupado ? "Abriendo…" : "Abrir caja")));
+}
+
+// Un movimiento que no es ni venta ni gasto: retiro al banco, aporte del dueño,
+// caja chica. Las ventas y los gastos se siguen registrando donde siempre.
+function ModalMovimientoCaja({ fecha, metodos, ocupado, onGuardar, onCerrar }) {
+  const E = React.createElement;
+  const CATEGORIAS = ["Caja chica", "Retiro al banco", "Aporte del dueño", "Proveedores",
+                      "Servicios", "Nómina", "Impuestos", "Ajuste", "Otro"];
+  const [f, setF] = React.useState({
+    tipo: "SALIDA", concepto: "", categoria: CATEGORIAS[0], metodo_pago: "EFECTIVO",
+    referencia: "", monto: "", hora: new Date().toTimeString().slice(0, 5)
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  return E(ModalCaja, { titulo: "Movimiento de caja · " + fecha, onCerrar },
+    E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 12, lineHeight: 1.5 } },
+      "Para lo que no es una venta ni un gasto registrado: sacar efectivo para el banco, caja chica, un aporte. Las ventas se registran en Ventas y los gastos en Gastos."),
+    E("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+      [["ENTRADA", "➕ Entra dinero"], ["SALIDA", "➖ Sale dinero"]].map(([id, txt]) =>
+        E("button", { key: id, onClick: () => set("tipo", id), style: {
+          flex: 1, padding: "9px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+          border: "1.5px solid " + (f.tipo === id ? "#1a6b3a" : "#e0e4e8"),
+          background: f.tipo === id ? "#1a6b3a" : "#fff", color: f.tipo === id ? "#fff" : "#334155"
+        } }, txt))),
+    E("label", { style: ModalCaja.lbl }, "Concepto"),
+    E("input", { value: f.concepto, autoFocus: true, placeholder: "Ej: depósito en Banreservas",
+      onChange: (e) => set("concepto", e.target.value), style: ModalCaja.inp }),
+    E("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 } },
+      E("div", null, E("label", { style: ModalCaja.lbl }, "Monto (RD$)"),
+        E("input", { type: "number", step: "0.01", min: "0.01", value: f.monto, placeholder: "0.00",
+          onChange: (e) => set("monto", e.target.value), style: ModalCaja.inp })),
+      E("div", null, E("label", { style: ModalCaja.lbl }, "Hora"),
+        E("input", { type: "time", value: f.hora, onChange: (e) => set("hora", e.target.value), style: ModalCaja.inp })),
+      E("div", null, E("label", { style: ModalCaja.lbl }, "Categoría"),
+        E("select", { value: f.categoria, onChange: (e) => set("categoria", e.target.value), style: ModalCaja.inp },
+          CATEGORIAS.map((c) => E("option", { key: c }, c)))),
+      E("div", null, E("label", { style: ModalCaja.lbl }, "Método de pago"),
+        E("select", { value: f.metodo_pago, onChange: (e) => set("metodo_pago", e.target.value), style: ModalCaja.inp },
+          metodos.map((m) => E("option", { key: m }, m))))),
+    E("div", { style: { marginTop: 10 } },
+      E("label", { style: ModalCaja.lbl }, "Comprobante / referencia (opcional)"),
+      E("input", { value: f.referencia, placeholder: "Nº de recibo, NCF o referencia bancaria",
+        onChange: (e) => set("referencia", e.target.value), style: ModalCaja.inp })),
+    E("div", { style: ModalCaja.pie },
+      E("button", { onClick: onCerrar, disabled: ocupado, style: ModalCaja.btnGris }, "Cancelar"),
+      E("button", {
+        onClick: () => {
+          const n = parseFloat(f.monto);
+          if (!f.concepto.trim()) { avisar("Escribe el concepto del movimiento."); return; }
+          if (!Number.isFinite(n) || n <= 0) { avisar("El monto tiene que ser mayor que cero."); return; }
+          onGuardar({ ...f, concepto: f.concepto.trim(), monto: Number(n.toFixed(2)) });
+        },
+        disabled: ocupado, style: ModalCaja.btnVerde
+      }, ocupado ? "Guardando…" : "Registrar")));
+}
+
+// El arqueo: se cuenta la gaveta y el sistema dice si sobra o falta.
+function ModalArqueo({ fecha, resumen, ocupado, onCerrarCaja, onCerrar }) {
+  const E = React.createElement;
+  const [contado, setContado] = React.useState("");
+  const [notas, setNotas] = React.useState("");
+  const teorico = Number((resumen && resumen.teorico_efectivo) || 0);
+  const n = parseFloat(contado);
+  const dif = Number.isFinite(n) ? n - teorico : null;
+  return E(ModalCaja, { titulo: "Cerrar y arquear · " + fecha, onCerrar },
+    E("div", { style: { background: "#f8f9fa", borderRadius: 10, padding: 13, marginBottom: 14, fontSize: 12.5 } },
+      [["Saldo inicial", resumen && resumen.saldo_inicial],
+       ["Entradas en efectivo", resumen && resumen.entradas_efectivo],
+       ["Salidas en efectivo", resumen && resumen.salidas_efectivo]].map(([k, v]) =>
+        E("div", { key: k, style: { display: "flex", justifyContent: "space-between", padding: "3px 0" } },
+          E("span", { style: { color: "#5a6472" } }, k), E("span", null, RDc(v)))),
+      E("div", { style: { display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 6, borderTop: "1.5px solid #e0e4e8", fontWeight: 800 } },
+        E("span", null, "Debe haber en la gaveta"), E("span", null, RDc(teorico)))),
+    E("label", { style: ModalCaja.lbl }, "Efectivo contado (RD$)"),
+    E("input", { type: "number", step: "0.01", min: "0", autoFocus: true, value: contado,
+      onChange: (e) => setContado(e.target.value), placeholder: "0.00", style: ModalCaja.inp }),
+    dif != null && E("div", { style: {
+      marginTop: 10, borderRadius: 9, padding: "11px 13px", fontSize: 13, fontWeight: 700,
+      background: Math.abs(dif) < 0.005 ? "#e6f4ec" : dif > 0 ? "#fff7e6" : "#fdeaea",
+      color: Math.abs(dif) < 0.005 ? "#1a6b3a" : dif > 0 ? "#92400e" : "#c0392b"
+    } }, Math.abs(dif) < 0.005 ? "✅ Cuadra exacto."
+        : dif > 0 ? "Sobran " + RDc(dif) + " en la gaveta."
+                  : "Faltan " + RDc(Math.abs(dif)) + " en la gaveta."),
+    E("div", { style: { marginTop: 10 } },
+      E("label", { style: ModalCaja.lbl }, "Observaciones" + (dif != null && Math.abs(dif) >= 0.005 ? " (explica el descuadre)" : " (opcional)")),
+      E("textarea", { value: notas, rows: 2, onChange: (e) => setNotas(e.target.value),
+        placeholder: "Ej: faltó el vuelto de una venta", style: { ...ModalCaja.inp, resize: "vertical" } })),
+    E("div", { style: ModalCaja.pie },
+      E("button", { onClick: onCerrar, disabled: ocupado, style: ModalCaja.btnGris }, "Cancelar"),
+      E("button", {
+        onClick: () => {
+          if (!Number.isFinite(n) || n < 0) { avisar("Escribe el efectivo que contaste."); return; }
+          // Un descuadre sin explicacion es justo el que nadie recuerda al mes
+          // siguiente, cuando hace falta entender que paso.
+          if (Math.abs(n - teorico) >= 0.005 && !notas.trim()) {
+            avisar("Hay un descuadre: escribe una observación explicando qué pasó.", "error"); return;
+          }
+          onCerrarCaja(Number(n.toFixed(2)), notas.trim());
+        },
+        disabled: ocupado, style: ModalCaja.btnVerde
+      }, ocupado ? "Cerrando…" : "Cerrar caja")));
+}
+
+// Envoltorio comun de los tres modales de caja.
+function ModalCaja({ titulo, onCerrar, children }) {
+  const E = React.createElement;
+  return E("div", { onClick: onCerrar, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: 20 } },
+    E("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", textAlign: "left" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } },
+        E("div", { style: { fontWeight: 800, fontSize: 17 } }, titulo),
+        E("button", { onClick: onCerrar, style: { background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9ca3af" } }, "✕")),
+      children));
+}
+ModalCaja.inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 14, boxSizing: "border-box" };
+ModalCaja.lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 4 };
+ModalCaja.pie = { display: "flex", gap: 8, marginTop: 18 };
+ModalCaja.btnGris = { flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" };
+ModalCaja.btnVerde = { flex: 2, padding: "10px", borderRadius: 9, border: "none", background: "#1a6b3a", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" };
 function sugerirFechaCorregida(f) {
   const HOY = hoy();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f || ""))) return HOY;

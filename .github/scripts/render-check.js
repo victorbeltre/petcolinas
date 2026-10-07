@@ -89,7 +89,44 @@ render("Facturas (ver factura)", sandbox.Facturas, propsFact, (h) => {
 render("Facturas (nueva factura)", sandbox.Facturas, propsFact, (h) => {
   const i = h.indexOf("lista"); if (i >= 0) h[i] = "nueva";
 }, "Servicios / Productos");
-render("CierreCaja", sandbox.CierreCaja, { ventas, gastos: [] });
+// Caja (M18). El libro se lee de la base, asi que sin datos sale "sin
+// movimientos"; se le inyecta una fila para ejercitar la tabla de verdad.
+render("CierreCaja (dia sin abrir)", sandbox.CierreCaja, {}, (h) => {
+  const i = h.findIndex((x) => x === true);   // cargando
+  if (i >= 0) h[i] = false;
+}, "Abrir el d");
+render("CierreCaja (con movimientos)", sandbox.CierreCaja, {}, (h) => {
+  const iCarg = h.findIndex((x) => x === true); if (iCarg >= 0) h[iCarg] = false;
+  const iLibro = h.findIndex((x) => Array.isArray(x) && x.length === 0);
+  if (iLibro < 0) throw new Error("no se encontro el estado 'libro'");
+  h[iLibro] = [{ id: "venta:1", fecha: "2026-10-07", fecha_hora: "2026-10-07T10:30:00Z",
+    referencia: "1", concepto: "Bano pequeno - Rocky", categoria: "grooming",
+    metodo_pago: "EFECTIVO", banco: null, entrada: 799.50, salida: 0, origen: "venta" }];
+  h[iLibro + 1] = { fecha: "2026-10-07", estado: "abierta", saldo_inicial: 1000.25 };
+  h[iLibro + 2] = { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0,
+    teorico_efectivo: 1799.75, entradas_total: 799.50, salidas_total: 0 };
+}, "Bano pequeno - Rocky");
+render("ModalArqueo", sandbox.ModalArqueo, {
+  fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
+  resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
+}, null, "Debe haber en la gaveta");
+render("ModalMovimientoCaja", sandbox.ModalMovimientoCaja, {
+  fecha: "2026-10-07", metodos: ["EFECTIVO","TRANSFERENCIA"], ocupado: false,
+  onCerrar: () => {}, onGuardar: () => {}
+}, null, "Retiro al banco");
+// El formateador con centavos: si alguien lo cambia por RD() se pierden los
+// centavos y el arqueo deja de cuadrar.
+// RDc se declara con `const`, que en un contexto de vm NO queda como propiedad
+// del objeto global: hay que evaluarlo desde dentro.
+(() => {
+  const r = vm.runInContext('RDc(1799.75)', sandbox);
+  if (!/1,799\.75/.test(r)) errores.push('RDc(1799.75) dio "' + r + '", deberia mostrar los centavos');
+  const cero = vm.runInContext('RDc(0)', sandbox);
+  if (!/0\.00/.test(cero)) errores.push('RDc(0) dio "' + cero + '", deberia ser 0.00');
+  // Y que NO redondee como RD(), que es lo que esconderia los centavos.
+  const viejo = vm.runInContext('RD(1799.75)', sandbox);
+  if (/\.75/.test(viejo)) errores.push('RD() ya no redondea: alguien lo cambio, revisa que no rompa el resto de la app');
+})();
 render("Cobros", sandbox.Cobros, {
   ventas: ventas.concat([{ id: 99991, fecha: "2026-01-05", cliente: "Doky Diaz",
     servicio: "Baño pequeño", total: 1289, formapago: "Pago pendiente" }]),
@@ -145,7 +182,7 @@ render("PantallaWhatsApp", sandbox.PantallaWhatsApp, {}, null, "Seguimientos");
 render("MenuLateral", sandbox.MenuLateral, {
   tab: "dashboard", setTab: () => {}, badges: { ventas: 3 },
   abierto: false, setAbierto: () => {}, mini: false, setMini: () => {}
-}, null, "Cierre de caja");
+}, null, "Inventario");
 render("MenuLateral (encogido)", sandbox.MenuLateral, {
   tab: "ventas", setTab: () => {}, badges: {},
   abierto: true, setAbierto: () => {}, mini: true, setMini: () => {}
@@ -245,4 +282,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (23 comprobadas + la receta impresa, las comisiones y el menú).`);
+console.log(`✓ Vistas principales renderizan sin errores (26 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
