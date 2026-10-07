@@ -319,6 +319,8 @@ begin
   return v;
 end $$;
 revoke all on function public.pc_caja_reporte(date, date, text, text) from public, anon;
+-- OJO: M19 vuelve a definir esta funcion (le añade por_cuenta y
+-- por_cuenta_categoria). La version viva es la de 20261007_m19_cuentas_y_traslados.sql.
 -- Comprobado el 7 oct 2026 contra agosto 2026: entradas 195.380,00 / salidas
 -- 1.550,00 / neto 193.830,00 / 130 movimientos en 24 dias / promedio 8.140,83,
 -- identico a sumar pc_caja_libro a mano. Y contra septiembre: 223.803,10 en 151

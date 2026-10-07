@@ -114,6 +114,15 @@ noches y la gente dejara de mirar tambien el de la gaveta, que si sirve.
 Las cuentas de banco son SOLO-ADMIN (RLS + `pc_es_admin()` en las funciones).
 Pero `pc_caja_resumen` es SECURITY DEFINER y solo devuelve totales, para que
 caja tenga el efectivo teorico correcto sin ver un solo traslado ni un gasto.
+En los reportes el dinero se clasifica de DOS formas: por metodo de pago (lo ve
+todo el personal, no nombra bancos) y por cuenta — "Donde cayo el dinero", en
+cuatro bloques: caja chica / bancos / tarjetas por liquidar / sin asignar, cada
+cuenta desplegable a sus categorias. `por_cuenta` y `por_cuenta_categoria`
+vienen NULOS para quien no es admin.
+`pc_caja_reporte` mantiene su firma de 4 argumentos A PROPOSITO: añadirle un
+quinto parametro crearia una sobrecarga y una pestaña vieja del navegador
+mandaria 4 claves que PostgREST no sabria resolver. Si hace falta otro dato, va
+dentro del jsonb de respuesta, no como parametro nuevo.
 
 PENDIENTE DE VICTOR en este modulo:
 - Confirmar si `santacruz` es cuenta suya (hoy desactivada: 4 transferencias por

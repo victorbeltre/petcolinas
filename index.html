@@ -17139,6 +17139,10 @@ function CajaReporte({ modo }) {
               E("span", null, c.categoria),
               E("span", { style: { fontWeight: 700, color: n(c.neto) >= 0 ? C.verde : C.rojo } }, RDc(c.neto)))))),
 
+      // El MISMO dinero clasificado por donde cayo, no por como se cobro. Solo
+      // le llega al admin: para caja, por_cuenta viene nulo desde el servidor.
+      rep.por_cuenta && E(TarjetaPorCuenta, { rep, C, n }),
+
       E("div", { style: { overflowX: "auto", border: "1.5px solid " + C.borde, borderRadius: 11 } },
         E("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 520 } },
           E("thead", null, E("tr", { style: { background: C.verde } },
@@ -17162,6 +17166,85 @@ function CajaReporte({ modo }) {
               E("td", { style: { ...td, textAlign: "right", color: C.rojo } }, RDc(rep.totales.salidas)),
               E("td", { style: { ...td, textAlign: "right", color: n(rep.totales.neto) >= 0 ? C.verde : C.rojo } }, RDc(rep.totales.neto)),
               E("td", { style: { ...td, textAlign: "right" } }, rep.totales.movimientos)))))));
+}
+
+// Clasifica el dinero del periodo por DONDE cayo, no por como se cobro.
+// "Transferencia" mete Banreservas y Popular en el mismo saco; aqui van
+// separados y agrupados en cuatro bloques: la caja chica, los bancos, lo que el
+// banco todavia no ha depositado, y lo que no se pudo atribuir.
+//
+// Cada cuenta se despliega a sus categorias, que es la pregunta que de verdad
+// se hace uno: de lo que entro en efectivo, cuanto fue grooming y cuanto
+// farmacia.
+function TarjetaPorCuenta({ rep, C, n }) {
+  const E = React.createElement;
+  const [abierta, setAbierta] = React.useState("");
+
+  const cuentas = rep.por_cuenta || [];
+  const cruce = rep.por_cuenta_categoria || [];
+  if (!cuentas.length) return null;
+
+  // Los cuatro bloques. El orden es el del dinero mas "real" al mas dudoso:
+  // lo que ya esta en la gaveta, lo que ya esta en el banco, lo que viene de
+  // camino, y lo que no se sabe.
+  const BLOQUES = [
+    ["EFECTIVO",    "💵 Caja chica",            C.verde,
+      "Billetes en la gaveta. Es lo unico que se cuenta a mano."],
+    ["BANCO",       "🏦 Bancos",                C.azul,
+      "Ya esta en la cuenta. Se concilia contra el estado de cuenta."],
+    ["PUENTE",      "💳 Tarjetas por liquidar", "#92400e",
+      "Cobrado, pero el banco todavia no lo ha depositado (T+1 a T+3) y lo abonara neto de comision."],
+    ["SIN_ASIGNAR", "⚠️ Sin asignar",           C.rojo,
+      "Transferencia sin banco anotado, cobros mixtos y gastos sin metodo. No se sabe donde cayo."]
+  ];
+
+  const total = cuentas.reduce((s, c) => s + n(c.entradas) - n(c.salidas), 0);
+  const pct = (v) => (total ? Math.round((v / total) * 100) : 0);
+
+  const fila = (c) => {
+    const neto = n(c.entradas) - n(c.salidas);
+    const cats = cruce.filter((x) => x.cuenta_id === c.cuenta_id);
+    const abierto = abierta === c.cuenta_id;
+    return E("div", { key: c.cuenta_id, style: { borderBottom: "1px solid #f0f2f4" } },
+      E("button", {
+        onClick: () => setAbierta(abierto ? "" : c.cuenta_id),
+        style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+          gap: 8, padding: "9px 2px", background: "none", border: "none", cursor: "pointer",
+          fontSize: 12.5, textAlign: "left", fontFamily: "inherit" }
+      },
+        E("span", null,
+          E("span", { style: { color: C.grisd, marginRight: 6, display: "inline-block", width: 10 } }, abierto ? "▾" : "▸"),
+          c.nombre,
+          E("span", { style: { color: C.grisd, fontSize: 11, marginLeft: 6 } }, c.movimientos + " mov.")),
+        E("span", null,
+          E("span", { style: { color: C.grisd, fontSize: 11, marginRight: 8 } }, pct(neto) + "%"),
+          E("span", { style: { fontWeight: 700, color: neto >= 0 ? C.verde : C.rojo } }, RDc(neto)))),
+      abierto && E("div", { style: { padding: "2px 0 10px 24px" } },
+        cats.length === 0
+          ? E("div", { style: { color: C.grisd, fontSize: 12 } }, "Sin desglose.")
+          : cats.map((x) => E("div", { key: x.categoria, style: { display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12 } },
+              E("span", { style: { color: C.grisd } }, x.categoria,
+                E("span", { style: { fontSize: 10.5, marginLeft: 6 } }, x.movimientos)),
+              E("span", { style: { fontWeight: 600, color: n(x.neto) >= 0 ? C.verde : C.rojo } }, RDc(x.neto))))));
+  };
+
+  return E(Card, { style: { marginBottom: 16 } },
+    E("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 3 } }, "Dónde cayó el dinero"),
+    E("div", { style: { fontSize: 11.5, color: C.grisd, marginBottom: 12, lineHeight: 1.5 } },
+      "El mismo dinero de arriba, pero por cuenta en vez de por método de pago. Toca una cuenta para ver sus categorías."),
+    BLOQUES.map(([tipo, titulo, color, nota]) => {
+      const dentro = cuentas.filter((c) => c.tipo === tipo);
+      if (!dentro.length) return null;
+      const sub = dentro.reduce((s, c) => s + n(c.entradas) - n(c.salidas), 0);
+      return E("div", { key: tipo, style: { marginBottom: 14 } },
+        E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline",
+          gap: 8, paddingBottom: 5, borderBottom: "2px solid " + color } },
+          E("span", { style: { fontWeight: 800, fontSize: 12.5, color } }, titulo),
+          E("span", { style: { fontWeight: 800, fontSize: 13.5, color } }, RDc(sub),
+            E("span", { style: { color: C.grisd, fontSize: 11, marginLeft: 7, fontWeight: 600 } }, pct(sub) + "%"))),
+        E("div", { style: { fontSize: 11, color: C.grisd, margin: "5px 0 2px", lineHeight: 1.45 } }, nota),
+        dentro.map(fila));
+    }));
 }
 
 // M19 · Las cuentas donde vive el dinero, no solo la gaveta.

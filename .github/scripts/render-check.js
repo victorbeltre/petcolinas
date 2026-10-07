@@ -196,6 +196,48 @@ render("ModalSaldoBanco", sandbox.ModalSaldoBanco, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onGuardar: () => {},
   cuenta: { cuenta_id: "banreservas", nombre: "Banreservas", saldo_final_teorico: 6550.00 }
 }, null, "Saldo real de ");
+// M19b · El dinero clasificado por cuenta. Se renderiza aparte porque el React
+// falso no baja a los hijos: dentro de CajaReporte solo saldria el nodo.
+const CC = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b", borde: "#e0e4e8" };
+const repCuentas = {
+  por_cuenta: [
+    { cuenta_id: "gaveta", nombre: "Caja chica (gaveta)", tipo: "EFECTIVO", orden: 10, entradas: 61867.10, salidas: 0, neto: 61867.10, movimientos: 49 },
+    { cuenta_id: "banreservas", nombre: "Banreservas", tipo: "BANCO", orden: 20, entradas: 30053.00, salidas: 0, neto: 30053.00, movimientos: 14 },
+    { cuenta_id: "popular", nombre: "Popular", tipo: "BANCO", orden: 30, entradas: 11337.00, salidas: 0, neto: 11337.00, movimientos: 9 },
+    { cuenta_id: "tarjetas", nombre: "Tarjetas por liquidar", tipo: "PUENTE", orden: 50, entradas: 83736.00, salidas: 0, neto: 83736.00, movimientos: 56 },
+    { cuenta_id: "sin_asignar", nombre: "Sin asignar", tipo: "SIN_ASIGNAR", orden: 90, entradas: 36810.00, salidas: 0, neto: 36810.00, movimientos: 23 }
+  ],
+  por_cuenta_categoria: [
+    { cuenta_id: "gaveta", categoria: "grooming", entradas: 38240.10, salidas: 0, neto: 38240.10, total: 38240.10, movimientos: 32 },
+    { cuenta_id: "gaveta", categoria: "Abonos", entradas: 8597.00, salidas: 0, neto: 8597.00, total: 8597.00, movimientos: 9 }
+  ]
+};
+render("TarjetaPorCuenta", sandbox.TarjetaPorCuenta, { rep: repCuentas, C: CC, n: (x) => Number(x) || 0 },
+  null, "Caja chica");
+// Desplegada: tienen que salir las categorias de esa cuenta.
+render("TarjetaPorCuenta (desplegada)", sandbox.TarjetaPorCuenta,
+  { rep: repCuentas, C: CC, n: (x) => Number(x) || 0 },
+  (h) => { const i = h.indexOf(""); if (i < 0) throw new Error("no se encontró 'abierta'"); h[i] = "gaveta"; },
+  "38,240.10");
+// Y que los cuatro bloques esten, sobre todo el de "sin asignar": si ese se
+// pierde de vista, nadie arregla nunca los datos que caen ahi.
+(() => {
+  const salida = sandbox.TarjetaPorCuenta({ rep: repCuentas, C: CC, n: (x) => Number(x) || 0 });
+  const txt = JSON.stringify(salida, (k, v) => (typeof v === "function" ? undefined : v));
+  ["Caja chica", "Bancos", "Tarjetas por liquidar", "Sin asignar"].forEach((b) => {
+    if (!txt.includes(b)) errores.push(`TarjetaPorCuenta: falta el bloque "${b}"`);
+  });
+})();
+// Para caja el servidor manda por_cuenta en nulo. La tarjeta no debe aparecer
+// ni a medias: si se renderizara vacia, pareceria que no entro nada.
+render("CajaReporte (caja, sin por_cuenta)", sandbox.CajaReporte, { modo: "mes" }, (h) => {
+  const i = h.findIndex((x) => x === null);
+  if (i < 0) throw new Error("no se encontró el estado 'rep'");
+  h[i] = Object.assign(repEjemplo(195380.00, 1550.00), { por_cuenta: null, por_cuenta_categoria: null });
+  h[i + 1] = null;
+  const j = h.findIndex((x) => x === true);
+  if (j >= 0) h[j] = false;
+}, "Por método de pago");
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
   resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
@@ -372,4 +414,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (35 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+console.log(`✓ Vistas principales renderizan sin errores (38 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);

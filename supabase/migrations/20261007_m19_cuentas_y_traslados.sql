@@ -291,6 +291,110 @@ begin
 end $$;
 revoke all on function public.pc_caja_resumen(date) from public, anon;
 
+-- 9) El reporte, ahora tambien clasificado por cuenta -------------------------
+-- Reemplaza la version de M18. "Por metodo de pago" ya separaba efectivo de
+-- banco, pero metia Banreservas y Popular en el mismo saco bajo TRANSFERENCIA,
+-- y no dejaba cruzar una cuenta con sus categorias (de lo que entro en efectivo,
+-- cuanto fue grooming y cuanto farmacia). Eso es `por_cuenta` y
+-- `por_cuenta_categoria`.
+--
+-- OJO: se mantiene la MISMA firma de 4 argumentos a proposito. Añadir un quinto
+-- parametro con default crearia una SOBRECARGA, y entonces una pestaña del
+-- navegador que siguiera abierta con el codigo viejo mandaria 4 claves y
+-- PostgREST no sabria cual de las dos funciones elegir ("could not choose the
+-- best candidate function"). Como el cruce viene siempre en la respuesta, no
+-- hace falta ningun filtro nuevo: la pantalla despliega por cuenta sin otra
+-- llamada.
+--
+-- Los dos desgloses nuevos van SOLO para admin (vienen nulos para los demas),
+-- porque en M19 se decidio que las cuentas de banco no las ve caja. El desglose
+-- por metodo, que ella si ve, no nombra ningun banco.
+create or replace function public.pc_caja_reporte(
+  p_desde date, p_hasta date,
+  p_metodo text default null, p_categoria text default null
+) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare v jsonb; v_admin boolean;
+begin
+  if not public.pc_es_personal() then raise exception 'No autorizado'; end if;
+  if p_hasta < p_desde then raise exception 'El rango esta al reves: % va despues de %', p_desde, p_hasta; end if;
+  v_admin := public.pc_es_admin();
+
+  with mov as (
+    select l.*, public.pc_cuenta_de(l.metodo_pago, l.banco) as cuenta_id
+      from public.pc_caja_libro l
+     where l.fecha between p_desde and p_hasta
+       and (p_metodo    is null or l.metodo_pago = p_metodo)
+       and (p_categoria is null or l.categoria   = p_categoria)
+  ), tot as (
+    select coalesce(sum(entrada),0) e, coalesce(sum(salida),0) s, count(*) n,
+           count(distinct fecha) d from mov
+  ), met as (
+    select coalesce(jsonb_agg(x order by x->>'metodo'), '[]'::jsonb) j from (
+      select jsonb_build_object('metodo', metodo_pago,
+               'entradas', sum(entrada), 'salidas', sum(salida),
+               'neto', sum(entrada)-sum(salida), 'movimientos', count(*)) x
+        from mov group by metodo_pago) z
+  ), cat as (
+    select coalesce(jsonb_agg(x order by (x->>'total')::numeric desc), '[]'::jsonb) j from (
+      select jsonb_build_object('categoria', categoria,
+               'entradas', sum(entrada), 'salidas', sum(salida),
+               'neto', sum(entrada)-sum(salida),
+               'total', sum(entrada)+sum(salida), 'movimientos', count(*)) x
+        from mov group by categoria) z
+  ), dia as (
+    select coalesce(jsonb_agg(x order by x->>'fecha'), '[]'::jsonb) j from (
+      select jsonb_build_object('fecha', fecha,
+               'entradas', sum(entrada), 'salidas', sum(salida),
+               'neto', sum(entrada)-sum(salida), 'movimientos', count(*)) x
+        from mov group by fecha) z
+  ), cta as (
+    select coalesce(jsonb_agg(x order by (x->>'orden')::int, x->>'cuenta_id'), '[]'::jsonb) j from (
+      select jsonb_build_object('cuenta_id', m.cuenta_id,
+               'nombre', coalesce(c.nombre, m.cuenta_id),
+               'tipo', coalesce(c.tipo, 'SIN_ASIGNAR'),
+               'orden', coalesce(c.orden, 999),
+               'entradas', sum(m.entrada), 'salidas', sum(m.salida),
+               'neto', sum(m.entrada)-sum(m.salida), 'movimientos', count(*)) x,
+             coalesce(c.orden, 999) orden
+        from mov m left join public.pc_cuentas c on c.id = m.cuenta_id
+       group by m.cuenta_id, c.nombre, c.tipo, c.orden) z
+  ), ctacat as (
+    select coalesce(jsonb_agg(x order by x->>'cuenta_id', (x->>'total')::numeric desc), '[]'::jsonb) j from (
+      select jsonb_build_object('cuenta_id', cuenta_id, 'categoria', categoria,
+               'entradas', sum(entrada), 'salidas', sum(salida),
+               'neto', sum(entrada)-sum(salida),
+               'total', sum(entrada)+sum(salida), 'movimientos', count(*)) x
+        from mov group by cuenta_id, categoria) z
+  ), arq as (
+    select count(*) filter (where estado='cerrada') cerrados,
+           count(*) filter (where estado='abierta') abiertos,
+           count(*) filter (where estado='cerrada' and abs(coalesce(diferencia,0)) >= 0.005) con_descuadre,
+           coalesce(sum(diferencia) filter (where estado='cerrada'), 0) descuadre_neto,
+           coalesce(sum(abs(diferencia)) filter (where estado='cerrada'), 0) descuadre_abs
+      from public.pc_caja_dia where fecha between p_desde and p_hasta
+  )
+  select jsonb_build_object(
+    'desde', p_desde, 'hasta', p_hasta,
+    'dias_rango', (p_hasta - p_desde) + 1,
+    'totales', jsonb_build_object(
+      'entradas', tot.e, 'salidas', tot.s, 'neto', tot.e - tot.s,
+      'movimientos', tot.n, 'dias_con_movimiento', tot.d,
+      'promedio_dia_entradas', case when tot.d > 0 then round(tot.e / tot.d, 2) else 0 end,
+      'promedio_dia_neto',     case when tot.d > 0 then round((tot.e - tot.s) / tot.d, 2) else 0 end),
+    'por_metodo', met.j, 'por_categoria', cat.j, 'por_dia', dia.j,
+    'por_cuenta',           case when v_admin then cta.j    else null end,
+    'por_cuenta_categoria', case when v_admin then ctacat.j else null end,
+    'arqueos', jsonb_build_object(
+      'cerrados', arq.cerrados, 'abiertos', arq.abiertos,
+      'con_descuadre', arq.con_descuadre,
+      'descuadre_neto', arq.descuadre_neto, 'descuadre_abs', arq.descuadre_abs)
+  ) into v
+  from tot, met, cat, dia, cta, ctacat, arq;
+  return v;
+end $$;
+revoke all on function public.pc_caja_reporte(date, date, text, text) from public, anon;
+
 -- ── Comprobado el 7 oct 2026 ────────────────────────────────────────────────
 -- 1) Atribuir a cuentas no pierde ni duplica un peso:
 --      pc_caja_libro   2.370.194,30 entradas / 408.070,00 salidas / 1.796 filas
@@ -307,3 +411,12 @@ revoke all on function public.pc_caja_resumen(date) from public, anon;
 --    le responde "No autorizado" — pero su pc_caja_resumen da -16.002,90, el
 --    MISMO numero que el del admin.
 -- 6) get_advisors(security): ningun ERROR, ningun rls_disabled_in_public.
+-- 7) Clasificar por cuenta no cambia ni un total (septiembre 2026):
+--      totales            entradas 223.803,10 / salidas 0,00
+--      suma por_cuenta    entradas 223.803,10 / salidas 0,00  -> cuadra
+--      suma cuenta x cat  entradas 223.803,10 / salidas 0,00  -> cuadra
+--    Y lo que antes era un solo "TRANSFERENCIA" ahora se ve separado:
+--      gaveta 61.867,10 (28%) · Banreservas 30.053,00 · Popular 11.337,00
+--      tarjetas por liquidar 83.736,00 (37%) · sin asignar 36.810,00 (16%)
+-- 8) Caja recibe por_cuenta y por_cuenta_categoria en NULO, conserva sus 3
+--    filas de por_metodo y los mismos totales que el admin.
