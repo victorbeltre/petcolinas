@@ -246,6 +246,86 @@ begin
 end $$;
 revoke all on function public.pc_caja_resumen(date) from public, anon;
 
+-- 6) El reporte de periodo (semana, mes, rango) -------------------------------
+-- Todo lo suma Postgres y baja en UN solo jsonb. Un mes son ~150 movimientos,
+-- pero un año son 1.800: traerselos al navegador para sumarlos alli es justo lo
+-- que se quito en M7. Y SECURITY DEFINER por la misma razon que pc_caja_resumen:
+-- pc_gastos es solo-admin, asi que si caja genera el reporte con lo que ella ve,
+-- las salidas salen en cero y el flujo neto miente. Devuelve SOLO agregados,
+-- nunca el detalle, para que el numero sea correcto sin enseñar en que se gasta.
+create or replace function public.pc_caja_reporte(
+  p_desde date, p_hasta date,
+  p_metodo text default null, p_categoria text default null
+) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare v jsonb;
+begin
+  if not public.pc_es_personal() then raise exception 'No autorizado'; end if;
+  if p_hasta < p_desde then raise exception 'El rango esta al reves: % va despues de %', p_desde, p_hasta; end if;
+
+  with mov as (
+    select * from public.pc_caja_libro l
+     where l.fecha between p_desde and p_hasta
+       and (p_metodo    is null or l.metodo_pago = p_metodo)
+       and (p_categoria is null or l.categoria   = p_categoria)
+  ), tot as (
+    select coalesce(sum(entrada),0) e, coalesce(sum(salida),0) s, count(*) n,
+           count(distinct fecha) d from mov
+  ), met as (
+    select coalesce(jsonb_agg(x order by x->>'metodo'), '[]'::jsonb) j from (
+      select jsonb_build_object('metodo', metodo_pago,
+               'entradas', sum(entrada), 'salidas', sum(salida),
+               'neto', sum(entrada)-sum(salida), 'movimientos', count(*)) x
+        from mov group by metodo_pago) z
+  ), cat as (
+    select coalesce(jsonb_agg(x order by (x->>'total')::numeric desc), '[]'::jsonb) j from (
+      select jsonb_build_object('categoria', categoria,
+               'entradas', sum(entrada), 'salidas', sum(salida),
+               'neto', sum(entrada)-sum(salida),
+               'total', sum(entrada)+sum(salida), 'movimientos', count(*)) x
+        from mov group by categoria) z
+  ), dia as (
+    select coalesce(jsonb_agg(x order by x->>'fecha'), '[]'::jsonb) j from (
+      select jsonb_build_object('fecha', fecha,
+               'entradas', sum(entrada), 'salidas', sum(salida),
+               'neto', sum(entrada)-sum(salida), 'movimientos', count(*)) x
+        from mov group by fecha) z
+  ), arq as (
+    -- Los arqueos del rango: cuantos dias se cerraron y como cuadraron.
+    select count(*) filter (where estado='cerrada') cerrados,
+           count(*) filter (where estado='abierta') abiertos,
+           count(*) filter (where estado='cerrada' and abs(coalesce(diferencia,0)) >= 0.005) con_descuadre,
+           coalesce(sum(diferencia) filter (where estado='cerrada'), 0) descuadre_neto,
+           coalesce(sum(abs(diferencia)) filter (where estado='cerrada'), 0) descuadre_abs
+      from public.pc_caja_dia where fecha between p_desde and p_hasta
+  )
+  select jsonb_build_object(
+    'desde', p_desde, 'hasta', p_hasta,
+    'dias_rango', (p_hasta - p_desde) + 1,
+    'totales', jsonb_build_object(
+      'entradas', tot.e, 'salidas', tot.s, 'neto', tot.e - tot.s,
+      'movimientos', tot.n, 'dias_con_movimiento', tot.d,
+      -- promedio sobre los dias que DE VERDAD tuvieron movimiento: dividir
+      -- entre los dias del rango mete los domingos cerrados y hunde la media.
+      'promedio_dia_entradas', case when tot.d > 0 then round(tot.e / tot.d, 2) else 0 end,
+      'promedio_dia_neto',     case when tot.d > 0 then round((tot.e - tot.s) / tot.d, 2) else 0 end),
+    'por_metodo', met.j, 'por_categoria', cat.j, 'por_dia', dia.j,
+    'arqueos', jsonb_build_object(
+      'cerrados', arq.cerrados, 'abiertos', arq.abiertos,
+      'con_descuadre', arq.con_descuadre,
+      'descuadre_neto', arq.descuadre_neto, 'descuadre_abs', arq.descuadre_abs)
+  ) into v
+  from tot, met, cat, dia, arq;
+  return v;
+end $$;
+revoke all on function public.pc_caja_reporte(date, date, text, text) from public, anon;
+-- Comprobado el 7 oct 2026 contra agosto 2026: entradas 195.380,00 / salidas
+-- 1.550,00 / neto 193.830,00 / 130 movimientos en 24 dias / promedio 8.140,83,
+-- identico a sumar pc_caja_libro a mano. Y contra septiembre: 223.803,10 en 151
+-- movimientos. OJO con ese septiembre: las salidas dan 0,00 porque NADIE
+-- registro gastos ese mes (pc_gastos tiene 6 filas en junio, 1 en agosto, 0 en
+-- septiembre). El reporte no miente: la mitad del dato no se esta capturando.
+
 -- ── Basura que dejo el montaje ──────────────────────────────────────────────
 -- La vista `pc_caja_libro_bigint_viejo` quedo huerfana de un intento fallido.
 -- El conector de Supabase CUELGA en cualquier DROP (se intento seis veces), asi

@@ -89,13 +89,21 @@ render("Facturas (ver factura)", sandbox.Facturas, propsFact, (h) => {
 render("Facturas (nueva factura)", sandbox.Facturas, propsFact, (h) => {
   const i = h.indexOf("lista"); if (i >= 0) h[i] = "nueva";
 }, "Servicios / Productos");
-// Caja (M18). El libro se lee de la base, asi que sin datos sale "sin
-// movimientos"; se le inyecta una fila para ejercitar la tabla de verdad.
-render("CierreCaja (dia sin abrir)", sandbox.CierreCaja, {}, (h) => {
+// Caja (M18). CierreCaja ya solo reparte entre el dia a dia y los reportes; el
+// React falso NO baja a los hijos, asi que cada uno se renderiza aparte.
+render("CierreCaja (reparte al día)", sandbox.CierreCaja, {}, null, "CajaDia");
+render("CierreCaja (reparte al reporte)", sandbox.CierreCaja, {}, (h) => {
+  const i = h.indexOf("dia");
+  if (i < 0) throw new Error("no se encontró el estado 'modo'");
+  h[i] = "mes";
+}, "CajaReporte");
+// El libro se lee de la base, asi que sin datos sale "sin movimientos"; se le
+// inyecta una fila para ejercitar la tabla de verdad.
+render("CajaDia (dia sin abrir)", sandbox.CajaDia, {}, (h) => {
   const i = h.findIndex((x) => x === true);   // cargando
   if (i >= 0) h[i] = false;
 }, "Abrir el d");
-render("CierreCaja (con movimientos)", sandbox.CierreCaja, {}, (h) => {
+render("CajaDia (con movimientos)", sandbox.CajaDia, {}, (h) => {
   const iCarg = h.findIndex((x) => x === true); if (iCarg >= 0) h[iCarg] = false;
   const iLibro = h.findIndex((x) => Array.isArray(x) && x.length === 0);
   if (iLibro < 0) throw new Error("no se encontro el estado 'libro'");
@@ -106,6 +114,37 @@ render("CierreCaja (con movimientos)", sandbox.CierreCaja, {}, (h) => {
   h[iLibro + 2] = { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0,
     teorico_efectivo: 1799.75, entradas_total: 799.50, salidas_total: 0 };
 }, "Bano pequeno - Rocky");
+// El reporte de periodo. Todo lo suma Postgres y baja en un solo jsonb, asi que
+// la prueba inyecta esa respuesta tal cual la devuelve pc_caja_reporte: si
+// alguien le cambia la forma al jsonb, aqui revienta antes de llegar a pantalla.
+const repEjemplo = (ent, sal) => ({
+  desde: "2026-08-01", hasta: "2026-08-31", dias_rango: 31,
+  totales: { entradas: ent, salidas: sal, neto: ent - sal, movimientos: 130,
+    dias_con_movimiento: 24, promedio_dia_entradas: ent / 24, promedio_dia_neto: (ent - sal) / 24 },
+  por_metodo: [{ metodo: "EFECTIVO", entradas: ent, salidas: sal, neto: ent - sal, movimientos: 120 },
+    { metodo: "SIN ANOTAR", entradas: 0, salidas: 0, neto: 0, movimientos: 10 }],
+  por_categoria: [{ categoria: "grooming", entradas: ent, salidas: 0, neto: ent, movimientos: 118 }],
+  por_dia: [{ fecha: "2026-08-04", entradas: ent, salidas: sal, neto: ent - sal, movimientos: 7 }],
+  arqueos: { cerrados: 2, abiertos: 1, con_descuadre: 1, descuadre_neto: -25.50, descuadre_abs: 25.50 }
+});
+render("CajaReporte", sandbox.CajaReporte, { modo: "mes" }, (h) => {
+  const i = h.findIndex((x) => x === null);   // rep
+  if (i < 0) throw new Error("no se encontró el estado 'rep'");
+  h[i] = repEjemplo(195380.00, 1550.00);
+  h[i + 1] = repEjemplo(150000.00, 1000.00);
+  const j = h.findIndex((x) => x === true);   // cargando
+  if (j >= 0) h[j] = false;
+}, "Por método de pago");
+// Y que las cifras salgan con centavos: el reporte es lo que Victor mira para
+// decidir, y RD() redondeando esconde justo lo que no cuadra.
+render("CajaReporte (centavos)", sandbox.CajaReporte, { modo: "rango" }, (h) => {
+  const i = h.findIndex((x) => x === null);
+  if (i < 0) throw new Error("no se encontró el estado 'rep'");
+  h[i] = repEjemplo(1799.75, 0.25);
+  h[i + 1] = null;
+  const j = h.findIndex((x) => x === true);
+  if (j >= 0) h[j] = false;
+}, "1,799.75");
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
   resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
@@ -282,4 +321,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (26 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+console.log(`✓ Vistas principales renderizan sin errores (30 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);

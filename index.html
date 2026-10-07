@@ -16904,7 +16904,266 @@ function Cobros({ ventas, setVentas, clientes, soloPropio }) {
 //
 // El arqueo es SOBRE EFECTIVO: una transferencia no esta en la gaveta. El libro
 // de abajo si muestra todos los metodos, con filtro.
+// Caja: el dia a dia y los reportes de periodo, en una sola pestaña porque leen
+// exactamente el mismo libro. Separarlos obligaria a mantener dos veces la
+// misma logica de que cuenta como entrada y que como salida.
 function CierreCaja() {
+  const E = React.createElement;
+  const [modo, setModo] = React.useState("dia");
+  const MODOS = [["dia", "📅 Día"], ["semana", "🗓 Semana"], ["mes", "📆 Mes"], ["rango", "⇄ Rango"]];
+  const tab = (id, txt) => E("button", {
+    key: id, onClick: () => setModo(id), style: {
+      background: modo === id ? "#1a6b3a" : "#fff",
+      color: modo === id ? "#fff" : "#334155",
+      border: "1.5px solid " + (modo === id ? "#1a6b3a" : "#e0e4e8"),
+      borderRadius: 9, padding: "8px 15px", cursor: "pointer",
+      fontSize: 13, fontWeight: modo === id ? 800 : 600
+    }
+  }, txt);
+  return E("div", null,
+    E("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Caja"),
+    E("p", { style: { color: "#5a6472", fontSize: 13, marginBottom: 14 } },
+      "Saldo inicial + entradas − salidas = saldo final. El arqueo cuadra el EFECTIVO de la gaveta; el libro muestra todos los métodos."),
+    E("div", { style: { display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 18 } }, MODOS.map(([i, t]) => tab(i, t))),
+    modo === "dia" ? E(CajaDia, null) : E(CajaReporte, { modo, key: modo }));
+}
+
+// Reporte de caja para semana, mes o un rango a mano. Todo lo suma Postgres y
+// baja un solo jsonb: un mes son ~150 movimientos pero un año son 1.800, y
+// traerselos al navegador para sumarlos es justo lo que se quito en M7.
+function CajaReporte({ modo }) {
+  const E = React.createElement;
+  const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b",
+              gold: "#b8860b", borde: "#e0e4e8" };
+
+  // Lunes de la semana de una fecha. La semana del negocio empieza el lunes:
+  // el domingo se abre media jornada y cerrarla con el sabado parte el fin de
+  // semana en dos informes distintos.
+  const lunesDe = (iso) => {
+    const d = new Date(iso + "T12:00:00");
+    const dow = (d.getDay() + 6) % 7;              // 0 = lunes
+    d.setDate(d.getDate() - dow);
+    return d.toISOString().slice(0, 10);
+  };
+  const sumarDias2 = (iso, n) => {
+    const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const inicioMes = (iso) => iso.slice(0, 8) + "01";
+  const finMes = (iso) => {
+    const [y, m] = iso.split("-").map(Number);
+    return new Date(y, m, 0).toISOString().slice(0, 10);
+  };
+
+  const hoyISO = hoy();
+  const rangoInicial = () =>
+    modo === "semana" ? { desde: lunesDe(hoyISO), hasta: sumarDias2(lunesDe(hoyISO), 6) }
+    : modo === "mes"  ? { desde: inicioMes(hoyISO), hasta: finMes(hoyISO) }
+    : { desde: sumarDias2(hoyISO, -29), hasta: hoyISO };
+
+  const [rango, setRango] = React.useState(rangoInicial);
+  const [rep, setRep] = React.useState(null);
+  const [repPrevio, setRepPrevio] = React.useState(null);
+  const [metodo, setMetodo] = React.useState("");
+  const [categoria, setCategoria] = React.useState("");
+  const [cargando, setCargando] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  const cargar = React.useCallback(async () => {
+    setCargando(true);
+    try {
+      // El periodo anterior del MISMO tamaño: comparar una semana contra un mes
+      // no dice nada. Se desplaza el rango completo hacia atras.
+      const dias = Math.round((new Date(rango.hasta) - new Date(rango.desde)) / 864e5) + 1;
+      const prevHasta = sumarDias2(rango.desde, -1);
+      const prevDesde = sumarDias2(prevHasta, -(dias - 1));
+      const args = { p_metodo: metodo || null, p_categoria: categoria || null };
+      const [a, b] = await Promise.all([
+        supaRPC("pc_caja_reporte", { p_desde: rango.desde, p_hasta: rango.hasta, ...args }),
+        supaRPC("pc_caja_reporte", { p_desde: prevDesde, p_hasta: prevHasta, ...args })
+      ]);
+      setRep(a); setRepPrevio(b); setError("");
+    } catch (e) {
+      setError("No se pudo generar el reporte: " + e.message);
+      setRep(null);
+    }
+    setCargando(false);
+  }, [rango, metodo, categoria]);
+  React.useEffect(() => { cargar(); }, [cargar]);
+
+  const n = (x) => Number(x) || 0;
+  const mover = (pasos) => {
+    if (modo === "semana") {
+      const d = sumarDias2(rango.desde, 7 * pasos);
+      setRango({ desde: d, hasta: sumarDias2(d, 6) });
+    } else if (modo === "mes") {
+      const [y, m] = rango.desde.split("-").map(Number);
+      const d = new Date(y, m - 1 + pasos, 1).toISOString().slice(0, 10);
+      setRango({ desde: d, hasta: finMes(d) });
+    }
+  };
+
+  const variacion = (hoyV, antes) => {
+    if (!antes) return null;
+    return Math.round(((hoyV - antes) / Math.abs(antes)) * 100);
+  };
+
+  function exportarCSV() {
+    if (!rep) return;
+    const esc = (s) => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
+    const lineas = [];
+    lineas.push(["Reporte de caja", rango.desde + " a " + rango.hasta].map(esc).join(","));
+    lineas.push("");
+    lineas.push(["Totales"].map(esc).join(","));
+    lineas.push(["Entradas", n(rep.totales.entradas).toFixed(2)].map(esc).join(","));
+    lineas.push(["Salidas", n(rep.totales.salidas).toFixed(2)].map(esc).join(","));
+    lineas.push(["Flujo neto", n(rep.totales.neto).toFixed(2)].map(esc).join(","));
+    lineas.push(["Promedio por dia con movimiento", n(rep.totales.promedio_dia_neto).toFixed(2)].map(esc).join(","));
+    lineas.push("");
+    lineas.push(["Por metodo de pago", "Entradas", "Salidas", "Neto"].map(esc).join(","));
+    (rep.por_metodo || []).forEach((m) => lineas.push(
+      [m.metodo, n(m.entradas).toFixed(2), n(m.salidas).toFixed(2), n(m.neto).toFixed(2)].map(esc).join(",")));
+    lineas.push("");
+    lineas.push(["Por categoria", "Entradas", "Salidas", "Neto"].map(esc).join(","));
+    (rep.por_categoria || []).forEach((c) => lineas.push(
+      [c.categoria, n(c.entradas).toFixed(2), n(c.salidas).toFixed(2), n(c.neto).toFixed(2)].map(esc).join(",")));
+    lineas.push("");
+    lineas.push(["Dia", "Entradas", "Salidas", "Neto", "Movimientos"].map(esc).join(","));
+    (rep.por_dia || []).forEach((d) => lineas.push(
+      [d.fecha, n(d.entradas).toFixed(2), n(d.salidas).toFixed(2), n(d.neto).toFixed(2), d.movimientos].map(esc).join(",")));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿" + lineas.join("\n")], { type: "text/csv;charset=utf-8;" }));
+    a.download = "caja_" + rango.desde + "_" + rango.hasta + ".csv"; a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  const btn = (fondo, color, borde) => ({
+    background: fondo, color, border: "1.5px solid " + (borde || fondo), borderRadius: 9,
+    padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700
+  });
+  const th = { padding: "9px 10px", textAlign: "left", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#fff" };
+  const td = { padding: "8px 10px", fontSize: 12.5, borderBottom: "1px solid #f0f2f4" };
+
+  const tarjeta = (titulo, valor, color, nota, varPct) => E("div", { style: {
+    background: "#fff", border: "1.5px solid " + C.borde, borderRadius: 11, padding: "13px 15px", flex: "1 1 160px", minWidth: 150
+  } },
+    E("div", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: C.grisd, marginBottom: 5 } }, titulo),
+    E("div", { style: { fontSize: 19, fontWeight: 800, color: color || "#1a1d23" } }, valor),
+    varPct != null && E("div", { style: { fontSize: 11.5, fontWeight: 800, marginTop: 3, color: varPct > 0 ? C.verde : varPct < 0 ? C.rojo : C.grisd } },
+      (varPct > 0 ? "▲ " : varPct < 0 ? "▼ " : "= ") + Math.abs(varPct) + "% vs. periodo anterior"),
+    nota && E("div", { style: { fontSize: 11, color: C.grisd, marginTop: 3 } }, nota));
+
+  // Solo la primera letra: el CSS `capitalize` escribe "Octubre De 2026".
+  const mayus1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const titulo = modo === "semana" ? "Semana del " + rango.desde + " al " + rango.hasta
+    : modo === "mes" ? mayus1(new Date(rango.desde + "T12:00:00").toLocaleDateString("es-DO", { month: "long", year: "numeric" }))
+    : rango.desde + " a " + rango.hasta;
+
+  return E("div", null,
+    E("div", { style: { display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginBottom: 14 } },
+      (modo === "semana" || modo === "mes") && E(React.Fragment, null,
+        E("button", { onClick: () => mover(-1), style: btn("#fff", "#334155", C.borde) }, "←"),
+        E("div", { style: { fontWeight: 800, fontSize: 15, minWidth: 210, textAlign: "center" } }, titulo),
+        E("button", { onClick: () => mover(1), style: btn("#fff", "#334155", C.borde) }, "→")),
+      modo === "rango" && E(React.Fragment, null,
+        E("input", { type: "date", value: rango.desde, onChange: (e) => setRango((r) => ({ ...r, desde: e.target.value })),
+          style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5 } }),
+        E("span", { style: { color: C.grisd, fontSize: 12.5 } }, "a"),
+        E("input", { type: "date", value: rango.hasta, onChange: (e) => setRango((r) => ({ ...r, hasta: e.target.value })),
+          style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5 } })),
+      E("select", { value: metodo, onChange: (e) => setMetodo(e.target.value),
+        style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5 } },
+        E("option", { value: "" }, "Todos los métodos"),
+        ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "CHEQUE", "SIN ANOTAR", "MIXTO", "OTRO"].map((m) => E("option", { key: m, value: m }, m))),
+      E("select", { value: categoria, onChange: (e) => setCategoria(e.target.value),
+        style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5, maxWidth: 190 } },
+        E("option", { value: "" }, "Todas las categorías"),
+        ((rep && rep.por_categoria) || []).map((c) => E("option", { key: c.categoria, value: c.categoria }, c.categoria))),
+      E("button", { onClick: exportarCSV, style: btn("#fff", "#334155", C.borde) }, "⬇ CSV"),
+      E("button", { onClick: () => window.print(), style: btn("#fff", "#334155", C.borde) }, "🖨 Imprimir")),
+
+    error && E("div", { style: { background: "#fdeaea", border: "1.5px solid " + C.rojo, color: C.rojo, borderRadius: 9, padding: "11px 13px", fontSize: 13, marginBottom: 14, fontWeight: 600 } }, error),
+
+    cargando ? E("div", { style: { color: C.grisd, padding: "28px 0" } }, "Generando…")
+    : !rep ? null
+    : E(React.Fragment, null,
+      E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 } },
+        tarjeta("Total ingresado", RDc(rep.totales.entradas), C.verde, null,
+          repPrevio && variacion(n(rep.totales.entradas), n(repPrevio.totales.entradas))),
+        tarjeta("Total egresado", RDc(rep.totales.salidas), C.rojo, null,
+          repPrevio && variacion(n(rep.totales.salidas), n(repPrevio.totales.salidas))),
+        tarjeta("Flujo neto", RDc(rep.totales.neto), n(rep.totales.neto) >= 0 ? C.verde : C.rojo, null,
+          repPrevio && variacion(n(rep.totales.neto), n(repPrevio.totales.neto))),
+        // Sobre los dias que DE VERDAD tuvieron movimiento: dividir entre los
+        // dias del rango mete los domingos cerrados y hunde la media.
+        tarjeta("Promedio por día", RDc(rep.totales.promedio_dia_neto), C.azul,
+          rep.totales.dias_con_movimiento + " día(s) con movimiento de " + rep.dias_rango),
+        tarjeta("Movimientos", String(rep.totales.movimientos), null)),
+
+      // Estado de los arqueos del periodo. Sin esto el reporte diria cuanto
+      // entro pero no si la gaveta cuadro, que es la mitad del control.
+      E("div", { style: {
+        background: n(rep.arqueos.con_descuadre) > 0 ? "#fff7e6" : "#f8f9fa",
+        border: "1.5px solid " + (n(rep.arqueos.con_descuadre) > 0 ? "#d9a441" : C.borde),
+        borderRadius: 10, padding: "12px 14px", fontSize: 12.5, marginBottom: 16
+      } },
+        E("strong", null, "Arqueos: "),
+        rep.arqueos.cerrados + " día(s) cerrado(s)",
+        n(rep.arqueos.abiertos) > 0 ? ", " + rep.arqueos.abiertos + " sin cerrar" : "",
+        n(rep.arqueos.con_descuadre) > 0
+          ? " · " + rep.arqueos.con_descuadre + " con descuadre (neto " + RDc(rep.arqueos.descuadre_neto) +
+            ", suma de diferencias " + RDc(rep.arqueos.descuadre_abs) + ")"
+          : n(rep.arqueos.cerrados) > 0 ? " · todos cuadraron exacto" : "",
+        n(rep.arqueos.cerrados) === 0 && n(rep.arqueos.abiertos) === 0 &&
+          E("span", { style: { color: C.grisd } }, " — ningún día de este periodo tiene arqueo registrado.")),
+
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: 16 } },
+        E(Card, null,
+          E("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "Por método de pago"),
+          (rep.por_metodo || []).length === 0 ? E("div", { style: { color: C.grisd, fontSize: 12.5 } }, "Sin movimientos.")
+          : (rep.por_metodo || []).map((m) => E("div", { key: m.metodo, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12.5, borderBottom: "1px solid #f0f2f4" } },
+              E("span", null, m.metodo, E("span", { style: { color: C.grisd, fontSize: 11 } }, "  " + m.movimientos)),
+              E("span", { style: { fontWeight: 700, color: n(m.neto) >= 0 ? C.verde : C.rojo } }, RDc(m.neto)))),
+          // SIN ANOTAR y MIXTO no son metodos de pago: son datos sin arreglar.
+          // Decirlo aqui es lo unico que hace que alguien los arregle.
+          (rep.por_metodo || []).some((m) => m.metodo === "SIN ANOTAR" || m.metodo === "MIXTO") &&
+            E("div", { style: { fontSize: 11.5, color: "#92400e", marginTop: 9, lineHeight: 1.5 } },
+              "«Sin anotar» y «Mixto» no son métodos de pago: son movimientos a los que falta arreglarles el dato. Mientras estén ahí, el desglose por método no cuadra del todo.")),
+        E(Card, null,
+          E("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, "Por categoría"),
+          (rep.por_categoria || []).length === 0 ? E("div", { style: { color: C.grisd, fontSize: 12.5 } }, "Sin movimientos.")
+          : (rep.por_categoria || []).slice(0, 14).map((c) => E("div", { key: c.categoria, style: { display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12.5, borderBottom: "1px solid #f0f2f4" } },
+              E("span", null, c.categoria),
+              E("span", { style: { fontWeight: 700, color: n(c.neto) >= 0 ? C.verde : C.rojo } }, RDc(c.neto)))))),
+
+      E("div", { style: { overflowX: "auto", border: "1.5px solid " + C.borde, borderRadius: 11 } },
+        E("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 520 } },
+          E("thead", null, E("tr", { style: { background: C.verde } },
+            E("th", { style: th }, "Día"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Entradas"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Salidas"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Neto"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Movs."))),
+          E("tbody", null,
+            (rep.por_dia || []).length === 0
+              ? E("tr", null, E("td", { colSpan: 5, style: { ...td, textAlign: "center", color: C.grisd, padding: 24 } }, "Sin movimientos en el periodo."))
+              : (rep.por_dia || []).map((d, i) => E("tr", { key: d.fecha, style: { background: i % 2 ? "#fafbfc" : "#fff" } },
+                  E("td", { style: td }, d.fecha),
+                  E("td", { style: { ...td, textAlign: "right", color: C.verde } }, RDc(d.entradas)),
+                  E("td", { style: { ...td, textAlign: "right", color: C.rojo } }, n(d.salidas) ? RDc(d.salidas) : "—"),
+                  E("td", { style: { ...td, textAlign: "right", fontWeight: 700, color: n(d.neto) >= 0 ? C.verde : C.rojo } }, RDc(d.neto)),
+                  E("td", { style: { ...td, textAlign: "right", color: C.grisd } }, d.movimientos))),
+            (rep.por_dia || []).length > 0 && E("tr", { style: { background: "#f0f4f2", fontWeight: 800 } },
+              E("td", { style: td }, "Total"),
+              E("td", { style: { ...td, textAlign: "right", color: C.verde } }, RDc(rep.totales.entradas)),
+              E("td", { style: { ...td, textAlign: "right", color: C.rojo } }, RDc(rep.totales.salidas)),
+              E("td", { style: { ...td, textAlign: "right", color: n(rep.totales.neto) >= 0 ? C.verde : C.rojo } }, RDc(rep.totales.neto)),
+              E("td", { style: { ...td, textAlign: "right" } }, rep.totales.movimientos)))))));
+}
+
+// El dia a dia: abrir caja, ver el libro movimiento a movimiento, anotar lo que
+// no es ni venta ni gasto, y cerrar contando el efectivo de la gaveta.
+function CajaDia() {
   const E = React.createElement;
   const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b",
               gold: "#b8860b", borde: "#e0e4e8" };
@@ -17078,10 +17337,6 @@ function CierreCaja() {
   const dif = dia && dia.diferencia != null ? num(dia.diferencia) : null;
 
   return E("div", null,
-    E("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "Caja"),
-    E("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 18 } },
-      "Saldo inicial + entradas − salidas = saldo final. El arqueo cuadra el EFECTIVO de la gaveta; el libro muestra todos los métodos."),
-
     E("div", { style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 } },
       E("div", null,
         E("label", { style: { fontSize: 10.5, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Día"),
