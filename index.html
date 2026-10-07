@@ -16910,7 +16910,8 @@ function Cobros({ ventas, setVentas, clientes, soloPropio }) {
 function CierreCaja() {
   const E = React.createElement;
   const [modo, setModo] = React.useState("dia");
-  const MODOS = [["dia", "📅 Día"], ["semana", "🗓 Semana"], ["mes", "📆 Mes"], ["rango", "⇄ Rango"]];
+  const MODOS = [["dia", "📅 Día"], ["semana", "🗓 Semana"], ["mes", "📆 Mes"], ["rango", "⇄ Rango"],
+                 ["cuentas", "🏦 Cuentas"]];
   const tab = (id, txt) => E("button", {
     key: id, onClick: () => setModo(id), style: {
       background: modo === id ? "#1a6b3a" : "#fff",
@@ -16925,7 +16926,9 @@ function CierreCaja() {
     E("p", { style: { color: "#5a6472", fontSize: 13, marginBottom: 14 } },
       "Saldo inicial + entradas − salidas = saldo final. El arqueo cuadra el EFECTIVO de la gaveta; el libro muestra todos los métodos."),
     E("div", { style: { display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 18 } }, MODOS.map(([i, t]) => tab(i, t))),
-    modo === "dia" ? E(CajaDia, null) : E(CajaReporte, { modo, key: modo }));
+    modo === "dia"     ? E(CajaDia, null)
+    : modo === "cuentas" ? E(CajaCuentas, null)
+    : E(CajaReporte, { modo, key: modo }));
 }
 
 // Reporte de caja para semana, mes o un rango a mano. Todo lo suma Postgres y
@@ -17159,6 +17162,361 @@ function CajaReporte({ modo }) {
               E("td", { style: { ...td, textAlign: "right", color: C.rojo } }, RDc(rep.totales.salidas)),
               E("td", { style: { ...td, textAlign: "right", color: n(rep.totales.neto) >= 0 ? C.verde : C.rojo } }, RDc(rep.totales.neto)),
               E("td", { style: { ...td, textAlign: "right" } }, rep.totales.movimientos)))))));
+}
+
+// M19 · Las cuentas donde vive el dinero, no solo la gaveta.
+//
+// En 2026 el efectivo fue el 31% del dinero: el otro 69% entro por Banreservas,
+// Popular o la tarjeta y nadie lo verificaba nunca. Esto lo verifica — pero NO
+// como un arqueo. La gaveta se cuenta; el banco se concilia contra el estado de
+// cuenta, y dia a dia no cuadra por razones normales (las tarjetas caen a T+1 o
+// T+3 y netas de comision, cargos del banco, cheques sin cobrar). Por eso la
+// diferencia aqui no se llama descuadre: se llama partidas pendientes.
+//
+// Todo el modulo es solo-admin, y quien lo decide es el servidor: si
+// pc_cuentas_estado responde "No autorizado", la pantalla lo dice y ya. Sin
+// lista de correos en el navegador que se quede vieja.
+function CajaCuentas() {
+  const E = React.createElement;
+  const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b",
+              gold: "#b8860b", borde: "#e0e4e8" };
+
+  const [fecha, setFecha] = React.useState(hoy());
+  const [estado, setEstado] = React.useState(null);
+  const [traslados, setTraslados] = React.useState([]);
+  const [cuentas, setCuentas] = React.useState([]);
+  const [cargando, setCargando] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const [guardando, setGuardando] = React.useState(false);
+  const [modal, setModal] = React.useState("");        // "traslado" | "saldo"
+  const [cuentaSel, setCuentaSel] = React.useState(null);
+
+  const cargar = React.useCallback(async () => {
+    setCargando(true);
+    try {
+      const [e, t, c] = await Promise.all([
+        supaRPC("pc_cuentas_estado", { p_fecha: fecha }),
+        supaFetch("pc_traslados", "GET", null, "?fecha=eq." + fecha + "&order=id.asc"),
+        supaFetch("pc_cuentas", "GET", null, "?activa=eq.true&order=orden.asc")
+      ]);
+      setEstado(e); setTraslados(Array.isArray(t) ? t : []);
+      setCuentas(Array.isArray(c) ? c : []); setError("");
+    } catch (ex) {
+      setEstado(null);
+      setError(/no autorizado/i.test(ex.message)
+        ? "Las cuentas de banco solo las ve el administrador."
+        : "No se pudieron cargar las cuentas: " + ex.message);
+    }
+    setCargando(false);
+  }, [fecha]);
+  React.useEffect(() => { cargar(); }, [cargar]);
+
+  const n = (x) => Number(x) || 0;
+  const lista = (estado && estado.cuentas) || [];
+
+  async function guardarTraslado(t) {
+    setGuardando(true);
+    try {
+      const r = await supaFetch("pc_traslados", "POST", [{
+        fecha, hora: t.hora || null, cuenta_origen: t.origen, cuenta_destino: t.destino,
+        monto: t.monto, monto_recibido: t.recibido == null ? null : t.recibido,
+        concepto: t.concepto, referencia: t.referencia || null,
+        usuario: usuarioActual(), notas: t.notas || null
+      }]);
+      if (r && r.error) throw new Error(JSON.stringify(r.error));
+      const dif = t.recibido == null ? 0 : t.monto - t.recibido;
+      avisar("Traslado de " + RDc(t.monto) + " registrado." +
+        (dif > 0 ? " Comisión/cargo: " + RDc(dif) + "." : ""), "ok");
+      setModal(""); cargar();
+    } catch (e) { avisar("No se pudo registrar el traslado: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  async function guardarSaldo(cuentaId, saldo, notas) {
+    setGuardando(true);
+    try {
+      const r = await supaFetch("pc_cuenta_saldos", "POST", [{
+        cuenta_id: cuentaId, fecha, saldo,
+        declarado_por: usuarioActual(), declarado_en: new Date().toISOString(),
+        notas: notas || null
+      }]);
+      if (r && r.error) throw new Error(JSON.stringify(r.error));
+      avisar("Saldo de " + RDc(saldo) + " anotado.", "ok");
+      setModal(""); setCuentaSel(null); cargar();
+    } catch (e) { avisar("No se pudo guardar el saldo: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  const btn = (fondo, color, borde) => ({
+    background: fondo, color, border: "1.5px solid " + (borde || fondo), borderRadius: 9,
+    padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700
+  });
+  const linea = (etq, valor, color, grueso) => E("div", {
+    style: { display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12.5 }
+  }, E("span", { style: { color: C.grisd } }, etq),
+     E("span", { style: { fontWeight: grueso ? 800 : 600, color: color || "#1a1d23" } }, valor));
+
+  const nombreCuenta = (id) => {
+    const c = cuentas.find((x) => x.id === id);
+    return (c && c.nombre) || id;
+  };
+
+  function tarjetaCuenta(c) {
+    const difer = c.diferencia == null ? null : n(c.diferencia);
+    const cuadra = difer != null && Math.abs(difer) < 0.005;
+    return E(Card, { key: c.cuenta_id },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 9 } },
+        E("div", { style: { fontWeight: 800, fontSize: 14.5 } }, c.nombre),
+        E("span", { style: {
+          fontSize: 10, fontWeight: 800, letterSpacing: 0.5, padding: "3px 8px", borderRadius: 20,
+          background: c.tipo === "EFECTIVO" ? "#e8f5ee" : c.tipo === "BANCO" ? "#e8f0fe"
+                    : c.tipo === "PUENTE" ? "#fff7e6" : "#fdeaea",
+          color: c.tipo === "EFECTIVO" ? C.verde : c.tipo === "BANCO" ? C.azul
+               : c.tipo === "PUENTE" ? "#92400e" : C.rojo
+        } }, c.tipo === "SIN_ASIGNAR" ? "SIN ASIGNAR" : c.tipo)),
+
+      linea("Empezó el día con", RDc(c.saldo_inicial)),
+      linea("Entró", RDc(c.entradas), n(c.entradas) ? C.verde : C.grisd),
+      linea("Salió", n(c.salidas) ? RDc(c.salidas) : "—", n(c.salidas) ? C.rojo : C.grisd),
+      E("div", { style: { borderTop: "1px solid " + C.borde, margin: "7px 0 2px" } }),
+      linea("Debería terminar con", RDc(c.saldo_final_teorico), C.azul, true),
+
+      // El ancla. Sin un saldo real de partida, el "teorico" es la suma de todo
+      // desde 2025 y no significa nada. Mejor decirlo que enseñar el numero.
+      c.sin_ancla
+        ? E("div", { style: { background: "#fff7e6", border: "1px solid #d9a441", borderRadius: 8,
+            padding: "8px 10px", fontSize: 11.5, color: "#92400e", marginTop: 9, lineHeight: 1.45 } },
+            "Este saldo no tiene punto de partida: es la suma de todo lo registrado desde el principio. ",
+            E("strong", null, "Anota una vez el saldo real"),
+            " y a partir de ahí el teórico sale de ahí y empieza a servir.")
+        : E("div", { style: { fontSize: 11, color: C.grisd, marginTop: 8 } },
+            "Parte del saldo real del " + c.ancla_fecha +
+            (c.ancla_origen === "arqueo" ? " (arqueo)" : " (anotado a mano)") + ": " + RDc(c.ancla_saldo)),
+
+      c.declarado_hoy != null
+        ? E("div", { style: {
+            background: cuadra ? "#e8f5ee" : "#fff7e6",
+            border: "1.5px solid " + (cuadra ? C.verde : "#d9a441"),
+            borderRadius: 9, padding: "9px 11px", marginTop: 10, fontSize: 12.5
+          } },
+            linea(c.declarado_origen === "arqueo" ? "Contado en la gaveta" : "Saldo real anotado",
+                  RDc(c.declarado_hoy), null, true),
+            linea(c.se_cuenta ? "Descuadre" : "Partidas pendientes",
+                  (difer > 0 ? "+" : "") + RDc(difer), cuadra ? C.verde : C.gold, true),
+            !cuadra && !c.se_cuenta && E("div", { style: { fontSize: 11, color: "#92400e", marginTop: 5, lineHeight: 1.45 } },
+              "Esto NO es un descuadre. Lo normal es que sean tarjetas que el banco todavía no ha depositado, cargos del banco o cheques sin cobrar."),
+            !cuadra && c.se_cuenta && E("div", { style: { fontSize: 11, color: "#92400e", marginTop: 5, lineHeight: 1.45 } },
+              "La gaveta sí se cuenta: aquí una diferencia es un error de registro o falta dinero."))
+        : !c.se_cuenta && E("button", {
+            onClick: () => { setCuentaSel(c); setModal("saldo"); },
+            style: { ...btn("#fff", "#334155", C.borde), marginTop: 10, width: "100%" }
+          }, "✍️ Anotar el saldo real de hoy"),
+
+      c.cuenta_id === "sin_asignar" && n(c.saldo_final_teorico) !== 0 &&
+        E("div", { style: { fontSize: 11.5, color: "#92400e", marginTop: 9, lineHeight: 1.45 } },
+          "Aquí cae lo que no se puede atribuir: transferencia sin banco anotado, cobros mixtos y gastos sin método de pago. Mientras tenga saldo, las cuentas de arriba están incompletas."));
+  }
+
+  const th = { padding: "9px 10px", textAlign: "left", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#fff" };
+  const td = { padding: "8px 10px", fontSize: 12.5, borderBottom: "1px solid #f0f2f4" };
+
+  return E("div", null,
+    E("div", { style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 } },
+      E("div", null,
+        E("label", { style: { fontSize: 10.5, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Día"),
+        E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value),
+          style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 13 } })),
+      !error && E("button", { onClick: () => setModal("traslado"), style: btn(C.azul, "#fff") }, "⇄ Mover dinero entre cuentas"),
+      !error && E("button", { onClick: cargar, style: btn("#fff", "#334155", C.borde) }, "🔄 Actualizar")),
+
+    error && E("div", { style: { background: "#fdeaea", border: "1.5px solid " + C.rojo, color: C.rojo,
+      borderRadius: 9, padding: "11px 13px", fontSize: 13, marginBottom: 14, fontWeight: 600 } }, error),
+
+    cargando ? E("div", { style: { color: C.grisd, padding: "28px 0" } }, "Cargando…")
+    : error ? null
+    : E(React.Fragment, null,
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 14, marginBottom: 18 } },
+        lista.map(tarjetaCuenta)),
+
+      E("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 9 } },
+        "Dinero movido entre cuentas hoy"),
+      E("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 10, lineHeight: 1.5 } },
+        "Un traslado no es ingreso ni gasto: es la misma plata cambiando de sitio, así que no toca el flujo del negocio. Si al destino llega menos de lo que salió, esa resta es la comisión del banco — medida, no estimada."),
+      E("div", { style: { overflowX: "auto", border: "1.5px solid " + C.borde, borderRadius: 11 } },
+        E("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 620 } },
+          E("thead", null, E("tr", { style: { background: C.azul } },
+            E("th", { style: th }, "Concepto"),
+            E("th", { style: th }, "De"),
+            E("th", { style: th }, "A"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Salió"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Llegó"),
+            E("th", { style: { ...th, textAlign: "right" } }, "Comisión"))),
+          E("tbody", null,
+            traslados.length === 0
+              ? E("tr", null, E("td", { colSpan: 6, style: { ...td, textAlign: "center", color: C.grisd, padding: 22 } },
+                  "Ningún traslado este día."))
+              : traslados.map((t, i) => {
+                  const rec = t.monto_recibido == null ? n(t.monto) : n(t.monto_recibido);
+                  const com = n(t.monto) - rec;
+                  return E("tr", { key: t.id, style: { background: i % 2 ? "#fafbfc" : "#fff" } },
+                    E("td", { style: td }, t.concepto),
+                    E("td", { style: td }, nombreCuenta(t.cuenta_origen)),
+                    E("td", { style: td }, nombreCuenta(t.cuenta_destino)),
+                    E("td", { style: { ...td, textAlign: "right", color: C.rojo } }, RDc(t.monto)),
+                    E("td", { style: { ...td, textAlign: "right", color: C.verde } }, RDc(rec)),
+                    E("td", { style: { ...td, textAlign: "right", fontWeight: 700, color: com > 0 ? C.gold : C.grisd } },
+                      com > 0 ? RDc(com) : "—"));
+                })))),
+
+      E("div", { style: { fontSize: 11.5, color: C.grisd, marginTop: 14, lineHeight: 1.55 } },
+        E("strong", null, "Por qué el banco no se arquea: "),
+        "la gaveta se cuenta y si no cuadra hay un error o falta dinero, hoy. El banco no se puede contar, se compara contra el estado de cuenta, y día a día nunca va a dar exacto: las tarjetas caen uno a tres días después y netas de comisión, el banco cobra cargos y los cheques tardan en hacerse efectivos. Por eso aquí esa diferencia se llama partidas pendientes y no descuadre.")),
+
+    modal === "traslado" && E(ModalTraslado, {
+      fecha, cuentas, ocupado: guardando,
+      onCerrar: () => setModal(""), onGuardar: guardarTraslado
+    }),
+    modal === "saldo" && cuentaSel && E(ModalSaldoBanco, {
+      fecha, cuenta: cuentaSel, ocupado: guardando,
+      onCerrar: () => { setModal(""); setCuentaSel(null); },
+      onGuardar: (saldo, notas) => guardarSaldo(cuentaSel.cuenta_id, saldo, notas)
+    }));
+}
+
+// Mover dinero de una cuenta a otra. "Llegó" se deja vacio cuando llega lo mismo
+// que salio (un deposito de efectivo); se rellena cuando el banco se queda con
+// algo (la liquidacion del POS), y esa resta ES la comision real.
+function ModalTraslado({ fecha, cuentas, ocupado, onCerrar, onGuardar }) {
+  const E = React.createElement;
+  const [origen, setOrigen] = React.useState("gaveta");
+  const [destino, setDestino] = React.useState("banreservas");
+  const [monto, setMonto] = React.useState("");
+  const [recibido, setRecibido] = React.useState("");
+  const [concepto, setConcepto] = React.useState("");
+  const [referencia, setReferencia] = React.useState("");
+  const [hora, setHora] = React.useState(new Date().toTimeString().slice(0, 5));
+
+  const m = Number(monto) || 0;
+  const r = recibido === "" ? null : (Number(recibido) || 0);
+  const comision = r == null ? 0 : m - r;
+  const malo = !m || m <= 0 || origen === destino || !concepto.trim() ||
+               (r != null && (r <= 0 || r > m));
+
+  const inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13.5, boxSizing: "border-box" };
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const opciones = (cuentas || []).map((c) => E("option", { key: c.id, value: c.id }, c.nombre));
+
+  return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
+    E("div", { style: { background: "#fff", borderRadius: 16, padding: 26, width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto" } },
+      E("div", { style: { fontWeight: 800, fontSize: 17, marginBottom: 3 } }, "⇄ Mover dinero entre cuentas"),
+      E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 16, lineHeight: 1.5 } },
+        "Del ", fecha, ". No es un ingreso ni un gasto: es la misma plata cambiando de sitio."),
+
+      E("div", { style: { display: "flex", gap: 10, marginBottom: 12 } },
+        E("div", { style: { flex: 1 } },
+          E("label", { style: lbl }, "Sale de"),
+          E("select", { value: origen, onChange: (e) => setOrigen(e.target.value), style: inp }, opciones)),
+        E("div", { style: { flex: 1 } },
+          E("label", { style: lbl }, "Entra en"),
+          E("select", { value: destino, onChange: (e) => setDestino(e.target.value), style: inp }, opciones))),
+      origen === destino && E("div", { style: { color: "#c0392b", fontSize: 12, marginBottom: 10, fontWeight: 600 } },
+        "Tiene que ser de una cuenta a otra distinta."),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Concepto"),
+        E("input", { value: concepto, onChange: (e) => setConcepto(e.target.value), style: inp,
+          placeholder: "Depósito del efectivo del día / Liquidación POS" })),
+
+      E("div", { style: { display: "flex", gap: 10, marginBottom: 6 } },
+        E("div", { style: { flex: 1 } },
+          E("label", { style: lbl }, "Salió (RD$)"),
+          E("input", { type: "number", step: "0.01", value: monto, onChange: (e) => setMonto(e.target.value), style: inp, placeholder: "0.00" })),
+        E("div", { style: { flex: 1 } },
+          E("label", { style: lbl }, "Llegó (RD$)"),
+          E("input", { type: "number", step: "0.01", value: recibido, onChange: (e) => setRecibido(e.target.value), style: inp, placeholder: "igual" }))),
+      E("div", { style: { fontSize: 11, color: "#5a6472", marginBottom: 12, lineHeight: 1.45 } },
+        "Deja «Llegó» vacío si entró lo mismo que salió. Si el banco te depositó menos (liquidación de tarjetas), escribe lo que de verdad te abonó."),
+      r != null && r > m && E("div", { style: { color: "#c0392b", fontSize: 12, marginBottom: 10, fontWeight: 600 } },
+        "No puede llegar más de lo que salió."),
+      comision > 0 && E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", borderRadius: 9,
+        padding: "9px 11px", fontSize: 12.5, marginBottom: 12, color: "#92400e", fontWeight: 700 } },
+        "Comisión / cargo: ", RDc(comision)),
+
+      E("div", { style: { display: "flex", gap: 10, marginBottom: 18 } },
+        E("div", { style: { flex: 1 } },
+          E("label", { style: lbl }, "Hora"),
+          E("input", { type: "time", value: hora, onChange: (e) => setHora(e.target.value), style: inp })),
+        E("div", { style: { flex: 1 } },
+          E("label", { style: lbl }, "Referencia"),
+          E("input", { value: referencia, onChange: (e) => setReferencia(e.target.value), style: inp, placeholder: "N.º de depósito" }))),
+
+      E("div", { style: { display: "flex", gap: 10 } },
+        E("button", { onClick: onCerrar, disabled: ocupado,
+          style: { flex: 1, padding: "11px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700, fontSize: 13.5 } }, "Cancelar"),
+        E("button", {
+          onClick: () => onGuardar({ origen, destino, monto: Number(m.toFixed(2)),
+            recibido: r == null ? null : Number(r.toFixed(2)), concepto: concepto.trim(), referencia, hora }),
+          disabled: ocupado || malo,
+          style: { flex: 2, padding: "11px", borderRadius: 9, border: "none", background: malo ? "#aab3bd" : "#1a4fa0",
+            color: "#fff", cursor: malo ? "default" : "pointer", fontWeight: 800, fontSize: 13.5 }
+        }, ocupado ? "Guardando…" : "Registrar traslado"))));
+}
+
+// El saldo que Victor LEE de la app del banco. No se calcula: es el ancla contra
+// la que se compara el teorico. La gaveta no pasa por aqui — su saldo real es el
+// arqueo, y tenerlo en dos sitios seria tener dos verdades.
+function ModalSaldoBanco({ fecha, cuenta, ocupado, onCerrar, onGuardar }) {
+  const E = React.createElement;
+  const [saldo, setSaldo] = React.useState("");
+  const [notas, setNotas] = React.useState("");
+  const v = saldo === "" ? null : (Number(saldo) || 0);
+  const teorico = Number(cuenta.saldo_final_teorico) || 0;
+  const dif = v == null ? null : v - teorico;
+
+  const inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13.5, boxSizing: "border-box" };
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 4 };
+
+  return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
+    E("div", { style: { background: "#fff", borderRadius: 16, padding: 26, width: "100%", maxWidth: 440 } },
+      E("div", { style: { fontWeight: 800, fontSize: 17, marginBottom: 3 } }, "✍️ Saldo real de ", cuenta.nombre),
+      E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 16, lineHeight: 1.5 } },
+        "Al cierre del ", fecha, ". Ábrela en la app del banco y escribe el saldo tal cual aparece."),
+
+      E("div", { style: { background: "#f8f9fa", border: "1.5px solid #e0e4e8", borderRadius: 9, padding: "10px 12px", marginBottom: 14, fontSize: 12.5 } },
+        E("div", { style: { display: "flex", justifyContent: "space-between" } },
+          E("span", { style: { color: "#5a6472" } }, "Según la app debería haber"),
+          E("span", { style: { fontWeight: 800 } }, RDc(teorico)))),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Saldo real (RD$)"),
+        E("input", { type: "number", step: "0.01", value: saldo, autoFocus: true,
+          onChange: (e) => setSaldo(e.target.value), style: inp, placeholder: "0.00" })),
+
+      dif != null && E("div", { style: {
+        background: Math.abs(dif) < 0.005 ? "#e8f5ee" : "#fff7e6",
+        border: "1.5px solid " + (Math.abs(dif) < 0.005 ? "#1a6b3a" : "#d9a441"),
+        borderRadius: 9, padding: "10px 12px", marginBottom: 14, fontSize: 12.5
+      } },
+        E("div", { style: { display: "flex", justifyContent: "space-between", fontWeight: 800 } },
+          E("span", null, "Partidas pendientes"),
+          E("span", { style: { color: Math.abs(dif) < 0.005 ? "#1a6b3a" : "#b8860b" } }, (dif > 0 ? "+" : "") + RDc(dif))),
+        Math.abs(dif) >= 0.005 && E("div", { style: { fontSize: 11, color: "#92400e", marginTop: 5, lineHeight: 1.45 } },
+          "Normal: tarjetas que el banco aún no deposita, cargos del banco o cheques sin cobrar. Anótalo abajo si ya sabes qué es.")),
+
+      E("div", { style: { marginBottom: 18 } },
+        E("label", { style: lbl }, "Notas"),
+        E("input", { value: notas, onChange: (e) => setNotas(e.target.value), style: inp,
+          placeholder: "Faltan las tarjetas del viernes" })),
+
+      E("div", { style: { display: "flex", gap: 10 } },
+        E("button", { onClick: onCerrar, disabled: ocupado,
+          style: { flex: 1, padding: "11px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700, fontSize: 13.5 } }, "Cancelar"),
+        E("button", { onClick: () => onGuardar(Number(v.toFixed(2)), notas), disabled: ocupado || v == null,
+          style: { flex: 2, padding: "11px", borderRadius: 9, border: "none", background: v == null ? "#aab3bd" : "#1a6b3a",
+            color: "#fff", cursor: v == null ? "default" : "pointer", fontWeight: 800, fontSize: 13.5 } },
+          ocupado ? "Guardando…" : "Guardar saldo"))));
 }
 
 // El dia a dia: abrir caja, ver el libro movimiento a movimiento, anotar lo que

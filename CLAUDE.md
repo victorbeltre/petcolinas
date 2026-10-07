@@ -98,6 +98,32 @@ script):
    semillas `*_SEED` y las listas de candidatos estan vacias a proposito.
    No volver a llenarlas; todo vive en Supabase.
 
+## CAJA Y CUENTAS (M18/M19, oct 2026)
+La pestana Caja tiene 5 modos: Dia, Semana, Mes, Rango y Cuentas.
+El libro NO duplica nada: `pc_caja_libro` es una vista sobre ventas, abonos y
+gastos. Un TRASLADO (pc_traslados) no es ingreso ni gasto — es la misma plata
+cambiando de sitio — asi que NO toca el flujo del negocio, pero SI el efectivo
+de la gaveta y el saldo de las cuentas. Si alguien lo mete como gasto, el
+reporte dira que el negocio perdio esa plata.
+La comision de tarjeta NO esta escrita en ningun sitio: sale de restar lo que
+llego menos lo que salio en la liquidacion. No inventar un porcentaje.
+El banco NO se arquea, se concilia: su diferencia se llama "partidas
+pendientes", no descuadre (tarjetas a T+1/T+3 netas de comision, cargos del
+banco, cheques sin cobrar). Si se presenta como descuadre, dara rojo todas las
+noches y la gente dejara de mirar tambien el de la gaveta, que si sirve.
+Las cuentas de banco son SOLO-ADMIN (RLS + `pc_es_admin()` en las funciones).
+Pero `pc_caja_resumen` es SECURITY DEFINER y solo devuelve totales, para que
+caja tenga el efectivo teorico correcto sin ver un solo traslado ni un gasto.
+
+PENDIENTE DE VICTOR en este modulo:
+- Confirmar si `santacruz` es cuenta suya (hoy desactivada: 4 transferencias por
+  RD$ 4.925 en 2026, parece el banco DESDE el que pago un cliente).
+- Anotar una vez el saldo real de cada banco: sin ese punto de partida el
+  teorico es la suma de todo desde 2025 y no significa nada (la app lo avisa).
+- LOS GASTOS NO SE ESTAN REGISTRANDO: pc_gastos tiene 6 filas en junio, 1 en
+  agosto y 0 en septiembre. El flujo de caja solo puede ser tan cierto como lo
+  que se anote.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

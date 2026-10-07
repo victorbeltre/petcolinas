@@ -145,6 +145,57 @@ render("CajaReporte (centavos)", sandbox.CajaReporte, { modo: "rango" }, (h) => 
   const j = h.findIndex((x) => x === true);
   if (j >= 0) h[j] = false;
 }, "1,799.75");
+// M19 · Cuentas. Se inyecta la respuesta de pc_cuentas_estado tal cual la
+// devuelve el jsonb: si alguien le cambia la forma, revienta aqui y no delante
+// de Victor. Incluye una cuenta sin ancla y otra con partidas pendientes.
+const cuentaEj = (id, nombre, tipo, extra) => Object.assign({
+  cuenta_id: id, nombre, tipo, se_cuenta: tipo === "EFECTIVO",
+  ancla_fecha: "2026-10-06", ancla_saldo: 5000.25, ancla_origen: "declarado",
+  sin_ancla: false, saldo_inicial: 5000.25, entradas: 1799.75, salidas: 250.00,
+  saldo_final_teorico: 6550.00, declarado_hoy: null, declarado_origen: null,
+  diferencia: null, movimientos: 4
+}, extra || {});
+render("CajaCuentas", sandbox.CajaCuentas, {}, (h) => {
+  const i = h.findIndex((x) => x === null);   // estado
+  if (i < 0) throw new Error("no se encontró el estado 'estado'");
+  h[i] = { fecha: "2026-10-07", cuentas: [
+    cuentaEj("gaveta", "Caja chica (gaveta)", "EFECTIVO", { declarado_hoy: 6550.00, declarado_origen: "arqueo", diferencia: 0 }),
+    cuentaEj("banreservas", "Banreservas", "BANCO", { declarado_hoy: 6200.00, diferencia: -350.00 }),
+    cuentaEj("tarjetas", "Tarjetas por liquidar", "PUENTE", { sin_ancla: true, ancla_fecha: null, ancla_saldo: null }),
+    cuentaEj("sin_asignar", "Sin asignar", "SIN_ASIGNAR", { saldo_final_teorico: -85117.00 })
+  ] };
+  h[i + 1] = [{ id: 1, fecha: "2026-10-07", cuenta_origen: "tarjetas", cuenta_destino: "banreservas",
+    monto: 10000.00, monto_recibido: 9650.00, concepto: "Liquidacion POS" }];
+  h[i + 2] = [{ id: "gaveta", nombre: "Caja chica (gaveta)" }, { id: "banreservas", nombre: "Banreservas" }];
+  const j = h.findIndex((x) => x === true);  // cargando
+  if (j >= 0) h[j] = false;
+}, "Partidas pendientes");
+// Y que el aviso de "sin punto de partida" salga: sin el, un teorico que es la
+// suma de todo desde 2025 pasaria por un saldo real.
+render("CajaCuentas (sin ancla)", sandbox.CajaCuentas, {}, (h) => {
+  const i = h.findIndex((x) => x === null);
+  if (i < 0) throw new Error("no se encontró el estado 'estado'");
+  h[i] = { fecha: "2026-10-07", cuentas: [
+    cuentaEj("popular", "Popular", "BANCO", { sin_ancla: true, ancla_fecha: null, ancla_saldo: null })] };
+  h[i + 1] = []; h[i + 2] = [];
+  const j = h.findIndex((x) => x === true);
+  if (j >= 0) h[j] = false;
+}, "no tiene punto de partida");
+// Cuando el servidor dice que no, la pantalla lo dice y no enseña numeros.
+render("CajaCuentas (sin permiso)", sandbox.CajaCuentas, {}, (h) => {
+  const i = h.findIndex((x) => x === "");    // error
+  if (i >= 0) h[i] = "Las cuentas de banco solo las ve el administrador.";
+  const j = h.findIndex((x) => x === true);
+  if (j >= 0) h[j] = false;
+}, "solo las ve el administrador");
+render("ModalTraslado", sandbox.ModalTraslado, {
+  fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onGuardar: () => {},
+  cuentas: [{ id: "gaveta", nombre: "Caja chica (gaveta)" }, { id: "banreservas", nombre: "Banreservas" }]
+}, null, "Mover dinero entre cuentas");
+render("ModalSaldoBanco", sandbox.ModalSaldoBanco, {
+  fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onGuardar: () => {},
+  cuenta: { cuenta_id: "banreservas", nombre: "Banreservas", saldo_final_teorico: 6550.00 }
+}, null, "Saldo real de ");
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
   resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
@@ -321,4 +372,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (30 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+console.log(`✓ Vistas principales renderizan sin errores (35 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
