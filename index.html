@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-07 13:55Z";
+const PC_BUILD = "2026-10-11 14:49Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3175,6 +3175,36 @@ function resolverTelFactura(f, clientes) {
     c = conTel.find((x) => { const n = norm(x.nombrePropietario); return n.length >= 4 && (n.includes(duenio) || duenio.includes(n)); });
   }
   return c ? dig(c.telefono) : "";
+}
+// A quien pertenece una VENTA. No se puede reusar resolverTelFactura: una factura
+// trae mascota, propietario, clienteId y telefono por separado, pero pc_ventas solo
+// guarda `cliente` como un string pegado ("Coco Reyes"). Con la busqueda parcial de
+// alla, que devuelve el PRIMER parecido, las ventas del 10 oct 2026 habrian mandado
+// el WhatsApp de "Coco Reyes" a Laura Santos (dueña de otro "Coco") en vez de a
+// Jenny Reyes, y el de "Cookie Ruiz" a Nathalie Oviedo en vez de a Laura Ruiz.
+// Por eso aqui: exacto primero, y el parcial solo vale si deja UN candidato.
+// Si quedan varios se devuelve "ambiguo" y la interfaz NO ofrece enviar: mandarle
+// "su mascota esta lista" al cliente equivocado es peor que no mandar nada.
+function resolverClienteVenta(v, clientes) {
+  const dig = (t) => String(t || "").replace(/\D/g, "");
+  const norm = (s) => String(s || "").toLowerCase().trim();
+  const cli = norm(v && v.cliente);
+  const vacio = { tel: "", duenio: "", estado: "sin" };
+  if (!cli) return vacio;
+
+  const conTel = (Array.isArray(clientes) ? clientes : []).filter((c) => dig(c.telefono).length >= 10);
+  const salida = (c) => ({ tel: dig(c.telefono), duenio: c.nombrePropietario || "", estado: "ok" });
+
+  const exactos = conTel.filter((c) => norm(c.nombreMascota) === cli);
+  if (exactos.length === 1) return salida(exactos[0]);
+  if (exactos.length > 1) return { tel: "", duenio: "", estado: "ambiguo" };
+
+  const parciales = conTel.filter((c) => {
+    const n = norm(c.nombreMascota);
+    return n.length >= 3 && (cli.includes(n) || n.includes(cli));
+  });
+  if (parciales.length === 1) return salida(parciales[0]);
+  return parciales.length > 1 ? { tel: "", duenio: "", estado: "ambiguo" } : vacio;
 }
 
 function enviarPDFWhatsApp(f, clientes) {
@@ -14920,6 +14950,9 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [ok, setOk] = React.useState(null);
   const [editV, setEditV] = React.useState(null);
   const [verSemana, setVerSemana] = React.useState(false);
+  // Arranca en "Todas": el panel se usa sobre todo para avisarle al dueño que su
+  // mascota esta lista, y eso no depende de quien haya tecleado la factura.
+  const [verTodas, setVerTodas] = React.useState(true);
 
   const CC = { verde:"#1a6b3a", azul: acento || "#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
@@ -15349,32 +15382,65 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
         // Facturas del día
         React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }},
-          React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }},
-            React.createElement("div", { style:{ fontWeight:800, fontSize:14 }}, "📋 Mis facturas"),
-            React.createElement("button", { onClick:()=>setVerSemana(s=>!s), style:{ background:verSemana?CC.azul:"#f4f5f7", color:verSemana?"#fff":CC.gris, border:"none", borderRadius:8, padding:"5px 11px", fontSize:11, fontWeight:700, cursor:"pointer" }},
-              verSemana ? "Últimos 7 días" : "Solo hoy")
+          React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4, gap:8, flexWrap:"wrap" }},
+            React.createElement("div", { style:{ fontWeight:800, fontSize:14 }}, verTodas ? "📋 Servicios del día" : "📋 Mis facturas"),
+            React.createElement("div", { style:{ display:"flex", gap:6 }},
+              React.createElement("button", { onClick:()=>setVerTodas(s=>!s), title:verTodas?"Ver solo lo que registraste tú":"Ver todo lo que se facturó, lo haya registrado quien sea", style:{ background:verTodas?acento:"#f4f5f7", color:verTodas?"#fff":CC.gris, border:"none", borderRadius:8, padding:"5px 11px", fontSize:11, fontWeight:700, cursor:"pointer" }},
+                verTodas ? "Todas" : "Solo mías"),
+              React.createElement("button", { onClick:()=>setVerSemana(s=>!s), style:{ background:verSemana?CC.azul:"#f4f5f7", color:verSemana?"#fff":CC.gris, border:"none", borderRadius:8, padding:"5px 11px", fontSize:11, fontWeight:700, cursor:"pointer" }},
+                verSemana ? "Últimos 7 días" : "Solo hoy")
+            )
           ),
+          React.createElement("div", { style:{ color:CC.gris, fontSize:11, marginBottom:10 }},
+            "Toca 💬 para escribirle al dueño por WhatsApp."),
           (() => {
             const hoyStr = new Date().toISOString().slice(0,10);
             const desde = (() => { const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().slice(0,10); })();
             const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
+            const esMia = v => (v.recibidopor||"").toLowerCase().includes(nombreBase);
             const enRango = v => verSemana ? (v.fecha >= desde && v.fecha <= hoyStr) : v.fecha === hoyStr;
             const propias = (ventas||[])
-              .filter(v => enRango(v) && (v.recibidopor||"").toLowerCase().includes(nombreBase))
+              .filter(v => enRango(v) && (verTodas || esMia(v)))
               .sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)) || (Number(b.id)||0) - (Number(a.id)||0))
-              .slice(0, verSemana ? 25 : 10);
-            if (propias.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:12, textAlign:"center", padding:"12px 0" }}, verSemana ? "Sin facturas en los últimos 7 días" : "Sin facturas hoy");
-            return propias.map((v,i) => React.createElement("div", { key:v.id||i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:12 }},
-              React.createElement("div", { style:{ flex:1, minWidth:0 }},
-                React.createElement("div", { style:{ fontWeight:600 }}, v.cliente||"—"),
-                React.createElement("div", { style:{ color:CC.gris, fontSize:11 }}, (verSemana ? v.fecha + " · " : "") + (v.servicio||"").slice(0,30))
-              ),
-              React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:6 }},
-                React.createElement("div", { style:{ fontWeight:700, color:CC.verde }}, RD2(v.total)),
-                React.createElement("button", { onClick:()=>abrirEdicion(v), title:"Corregir esta factura", style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "✏️"),
-                React.createElement("button", { onClick:()=>imprimir({...v, clienteNombre:v.cliente}), style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "🖨️")
-              )
-            ));
+              .slice(0, verSemana ? 40 : 30);
+            if (propias.length === 0) return React.createElement("div", { style:{ color:CC.gris, fontSize:12, textAlign:"center", padding:"12px 0" }},
+              verSemana
+                ? (verTodas ? "Sin servicios en los últimos 7 días" : "Sin facturas tuyas en los últimos 7 días")
+                : (verTodas ? "Todavía no se ha facturado nada hoy" : "Todavía no has facturado nada hoy"));
+            return propias.map((v,i) => {
+              const q = resolverClienteVenta(v, clientes);
+              const mia = esMia(v);
+              const msgWA = "Hola" + (q.duenio ? " " + String(q.duenio).split(" ")[0] : "") + "! Le escribimos de PetColinas 🐾\n\n" +
+                (v.cliente ? "🐾 " + v.cliente + "\n" : "") +
+                ((v.servicio||"") ? v.servicio + "\n" : "") +
+                "Total: " + RD2(v.total);
+              const subtitulo = (verSemana ? v.fecha + " · " : "") +
+                (verTodas && v.recibidopor ? v.recibidopor + " · " : "") +
+                (v.servicio||"").slice(0,30);
+              return React.createElement("div", { key:v.id||i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:12 }},
+                React.createElement("div", { style:{ flex:1, minWidth:0 }},
+                  React.createElement("div", { style:{ fontWeight:600 }}, v.cliente||"—"),
+                  React.createElement("div", { style:{ color:CC.gris, fontSize:11 }}, subtitulo),
+                  // El dueño se muestra para que ella confirme a quien le va a escribir
+                  // ANTES de tocar enviar: el nombre de la venta es solo el de la mascota.
+                  q.estado === "ok" && q.duenio && React.createElement("div", { style:{ color:"#15803d", fontSize:11 }}, "👤 " + q.duenio)
+                ),
+                React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:6 }},
+                  React.createElement("div", { style:{ fontWeight:700, color:CC.verde }}, RD2(v.total)),
+                  React.createElement("button", {
+                    onClick: () => q.estado === "ok"
+                      ? abrirWA(q.tel, msgWA)
+                      : avisar(q.estado === "ambiguo"
+                          ? "Hay varios clientes que encajan con \"" + (v.cliente||"") + "\" en el CRM. Abre su ficha y escríbele desde ahí, para no mandarle el mensaje al dueño equivocado."
+                          : "No hay teléfono guardado para \"" + (v.cliente||"") + "\". Agrégalo en la ficha del CRM y la próxima vez se abre solo.", "aviso"),
+                    title: q.estado === "ok" ? ("Escribirle a " + (q.duenio || v.cliente)) : (q.estado === "ambiguo" ? "Varios clientes encajan con este nombre" : "Sin teléfono en el CRM"),
+                    style:{ background: q.estado==="ok" ? "#25D366" : "#f4f5f7", color: q.estado==="ok" ? "#fff" : CC.gris, border: q.estado==="ok" ? "none" : "1px solid #dde0e4", borderRadius:6, padding:"3px 8px", cursor:"pointer", fontSize:11, fontWeight:700 }
+                  }, q.estado === "ok" ? "💬" : (q.estado === "ambiguo" ? "💬 ?" : "💬 ✕")),
+                  mia && React.createElement("button", { onClick:()=>abrirEdicion(v), title:"Corregir esta factura", style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "✏️"),
+                  React.createElement("button", { onClick:()=>imprimir({...v, clienteNombre:v.cliente}), style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "🖨️")
+                )
+              );
+            });
           })()
         )
       )
