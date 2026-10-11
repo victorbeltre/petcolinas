@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-11 14:49Z";
+const PC_BUILD = "2026-10-11 15:08Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -577,7 +577,7 @@ function useSupabase(table, seed = []) {
         const rows = await supaFetchTodo(table, "?order=id.asc");
         console.log(`[Supabase] ${table} \u2192 ${Array.isArray(rows) ? rows.length : "ERR"} filas`, rows?.error || "");
         if (Array.isArray(rows) && rows.length > 0) {
-          const HOY = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+          const HOY = fechaLocal();
           // Fecha más frecuente entre ventas reales (no futuras) → fallback inteligente para fechas erróneas
           const dateCounts_ = {}; rows.forEach(r => { if (r.fecha && r.fecha <= HOY) dateCounts_[r.fecha] = (dateCounts_[r.fecha]||0)+1; });
           const modaFecha_ = Object.keys(dateCounts_).length ? Object.keys(dateCounts_).sort((a,b)=>dateCounts_[b]-dateCounts_[a])[0] : HOY;
@@ -1174,7 +1174,7 @@ function imprimirCarnetVacunas(mascota, cliente, ventas) {
     const d = (v.descripcion || v.servicio || "").toLowerCase();
     return (d.includes("albendazol") || d.includes("desparasit") || d.includes("nexgard") || d.includes("bravecto") || d.includes("simparica")) && (v.cliente || "").toLowerCase().trim() === nombre.toLowerCase();
   }).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
-  const proxAnno = (f) => { try { const d = new Date(f + "T00:00:00"); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); } catch { return ""; } };
+  const proxAnno = (f) => { try { const d = new Date(f + "T00:00:00"); d.setFullYear(d.getFullYear() + 1); return fechaLocal(d); } catch { return ""; } };
   const filas = vacunas.map(v => "<tr><td>" + (v.fecha || "") + "</td><td>" + ((v.descripcion || v.servicio || "")) + "</td><td>" + proxAnno(v.fecha) + "</td></tr>").join("");
   const filasD = despar.map(v => "<tr><td>" + (v.fecha || "") + "</td><td>" + ((v.descripcion || v.servicio || "")) + "</td></tr>").join("");
   const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Carnet de Vacunaci\xF3n \u2014 " + nombre + "</title><style>" +
@@ -1821,7 +1821,56 @@ const RD = (n) => "RD$ " + (Math.round(Number(n) || 0) || 0).toLocaleString("es-
 // el arqueo deja de cuadrar sin que nadie sepa por que. No se cambia RD()
 // porque lo usa toda la app; el modulo de caja usa este.
 const RDc = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const hoy = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+// Fecha de CALENDARIO LOCAL (yyyy-mm-dd), no UTC. toISOString() convierte a UTC
+// y RD va en UTC-4: a partir de las 8:00 p.m. locales la fecha UTC ya es la de
+// mañana, asi que una venta de las 9 p.m. del sabado quedaba sellada como del
+// domingo y el dia del negocio se partia en dos para reportes y comisiones.
+// Se le resta el desfase del huso antes de formatear, asi devuelve siempre el
+// dia que marca el reloj de la pared. Es `function` para que quede izada y la
+// puedan usar las partes del archivo que se definen antes que ella.
+function fechaLocal(d) {
+  const x = (d instanceof Date && !isNaN(d)) ? d : /* @__PURE__ */ new Date();
+  return new Date(x.getTime() - x.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+}
+const hoy = () => fechaLocal();
+// Al imprimir, el navegador saca el nombre del archivo de "Guardar como PDF" del
+// <title> de la ventana. El admin ponia solo "Factura #12 - PetColinas" y el
+// portal de la empleada ni siquiera el numero, asi que todos los PDF guardados
+// salian con el mismo nombre y habia que renombrarlos uno a uno para archivarlos.
+// Se quitan los caracteres que Windows y macOS no admiten en un nombre de archivo.
+function tituloFacturaPDF(numero, mascota, duenio) {
+  const limpio = (s) => String(s == null ? "" : s).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  const n = limpio(numero);
+  return ["Factura" + (n ? " " + n : ""), limpio(mascota), limpio(duenio)]
+    .filter(Boolean).join(" - ") + " - PetColinas";
+}
+// Los dos mensajes que el CRM del admin ya mandaba, sacados a funciones para que
+// el portal de la doctora use EXACTAMENTE el mismo texto. Si se duplicaban, el
+// dia que cambie el recargo de Day Care habria que acordarse de tocar dos sitios
+// y uno de los dos se quedaria viejo.
+function nombreDuenio(c) { return (c && (c.nombrePropietario || c.nombrepropietario)) || "estimado cliente"; }
+function nombreMascota(c) { return (c && (c.nombreMascota || c.nombremascota)) || ""; }
+function msgMascotaLista(c) {
+  return "🐾 *¡Su mascota está lista!* 🐾\n\n" +
+    "Hola " + nombreDuenio(c) + ", le informamos que *" + (nombreMascota(c) || "su mascota") + "* ya está lista para recoger.\n\n" +
+    "⏰ *Horario:* Lunes, Miércoles-Domingo\n" +
+    "📍 *Dirección:* Plaza Las Colinas, Santo Domingo Oeste\n" +
+    "📞 *Teléfono:* 809-752-6806\n\n" +
+    "⚠️ *Nota Importante:* Una vez pasadas las dos primeras horas de haber culminado el servicio y enviado este mensaje, se procederá a cobrar un monto de *RD$400 adicionales por cada hora transcurrida* por servicios de Day Care.\n\n" +
+    "¡Gracias por confiar en PetColinas! 💖";
+}
+function msgBienvenida(c, lineas, total) {
+  const ls = Array.isArray(lineas) ? lineas : [];
+  const bloque = ls.length === 0
+    ? "*Servicio a realizar:* Por confirmar\n\n"
+    : (ls.length === 1 ? "*Servicio:* " + ls[0] + "\n" : "*Servicios:*\n" + ls.map((l) => "• " + l).join("\n") + "\n") +
+      "*Total:* RD$" + (Number(total) || 0).toLocaleString("es-DO") + "\n\n";
+  return "🐾 *¡Bienvenido/a a PetColinas!* 🐾\n\n" +
+    "Hola " + nombreDuenio(c) + ", con mucho gusto les damos la bienvenida a nuestra familia PetColinas.\n\n" +
+    "*Mascota:* " + nombreMascota(c) + "\n" +
+    bloque +
+    "Le avisaremos por este mismo medio cuando su mascota esté lista. 💬\n\n_Plaza Las Colinas • 809-752-6806_";
+}
 // Deduce el area real de un servicio a partir de su nombre. Se usa para
 // reclasificar en los reportes las ventas guardadas como "mixta" (o con un
 // area vieja/incorrecta) en grooming/veterinaria/farmacia.
@@ -3189,22 +3238,23 @@ function resolverClienteVenta(v, clientes) {
   const dig = (t) => String(t || "").replace(/\D/g, "");
   const norm = (s) => String(s || "").toLowerCase().trim();
   const cli = norm(v && v.cliente);
-  const vacio = { tel: "", duenio: "", estado: "sin" };
+  const vacio = { tel: "", duenio: "", estado: "sin", ficha: null };
+  const ambiguo = { tel: "", duenio: "", estado: "ambiguo", ficha: null };
   if (!cli) return vacio;
 
   const conTel = (Array.isArray(clientes) ? clientes : []).filter((c) => dig(c.telefono).length >= 10);
-  const salida = (c) => ({ tel: dig(c.telefono), duenio: c.nombrePropietario || "", estado: "ok" });
+  const salida = (c) => ({ tel: dig(c.telefono), duenio: c.nombrePropietario || "", estado: "ok", ficha: c });
 
   const exactos = conTel.filter((c) => norm(c.nombreMascota) === cli);
   if (exactos.length === 1) return salida(exactos[0]);
-  if (exactos.length > 1) return { tel: "", duenio: "", estado: "ambiguo" };
+  if (exactos.length > 1) return ambiguo;
 
   const parciales = conTel.filter((c) => {
     const n = norm(c.nombreMascota);
     return n.length >= 3 && (cli.includes(n) || n.includes(cli));
   });
   if (parciales.length === 1) return salida(parciales[0]);
-  return parciales.length > 1 ? { tel: "", duenio: "", estado: "ambiguo" } : vacio;
+  return parciales.length > 1 ? ambiguo : vacio;
 }
 
 function enviarPDFWhatsApp(f, clientes) {
@@ -4002,7 +4052,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     win.document.write(`
       <!DOCTYPE html><html><head>
       <meta charset="UTF-8">
-      <title>Factura #${f.numero} - PetColinas</title>
+      <title>${tituloFacturaPDF(f.numero, f.mascota, f.propietario || (clienteData && clienteData.nombrePropietario))}</title>
       <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family: Arial, sans-serif; padding:40px; color:#1a1d23; font-size:13px; }
@@ -6293,7 +6343,7 @@ function ExportarExcel({ ventas, gastos, clientes, pagosNom, empleados, inventar
     XLSX.utils.book_append_sheet(wb, wsRes, "Resumen General");
 
     // ── GENERAR ARCHIVO ─────────────────────────────────────────────────
-    const fechaHoy = new Date().toISOString().slice(0,10);
+    const fechaHoy = fechaLocal();
     XLSX.writeFile(wb, `PetColinas_Export_${fechaHoy}.xlsx`);
     setExportando(false);
     setExportado(true);
@@ -7197,7 +7247,7 @@ function sumarDias(fechaISO, n) {
   const d = new Date(base + "T12:00:00");
   if (isNaN(d.getTime())) return base;
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return fechaLocal(d);
 }
 // Evita proponer domingo (cerrado): lo corre al lunes.
 function evitarDomingo(fechaISO) {
@@ -7415,7 +7465,7 @@ function vencimientoInfo(fechaStr) {
 function sumarDias(fechaStr, dias) {
   const d = /* @__PURE__ */ new Date(fechaStr + "T00:00:00");
   d.setDate(d.getDate() + dias);
-  return d.toISOString().slice(0, 10);
+  return fechaLocal(d);
 }
 function estadoSeguimiento(seg) {
   const dias = diasHasta(seg.proximaFecha);
@@ -8446,7 +8496,7 @@ function AlertaVacunas({ ventas = [], clientes = [], onIr }) {
     const prox = new Date(fecha + "T00:00:00");
     prox.setFullYear(prox.getFullYear() + 1);
     const dias = Math.round((prox - hoyDate) / (1000 * 60 * 60 * 24));
-    return { pac, tipo, dias, desc, fecha, tel: telDe(pac), proxFecha: prox.toISOString().slice(0, 10) };
+    return { pac, tipo, dias, desc, fecha, tel: telDe(pac), proxFecha: fechaLocal(prox) };
   }).filter(x => x.dias <= 45).sort((a, b) => a.dias - b.dias);
   if (proximas.length === 0) return null;
   const vencidas = proximas.filter(x => x.dias < 0);
@@ -9733,7 +9783,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     enviarASheet(nueva);
     // Auto-crear seguimiento si es consulta veterinaria
     if (area === "veterinaria" && descripcion.toLowerCase().includes("consulta") && typeof setSeguimientos === "function") {
-      const sigFecha = (() => { try { const d = new Date(fecha); d.setDate(d.getDate()+30); return d.toISOString().slice(0,10); } catch { return fecha; } })();
+      const sigFecha = (() => { try { const d = new Date(fecha); d.setDate(d.getDate()+30); return fechaLocal(d); } catch { return fecha; } })();
       const seg = { id: Date.now()+1, mascota: cliente, propietario: "", telefono: "", tipo: "control_post_consulta", frecuencia: 30, ultimaFecha: fecha, proximaFecha: sigFecha, notas: "Control post-consulta generado automáticamente", completado: false, activo: true };
       setSeguimientos(prev => [...prev, seg]);
     }
@@ -11335,7 +11385,7 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
     if (mes !== hoyStr.slice(0, 7)) return null;
     const falta = Math.max(0, PE - totalVentas);
     const [y, mm] = mes.split("-").map(Number);
-    const ultimoDia = new Date(y, mm, 0).toISOString().slice(0, 10);
+    const ultimoDia = fechaLocal(new Date(y, mm, 0));
     const diasQuedan = Math.max(0, diasLaborables(hoyStr, ultimoDia));
     return { falta, diasQuedan, porDia: diasQuedan > 0 ? Math.ceil(falta / diasQuedan) : falta };
   }, [mes, totalVentas, PE]);
@@ -12425,16 +12475,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
   outline: true,
   onClick: () => {
     const tel = (c.telefono || "").replace(/\D/g, "");
-    const msg = encodeURIComponent(
-      "\u{1F43E} *\u00A1Su mascota est\xe1 lista!* \u{1F43E}\n\n" +
-      "Hola " + (c.nombrePropietario || c.nombrepropietario || "estimado cliente") + ", le informamos que *" + (c.nombreMascota || c.nombremascota || "su mascota") + "* ya est\xe1 lista para recoger.\n\n" +
-      "\u23F0 *Horario:* Lunes, Mi\xe9rcoles-Domingo\n" +
-      "\u{1F4CD} *Direcci\xF3n:* Plaza Las Colinas, Santo Domingo Oeste\n" +
-      "\u{1F4DE} *Tel\xe9fono:* 809-752-6806\n\n" +
-      "\u26A0\uFE0F *Nota Importante:* Una vez pasadas las dos primeras horas de haber culminado el servicio y enviado este mensaje, se proceder\xe1 a cobrar un monto de *RD$400 adicionales por cada hora transcurrida* por servicios de Day Care.\n\n" +
-      "\u00A1Gracias por confiar en PetColinas! \u{1F496}"
-    );
-    abrirWA(tel, decodeURIComponent(msg));
+    abrirWA(tel, msgMascotaLista(c));
   }
 }, "\u2705 Mascota Lista"),
 /* Botón Facturación */
@@ -12522,8 +12563,8 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
     ),
     React.createElement("tbody", null,
       [...ventasCliente].filter(v => (v.descripcion || v.servicio || "").toLowerCase().includes("vacuna")).sort((a,b) => b.fecha.localeCompare(a.fecha)).map((v, i) => {
-        const proxFecha = (() => { try { const d = new Date(v.fecha); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); } catch { return ""; } })();
-        const vencida = proxFecha && proxFecha < new Date().toISOString().slice(0,10);
+        const proxFecha = (() => { try { const d = new Date(v.fecha); d.setFullYear(d.getFullYear()+1); return fechaLocal(d); } catch { return ""; } })();
+        const vencida = proxFecha && proxFecha < fechaLocal();
         return React.createElement("tr", { key: i, style: { borderBottom: "1px solid #f0f4ff", background: vencida ? "#fff1f1" : "transparent" } },
           React.createElement("td", { style: { padding: "8px 12px" } }, v.fecha),
           React.createElement("td", { style: { padding: "8px 12px", fontWeight: 600 } }, v.descripcion || v.servicio),
@@ -12688,14 +12729,14 @@ function DashboardVet({ usuario, ventas, onVerHistorias, onVerServicios }) {
   const consultasMes = misMes.filter((v) => v.descripcion?.toLowerCase().includes("consulta")).length;
   const vacunasMes = misMes.filter((v) => (v.descripcion || v.servicio || "")?.toLowerCase().includes("vacuna")).length;
   const pacientesUnicos = [...new Set(misMes.map((v) => v.cliente))].filter((c) => c && c !== "\u2014").length;
-  const hoyStr = new Date().toISOString().slice(0,10);
+  const hoyStr = fechaLocal();
   const pacientesHoy = [...new Set(misVentas.filter(v => v.fecha === hoyStr).map(v => v.cliente))].filter(Boolean);
   const proximasVacunasHoy = (() => {
     const en60 = new Date(); en60.setDate(en60.getDate()+60);
-    const limite = en60.toISOString().slice(0,10);
+    const limite = fechaLocal(en60);
     return misVentas
       .filter(v => (v.descripcion||v.servicio||"").toLowerCase().includes("vacuna"))
-      .map(v => { try { const d = new Date(v.fecha); d.setFullYear(d.getFullYear()+1); return { cliente: v.cliente, vacuna: v.descripcion||v.servicio, proxFecha: d.toISOString().slice(0,10), vencida: d.toISOString().slice(0,10) < hoyStr }; } catch { return null; } })
+      .map(v => { try { const d = new Date(v.fecha); d.setFullYear(d.getFullYear()+1); return { cliente: v.cliente, vacuna: v.descripcion||v.servicio, proxFecha: fechaLocal(d), vencida: fechaLocal(d) < hoyStr }; } catch { return null; } })
       .filter(x => x && x.proxFecha <= limite)
       .sort((a,b) => a.proxFecha.localeCompare(b.proxFecha))
       .slice(0,10);
@@ -12706,7 +12747,7 @@ function DashboardVet({ usuario, ventas, onVerHistorias, onVerServicios }) {
     d1.setDate(d1.getDate() - hoyD.getDay() - i * 7 + 1);
     const d2 = new Date(d1);
     d2.setDate(d2.getDate() + 5);
-    const s1 = d1.toISOString().slice(0, 10), s2 = d2.toISOString().slice(0, 10);
+    const s1 = fechaLocal(d1), s2 = fechaLocal(d2);
     const sem = misVentas.filter((v) => v.fecha >= s1 && v.fecha <= s2);
     const label = i === 0 ? "Esta semana" : i === 1 ? "Sem. anterior" : `${d1.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit" })}`;
     return { label, total: sem.reduce((s, v) => s + v.total, 0), servicios: sem.length, ventas: sem, id: `sem_${i}` };
@@ -14367,7 +14408,7 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = comisionPc
     if (!selProd || !cliente.trim()) return avisar("Selecciona producto y escribe el nombre del cliente");
     const v = {
       id: Date.now(),
-      fecha: new Date().toISOString().slice(0,10),
+      fecha: fechaLocal(),
       cliente: cliente.trim(),
       area: "farmacia",
       servicio: qty > 1 ? qty + "x " + selProd.nombre : selProd.nombre,
@@ -14651,7 +14692,7 @@ function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
     if (!selProd || !cliente.trim()) return avisar("Selecciona producto y cliente");
     const v = {
       id: Date.now(),
-      fecha: new Date().toISOString().slice(0,10),
+      fecha: fechaLocal(),
       cliente: cliente.trim(),
       area: "farmacia",
       servicio: qty > 1 ? qty + "x " + selProd.nombre : selProd.nombre,
@@ -15025,11 +15066,11 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       if (!(ab > 0)) return avisar("Escribe cu\xE1nto est\xE1 abonando el cliente.");
       if (ab > totalFinal) return avisar("El abono (" + RD2(ab) + ") no puede ser mayor que el total (" + RD2(totalFinal) + ").\n\nSi ya pag\xF3 todo, escoge la forma de pago normal.");
       if (!fechaRecordatorio) return avisar("Falta la fecha para recordarle al cliente que termine de pagar.");
-      abonosNueva = [{ fecha: new Date().toISOString().slice(0,10), monto: ab, forma: abonoForma, banco: "", por: usuario.nombre }];
+      abonosNueva = [{ fecha: fechaLocal(), monto: ab, forma: abonoForma, banco: "", por: usuario.nombre }];
       abonadoNueva = ab;
       recordatorioNueva = fechaRecordatorio;
     }
-    const fecha = new Date().toISOString().slice(0,10);
+    const fecha = fechaLocal();
     const descripcion = carrito.map(it => (it.qty > 1 ? it.qty + "x " : "") + it.nombre).join(" + ");
     const formapagoTexto = (pago === "abono" || pago === "tarjeta_link") ? "Pago pendiente" : pago;
     const v = {
@@ -15084,7 +15125,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     setEditV({
       original: v,
       cliente: v.cliente || "",
-      fecha: v.fecha || new Date().toISOString().slice(0,10),
+      fecha: v.fecha || fechaLocal(),
       items: its.length > 0
         ? its.map((it, i) => ({
             key: "e" + i + "_" + Date.now(),
@@ -15157,7 +15198,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       formapago: editV.pago,
       recibidopor: editV.atendido,
       editadopor: usuario.nombre,
-      notas: [o.notas, "Editada el " + new Date().toISOString().slice(0,10) + " por " + usuario.nombre + ": " + editV.motivo.trim()].filter(Boolean).join(" \xB7 ")
+      notas: [o.notas, "Editada el " + fechaLocal() + " por " + usuario.nombre + ": " + editV.motivo.trim()].filter(Boolean).join(" \xB7 ")
     };
     setVentas(prev => (prev || []).map(v => String(v.id) === String(o.id) ? actualizada : v));
     upsertOne("pc_ventas", { ...actualizada, __cambios: cambios })
@@ -15168,14 +15209,18 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   }
 
   function imprimir(facturaData) {
-    const fecha = facturaData.fecha || new Date().toISOString().slice(0,10);
+    const fecha = facturaData.fecha || fechaLocal();
+    // Una venta no guarda al dueño, solo el nombre de la mascota, asi que se
+    // busca en el CRM para que el PDF salga con los dos nombres.
+    const mascotaPDF = facturaData.clienteNombre || facturaData.cliente || "";
+    const duenioPDF = resolverClienteVenta({ cliente: mascotaPDF }, clientes).duenio;
     const items = parseItemsFactura(facturaData.items);
     const lineas = items.length > 0
       ? items.map(it => `<tr><td>${(it.qty>1?it.qty+"x ":"")+it.nombre}</td><td style="text-align:right">RD$ ${Math.round(it.precioUnit).toLocaleString("es-DO")}</td><td style="text-align:center">${it.qty}</td>${it.descPct>0?`<td style="text-align:center">${it.descPct}%</td>`:"<td>—</td>"}<td style="text-align:right;font-weight:700">RD$ ${Math.round(it.subtotal).toLocaleString("es-DO")}</td></tr>`).join("")
       : `<tr><td colspan="5">${facturaData.servicio||""}</td></tr>`;
     const descLine = (facturaData.descuento||0) > 0 ? `<tr><td colspan="4" style="text-align:right;color:#c0392b">Descuento</td><td style="text-align:right;color:#c0392b">- RD$ ${Math.round(facturaData.descuento).toLocaleString("es-DO")}</td></tr>` : "";
     const w = window.open("","_blank","width=420,height=620");
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura PetColinas</title>
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tituloFacturaPDF(facturaData.numero || facturaData.id, mascotaPDF, duenioPDF)}</title>
     <style>body{font-family:'Segoe UI',sans-serif;margin:0;padding:20px;font-size:13px;color:#222}
     .logo{text-align:center;margin-bottom:8px}.logo h1{font-size:20px;margin:0;color:#1a6b3a}
     .logo p{margin:2px 0;font-size:11px;color:#666}hr{border:none;border-top:1px dashed #ccc;margin:10px 0}
@@ -15394,8 +15439,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
           React.createElement("div", { style:{ color:CC.gris, fontSize:11, marginBottom:10 }},
             "Toca 💬 para escribirle al dueño por WhatsApp."),
           (() => {
-            const hoyStr = new Date().toISOString().slice(0,10);
-            const desde = (() => { const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().slice(0,10); })();
+            const hoyStr = fechaLocal();
+            const desde = (() => { const d = new Date(); d.setDate(d.getDate() - 6); return fechaLocal(d); })();
             const nombreBase = usuario.nombre.split(" ")[0].toLowerCase();
             const esMia = v => (v.recibidopor||"").toLowerCase().includes(nombreBase);
             const enRango = v => verSemana ? (v.fecha >= desde && v.fecha <= hoyStr) : v.fecha === hoyStr;
@@ -15436,13 +15481,54 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
                     title: q.estado === "ok" ? ("Escribirle a " + (q.duenio || v.cliente)) : (q.estado === "ambiguo" ? "Varios clientes encajan con este nombre" : "Sin teléfono en el CRM"),
                     style:{ background: q.estado==="ok" ? "#25D366" : "#f4f5f7", color: q.estado==="ok" ? "#fff" : CC.gris, border: q.estado==="ok" ? "none" : "1px solid #dde0e4", borderRadius:6, padding:"3px 8px", cursor:"pointer", fontSize:11, fontWeight:700 }
                   }, q.estado === "ok" ? "💬" : (q.estado === "ambiguo" ? "💬 ?" : "💬 ✕")),
+                  // Mismo mensaje que manda el admin desde el CRM, con la nota de
+                  // las 2 horas y los RD$400/hora de Day Care. Solo sale cuando se
+                  // sabe a quien se le escribe.
+                  q.estado === "ok" && React.createElement("button", {
+                    onClick: () => abrirWA(q.tel, msgMascotaLista(q.ficha)),
+                    title: "Avisarle a " + (q.duenio || v.cliente) + " que su mascota está lista (incluye la nota de las 2 horas)",
+                    style:{ background:"#fff", color:"#15803d", border:"1px solid #25D366", borderRadius:6, padding:"3px 8px", cursor:"pointer", fontSize:11, fontWeight:700 }
+                  }, "✅"),
                   mia && React.createElement("button", { onClick:()=>abrirEdicion(v), title:"Corregir esta factura", style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "✏️"),
                   React.createElement("button", { onClick:()=>imprimir({...v, clienteNombre:v.cliente}), style:{ background:"none", border:"1px solid #dde0e4", borderRadius:6, padding:"3px 7px", cursor:"pointer", fontSize:11, color:CC.gris }}, "🖨️")
                 )
               );
             });
           })()
-        )
+        ),
+
+        // ── Mascotas que se registraron hoy: darles la bienvenida ──
+        // No se manda solo. Un mensaje automatico a un cliente real, disparado por
+        // un alta que pudo ser un duplicado o tener el telefono mal tecleado, sale
+        // sin que nadie lo lea. Aqui se listan y ella decide y revisa antes.
+        (() => {
+          const nuevas = (clientes||[])
+            .filter(c => String(c.fechaRegistro || c.fecharegistro || "").slice(0,10) === fechaLocal())
+            .sort((a,b) => String(b.id).localeCompare(String(a.id)));
+          if (nuevas.length === 0) return null;
+          return React.createElement("div", { style:{ background:"#fff", borderRadius:14, padding:20, boxShadow:"0 2px 12px rgba(0,0,0,0.07)", marginTop:16 }},
+            React.createElement("div", { style:{ fontWeight:800, fontSize:14, marginBottom:4 }}, "🐾 Mascotas nuevas de hoy"),
+            React.createElement("div", { style:{ color:CC.gris, fontSize:11, marginBottom:10 }},
+              nuevas.length + (nuevas.length === 1 ? " ficha creada hoy. Toca 👋 para darle la bienvenida." : " fichas creadas hoy. Toca 👋 para darles la bienvenida.")),
+            nuevas.map((c,i) => {
+              const tel = String(c.telefono||"").replace(/\D/g,"");
+              const puede = tel.length >= 10;
+              return React.createElement("div", { key:c.id||i, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f4f5f6", fontSize:12 }},
+                React.createElement("div", { style:{ flex:1, minWidth:0 }},
+                  React.createElement("div", { style:{ fontWeight:600 }}, c.nombreMascota || "—"),
+                  React.createElement("div", { style:{ color:CC.gris, fontSize:11 }}, c.nombrePropietario || "sin dueño anotado")
+                ),
+                React.createElement("button", {
+                  onClick: () => puede
+                    ? abrirWA(tel, msgBienvenida(c, [], 0))
+                    : avisar("La ficha de \"" + (c.nombreMascota||"") + "\" no tiene teléfono. Agrégalo en el CRM para poder escribirle.", "aviso"),
+                  title: puede ? "Darle la bienvenida a " + (c.nombrePropietario || c.nombreMascota) : "Sin teléfono en la ficha",
+                  style:{ background: puede ? "#25D366" : "#f4f5f7", color: puede ? "#fff" : CC.gris, border: puede ? "none" : "1px solid #dde0e4", borderRadius:6, padding:"4px 10px", cursor:"pointer", fontSize:11, fontWeight:700 }
+                }, puede ? "👋 Bienvenida" : "👋 ✕")
+              );
+            })
+          );
+        })()
       )
     ),
 
@@ -16326,7 +16412,7 @@ function AvisoCitasProximas({ citas, setCitas, clientes }) {
     }
   };
 
-  const dia = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const dia = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return fechaLocal(d); };
   const hoyISO = dia(0), mananaISO = dia(1);
 
   const pendientes = (citas || [])
@@ -16411,7 +16497,7 @@ function paqVence(fechaISO, meses) {
   const d = new Date(String(fechaISO || hoy()).slice(0, 10) + "T12:00:00");
   if (isNaN(d.getTime())) return "";
   d.setMonth(d.getMonth() + meses);
-  return d.toISOString().slice(0, 10);
+  return fechaLocal(d);
 }
 const paqActivo = (p) => {
   if (!p || p.estado === "cancelado") return false;
@@ -17012,16 +17098,16 @@ function CajaReporte({ modo }) {
     const d = new Date(iso + "T12:00:00");
     const dow = (d.getDay() + 6) % 7;              // 0 = lunes
     d.setDate(d.getDate() - dow);
-    return d.toISOString().slice(0, 10);
+    return fechaLocal(d);
   };
   const sumarDias2 = (iso, n) => {
     const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
+    return fechaLocal(d);
   };
   const inicioMes = (iso) => iso.slice(0, 8) + "01";
   const finMes = (iso) => {
     const [y, m] = iso.split("-").map(Number);
-    return new Date(y, m, 0).toISOString().slice(0, 10);
+    return fechaLocal(new Date(y, m, 0));
   };
 
   const hoyISO = hoy();
@@ -17067,7 +17153,7 @@ function CajaReporte({ modo }) {
       setRango({ desde: d, hasta: sumarDias2(d, 6) });
     } else if (modo === "mes") {
       const [y, m] = rango.desde.split("-").map(Number);
-      const d = new Date(y, m - 1 + pasos, 1).toISOString().slice(0, 10);
+      const d = fechaLocal(new Date(y, m - 1 + pasos, 1));
       setRango({ desde: d, hasta: finMes(d) });
     }
   };
