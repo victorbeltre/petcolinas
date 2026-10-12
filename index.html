@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-11 15:08Z";
+const PC_BUILD = "2026-10-12 03:48Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -6554,6 +6554,22 @@ function PetColinas() {
     // Exponer setVentas para portales
     window.__setVentasGlobal = setVentasVet;
   }, []);
+  // El efecto de arriba corre UNA sola vez, al montar, y lee localStorage. En una
+  // sesion recien abierta localStorage todavia esta vacio porque useSupabase aun
+  // esta bajando pc_inventario, asi que el portal se quedaba con INVENTARIO_SEED
+  // — que esta vacia a proposito (Regla Critica 6) — y nunca se enteraba de los
+  // 101 productos reales cuando llegaban. Con la lista vacia, el selector de
+  // producto de Facturar se degrada a una caja de texto libre, y por eso habia
+  // que teclear cada producto a mano una y otra vez.
+  // Este efecto vuelve a publicar el inventario en cuanto llegan los datos de
+  // verdad. Va por estado (invGlobal), no solo por window: tocar una variable
+  // global no vuelve a renderizar nada en React.
+  React.useEffect(() => {
+    if (Array.isArray(invCaja) && invCaja.length > 0) {
+      window.__inventarioGlobal = invCaja;
+      setInvGlobal(invCaja);
+    }
+  }, [invCaja]);
   // Sondeo del portal. Se salta cuando la pestana esta en segundo plano: antes
   // se bajaban pc_ventas y pc_clientes enteras cada 30 s aunque nadie estuviera
   // mirando, y al volver a la pestana entraban todas de golpe.
@@ -6634,7 +6650,10 @@ function PetColinas() {
     clientes: clientesVet, setClientes: setClientesVet,
     citas: citasPortal, setCitas: setCitasPortal,
     historias: historiasVet, setHistorias: setHistoriasVet,
-    fichas: fichasVet, setFichas: setFichasVet
+    fichas: fichasVet, setFichas: setFichasVet,
+    // Por prop y no por window: asi el portal se vuelve a pintar cuando el
+    // inventario termina de bajar, en vez de quedarse con lo que hubiera al montar.
+    inventario: invGlobal, setInventario: setInvCaja
   }));
 
   if (isGrm) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalGroomer, {
@@ -6642,7 +6661,8 @@ function PetColinas() {
     ventas: ventasVet, setVentas: setVentasVet,
     pagosNom: pagosNomVet || [],
     clientes: clientesVet, setClientes: setClientesVet,
-    citas: citasPortal, setCitas: setCitasPortal
+    citas: citasPortal, setCitas: setCitasPortal,
+    inventario: invGlobal, setInventario: setInvCaja
   }));
 
   return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(VigilanteVersion, null), React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PetColinasApp, { session, onLogout: handleLogout }));
@@ -14968,7 +14988,7 @@ function parseItemsFactura(x) {
   return [];
 }
 
-function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], acento }) {
+function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], setInventario, acento }) {
   const [categoria, setCategoria] = React.useState("grooming");
   const [cliente, setCliente] = React.useState("");
   const [showSugg, setShowSugg] = React.useState(false);
@@ -14984,6 +15004,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [efectivoRecibido, setEfectivoRecibido] = React.useState("");
   const [atendidoPor, setAtendidoPor] = React.useState(usuario.nombre);
   const [nombreLibre, setNombreLibre] = React.useState("");
+  // Alta rapida de un producto de farmacia que todavia no esta en el catalogo.
+  const [guardarEnInv, setGuardarEnInv] = React.useState(false);
   const [montoAbono, setMontoAbono] = React.useState("");
   const [abonoForma, setAbonoForma] = React.useState("efectivo");
   const [abonoRecibido, setAbonoRecibido] = React.useState("");
@@ -15052,7 +15074,27 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       nota
     };
     setCarrito(prev => [...prev, item]);
-    setServSelId(""); setPrecioCustom(""); setQty(1); setDescItem(""); setNota(""); setNombreLibre("");
+    // Alta rapida al catalogo: sin esto, un producto que no estaba en inventario
+    // habia que volver a teclearlo entero en cada venta. Se guarda con costo y
+    // stock en 0 porque quien factura no los sabe, y queda anotado en notas para
+    // que el admin los complete: mientras el costo siga en 0, el margen de ese
+    // producto sale inflado en el reporte de farmacia.
+    if (esLibre && guardarEnInv && categoria === "farmacia" && precioBase > 0) {
+      const nuevo = {
+        id: Date.now() + 1, nombre, categoria: "farmacia",
+        stock: 0, stockMin: 0, stockInicial: 0,
+        costo: 0, precioCompra: 0, pventa: precioBase, precioVenta: precioBase,
+        proveedor: "", vencimiento: "", lote: "", fechaEntrada: fechaLocal(),
+        notas: "Alta rápida desde Facturar por " + usuario.nombre + " el " + fechaLocal() + ". Falta costo y stock."
+      };
+      if (typeof setInventario === "function") setInventario(prev => [...(prev || []), nuevo]);
+      upsertOne("pc_inventario", nuevo)
+        .then(ok => avisar(ok
+          ? "\"" + nombre + "\" quedó guardado en inventario. Falta que el admin le ponga costo y stock."
+          : "No se pudo guardar \"" + nombre + "\" en inventario. La venta sí se registra.", ok ? "ok" : "error"))
+        .catch(() => avisar("No se pudo guardar \"" + nombre + "\" en inventario. La venta sí se registra.", "error"));
+    }
+    setServSelId(""); setPrecioCustom(""); setQty(1); setDescItem(""); setNota(""); setNombreLibre(""); setGuardarEnInv(false);
   }
 
   function quitarItem(id) { setCarrito(prev => prev.filter(it => it.id !== id)); }
@@ -15308,7 +15350,22 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
             value:nombreLibre, onChange:e=>setNombreLibre(e.target.value),
             placeholder:"Nombre del servicio o producto...", autoFocus:true,
             style:{ width:"100%", marginTop:8, padding:"9px 12px", border:"1.5px solid #7c3aed", borderRadius:10, fontSize:13, boxSizing:"border-box" }
-          })
+          }),
+          // Solo para farmacia/tienda: un servicio suelto no tiene por que entrar
+          // al inventario, pero un producto que se vende mas de una vez si.
+          servSelId === "__libre__" && categoria === "farmacia" && React.createElement("label", {
+            style:{ display:"flex", alignItems:"flex-start", gap:7, marginTop:8, fontSize:12, color:CC.gris, cursor:"pointer" }
+          },
+            React.createElement("input", {
+              type:"checkbox", checked:guardarEnInv, onChange:e=>setGuardarEnInv(e.target.checked),
+              style:{ marginTop:2, cursor:"pointer" }
+            }),
+            React.createElement("span", null,
+              React.createElement("b", null, "Guardar en inventario"),
+              " para no volver a escribirlo. ",
+              React.createElement("span", { style:{ color:"#b45309" }}, "El admin tendrá que ponerle costo y stock.")
+            )
+          )
         ),
 
         // Precio, Cantidad, Descuento item
@@ -15613,7 +15670,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   );
 }
 
-function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, clientes = [], setClientes, citas = [], setCitas }) {
+function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, clientes = [], setClientes, citas = [], setCitas, inventario = [], setInventario }) {
   const [tabGrm, setTabGrm] = React.useState("agenda_grm");
   const [filtroMes, setFiltroMes] = React.useState(new Date().toISOString().slice(0,7));
   // Objeto usuario para compatibilidad con MiVitrina
@@ -15746,7 +15803,8 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
         ventas,
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
         clientes,
-        inventario: window.__inventarioGlobal || []
+        setInventario,
+        inventario: (inventario.length ? inventario : (window.__inventarioGlobal || []))
       }),
       tabGrm === "agenda_grm" && React.createElement(Agenda, {
         citas, setCitas,
@@ -15762,7 +15820,7 @@ function PortalGroomer({ session, onLogout, ventas, setVentas, pagosNom, cliente
         usuario,
         ventas,
         setVentas: setVentas || window.__setVentasGlobal || (() => {}),
-        inventario: window.__inventarioGlobal || [],
+        inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])),
         comPct: comisionPct("farmacia")
       }),
       tabGrm === "mis_comisiones_grm" && React.createElement("div", null,
@@ -16175,7 +16233,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   );
 }
 
-function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas }) {
+function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas, inventario = [], setInventario }) {
   const [tabVet, setTabVet] = React.useState("agenda_vet");
   const userEmail = session?.user?.email || "";
   const VETS      = vetEmails();
@@ -16244,7 +16302,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       tabVet === "reportes_lab"  && React.createElement(ReportesLab, { usuario, clientes, fichas, setFichas }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas, clientes, historias }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
-      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: window.__inventarioGlobal || [], acento: "#db2777" }),
+      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, acento: "#db2777" }),
       tabVet === "cobros_vet"     && React.createElement(Cobros, { ventas, setVentas, clientes, soloPropio: usuario.nombre.split(" ")[0] }),
       tabVet === "agenda_vet"     && React.createElement(Agenda, {
         citas, setCitas,
@@ -16255,7 +16313,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
         tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [],
         soloPropio: usuario.nombre.split(" ")[0]
       }),
-      tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [], clientes }),
+      tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), clientes }),
       tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] })
     )
   );
