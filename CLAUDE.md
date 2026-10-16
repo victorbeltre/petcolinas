@@ -154,9 +154,10 @@ pagina final ANTES de generar. Opcional, apagado por defecto: teñir el texto de
 azul marino (un valor que el lab marco en rojo pasaria a azul).
 Se guardan 2 archivos en el bucket privado `laboratorios`: original y PDF ya
 generado (no se regenera). La Edge Function `lab-extraer` (IA) sigue desplegada
-pero huerfana: borrarla del panel. El logo real se toma de `logo.png` en la raiz
-del sitio; si no esta, se dibuja "PetColinas" en texto. PENDIENTE: subir logo.png
-y probar con un hemograma real.
+pero huerfana: borrarla del panel. El logo real vive en `logo.png` en la raiz
+del repo (subido el 16 oct 2026, recortado a 313x272 desde el original de 500x500);
+el PDF lo toma de ahi, y la factura impresa tambien lo referenciaba. Si el archivo
+falta, se dibuja "PetColinas" en texto. PENDIENTE: probar con un hemograma real.
 
 ## FINANZAS
 PE real: RD$203,739/mes
