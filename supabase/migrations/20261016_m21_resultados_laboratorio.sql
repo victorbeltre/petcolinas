@@ -1,17 +1,23 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- M21 · Resultados de laboratorio (hemograma) en la Evolucion del paciente
 --
--- Se sube el informe del laboratorio (PDF/foto); el NAVEGADOR lo lee (texto del PDF
--- con pdf.js, o OCR con tesseract.js para fotos/escaneos: sin IA, sin claves, sin
--- servicios de pago); una persona lo REVISA contra el original; y se genera un PDF
--- con la identidad de PetColinas conservando los datos del laboratorio.
+-- Se sube el informe del laboratorio (PDF o foto) y se le pone la marca de PetColinas
+-- ENCIMA. Los resultados NO se leen ni se reescriben: el documento se usa como
+-- IMAGEN (cada numero son los pixeles del laboratorio), asi que no hay forma de
+-- que un valor cambie. Solo se recorta el fondo, se CUBRE el logo del laboratorio
+-- con un recuadro blanco y, opcionalmente, se tiñe el texto de azul marino.
+--
+-- Una version anterior leia el documento (IA, luego OCR) y reescribia los valores:
+-- al probarla con una foto cambio resultados. Se elimino por completo; una prueba
+-- de render-check falla si reaparece cualquier lectura.
 --
 -- Todo es solo-personal (admin, vet, groomer, caja), igual que pc_historias.
--- El original va a un bucket PRIVADO: se ve con un enlace firmado de 5 minutos,
--- nunca publico. `datos` guarda lo que la persona confirmo, no lo que leyo la
--- IA: la fuente de verdad es lo revisado, y el PDF se puede regenerar de ahi.
+-- Se guardan DOS archivos en un bucket PRIVADO (enlace firmado de 5 minutos, nunca
+-- publico): el original tal cual y el PDF PetColinas ya generado. El PDF no se
+-- regenera: lo que se guardo es lo que se vio. `datos` solo anota que se hizo
+-- (paginas, si se cubrio el logo, si se tiño, si se recorto).
 -- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists public.pc_lab_resultados (
+create table if not exists public.pc_lab_resultados (  -- pdf_path se anade abajo
   id             text primary key,
   clienteid      text not null,
   fecha          date,
@@ -23,6 +29,7 @@ create table if not exists public.pc_lab_resultados (
   verificado_por text,
   creado         timestamptz default now()
 );
+alter table public.pc_lab_resultados add column if not exists pdf_path text;
 alter table public.pc_lab_resultados enable row level security;
 revoke all on public.pc_lab_resultados from anon;
 grant select, insert, update, delete on public.pc_lab_resultados to authenticated;
@@ -45,7 +52,5 @@ create policy "laboratorios personal sube" on storage.objects for insert to auth
 -- Sin politica de update/delete a proposito: un original subido no se sobrescribe
 -- ni se borra desde la app.
 
--- Una primera version leia con IA (Edge Function `lab-extraer`, necesitaba
--- ANTHROPIC_API_KEY). Se quito: Victor no quiere depender de una clave. La funcion
--- sigue DESPLEGADA pero huerfana (nadie la llama; sin clave responde 503 y exige
--- sesion de personal); borrarla desde Supabase > Edge Functions cuando convenga.
+-- La Edge Function `lab-extraer` (primera version, con IA) sigue DESPLEGADA pero
+-- huerfana: nadie la llama. Borrarla desde Supabase > Edge Functions.

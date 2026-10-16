@@ -134,26 +134,27 @@ PENDIENTE DE VICTOR en este modulo:
   que se anote.
 
 ## HEMOGRAMAS (M21, oct 2026)
-Evolucion del paciente -> "Resultados de laboratorio": se sube el informe del
-laboratorio (PDF o foto) y "Convertir a formato PetColinas" SOLO CAMBIA EL DISEÑO
-Y EL LOGO; los resultados se copian tal cual y NO SE PUEDEN EDITAR NI ESCRIBIR A
-MANO (decision de Victor). La lectura ocurre en el navegador, sin IA ni claves:
-PDF digital -> texto con pdf.js (exacto); foto o escaneo -> OCR con tesseract.js
-(todo sale "por verificar"). La pantalla es de SOLO LECTURA: valores a la
-izquierda, original a la derecha; se guarda solo marcando que coinciden; si no
-coinciden se descarta (hay prueba en render-check que falla si un resultado se
-vuelve editable). Si no se reconocen los resultados, NO se convierte nada.
-Reglas: se transcribe, no se interpreta (valores como texto, sin convertir
-unidades ni calcular banderas: solo las que el laboratorio marco); `latinPDF`
-convierte los exponentes (x10^6) y NUNCA los borra (una unidad cambiada es un
-dato clinico falso); una celda con caracteres rotos deja la fila "por verificar".
-Colores del logo: naranja/azul marino/turquesa; se conservan los datos del
-laboratorio ("Realizado por") y el pie dice que es un documento reformateado.
-La Edge Function `lab-extraer` (IA, ya no se usa) sigue desplegada pero huerfana:
-borrarla del panel. El logo real se toma de `logo.png` en la raiz del sitio; si
-no esta, se dibuja "PetColinas" en texto. PENDIENTE: subir logo.png y probar con
-un hemograma REAL del laboratorio (cada laboratorio ordena distinto; el OCR no
-esta probado en real).
+Evolucion del paciente -> "Resultados de laboratorio" -> "Convertir a formato
+PetColinas". REGLA DE ORO (decision de Victor): LOS RESULTADOS NO SE LEEN, NO SE
+TRANSCRIBEN Y NO SE TOCAN. El documento del laboratorio (foto, o las paginas del
+PDF dibujadas por pdf.js) se usa como IMAGEN y se le pone encima la marca de
+PetColinas (cabecera con logo, datos del paciente tomados del SISTEMA, marco,
+pie "Reproducido por PetColinas sin modificar los resultados"). Cada numero son
+los pixeles del laboratorio: no hay forma de que cambie.
+Lo unico que se hace sobre la imagen: recortar el fondo, CUBRIR el logo del
+laboratorio con un recuadro blanco (se marca con el raton), y opcionalmente teñir
+el texto de azul marino (apagado por defecto: lo que el laboratorio marco en
+color, p. ej. un valor alto en rojo, pasaria a azul). Se conserva lo demas del
+laboratorio (nombre, direccion, firma, notas).
+HISTORIA: una primera version leia el documento (IA, luego OCR/texto del PDF) y
+reescribia los valores; al probarla con una foto CAMBIO RESULTADOS. Se elimino
+por completo. render-check FALLA si reaparece parsearFilasLab, leerDocumentoLab,
+ocrLab, tesseract, etc. NO volver a leer/transcribir resultados.
+Se guardan 2 archivos en el bucket privado `laboratorios`: original y PDF ya
+generado (no se regenera). La Edge Function `lab-extraer` (IA) sigue desplegada
+pero huerfana: borrarla del panel. El logo real se toma de `logo.png` en la raiz
+del sitio; si no esta, se dibuja "PetColinas" en texto. PENDIENTE: subir logo.png
+y probar con un hemograma real.
 
 ## FINANZAS
 PE real: RD$203,739/mes

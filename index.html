@@ -11694,32 +11694,28 @@ function imprimirReceta(h, cliente) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RESULTADOS DE LABORATORIO (hemograma) · M21
 //
-// Se sube el informe del laboratorio (PDF o foto), una IA lo TRANSCRIBE a una
-// tabla, una persona la REVISA contra el original, y solo entonces se genera el
-// PDF con la identidad de PetColinas. Del laboratorio se cambia el logo y el
-// diseño; sus datos (nombre, direccion, telefono, quien valida, fechas, notas)
-// se conservan y se enseñan como "Realizado por".
+// REGLA DE ORO: los resultados NO se leen, NO se transcriben y NO se tocan. El
+// documento del laboratorio (la foto, o las paginas del PDF) se usa como IMAGEN
+// y se le pone alrededor la marca de PetColinas. Cada numero queda exactamente
+// como lo imprimio el laboratorio, porque son sus mismos pixeles.
 //
-// La lectura NO se da por buena: sin marcar "verifique los valores" no se puede
-// guardar. Un hemograma con un numero cambiado en la historia clinica es peor
-// que no tenerlo.
+// Una primera version leia el documento (OCR / texto del PDF) y reescribia los
+// valores: al probarla con una foto cambio resultados. Se elimino por completo.
+//
+// Lo unico que se hace sobre la imagen: recortar el fondo, CUBRIR el logo del
+// laboratorio con un recuadro, y (opcional) teñir el texto de azul marino. El
+// resto del documento — nombre del laboratorio, direccion, firma, notas — se
+// conserva tal cual.
 // ─────────────────────────────────────────────────────────────────────────────
 const LAB_COLORES = {
   naranja: [240, 138, 28], marino: [18, 31, 56], turquesa: [42, 163, 184],
-  gris: [90, 100, 114], claro: [244, 247, 249], alto: [192, 57, 43], bajo: [26, 79, 160]
+  gris: [90, 100, 114], claro: [244, 247, 249]
 };
 
-// jsPDF con fuentes estandar solo dibuja Latin-1: lo demas (≥, ↑, µ fuera de
-// rango...) sale como basura. Se sustituye por algo legible en vez de corromper
-// un valor clinico.
+// jsPDF con fuentes estandar solo dibuja Latin-1: lo demas sale como basura. Solo
+// se usa para los textos de PetColinas (cabecera y pie), nunca para resultados.
 const latinPDF = (t) => sinEmoji(String(t == null ? "" : t))
   .replace(/[–—]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
-  .replace(/≥/g, ">=").replace(/≤/g, "<=").replace(/↑/g, "(alto)").replace(/↓/g, "(bajo)")
-  .replace(/μ/g, "µ")
-  // Los exponentes (x10⁶/µL) NO se pueden borrar: cambiarian la unidad. Los de
-  // Latin-1 (², ³, ¹) ya se dibujan; el resto pasa a ^n.
-  .replace(/[⁰⁴-⁹]/g, (c) => "^" + "0123456789"["⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(c)])
-  .replace(/⁻/g, "^-")
   .replace(/[^\x00-\xFF]/g, "?");
 
 // El logo real, si esta en el sitio como logo.png; si no, el nombre dibujado con
@@ -11736,22 +11732,97 @@ async function cargarLogoPC() {
   } catch (e) { return null; }
 }
 
-function generarLabPDFDoc(reg, cliente, logo) {
+const LAB_PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const LAB_PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const LAB_MAX_PAGINAS = 6, LAB_LADO_MAX = 2400;
+let _labPdfjs = null;
+function cargarPdfjsLab() {
+  if (!_labPdfjs) {
+    _labPdfjs = new Promise((ok, no) => {
+      if (window.pdfjsLib) return ok(window.pdfjsLib);
+      const s = document.createElement("script");
+      s.src = LAB_PDFJS;
+      s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = LAB_PDFJS_WORKER; ok(window.pdfjsLib); };
+      s.onerror = () => { _labPdfjs = null; no(new Error("No se pudo cargar el visor de PDF")); };
+      document.head.appendChild(s);
+    });
+  }
+  return _labPdfjs;
+}
+const cargarImagenLab = (url) => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => no(new Error("No se pudo abrir la imagen")); im.src = url; });
+
+// El documento como una lista de imagenes (una por pagina). Para un PDF se dibuja
+// cada pagina tal como se ve; para una foto, la foto. No se lee ni un caracter.
+async function paginasDeArchivo(file) {
+  const out = [];
+  if (file.type === "application/pdf") {
+    const pdfjs = await cargarPdfjsLab();
+    const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+    for (let n = 1; n <= Math.min(pdf.numPages, LAB_MAX_PAGINAS); n++) {
+      const pag = await pdf.getPage(n);
+      const v1 = pag.getViewport({ scale: 1 });
+      const vp = pag.getViewport({ scale: Math.min(3, LAB_LADO_MAX / Math.max(v1.width, v1.height)) });
+      const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+      await pag.render({ canvasContext: cx, viewport: vp }).promise;
+      out.push({ url: cv.toDataURL("image/jpeg", 0.95), w: cv.width, h: cv.height });
+    }
+    out.truncado = pdf.numPages > LAB_MAX_PAGINAS ? pdf.numPages : 0;
+  } else {
+    const url = await new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = no; f.readAsDataURL(file); });
+    const im = await cargarImagenLab(url);
+    const k = Math.min(1, LAB_LADO_MAX / Math.max(im.width, im.height));
+    const cv = document.createElement("canvas"); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+    const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+    cx.drawImage(im, 0, 0, cv.width, cv.height);
+    out.push({ url: cv.toDataURL("image/jpeg", 0.95), w: cv.width, h: cv.height });
+    out.truncado = 0;
+  }
+  return out;
+}
+
+// Lo unico que se le hace a una pagina: recortar, cubrir recuadros con blanco y,
+// si se pide, teñir. `ed.crop` y `ed.cubrir` van en fracciones (0 a 1) de la
+// pagina completa, asi no dependen del tamaño en pantalla.
+async function componerPaginaLab(pag, ed, tenir) {
+  const im = await cargarImagenLab(pag.url);
+  const c = (ed && ed.crop) || { x: 0, y: 0, w: 1, h: 1 };
+  const sx = Math.round(c.x * im.width), sy = Math.round(c.y * im.height);
+  const sw = Math.max(1, Math.round(c.w * im.width)), sh = Math.max(1, Math.round(c.h * im.height));
+  const cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
+  const cx = cv.getContext("2d");
+  cx.drawImage(im, sx, sy, sw, sh, 0, 0, sw, sh);
+  if (tenir) {
+    // Duotono: negro -> azul marino, blanco -> blanco. Cada pixel conserva su
+    // luminosidad, asi que los trazos (los numeros) no cambian de forma.
+    const d = cx.getImageData(0, 0, sw, sh), p = d.data, K = LAB_COLORES.marino;
+    for (let i = 0; i < p.length; i += 4) {
+      const t = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) / 255;
+      p[i] = K[0] + (255 - K[0]) * t; p[i + 1] = K[1] + (255 - K[1]) * t; p[i + 2] = K[2] + (255 - K[2]) * t;
+    }
+    cx.putImageData(d, 0, 0);
+  }
+  cx.fillStyle = "#ffffff";
+  ((ed && ed.cubrir) || []).forEach((r) => {
+    cx.fillRect(Math.round(r.x * im.width) - sx, Math.round(r.y * im.height) - sy, Math.round(r.w * im.width), Math.round(r.h * im.height));
+  });
+  return { url: cv.toDataURL("image/jpeg", 0.93), w: sw, h: sh };
+}
+
+// El PDF PetColinas: cabecera con logo y colores, datos del PACIENTE tomados del
+// sistema (no del documento), la pagina del laboratorio tal cual, y un pie que
+// dice de quien es el informe.
+function generarLabPDFDoc(paginas, meta, logo) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-  const K = LAB_COLORES, W = 210, M = 14, PIE = 280;
-  const d = reg.datos || {}, lab = d.laboratorio || {}, pac = d.paciente || {}, fe = d.fechas || {};
-  const nombreLab = latinPDF(lab.nombre || reg.laboratorio || "Laboratorio");
-  const pt = (t, x, y, o) => doc.text(latinPDF(t), x, y, o);
-
+  const K = LAB_COLORES, W = 210, M = 12, TOPE = 52, BASE = 278;
   const cabecera = () => {
     doc.setFillColor(...K.marino); doc.rect(0, 0, W, 34, "F");
     doc.setFillColor(...K.naranja); doc.rect(0, 34, W, 2.2, "F");
     doc.setFillColor(...K.turquesa); doc.rect(0, 36.2, W, 0.9, "F");
     if (logo) {
-      // Fondo blanco detras: el logo trae fondo claro y no se ve sobre el marino.
       const h = 26, w = Math.min(60, h * logo.w / logo.h);
-      doc.setFillColor(255, 255, 255); doc.roundedRect(M - 2, 4, w + 4, h + 0, 2, 2, "F");
+      doc.setFillColor(255, 255, 255); doc.roundedRect(M - 2, 4, w + 4, h, 2, 2, "F");
       doc.addImage(logo.url, "PNG", M, 4, w, h);
     } else {
       doc.setFont("helvetica", "bold"); doc.setFontSize(24);
@@ -11765,329 +11836,47 @@ function generarLabPDFDoc(reg, cliente, logo) {
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
     doc.text("RESULTADOS DE HEMOGRAMA", W - M, 15, { align: "right" });
     doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(200, 215, 230);
-    pt("Informe reformateado por PetColinas", W - M, 21, { align: "right" });
-    pt("Fecha del resultado: " + (reg.fecha || fe.reporte || fe.toma || "-"), W - M, 26, { align: "right" });
+    doc.text(latinPDF("Fecha: " + (meta.fecha || "")), W - M, 22, { align: "right" });
+    if (meta.laboratorio) doc.text(latinPDF("Laboratorio: " + meta.laboratorio), W - M, 27, { align: "right" });
   };
-  const pieDePagina = (n, total) => {
+  const franja = () => {
+    doc.setFillColor(...K.claro); doc.rect(M, 41, W - 2 * M, 8, "F");
+    doc.setFillColor(...K.naranja); doc.rect(M, 41, 1.6, 8, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...K.marino);
+    const partes = ["Paciente: " + (meta.paciente || "-"), meta.propietario ? "Propietario: " + meta.propietario : ""].filter(Boolean).join("   \u00B7   ");
+    doc.text(latinPDF(partes), M + 5, 46.2);
+  };
+  paginas.forEach((pg, i) => {
+    if (i > 0) doc.addPage();
+    cabecera(); franja();
+    const maxW = W - 2 * M, maxH = BASE - TOPE;
+    const k = Math.min(maxW / pg.w, maxH / pg.h), w = pg.w * k, h = pg.h * k, x = (W - w) / 2;
+    doc.addImage(pg.url, "JPEG", x, TOPE, w, h);
+    doc.setDrawColor(...K.turquesa); doc.setLineWidth(0.5); doc.rect(x, TOPE, w, h);
+  });
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p);
     doc.setDrawColor(...K.turquesa); doc.setLineWidth(0.4); doc.line(M, 284, W - M, 284);
     doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...K.gris);
-    const aviso = "Resultados emitidos por " + nombreLab + ". Documento reformateado por PetColinas con fines de historia clinica; no sustituye el informe original del laboratorio.";
+    const aviso = "Informe original emitido por " + (meta.laboratorio || "el laboratorio") +
+      ". Reproducido por PetColinas sin modificar los resultados.";
     doc.text(doc.splitTextToSize(latinPDF(aviso), W - 2 * M - 22), M, 288);
-    doc.text("Pág. " + n + " de " + total, W - M, 288, { align: "right" });
-  };
-
-  cabecera();
-  let y = 46;
-  const asegurar = (alto) => { if (y + alto > PIE) { doc.addPage(); cabecera(); y = 46; } };
-
-  // Dos cajas: paciente y laboratorio. Se dibujan con la altura que necesiten.
-  const caja = (x, w, titulo, color, filas) => {
-    doc.setFillColor(...K.claro); doc.rect(x, y, w, 4 + 5.2 * (filas.length + 1) + 2, "F");
-    doc.setFillColor(...color); doc.rect(x, y, 1.6, 4 + 5.2 * (filas.length + 1) + 2, "F");
-    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...color);
-    pt(titulo, x + 5, y + 5);
-    let yy = y + 10.5;
-    filas.forEach(([k, v]) => {
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...K.gris); pt(k + ":", x + 5, yy);
-      doc.setFont("helvetica", "normal"); doc.setTextColor(...K.marino);
-      const l = doc.splitTextToSize(latinPDF(v), w - 33); doc.text(l[0] || "", x + 28, yy); yy += 5.2;
-    });
-    return 4 + 5.2 * (filas.length + 1) + 2;
-  };
-  const filasPac = [
-    ["Paciente", pac.nombre || (cliente && (cliente.nombreMascota || cliente.nombre)) || "-"],
-    ["Especie", [pac.especie, pac.raza].filter(Boolean).join(" / ") || (cliente && cliente.especie) || "-"],
-    ["Sexo / edad", [pac.sexo, pac.edad].filter(Boolean).join(" / ") || "-"],
-    ["Propietario", pac.propietario || (cliente && (cliente.nombrePropietario || cliente.dueno)) || "-"],
-    ["Solicitante", pac.solicitante || "-"]
-  ];
-  const filasLab = [
-    ["Laboratorio", lab.nombre || "-"], ["Dirección", lab.direccion || "-"],
-    ["Teléfono", [lab.telefono, lab.email].filter(Boolean).join(" · ") || "-"],
-    ["Responsable", lab.responsable || "-"], ["Registro", lab.registro || "-"]
-  ];
-  const wC = (W - 2 * M - 5) / 2;
-  const h1 = caja(M, wC, "DATOS DEL PACIENTE", K.naranja, filasPac);
-  const h2 = caja(M + wC + 5, wC, "REALIZADO POR (LABORATORIO)", K.turquesa, filasLab);
-  y += Math.max(h1, h2) + 4;
-
-  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...K.gris);
-  const meta = [
-    fe.toma ? "Toma: " + fe.toma : "", fe.recepcion ? "Recepción: " + fe.recepcion : "",
-    fe.reporte ? "Reporte: " + fe.reporte : "", d.muestra ? "Muestra: " + d.muestra : "",
-    d.metodo ? "Método: " + d.metodo : "", pac.identificador ? "N.º: " + pac.identificador : ""
-  ].filter(Boolean).join("   ·   ");
-  if (meta) { const l = doc.splitTextToSize(latinPDF(meta), W - 2 * M); doc.text(l, M, y + 2); y += 4.2 * l.length + 4; }
-
-  // Tabla de resultados
-  const cols = { n: M + 2, r: 96, u: 124, g: 150 };
-  const encabezadoTabla = () => {
-    doc.setFillColor(...K.marino); doc.rect(M, y - 4.5, W - 2 * M, 7.5, "F");
-    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-    doc.text("PARÁMETRO", cols.n, y); doc.text("RESULTADO", cols.r, y, { align: "right" });
-    doc.text("UNIDAD", cols.u, y); doc.text("RANGO DE REFERENCIA", cols.g, y);
-    y += 6;
-  };
-  asegurar(20); encabezadoTabla();
-  let grupoActual = null, i = 0, hayDudoso = false;
-  (d.parametros || []).forEach((p) => {
-    const g = p.grupo || "";
-    if (g && g !== grupoActual) {
-      asegurar(16);
-      if (y + 7 > PIE) { doc.addPage(); cabecera(); y = 46; encabezadoTabla(); }
-      doc.setFillColor(...K.turquesa); doc.rect(M, y - 4, W - 2 * M, 5.4, "F");
-      doc.setFont("helvetica", "bold"); doc.setFontSize(7.8); doc.setTextColor(255, 255, 255);
-      pt(g.toUpperCase(), cols.n, y - 0.2); y += 5.6; grupoActual = g;
-    }
-    if (y + 7 > PIE) { doc.addPage(); cabecera(); y = 46; encabezadoTabla(); }
-    if (i++ % 2 === 0) { doc.setFillColor(...K.claro); doc.rect(M, y - 4, W - 2 * M, 6.4, "F"); }
-    const fuera = p.bandera === "alto" || p.bandera === "bajo";
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...K.marino);
-    pt(p.nombre, cols.n, y);
-    doc.setFont("helvetica", fuera ? "bold" : "normal");
-    doc.setTextColor(...(p.bandera === "alto" ? K.alto : p.bandera === "bajo" ? K.bajo : K.marino));
-    pt(String(p.resultado) + (p.bandera === "alto" ? " ▲".replace("▲", "(alto)") : p.bandera === "bajo" ? " (bajo)" : ""), cols.r, y, { align: "right" });
-    doc.setFont("helvetica", "normal"); doc.setTextColor(...K.gris);
-    pt(p.unidad || "", cols.u, y); pt(p.rango || "", cols.g, y);
-    y += 6.4;
-  });
-  doc.setDrawColor(...K.marino); doc.setLineWidth(0.3); doc.line(M, y - 3.4, W - M, y - 3.4);
-  y += 2;
-  doc.setFont("helvetica", "italic"); doc.setFontSize(7.5); doc.setTextColor(...K.gris);
-  pt("(alto) / (bajo): marcado así por el laboratorio en su informe original.", M, y); y += 6;
-
-  const bloque = (titulo, t, color) => {
-    if (!t) return;
-    const l = doc.splitTextToSize(latinPDF(t), W - 2 * M - 8);
-    asegurar(10 + 4.2 * l.length);
-    doc.setFillColor(...K.claro); doc.rect(M, y, W - 2 * M, 8 + 4.2 * l.length, "F");
-    doc.setFillColor(...color); doc.rect(M, y, 1.6, 8 + 4.2 * l.length, "F");
-    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...color); pt(titulo, M + 5, y + 5);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8.2); doc.setTextColor(...K.marino);
-    doc.text(l, M + 5, y + 10); y += 12 + 4.2 * l.length;
-  };
-  bloque("OBSERVACIONES DEL LABORATORIO", d.observaciones, K.naranja);
-  bloque("NOTAS DEL LABORATORIO", d.notas_pie, K.turquesa);
-
-  const total = doc.getNumberOfPages();
-  for (let p = 1; p <= total; p++) { doc.setPage(p); pieDePagina(p, total); }
+    doc.text("Pág. " + p + " de " + total, W - M, 288, { align: "right" });
+  }
   return doc;
 }
 
-async function descargarLabPDF(reg, cliente) {
-  const logo = await cargarLogoPC();
-  const doc = generarLabPDFDoc(reg, cliente, logo);
-  const nom = latinPDF((cliente && (cliente.nombreMascota || cliente.nombre)) || "paciente").replace(/[^A-Za-z0-9]+/g, "_");
-  doc.save("Hemograma_" + nom + "_" + (reg.fecha || hoy()) + ".pdf");
-}
-
-// ── Lectura del documento, SIN IA ni claves: todo ocurre en el navegador ─────
-// 1) PDF digital (con texto): se lee el texto tal cual. Exacto.
-// 2) Foto o PDF escaneado: OCR en el navegador (tesseract.js). Menos exacto, asi
-//    que TODO lo que sale de ahi se marca "por verificar".
-// 3) A mano, con plantilla.
-// En los tres casos la persona revisa contra el original antes de guardar.
-const LAB_PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-const LAB_PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-const LAB_TESSERACT = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js";
-const _labScripts = {};
-function cargarScriptLab(url) {
-  if (!_labScripts[url]) {
-    _labScripts[url] = new Promise((ok, no) => {
-      const s = document.createElement("script");
-      s.src = url; s.onload = ok; s.onerror = () => { delete _labScripts[url]; no(new Error("No se pudo cargar " + url.split("/").pop())); };
-      document.head.appendChild(s);
-    });
-  }
-  return _labScripts[url];
-}
-
-// Une los fragmentos de una linea en celdas: dos fragmentos pegados son la misma
-// celda; con un hueco grande entre ellos son columnas distintas.
-function celdasDeLinea(items, factorHueco) {
-  const orden = items.slice().sort((a, b) => a.x - b.x);
-  const celdas = [];
-  orden.forEach((it) => {
-    const ult = celdas[celdas.length - 1];
-    if (ult && it.x - ult.fin < (it.alto || 10) * factorHueco) { ult.s += (ult.s && it.s ? " " : "") + it.s; ult.fin = it.fin; }
-    else celdas.push({ s: it.s, x: it.x, fin: it.fin });
-  });
-  // Un PDF con codificacion rara entrega caracteres de control o U+FFFD en vez
-  // de la letra. Se quitan, y la celda queda marcada `raro` para que la fila salga
-  // "por verificar" en vez de pasar por buena.
-  return celdas.map((c) => ({ s: c.s.replace(/[\u0000-\u0008\uFFFD]/g, "").trim(), x: c.x, raro: /[\u0000-\u0008\uFFFD]/.test(c.s) })).filter((c) => c.s);
-}
-// Agrupa fragmentos {s,x,y,fin,alto} en lineas (misma y, con tolerancia) de arriba a abajo.
-function filasDeFragmentos(frags, factorHueco) {
-  const lineas = [];
-  frags.slice().sort((a, b) => b.y - a.y).forEach((f) => {
-    const l = lineas.find((z) => Math.abs(z.y - f.y) <= Math.max(2.5, (f.alto || 8) * 0.45));
-    if (l) l.items.push(f); else lineas.push({ y: f.y, items: [f] });
-  });
-  return lineas.sort((a, b) => b.y - a.y).map((l) => celdasDeLinea(l.items, factorHueco)).filter((r) => r.length);
-}
-
-async function leerPDFLab(file) {
-  await cargarScriptLab(LAB_PDFJS);
-  const pdfjs = window.pdfjsLib;
-  pdfjs.GlobalWorkerOptions.workerSrc = LAB_PDFJS_WORKER;
-  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  return filasDePDF(pdf);
-}
-// Separada para poder probarla con un pdf.js de verdad fuera del navegador.
-async function filasDePDF(pdf) {
-  const filas = []; let letras = 0;
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const tc = await (await pdf.getPage(p)).getTextContent();
-    const frags = tc.items.filter((i) => i.str && i.str.trim()).map((i) => ({
-      s: i.str, x: i.transform[4], y: i.transform[5], fin: i.transform[4] + (i.width || 0), alto: i.height || 8 }));
-    frags.forEach((f) => { letras += f.s.length; });
-    filas.push(...filasDeFragmentos(frags, 1.8));
-  }
-  return { filas, letras, paginas: pdf.numPages, pdf };
-}
-
-async function ocrLab(blob, progreso) {
-  await cargarScriptLab(LAB_TESSERACT);
-  const r = await window.Tesseract.recognize(blob, "spa+eng", {
-    logger: (m) => { if (progreso && m.status === "recognizing text") progreso(Math.round((m.progress || 0) * 100)); } });
-  const frags = [];
-  ((r.data && r.data.lines) || []).forEach((l) => (l.words || []).forEach((w) => {
-    if (w.text && w.text.trim()) frags.push({ s: w.text, x: w.bbox.x0, fin: w.bbox.x1, y: -((w.bbox.y0 + w.bbox.y1) / 2), alto: w.bbox.y1 - w.bbox.y0 });
-  }));
-  return filasDeFragmentos(frags, 1.4);
-}
-
-// ── Del texto a la tabla ────────────────────────────────────────────────────
-const LAB_NUM = /^[<>≤≥]?\s*[+-]?\d+(?:[.,]\d+)?$/;
-const LAB_RANGO = /^\(?\s*[<>≤≥]?\s*\d+(?:[.,]\d+)?\s*(?:[-–]|a)\s*\d+(?:[.,]\d+)?\s*\)?$|^\(?\s*[<>≤≥]\s*\d+(?:[.,]\d+)?\s*\)?$/;
-const LAB_BANDERA = /^(?:H|L|HI|LO|HIGH|LOW|ALTO|BAJO|↑|↓|\*)$/i;
-const LAB_NO_PARAM = /edad|peso|n[úu]mero|n\.?\s?[ºo]|tel[ée]f|fecha|p[áa]g|muestra|orden|historia|c[ée]dula|rnc/i;
-
-// Una linea de un solo bloque ("Leucocitos 21.4 x10^3/uL 5.05 - 16.76") se parte
-// en celdas; "5.05 - 16.76" vuelve a quedar como un solo rango.
-function partirLinea(s) {
-  const trozos = s.split(/\s{2,}/);
-  if (trozos.length > 1) return trozos;
-  const t = s.trim().split(/\s+/), out = [];
-  for (let i = 0; i < t.length; i++) {
-    if (LAB_NUM.test(t[i]) && /^(?:[-–]|a)$/.test(t[i + 1] || "") && LAB_NUM.test(t[i + 2] || "")) { out.push(t[i] + " - " + t[i + 2]); i += 2; }
-    else out.push(t[i]);
-  }
-  const k = out.findIndex((x, i) => i > 0 && LAB_NUM.test(x));
-  return k < 0 ? [s.trim()] : [out.slice(0, k).join(" "), ...out.slice(k)];
-}
-
-function parsearFilasLab(filas) {
-  const parametros = [], antes = [], despues = [];
-  let grupo = "", visto = false;
-  (filas || []).forEach((fila) => {
-    let c = fila.map((x) => x.s);
-    if (c.length === 1 && /\d/.test(c[0])) c = partirLinea(c[0]);
-    const i = c.findIndex((x, j) => j >= 1 && LAB_NUM.test(x.replace(/\s*[HL*↑↓]$/i, "")));
-    const nombre = i > 0 ? c.slice(0, i).join(" ").replace(/[:.]+$/, "").trim() : "";
-    if (i > 0 && /[A-Za-zÀ-ÿ]/.test(nombre) && !LAB_NO_PARAM.test(nombre)) {
-      let res = c[i], bandera = null;
-      const m = res.match(/^(.*?)\s*([HL*↑↓])$/i);
-      if (m) { res = m[1]; bandera = /[H↑]/i.test(m[2]) ? "alto" : /[L↓]/i.test(m[2]) ? "bajo" : null; }
-      let unidad = "", rango = "";
-      c.slice(i + 1).forEach((x) => {
-        if (LAB_BANDERA.test(x)) bandera = /^(H|HI|HIGH|ALTO|↑)$/i.test(x) ? "alto" : /^(L|LO|LOW|BAJO|↓)$/i.test(x) ? "bajo" : bandera;
-        else if (LAB_RANGO.test(x)) rango = rango || x.replace(/^\(|\)$/g, "").trim();
-        else if (!unidad && !LAB_NUM.test(x) && /[%\/A-Za-zµ]/.test(x)) unidad = x;
-      });
-      // Sin unidad ni rango es casi seguro un dato suelto (la edad, un numero de
-      // orden), no un parametro: se deja fuera y la persona lo agrega si lo era.
-      if (unidad || rango) { visto = true; parametros.push({ grupo: grupo || null, nombre, resultado: res, unidad: unidad || null, rango: rango || null, bandera, dudoso: fila.some((x) => x.raro) }); return; }
-    }
-    const texto = fila.map((x) => x.s).join("  ");
-    if (c.length === 1 && !/\d/.test(c[0]) && c[0].length >= 4 && c[0].length <= 40 && c[0] === c[0].toUpperCase()) { grupo = c[0].replace(/[:]+$/, ""); if (visto) return; }
-    (visto ? despues : antes).push(texto);
-  });
-  return { parametros, antes, despues };
-}
-
-// Encabezado/pie -> campos. Son SUGERENCIAS: la pantalla de revision los deja
-// editar, y lo que no se reconoce queda vacio en vez de inventarse.
-function datosDeTexto(antes, despues) {
-  const todo = antes.concat(despues);
-  // El valor termina donde termina la celda: dos campos en la misma linea llegan
-  // separados por 2+ espacios ("Paciente: Rocky  Especie: Canino").
-  const buscar = (re) => { for (const l of todo) { const m = l.match(re); const v = m && m[1] && m[1].split(/\s{2,}/)[0].trim(); if (v) return v; } return null; };
-  const fechaDe = (re) => { const l = todo.find((x) => re.test(x)); const m = l && l.match(/\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/); return m ? m[0] : null; };
-  return {
-    laboratorio: {
-      nombre: (antes[0] || "").replace(/\s{2,}/g, " ").trim() || null,
-      direccion: buscar(/(?:direcci[óo]n|dir\.?)\s*:?\s*(.+)/i),
-      telefono: (todo.join(" ").match(/\(?\d{3}\)?[-\s.]?\d{3}[-\s.]?\d{4}/) || [null])[0],
-      email: (todo.join(" ").match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [null])[0],
-      responsable: buscar(/(?:validado por|responsable|bioanalista|firma|dr\.?a?\.?)\s*:?\s*(.+)/i),
-      registro: buscar(/(?:rnc|exequ[áa]tur|registro)\s*:?\s*([\w-]+)/i)
-    },
-    paciente: {
-      nombre: buscar(/(?:paciente|mascota|nombre)\s*:?\s*(.+)/i), especie: buscar(/especie\s*:?\s*(.+)/i),
-      raza: buscar(/raza\s*:?\s*(.+)/i), sexo: buscar(/sexo\s*:?\s*(.+)/i), edad: buscar(/edad\s*:?\s*(.+)/i),
-      propietario: buscar(/(?:propietario|dueño|dueno)\s*:?\s*(.+)/i), solicitante: buscar(/(?:m[ée]dico|solicitante|veterinari[oa])\s*:?\s*(.+)/i),
-      identificador: buscar(/\b(?:muestra|orden|folio)\s*(?:n[º°o.]*)?\s*[:#]\s*([\w-]+)/i)
-    },
-    fechas: { toma: fechaDe(/toma|colecci/i), recepcion: fechaDe(/recepci|recibid/i), reporte: fechaDe(/reporte|resultado|emisi|fecha/i) },
-    observaciones: buscar(/(?:observaci[óo]nes?|comentarios?|interpretaci[óo]n)\s*:?\s*(.+)/i),
-    // Lo ya reconocido (observaciones, quien valida, edad/peso) no se repite aqui.
-    notas_pie: (() => { const r = despues.filter((l) => !/^\s*(?:observaci|comentario|interpretaci|validado|responsable|bioanalista|edad|peso)/i.test(l)); return r.length ? r.join("\n") : null; })()
-  };
-}
-
-const dataURLaBlob = (u) => fetch(u).then((r) => r.blob());
-// Lee el documento y devuelve { datos, aviso }. Nunca inventa: si no reconoce
-// filas, lo dice y deja la plantilla para escribirlas mirando el original.
-async function leerDocumentoLab(file, progreso) {
-  let filas = [], ocr = false, aviso = "";
-  if (file.type === "application/pdf") {
-    const r = await leerPDFLab(file);
-    filas = r.filas;
-    if (r.letras < 80) {          // PDF escaneado: sin texto, se pasa por OCR
-      ocr = true; progreso && progreso("Es un PDF escaneado: leyendo con OCR (puede tardar un minuto)…");
-      const pag = await r.pdf.getPage(1);
-      const vp = pag.getViewport({ scale: 2.2 });
-      const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
-      await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-      filas = await ocrLab(await new Promise((ok) => cv.toBlob(ok, "image/png")), (p) => progreso && progreso("OCR " + p + "%"));
-      if (r.paginas > 1) aviso = "Solo se leyó la primera página con OCR; agrega a mano las filas de las demás. ";
-    }
-  } else {
-    ocr = true; progreso && progreso("Leyendo la foto con OCR (puede tardar un minuto)…");
-    filas = await ocrLab(file, (p) => progreso && progreso("OCR " + p + "%"));
-  }
-  const { parametros, antes, despues } = parsearFilasLab(filas);
-  const base = datosDeTexto(antes, despues);
-  if (ocr) {
-    parametros.forEach((p) => { p.dudoso = true; });
-    aviso += "Lectura por OCR: puede confundir números (0/O, 1/l, coma/punto). Compara CADA valor con el original.";
-  }
-  // Sin filas reconocidas no se convierte nada: los resultados NO se escriben a
-  // mano ni se inventan. El documento original sigue en la historia tal cual.
-  if (parametros.length === 0) throw new Error("No pude reconocer los resultados de este documento");
-  base.parametros = parametros;
-  base.es_hemograma = true; base.advertencias = aviso ? [aviso] : [];
-  return base;
-}
-// "2026-10-16" si el laboratorio lo escribio asi o como 16/10/2026; si no se
-// entiende devuelve "" y la persona lo pone a mano. No se adivina una fecha.
-function fechaDeLab(t) {
-  const s = String(t || "").trim();
-  let m = s.match(/(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0];
-  m = s.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
-  if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
-  return "";
-}
+const LAB_LS = "pc_lab_nombre";
+const labGuardado = () => { try { return localStorage.getItem(LAB_LS) || ""; } catch (e) { return ""; } };
 
 function LabResultados({ clienteId, cliente }) {
   const E = React.createElement;
   const [lista, setLista] = React.useState([]);
   const [cargando, setCargando] = React.useState(true);
   const [archivo, setArchivo] = React.useState(null);
-  const [leyendo, setLeyendo] = React.useState("");
-  const [revision, setRevision] = React.useState(null);   // { datos, fecha }
+  const [leyendo, setLeyendo] = React.useState(false);
+  const [paginas, setPaginas] = React.useState(null);
   const [error, setError] = React.useState("");
   const [guardando, setGuardando] = React.useState(false);
   const [abierto, setAbierto] = React.useState(false);
@@ -12102,53 +11891,63 @@ function LabResultados({ clienteId, cliente }) {
   }, [clienteId]);
   React.useEffect(() => { cargar(); }, [cargar]);
 
-  async function convertir() {
+  async function preparar() {
     if (!archivo) return;
-    setError(""); setLeyendo("Leyendo el documento…");
+    setError(""); setLeyendo(true);
     try {
-      const d = await leerDocumentoLab(archivo, setLeyendo);
-      const f = d.fechas || {};
-      setRevision({ datos: d, fecha: fechaDeLab(f.reporte || f.toma) || hoy() });
-    } catch (e) { setError(e.message + ". Prueba con el PDF original del laboratorio (el digital, no una foto)."); }
-    setLeyendo("");
+      const pg = await paginasDeArchivo(archivo);
+      if (!pg.length) throw new Error("El documento no tiene páginas");
+      setPaginas(pg);
+    } catch (e) { setError("No se pudo abrir el documento: " + e.message); }
+    setLeyendo(false);
   }
-  async function guardar(datos, fecha) {
+
+  async function guardar({ ediciones, tenir, laboratorio, fecha }) {
     setGuardando(true);
     try {
+      try { localStorage.setItem(LAB_LS, laboratorio); } catch (e) {}
+      const comp = [];
+      for (let i = 0; i < paginas.length; i++) comp.push(await componerPaginaLab(paginas[i], ediciones[i], tenir));
+      const logo = await cargarLogoPC();
+      const doc = generarLabPDFDoc(comp, {
+        fecha, laboratorio, paciente: (cliente && (cliente.nombreMascota || cliente.nombre)) || "",
+        propietario: (cliente && (cliente.nombrePropietario || cliente.dueno)) || ""
+      }, logo);
+      const pdfBlob = doc.output("blob");
+
       const id = "lab_" + Date.now();
-      let ruta = null;
-      if (archivo) {
-        const ext = archivo.type === "application/pdf" ? "pdf" : (archivo.type.split("/")[1] || "bin");
-        ruta = String(clienteId).replace(/[^A-Za-z0-9_-]/g, "") + "/" + id + "." + ext;
-        const h = await supaHeaders();
-        const sube = await fetch(SUPA_URL + "/storage/v1/object/laboratorios/" + ruta, {
-          method: "POST", headers: { apikey: h.apikey, Authorization: h.Authorization, "Content-Type": archivo.type, "x-upsert": "false" },
-          body: archivo
-        });
-        if (!sube.ok) throw new Error("No se pudo guardar el original (" + sube.status + ")");
-      }
-      const fila = { id, clienteid: String(clienteId), fecha, tipo: "hemograma",
-        laboratorio: (datos.laboratorio && datos.laboratorio.nombre) || "", datos,
-        original_path: ruta, original_mime: archivo ? archivo.type : null, verificado_por: usuarioActual() };
+      const base = String(clienteId).replace(/[^A-Za-z0-9_-]/g, "") + "/" + id;
+      const ext = archivo.type === "application/pdf" ? "pdf" : (archivo.type.split("/")[1] || "bin");
+      const h = await supaHeaders();
+      const subir = async (ruta, blob, tipo) => {
+        const r = await fetch(SUPA_URL + "/storage/v1/object/laboratorios/" + ruta, {
+          method: "POST", headers: { apikey: h.apikey, Authorization: h.Authorization, "Content-Type": tipo, "x-upsert": "false" }, body: blob });
+        if (!r.ok) throw new Error("No se pudo guardar el archivo (" + r.status + ")");
+      };
+      await subir(base + "_original." + ext, archivo, archivo.type);
+      await subir(base + "_petcolinas.pdf", pdfBlob, "application/pdf");
+      const fila = { id, clienteid: String(clienteId), fecha, tipo: "hemograma", laboratorio,
+        datos: { paginas: comp.length, tenido: !!tenir, logo_cubierto: ediciones.some((e) => e && (e.cubrir || []).length > 0), recortado: ediciones.some((e) => e && e.crop) },
+        original_path: base + "_original." + ext, original_mime: archivo.type,
+        pdf_path: base + "_petcolinas.pdf", verificado_por: usuarioActual() };
       const r = await supaFetch("pc_lab_resultados", "POST", [fila]);
       if (r && r.error) throw new Error(JSON.stringify(r.error));
       avisar("Hemograma guardado en la historia.", "ok");
-      setRevision(null); setArchivo(null); setAbierto(true); cargar();
-      descargarLabPDF(fila, cliente);
+      doc.save("Hemograma_" + latinPDF((cliente && (cliente.nombreMascota || cliente.nombre)) || "paciente").replace(/[^A-Za-z0-9]+/g, "_") + "_" + fecha + ".pdf");
+      setPaginas(null); setArchivo(null); setAbierto(true); cargar();
     } catch (e) { avisar("No se pudo guardar: " + e.message, "error"); }
     setGuardando(false);
   }
 
-  async function verOriginal(reg) {
+  async function abrirFirmado(ruta) {
     try {
       const h = await supaHeaders();
-      const r = await fetch(SUPA_URL + "/storage/v1/object/sign/laboratorios/" + reg.original_path, {
-        method: "POST", headers: h, body: JSON.stringify({ expiresIn: 300 })
-      });
+      const r = await fetch(SUPA_URL + "/storage/v1/object/sign/laboratorios/" + ruta, {
+        method: "POST", headers: h, body: JSON.stringify({ expiresIn: 300 }) });
       const o = await r.json();
       if (!r.ok || !o.signedURL) throw new Error(o.message || "sin enlace");
       window.open(SUPA_URL + "/storage/v1" + o.signedURL, "_blank");
-    } catch (e) { avisar("No se pudo abrir el original: " + e.message, "error"); }
+    } catch (e) { avisar("No se pudo abrir el archivo: " + e.message, "error"); }
   }
 
   const btn = (fondo, color, borde) => ({ background: fondo, color, border: "1.5px solid " + (borde || fondo),
@@ -12164,12 +11963,10 @@ function LabResultados({ clienteId, cliente }) {
       E("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 6 } },
         E("input", { type: "file", accept: "application/pdf,image/jpeg,image/png,image/webp",
           onChange: (e) => { setArchivo(e.target.files[0] || null); setError(""); }, style: { fontSize: 12.5 } }),
-        archivo && E("button", { onClick: convertir, disabled: !!leyendo,
-          style: btn("#f08a1c", "#fff") }, leyendo ? "Leyendo…" : "✨ Convertir a formato PetColinas"),
-        null),
-      leyendo && E("div", { style: { fontSize: 12.5, color: "#0f6f82", fontWeight: 600, marginBottom: 8 } }, "⏳ " + leyendo),
+        archivo && E("button", { onClick: preparar, disabled: leyendo, style: btn("#f08a1c", "#fff") },
+          leyendo ? "Abriendo…" : "✨ Convertir a formato PetColinas")),
       E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 10, lineHeight: 1.5 } },
-        "Solo cambia el diseño y el logo: los resultados se copian tal cual del documento, sin poder editarse. El PDF digital se lee exacto; una foto o un escaneo se lee con OCR y puede equivocarse, así que antes de guardar compara con el original."),
+        "Los resultados NO se leen ni se reescriben: el documento del laboratorio se usa tal cual (misma imagen) y se le pone encima la marca de PetColinas. Puedes cubrir el logo del laboratorio y recortar el fondo."),
       error && E("div", { style: { background: "#fdeaea", border: "1.5px solid #c0392b", color: "#c0392b", borderRadius: 9,
         padding: "10px 12px", fontSize: 12.5, fontWeight: 600, marginBottom: 10 } }, error),
       cargando ? null : lista.length === 0
@@ -12179,74 +11976,102 @@ function LabResultados({ clienteId, cliente }) {
             E("div", null,
               E("div", { style: { fontWeight: 700, fontSize: 13 } }, "Hemograma · " + (r.fecha || "sin fecha")),
               E("div", { style: { fontSize: 11.5, color: "#5a6472" } }, "Laboratorio: " + (r.laboratorio || "-") +
-                " · " + ((r.datos && r.datos.parametros) || []).length + " parámetros")),
+                (r.datos && r.datos.paginas ? " · " + r.datos.paginas + " pág." : ""))),
             E("div", { style: { display: "flex", gap: 6 } },
-              E("button", { onClick: () => descargarLabPDF(r, cliente), style: btn("#121f38", "#fff") }, "📄 PDF PetColinas"),
-              r.original_path && E("button", { onClick: () => verOriginal(r), style: btn("#fff", "#334155", "#e0e4e8") }, "Ver original"))))),
+              r.pdf_path && E("button", { onClick: () => abrirFirmado(r.pdf_path), style: btn("#121f38", "#fff") }, "📄 PDF PetColinas"),
+              r.original_path && E("button", { onClick: () => abrirFirmado(r.original_path), style: btn("#fff", "#334155", "#e0e4e8") }, "Ver original"))))),
 
-    revision && E(ModalLabRevision, {
-      datos: revision.datos, fechaInicial: revision.fecha, archivo, ocupado: guardando,
-      onCerrar: () => setRevision(null), onGuardar: guardar
+    paginas && E(ModalLabPreparar, {
+      paginas, archivo, ocupado: guardando, cliente,
+      onCerrar: () => setPaginas(null), onGuardar: guardar
     }));
 }
 
-// Comparacion de SOLO LECTURA: lo leido a la izquierda, el original a la derecha.
-// Los resultados no se pueden editar: esto cambia el diseño y el logo, no los
-// valores. Si algo no coincide con el original, se DESCARTA; no se corrige a
-// mano. Y no se guarda sin confirmar que se compararon.
-function ModalLabRevision({ datos, fechaInicial, archivo, ocupado, onCerrar, onGuardar }) {
+// Preparar el documento: se marcan con el raton el LOGO a cubrir y, si hace falta,
+// el area a conservar (para quitar el fondo de una foto). No hay ningun campo de
+// resultados: lo que hay en el documento no se puede cambiar desde aqui.
+function ModalLabPreparar({ paginas, archivo, ocupado, cliente, onCerrar, onGuardar }) {
   const E = React.createElement;
-  const [ok, setOk] = React.useState(false);
-  const [url, setUrl] = React.useState("");
-  React.useEffect(() => {
-    if (!archivo || typeof URL === "undefined" || !URL.createObjectURL) return undefined;
-    const u = URL.createObjectURL(archivo); setUrl(u);
-    return () => URL.revokeObjectURL(u);
-  }, [archivo]);
+  const [pi, setPi] = React.useState(0);
+  const [modo, setModo] = React.useState("cubrir");           // "cubrir" | "recortar"
+  const [eds, setEds] = React.useState(() => paginas.map(() => ({ crop: null, cubrir: [] })));
+  const [arr, setArr] = React.useState(null);                 // arrastre en curso
+  const [tenir, setTenir] = React.useState(false);
+  const [lab, setLab] = React.useState(labGuardado());
+  const [fecha, setFecha] = React.useState(hoy());
+  const caja = React.useRef(null);
 
-  const d = datos || {}, lab = d.laboratorio || {}, pac = d.paciente || {};
-  const filas = d.parametros || [];
-  const nDudosos = filas.filter((p) => p.dudoso).length;
-  const bloqueado = ocupado || !ok || filas.length === 0;
-  const th = { padding: "7px 6px", fontSize: 10.5, textTransform: "uppercase", color: "#fff", textAlign: "left", background: "#121f38" };
-  const dato = (k, v) => v ? E("div", { style: { fontSize: 12.5, marginBottom: 2 } }, E("span", { style: { color: "#5a6472" } }, k + ": "), E("strong", null, v)) : null;
+  const pg = paginas[pi], ed = eds[pi];
+  const setEd = (f) => setEds((x) => x.map((e, j) => j === pi ? f(e) : e));
+  const frac = (ev) => {
+    const r = caja.current && caja.current.getBoundingClientRect ? caja.current.getBoundingClientRect() : { left: 0, top: 0, width: 1, height: 1 };
+    const cl = (v) => Math.min(1, Math.max(0, v));
+    return { x: cl((ev.clientX - r.left) / (r.width || 1)), y: cl((ev.clientY - r.top) / (r.height || 1)) };
+  };
+  const rect = (a) => ({ x: Math.min(a.x0, a.x1), y: Math.min(a.y0, a.y1), w: Math.abs(a.x1 - a.x0), h: Math.abs(a.y1 - a.y0) });
+  const empezar = (ev) => { const p = frac(ev); setArr({ x0: p.x, y0: p.y, x1: p.x, y1: p.y }); if (ev.currentTarget.setPointerCapture) { try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (e) {} } };
+  const mover = (ev) => { if (arr) { const p = frac(ev); setArr({ ...arr, x1: p.x, y1: p.y }); } };
+  const soltar = () => {
+    if (!arr) return;
+    const r = rect(arr); setArr(null);
+    if (r.w < 0.01 || r.h < 0.01) return;                      // un clic suelto no es un recuadro
+    if (modo === "cubrir") setEd((e) => ({ ...e, cubrir: [...e.cubrir, r] }));
+    else setEd((e) => ({ ...e, crop: r }));
+  };
+  // Todo se ve sobre la pagina COMPLETA: el recorte se ve como lo que queda fuera
+  // atenuado, y los cubiertos como recuadros blancos.
+  const pct = (v) => (v * 100) + "%";
+  const caja2 = (r, est, key) => E("div", { key, style: { position: "absolute", left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h), boxSizing: "border-box", pointerEvents: "none", ...est } });
+  const nCub = eds.reduce((s, e) => s + e.cubrir.length, 0);
+  const btn = (act) => ({ padding: "7px 12px", borderRadius: 8, border: "1.5px solid " + (act ? "#f08a1c" : "#d0d5db"), background: act ? "#fff3e3" : "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 });
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 2 };
+  const inp = { padding: "6px 8px", borderRadius: 6, border: "1px solid #d0d5db", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
 
   return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
-    E("div", { style: { background: "#fff", borderRadius: 14, width: "100%", maxWidth: 1180, maxHeight: "94vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
+    E("div", { style: { background: "#fff", borderRadius: 14, width: "100%", maxWidth: 1000, maxHeight: "94vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
       E("div", { style: { padding: "14px 18px", borderBottom: "1px solid #e0e4e8" } },
-        E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Compara con el original antes de guardarlo"),
-        E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2 } },
-          "Esto solo cambia el dise\u00F1o y el logo; los resultados no se editan. Si algo no coincide con el documento original, cancela y no se guarda nada.")),
-      E("div", { style: { display: "grid", gridTemplateColumns: archivo ? "minmax(0,1fr) minmax(0,1fr)" : "minmax(0,1fr)", flex: 1, minHeight: 0 } },
-        E("div", { style: { overflowY: "auto", padding: "12px 16px" } },
-          (d.advertencias || []).length > 0 && E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#92400e", marginBottom: 10 } },
-            E("strong", null, "Ojo: "), (d.advertencias || []).join(" ")),
-          E("div", { style: { background: "#f4f7f9", borderRadius: 9, padding: "10px 12px", marginBottom: 10 } },
-            dato("Laboratorio", lab.nombre), dato("Direcci\u00F3n", lab.direccion), dato("Tel\u00E9fono", lab.telefono), dato("Responsable", lab.responsable),
-            dato("Paciente", pac.nombre), dato("Especie", pac.especie), dato("Propietario", pac.propietario), dato("Fecha del resultado", fechaInicial)),
-          nDudosos > 0 && E("div", { style: { fontSize: 12, color: "#b45309", fontWeight: 700, marginBottom: 6 } },
-            "\u26A0 " + nDudosos + " valor(es) por verificar (en amarillo): comp\u00E1ralos con el original con cuidado."),
-          E("table", { style: { width: "100%", borderCollapse: "collapse" } },
-            E("thead", null, E("tr", null, ["Par\u00E1metro", "Resultado", "Unidad", "Rango", "Marca"].map((h, i) => E("th", { key: i, style: th }, h)))),
-            E("tbody", null, filas.map((p, i) => E("tr", { key: i, style: { background: p.dudoso ? "#fff7d6" : (i % 2 ? "#fafbfc" : "#fff") } },
-              E("td", { style: { padding: "5px 6px", fontSize: 12.5 } }, p.nombre),
-              E("td", { style: { padding: "5px 6px", fontSize: 12.5, fontWeight: 800 } }, p.resultado),
-              E("td", { style: { padding: "5px 6px", fontSize: 12, color: "#5a6472" } }, p.unidad || ""),
-              E("td", { style: { padding: "5px 6px", fontSize: 12, color: "#5a6472" } }, p.rango || ""),
-              E("td", { style: { padding: "5px 6px", fontSize: 12, fontWeight: 700, color: p.bandera === "alto" ? "#c0392b" : "#1a4fa0" } }, p.bandera || ""))))),
-          d.observaciones && E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 10 } }, E("strong", null, "Observaciones del laboratorio: "), d.observaciones)),
-        archivo && E("div", { style: { background: "#f0f2f4", borderLeft: "1px solid #e0e4e8", minHeight: 0 } },
-          !url ? null : archivo.type === "application/pdf"
-            ? E("iframe", { src: url, title: "Original", style: { width: "100%", height: "100%", border: "none", minHeight: 420 } })
-            : E("div", { style: { overflow: "auto", height: "100%" } }, E("img", { src: url, alt: "Original", style: { width: "100%", display: "block" } })))),
+        E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Convertir a formato PetColinas"),
+        E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2, lineHeight: 1.5 } },
+          "Los resultados quedan EXACTAMENTE como en el documento del laboratorio: no se leen ni se reescriben. Aquí solo marcas el logo del laboratorio para cubrirlo.")),
+      E("div", { style: { flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 18px" } },
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 } },
+          E("button", { onClick: () => setModo("cubrir"), style: btn(modo === "cubrir") }, "▭ Cubrir logo del laboratorio"),
+          E("button", { onClick: () => setModo("recortar"), style: btn(modo === "recortar") }, "✂ Recortar fondo"),
+          E("button", { onClick: () => setEd((e) => ({ ...e, cubrir: e.cubrir.slice(0, -1) })), disabled: !ed.cubrir.length, style: { ...btn(false), opacity: ed.cubrir.length ? 1 : 0.45 } }, "↶ Quitar último recuadro"),
+          ed.crop && E("button", { onClick: () => setEd((e) => ({ ...e, crop: null })), style: btn(false) }, "Quitar recorte"),
+          paginas.length > 1 && E("span", { style: { marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", fontSize: 12.5 } },
+            E("button", { onClick: () => setPi(Math.max(0, pi - 1)), disabled: pi === 0, style: btn(false) }, "←"),
+            "Página " + (pi + 1) + " de " + paginas.length,
+            E("button", { onClick: () => setPi(Math.min(paginas.length - 1, pi + 1)), disabled: pi === paginas.length - 1, style: btn(false) }, "→"))),
+        E("div", { style: { fontSize: 12, color: "#0f6f82", marginBottom: 8, fontWeight: 600 } },
+          modo === "cubrir" ? "Arrastra el ratón sobre el logo del laboratorio para cubrirlo (puedes marcar varios)."
+                            : "Arrastra para elegir la parte del documento que se conserva; lo de afuera se quita."),
+        E("div", { ref: caja, onPointerDown: empezar, onPointerMove: mover, onPointerUp: soltar,
+          style: { position: "relative", width: "100%", maxWidth: 640, margin: "0 auto", cursor: "crosshair", touchAction: "none", userSelect: "none", border: "1.5px solid #cfd6dc", lineHeight: 0 } },
+          E("img", { src: pg.url, alt: "Documento original", draggable: false, style: { width: "100%", display: "block", pointerEvents: "none" } }),
+          ed.crop && caja2({ x: 0, y: 0, w: 1, h: ed.crop.y }, { background: "rgba(18,31,56,0.55)" }, "c1"),
+          ed.crop && caja2({ x: 0, y: ed.crop.y + ed.crop.h, w: 1, h: 1 - ed.crop.y - ed.crop.h }, { background: "rgba(18,31,56,0.55)" }, "c2"),
+          ed.crop && caja2({ x: 0, y: ed.crop.y, w: ed.crop.x, h: ed.crop.h }, { background: "rgba(18,31,56,0.55)" }, "c3"),
+          ed.crop && caja2({ x: ed.crop.x + ed.crop.w, y: ed.crop.y, w: 1 - ed.crop.x - ed.crop.w, h: ed.crop.h }, { background: "rgba(18,31,56,0.55)" }, "c4"),
+          ed.crop && caja2(ed.crop, { border: "2px dashed #2aa3b8" }, "c5"),
+          ed.cubrir.map((r, i) => E("div", { key: "v" + i, style: { position: "absolute", left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h), background: "#fff", border: "2px solid #f08a1c", boxSizing: "border-box", pointerEvents: "none" } })),
+          arr && caja2(rect(arr), { border: "2px dashed " + (modo === "cubrir" ? "#f08a1c" : "#2aa3b8"), background: modo === "cubrir" ? "rgba(240,138,28,0.18)" : "rgba(42,163,184,0.12)" })),
+        E("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14, alignItems: "flex-end" } },
+          E("div", { style: { flex: "2 1 220px" } }, E("label", { style: lbl }, "Laboratorio (para el pie del PDF)"),
+            E("input", { value: lab, onChange: (e) => setLab(e.target.value), style: inp, placeholder: "Nombre del laboratorio" })),
+          E("div", { style: { flex: "0 0 150px" } }, E("label", { style: lbl }, "Fecha del resultado"),
+            E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: inp }))),
+        E("label", { style: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, marginTop: 12, cursor: "pointer", lineHeight: 1.45 } },
+          E("input", { type: "checkbox", checked: tenir, onChange: (e) => setTenir(e.target.checked), style: { marginTop: 2 } }),
+          E("span", null, E("strong", null, "Teñir el texto de azul marino PetColinas. "),
+            "Los números no cambian de forma, pero lo que el laboratorio marcó en color (por ejemplo un valor alto en rojo) pasa a azul. Déjalo apagado si tu laboratorio señala así los valores fuera de rango."))),
       E("div", { style: { padding: "12px 18px", borderTop: "1px solid #e0e4e8", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" } },
-        E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 240, cursor: "pointer" } },
-          E("input", { type: "checkbox", checked: ok, onChange: (e) => setOk(e.target.checked) }),
-          "Compar\u00E9 los valores y coinciden con el documento original."),
-        E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "No coincide: descartar"),
-        E("button", { onClick: () => onGuardar(d, fechaInicial), disabled: bloqueado,
-          style: { padding: "10px 18px", borderRadius: 9, border: "none", background: bloqueado ? "#aab3bd" : "#f08a1c", color: "#fff", cursor: bloqueado ? "default" : "pointer", fontWeight: 800 } },
-          ocupado ? "Guardando\u2026" : "Guardar y generar PDF"))));
+        E("div", { style: { flex: 1, fontSize: 12, color: "#5a6472", minWidth: 200 } },
+          nCub ? nCub + " recuadro(s) cubriendo el logo." : "Aún no cubres ningún logo: se verá el del laboratorio."),
+        E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
+        E("button", { onClick: () => onGuardar({ ediciones: eds, tenir, laboratorio: lab.trim(), fecha }), disabled: ocupado || !fecha,
+          style: { padding: "10px 18px", borderRadius: 9, border: "none", background: ocupado ? "#aab3bd" : "#f08a1c", color: "#fff", cursor: ocupado ? "default" : "pointer", fontWeight: 800 } },
+          ocupado ? "Generando…" : "Generar PDF PetColinas"))));
 }
 
 function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, citas = [], setCitas, cliente }) {

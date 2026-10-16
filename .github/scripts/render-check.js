@@ -267,77 +267,32 @@ render("Gastos", sandbox.Gastos, {
   const txt = JSON.stringify(salida, (k, v) => (typeof v === "function" ? undefined : v));
   if (!txt.includes("Tarjeta empresarial")) errores.push("TarjetaPorCuenta: la tarjeta empresarial no aparece en ningun bloque");
 })();
-// M21 · Resultados de laboratorio. El PDF no se puede generar aqui (no hay jsPDF
-// en la caja de arena), pero SI se fija lo que lo corrompe en silencio: las
-// unidades. "x10^6/uL" convertido en "x10/uL" cambia el sentido del resultado.
+// M21 · Resultados de laboratorio. REGLA: el documento se usa como imagen; NUNCA
+// se lee ni se reescribe un resultado. Una version anterior hacia OCR y cambio
+// valores al probarla con una foto. Si alguien vuelve a meter lectura, esto falla.
 (() => {
-  [["x10\u2076/\u00B5L", "x10^6/\u00B5L"], ["x10\u2079/L", "x10^9/L"], ["x10\u00B3/\u00B5L", "x10\u00B3/\u00B5L"],
-   ["\u2265 5", ">= 5"]].forEach(([ent, esp]) => {
-    const r = enVM("latinPDF(" + JSON.stringify(ent) + ")");
-    if (r !== esp) errores.push("latinPDF(" + ent + ") dio \"" + r + "\", se esperaba \"" + esp + "\" (una unidad cambiada es un dato clinico falso)");
+  ["parsearFilasLab", "datosDeTexto", "leerDocumentoLab", "ocrLab", "leerPDFLab", "plantillaLab"].forEach((f) => {
+    if (typeof sandbox[f] === "function") errores.push("Laboratorio: existe " + f + "(): los resultados no se leen ni se reescriben");
   });
-  if (typeof sandbox.generarLabPDFDoc !== "function") errores.push("generarLabPDFDoc no existe");
-  if (typeof sandbox.plantillaLab === "function") errores.push("plantillaLab: los resultados no se escriben a mano");
+  if (/tesseract/i.test(html)) errores.push("Laboratorio: aparece tesseract (OCR) en index.html: los resultados no se leen");
+  ["generarLabPDFDoc", "componerPaginaLab", "paginasDeArchivo"].forEach((f) => {
+    if (typeof sandbox[f] !== "function") errores.push("Laboratorio: falta " + f);
+  });
 })();
-// Lectura local del hemograma (sin IA): del texto del PDF a la tabla. Las filas
-// vienen como las entrega pdf.js: celdas con su texto y su posicion.
-(() => {
-  const C = (...t) => t.map((s, i) => ({ s, x: i * 40 }));
-  const filas = [C("LABORATORIO CLINICO EJEMPLO"), C("Tel: 809-555-0101", "lab@ejemplo.com"), C("Paciente: Rocky", "Especie: Canino"),
-    C("SERIE BLANCA"), C("Leucocitos", "21.4", "H", "x10\u00B3/\u00B5L", "5.05 - 16.76"), C("Linfocitos", "2.1", "x10\u00B3/\u00B5L", "1.05 - 5.10"),
-    C("Plaquetas", "148", "L", "x10\u00B3/\u00B5L", "148 - 484"), C("Edad: 5"), C("Observaciones: Leucocitosis")];
-  const r = enVM("parsearFilasLab(" + JSON.stringify(filas) + ")");
-  const p = r.parametros;
-  if (p.length !== 3) errores.push("parsearFilasLab: esperaba 3 parametros y dio " + p.length);
-  else {
-    if (p[0].resultado !== "21.4" || p[0].bandera !== "alto" || p[0].grupo !== "SERIE BLANCA") errores.push("parsearFilasLab: Leucocitos mal leido " + JSON.stringify(p[0]));
-    if (p[2].resultado !== "148" || p[2].bandera !== "bajo") errores.push("parsearFilasLab: Plaquetas mal leido " + JSON.stringify(p[2]));
-    if (p[1].bandera !== null) errores.push("parsearFilasLab: Linfocitos no tiene marca en el documento y no se le debe inventar una");
-    if (p[0].unidad !== "x10\u00B3/\u00B5L" || p[0].rango !== "5.05 - 16.76") errores.push("parsearFilasLab: unidad o rango de Leucocitos mal leidos");
-  }
-  if (p.some((x) => /edad/i.test(x.nombre))) errores.push("parsearFilasLab: 'Edad: 5' se tomo por un parametro");
-  const dt = enVM("datosDeTexto(" + JSON.stringify(r.antes) + "," + JSON.stringify(r.despues) + ")");
-  if (dt.paciente.nombre !== "Rocky" || dt.paciente.especie !== "Canino") errores.push("datosDeTexto: paciente/especie mal separados " + JSON.stringify(dt.paciente));
-  if (dt.laboratorio.telefono !== "809-555-0101") errores.push("datosDeTexto: telefono del laboratorio mal leido");
-  // Una fila con caracteres de codificacion rota NO puede pasar por buena.
-  const rota = enVM("parsearFilasLab(" + JSON.stringify([[{ s: "Eritrocitos", x: 0 }, { s: "6.85", x: 40 }, { s: "x10 v/L", x: 80, raro: true }, { s: "5.65 - 8.87", x: 120 }]]) + ")");
-  if (!rota.parametros[0] || rota.parametros[0].dudoso !== true) errores.push("parsearFilasLab: una celda con caracteres rotos deberia dejar la fila 'por verificar'");
-})();
-render("LabResultados", sandbox.LabResultados, { clienteId: "9", cliente: { nombreMascota: "Rocky" } }, (h) => {
-  const i = h.indexOf(false); if (i >= 0) h[i] = true;   // abierto
-}, "Resultados de laboratorio");
-const datosLab = { es_hemograma: true, advertencias: ["foto un poco torcida"],
-  laboratorio: { nombre: "Laboratorio Ejemplo" }, observaciones: "Nota del laboratorio",
-  parametros: [
-    { nombre: "Leucocitos", resultado: "21.4", unidad: "x10\u00B3/\u00B5L", rango: "5.05 - 16.76", bandera: "alto", dudoso: false },
-    { nombre: "Plaquetas", resultado: "148", unidad: "x10\u00B3/\u00B5L", rango: "148 - 484", bandera: null, dudoso: true }] };
-render("ModalLabRevision", sandbox.ModalLabRevision, {
-  datos: datosLab, fechaInicial: "2026-10-16", archivo: null, ocupado: false, onCerrar: () => {}, onGuardar: () => {}
-}, null, "Compara con el original antes de guardarlo");
-// Los resultados NO se editan: la pantalla no puede tener ningun campo de texto,
-// select ni textarea; solo la casilla de verificacion. Si alguien vuelve a
-// hacerlos editables, esto falla.
+render("LabResultados", sandbox.LabResultados, { clienteId: "9", cliente: { nombreMascota: "Rocky" } }, null, "Resultados de laboratorio");
+const paginaLab = { url: "data:image/jpeg;base64,AAAA", w: 1000, h: 1400 };
+render("ModalLabPreparar", sandbox.ModalLabPreparar, {
+  paginas: [paginaLab, paginaLab], archivo: { type: "application/pdf" }, ocupado: false, cliente: { nombreMascota: "Rocky" },
+  onCerrar: () => {}, onGuardar: () => {}
+}, null, "Convertir a formato PetColinas");
+// El texto de la pantalla promete que los resultados no se tocan: que ningun
+// campo de la pantalla pueda ser de resultados. Solo hay laboratorio y fecha.
 (() => {
   hookIdx = 0; hooks = [];
-  const hallarTodos = (n, f, acc = []) => { if (!n || typeof n !== "object") return acc; if (Array.isArray(n)) { n.forEach((x) => hallarTodos(x, f, acc)); return acc; } if (f(n)) acc.push(n); [].concat(n.c || []).forEach((c) => hallarTodos(c, f, acc)); return acc; };
-  const arbol = sandbox.ModalLabRevision({ datos: datosLab, fechaInicial: "2026-10-16", archivo: null, ocupado: false, onCerrar() {}, onGuardar() {} });
-  const editables = hallarTodos(arbol, (n) => n.t === "textarea" || n.t === "select" || (n.t === "input" && !(n.p && n.p.type === "checkbox")));
-  if (editables.length) errores.push("ModalLabRevision: los resultados no deben poder editarse (" + editables.length + " campo(s) editable(s))");
-})();
-// Lo que de verdad protege al paciente: sin la casilla de verificacion el boton
-// de guardar tiene que seguir bloqueado.
-(() => {
-  hookIdx = 0; hooks = [];
-  const props = { datos: datosLab, fechaInicial: "2026-10-16", archivo: null, ocupado: false, onCerrar() {}, onGuardar() {} };
-  const hallar = (n, f) => { if (!n || typeof n !== "object") return null; if (f(n)) return n; for (const c of [].concat(n.c || [])) { const r = hallar(c, f); if (r) return r; } return null; };
-  const ver = () => { hookIdx = 0; return sandbox.ModalLabRevision(props); };
-  ver(); const sinCasilla = ver();
-  const b1 = hallar(sinCasilla, (n) => n.t === "button" && n.p && n.p.disabled !== undefined && (n.c || []).join("").includes("Guardar y generar"));
-  if (!b1 || b1.p.disabled !== true) errores.push("ModalLabRevision: el boton Guardar deberia estar BLOQUEADO sin marcar la verificacion");
-  const iOk = hooks.indexOf(false); if (iOk >= 0) hooks[iOk] = true;
-  const conCasilla = ver();
-  const b2 = hallar(conCasilla, (n) => n.t === "button" && n.p && n.p.disabled !== undefined && (n.c || []).join("").includes("Guardar y generar"));
-  if (!b2 || b2.p.disabled !== false) errores.push("ModalLabRevision: con la verificacion marcada el boton deberia habilitarse");
+  const todos = (n, f, acc = []) => { if (!n || typeof n !== "object") return acc; if (Array.isArray(n)) { n.forEach((x) => todos(x, f, acc)); return acc; } if (f(n)) acc.push(n); [].concat(n.c || []).forEach((c) => todos(c, f, acc)); return acc; };
+  const arbol = sandbox.ModalLabPreparar({ paginas: [paginaLab], archivo: null, ocupado: false, cliente: {}, onCerrar() {}, onGuardar() {} });
+  const campos = todos(arbol, (n) => n.t === "textarea" || n.t === "select" || (n.t === "input" && n.p && n.p.type !== "checkbox"));
+  if (campos.length !== 2) errores.push("ModalLabPreparar: se esperaban 2 campos (laboratorio y fecha) y hay " + campos.length);
 })();
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
