@@ -291,8 +291,12 @@ render("ModalLabPreparar", sandbox.ModalLabPreparar, {
   hookIdx = 0; hooks = [];
   const todos = (n, f, acc = []) => { if (!n || typeof n !== "object") return acc; if (Array.isArray(n)) { n.forEach((x) => todos(x, f, acc)); return acc; } if (f(n)) acc.push(n); [].concat(n.c || []).forEach((c) => todos(c, f, acc)); return acc; };
   const arbol = sandbox.ModalLabPreparar({ paginas: [paginaLab], archivo: null, ocupado: false, cliente: {}, onCerrar() {}, onGuardar() {} });
-  const campos = todos(arbol, (n) => n.t === "textarea" || n.t === "select" || (n.t === "input" && n.p && n.p.type !== "checkbox"));
-  if (campos.length !== 2) errores.push("ModalLabPreparar: se esperaban 2 campos (laboratorio y fecha) y hay " + campos.length);
+  // Solo controles de PetColinas: fecha, las dos franjas (range) y la casilla de teñir.
+  // Ningun texto libre: nada donde escribir o cambiar un resultado.
+  const campos = todos(arbol, (n) => n.t === "textarea" || n.t === "select" || (n.t === "input" && !(n.p && ["date", "range", "checkbox"].includes(n.p.type))));
+  if (campos.length) errores.push("ModalLabPreparar: hay " + campos.length + " campo(s) de texto: no debe haber donde editar resultados");
+  const txt = JSON.stringify(arbol, (k, v) => (typeof v === "function" ? undefined : v));
+  if (/Laboratorio \(para el pie/.test(txt)) errores.push("ModalLabPreparar: no debe pedirse el nombre del laboratorio");
 })();
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},

@@ -135,21 +135,23 @@ PENDIENTE DE VICTOR en este modulo:
 
 ## HEMOGRAMAS (M21, oct 2026)
 Evolucion del paciente -> "Resultados de laboratorio" -> "Convertir a formato
-PetColinas". REGLA DE ORO (decision de Victor): LOS RESULTADOS NO SE LEEN, NO SE
-TRANSCRIBEN Y NO SE TOCAN. El documento del laboratorio (foto, o las paginas del
-PDF dibujadas por pdf.js) se usa como IMAGEN y se le pone encima la marca de
-PetColinas (cabecera con logo, datos del paciente tomados del SISTEMA, marco,
-pie "Reproducido por PetColinas sin modificar los resultados"). Cada numero son
-los pixeles del laboratorio: no hay forma de que cambie.
-Lo unico que se hace sobre la imagen: recortar el fondo, CUBRIR el logo del
-laboratorio con un recuadro blanco (se marca con el raton), y opcionalmente teñir
-el texto de azul marino (apagado por defecto: lo que el laboratorio marco en
-color, p. ej. un valor alto en rojo, pasaria a azul). Se conserva lo demas del
-laboratorio (nombre, direccion, firma, notas).
-HISTORIA: una primera version leia el documento (IA, luego OCR/texto del PDF) y
-reescribia los valores; al probarla con una foto CAMBIO RESULTADOS. Se elimino
-por completo. render-check FALLA si reaparece parsearFilasLab, leerDocumentoLab,
-ocrLab, tesseract, etc. NO volver a leer/transcribir resultados.
+PetColinas". DOS REGLAS DE VICTOR:
+1) LOS RESULTADOS NO SE LEEN, NO SE TRANSCRIBEN Y NO SE TOCAN. El documento del
+   laboratorio (foto, o paginas del PDF dibujadas por pdf.js) se usa como IMAGEN:
+   cada numero son los pixeles del laboratorio. Una primera version leia el
+   documento (IA, luego OCR) y CAMBIO RESULTADOS al probarla con una foto; se
+   elimino. render-check FALLA si reaparece parsearFilasLab, leerDocumentoLab,
+   ocrLab, tesseract, etc. NO volver a leer/transcribir resultados.
+2) NADA DEL LABORATORIO ORIGINAL debe salir (actualizado 16 oct): ni logo, ni
+   nombre, ni direccion, ni firma, ni "informe emitido por". Todo el PDF es de
+   PetColinas (cabecera con logo y colores, paciente y propietario tomados del
+   SISTEMA, marco, pie PetColinas). La app NO pide ni imprime el nombre del lab.
+Como se quita lo del laboratorio (el sistema no lo detecta, porque no lee): dos
+franjas deslizables (quitar X% de arriba / X% de abajo, donde suelen estar logo,
+nombre, direccion, firma y sello), recuadros blancos para lo suelto (marca de
+agua, sello al costado), recorte libre, y "Ver como queda" para revisar la
+pagina final ANTES de generar. Opcional, apagado por defecto: teñir el texto de
+azul marino (un valor que el lab marco en rojo pasaria a azul).
 Se guardan 2 archivos en el bucket privado `laboratorios`: original y PDF ya
 generado (no se regenera). La Edge Function `lab-extraer` (IA) sigue desplegada
 pero huerfana: borrarla del panel. El logo real se toma de `logo.png` en la raiz

@@ -11837,7 +11837,6 @@ function generarLabPDFDoc(paginas, meta, logo) {
     doc.text("RESULTADOS DE HEMOGRAMA", W - M, 15, { align: "right" });
     doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(200, 215, 230);
     doc.text(latinPDF("Fecha: " + (meta.fecha || "")), W - M, 22, { align: "right" });
-    if (meta.laboratorio) doc.text(latinPDF("Laboratorio: " + meta.laboratorio), W - M, 27, { align: "right" });
   };
   const franja = () => {
     doc.setFillColor(...K.claro); doc.rect(M, 41, W - 2 * M, 8, "F");
@@ -11859,16 +11858,13 @@ function generarLabPDFDoc(paginas, meta, logo) {
     doc.setPage(p);
     doc.setDrawColor(...K.turquesa); doc.setLineWidth(0.4); doc.line(M, 284, W - M, 284);
     doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...K.gris);
-    const aviso = "Informe original emitido por " + (meta.laboratorio || "el laboratorio") +
-      ". Reproducido por PetColinas sin modificar los resultados.";
-    doc.text(doc.splitTextToSize(latinPDF(aviso), W - 2 * M - 22), M, 288);
+    // Todo el documento es de PetColinas: ninguna referencia al laboratorio original.
+    doc.text("PetColinas · Plaza Las Colinas, Santo Domingo Oeste · Tel: 809-752-6806 · petcolinasrd@gmail.com", M, 288);
     doc.text("Pág. " + p + " de " + total, W - M, 288, { align: "right" });
   }
   return doc;
 }
 
-const LAB_LS = "pc_lab_nombre";
-const labGuardado = () => { try { return localStorage.getItem(LAB_LS) || ""; } catch (e) { return ""; } };
 
 function LabResultados({ clienteId, cliente }) {
   const E = React.createElement;
@@ -11902,15 +11898,14 @@ function LabResultados({ clienteId, cliente }) {
     setLeyendo(false);
   }
 
-  async function guardar({ ediciones, tenir, laboratorio, fecha }) {
+  async function guardar({ ediciones, tenir, fecha }) {
     setGuardando(true);
     try {
-      try { localStorage.setItem(LAB_LS, laboratorio); } catch (e) {}
       const comp = [];
       for (let i = 0; i < paginas.length; i++) comp.push(await componerPaginaLab(paginas[i], ediciones[i], tenir));
       const logo = await cargarLogoPC();
       const doc = generarLabPDFDoc(comp, {
-        fecha, laboratorio, paciente: (cliente && (cliente.nombreMascota || cliente.nombre)) || "",
+        fecha, paciente: (cliente && (cliente.nombreMascota || cliente.nombre)) || "",
         propietario: (cliente && (cliente.nombrePropietario || cliente.dueno)) || ""
       }, logo);
       const pdfBlob = doc.output("blob");
@@ -11926,7 +11921,7 @@ function LabResultados({ clienteId, cliente }) {
       };
       await subir(base + "_original." + ext, archivo, archivo.type);
       await subir(base + "_petcolinas.pdf", pdfBlob, "application/pdf");
-      const fila = { id, clienteid: String(clienteId), fecha, tipo: "hemograma", laboratorio,
+      const fila = { id, clienteid: String(clienteId), fecha, tipo: "hemograma", laboratorio: "",
         datos: { paginas: comp.length, tenido: !!tenir, logo_cubierto: ediciones.some((e) => e && (e.cubrir || []).length > 0), recortado: ediciones.some((e) => e && e.crop) },
         original_path: base + "_original." + ext, original_mime: archivo.type,
         pdf_path: base + "_petcolinas.pdf", verificado_por: usuarioActual() };
@@ -11966,7 +11961,7 @@ function LabResultados({ clienteId, cliente }) {
         archivo && E("button", { onClick: preparar, disabled: leyendo, style: btn("#f08a1c", "#fff") },
           leyendo ? "Abriendo…" : "✨ Convertir a formato PetColinas")),
       E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 10, lineHeight: 1.5 } },
-        "Los resultados NO se leen ni se reescriben: el documento del laboratorio se usa tal cual (misma imagen) y se le pone encima la marca de PetColinas. Puedes cubrir el logo del laboratorio y recortar el fondo."),
+        "Los resultados NO se leen ni se reescriben: se usa la misma imagen del documento, sin nada del laboratorio original (le quitas el logo y sus datos) y con la marca de PetColinas."),
       error && E("div", { style: { background: "#fdeaea", border: "1.5px solid #c0392b", color: "#c0392b", borderRadius: 9,
         padding: "10px 12px", fontSize: 12.5, fontWeight: 600, marginBottom: 10 } }, error),
       cargando ? null : lista.length === 0
@@ -11975,8 +11970,8 @@ function LabResultados({ clienteId, cliente }) {
             gap: 8, flexWrap: "wrap", background: "#fff", border: "1px solid #e0e4e8", borderRadius: 9, padding: "9px 12px", marginBottom: 7 } },
             E("div", null,
               E("div", { style: { fontWeight: 700, fontSize: 13 } }, "Hemograma · " + (r.fecha || "sin fecha")),
-              E("div", { style: { fontSize: 11.5, color: "#5a6472" } }, "Laboratorio: " + (r.laboratorio || "-") +
-                (r.datos && r.datos.paginas ? " · " + r.datos.paginas + " pág." : ""))),
+              E("div", { style: { fontSize: 11.5, color: "#5a6472" } },
+                (r.datos && r.datos.paginas ? r.datos.paginas + " pág." : "") + (r.datos && r.datos.logo_cubierto ? " · logo cubierto" : ""))),
             E("div", { style: { display: "flex", gap: 6 } },
               r.pdf_path && E("button", { onClick: () => abrirFirmado(r.pdf_path), style: btn("#121f38", "#fff") }, "📄 PDF PetColinas"),
               r.original_path && E("button", { onClick: () => abrirFirmado(r.original_path), style: btn("#fff", "#334155", "#e0e4e8") }, "Ver original"))))),
@@ -11987,9 +11982,12 @@ function LabResultados({ clienteId, cliente }) {
     }));
 }
 
-// Preparar el documento: se marcan con el raton el LOGO a cubrir y, si hace falta,
-// el area a conservar (para quitar el fondo de una foto). No hay ningun campo de
-// resultados: lo que hay en el documento no se puede cambiar desde aqui.
+// Preparar el documento: se quita TODO lo que sea del laboratorio original (logo,
+// nombre, direccion, firma, marcas de agua) y se ve el resultado antes de generar.
+// No hay ningun campo de resultados: lo que hay en el documento no se puede cambiar.
+//  - Franjas de arriba y de abajo: se quitan de un golpe (ahi suelen estar el logo,
+//    el nombre, la direccion y la firma del laboratorio).
+//  - Recuadros: para lo que quede suelto (una marca de agua, un sello al costado).
 function ModalLabPreparar({ paginas, archivo, ocupado, cliente, onCerrar, onGuardar }) {
   const E = React.createElement;
   const [pi, setPi] = React.useState(0);
@@ -11997,8 +11995,9 @@ function ModalLabPreparar({ paginas, archivo, ocupado, cliente, onCerrar, onGuar
   const [eds, setEds] = React.useState(() => paginas.map(() => ({ crop: null, cubrir: [] })));
   const [arr, setArr] = React.useState(null);                 // arrastre en curso
   const [tenir, setTenir] = React.useState(false);
-  const [lab, setLab] = React.useState(labGuardado());
   const [fecha, setFecha] = React.useState(hoy());
+  const [prev, setPrev] = React.useState(null);               // vista previa del resultado
+  const [armando, setArmando] = React.useState(false);
   const caja = React.useRef(null);
 
   const pg = paginas[pi], ed = eds[pi];
@@ -12018,60 +12017,91 @@ function ModalLabPreparar({ paginas, archivo, ocupado, cliente, onCerrar, onGuar
     if (modo === "cubrir") setEd((e) => ({ ...e, cubrir: [...e.cubrir, r] }));
     else setEd((e) => ({ ...e, crop: r }));
   };
-  // Todo se ve sobre la pagina COMPLETA: el recorte se ve como lo que queda fuera
-  // atenuado, y los cubiertos como recuadros blancos.
+  // Franjas: viven dentro del recorte (que es lo que se conserva).
+  const c0 = ed.crop || { x: 0, y: 0, w: 1, h: 1 };
+  const arriba = Math.round(c0.y * 100), abajo = Math.round((1 - c0.y - c0.h) * 100);
+  const franja = (cual, v) => {
+    const t = cual === "arriba" ? v / 100 : c0.y, bj = cual === "abajo" ? v / 100 : 1 - c0.y - c0.h;
+    const h = Math.max(0.1, 1 - t - bj);
+    setEd((e) => (t <= 0 && bj <= 0 && c0.x === 0 && c0.w === 1) ? { ...e, crop: null } : { ...e, crop: { x: c0.x, y: t, w: c0.w, h } });
+    setPrev(null);
+  };
+  async function verComoQueda() {
+    setArmando(true);
+    try { setPrev(await componerPaginaLab(pg, ed, tenir)); } catch (e) { avisar("No se pudo armar la vista previa: " + e.message, "error"); }
+    setArmando(false);
+  }
   const pct = (v) => (v * 100) + "%";
   const caja2 = (r, est, key) => E("div", { key, style: { position: "absolute", left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h), boxSizing: "border-box", pointerEvents: "none", ...est } });
   const nCub = eds.reduce((s, e) => s + e.cubrir.length, 0);
   const btn = (act) => ({ padding: "7px 12px", borderRadius: 8, border: "1.5px solid " + (act ? "#f08a1c" : "#d0d5db"), background: act ? "#fff3e3" : "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 });
   const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 2 };
   const inp = { padding: "6px 8px", borderRadius: 6, border: "1px solid #d0d5db", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
+  const sombra = { background: "rgba(18,31,56,0.55)" };
 
   return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
     E("div", { style: { background: "#fff", borderRadius: 14, width: "100%", maxWidth: 1000, maxHeight: "94vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
       E("div", { style: { padding: "14px 18px", borderBottom: "1px solid #e0e4e8" } },
         E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Convertir a formato PetColinas"),
         E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2, lineHeight: 1.5 } },
-          "Los resultados quedan EXACTAMENTE como en el documento del laboratorio: no se leen ni se reescriben. Aquí solo marcas el logo del laboratorio para cubrirlo.")),
+          "Quita todo lo del laboratorio original (logo, nombre, direcci\u00F3n, firma, marcas de agua). Los resultados quedan EXACTAMENTE como est\u00E1n: no se leen ni se reescriben.")),
       E("div", { style: { flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 18px" } },
-        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 } },
-          E("button", { onClick: () => setModo("cubrir"), style: btn(modo === "cubrir") }, "▭ Cubrir logo del laboratorio"),
-          E("button", { onClick: () => setModo("recortar"), style: btn(modo === "recortar") }, "✂ Recortar fondo"),
-          E("button", { onClick: () => setEd((e) => ({ ...e, cubrir: e.cubrir.slice(0, -1) })), disabled: !ed.cubrir.length, style: { ...btn(false), opacity: ed.cubrir.length ? 1 : 0.45 } }, "↶ Quitar último recuadro"),
-          ed.crop && E("button", { onClick: () => setEd((e) => ({ ...e, crop: null })), style: btn(false) }, "Quitar recorte"),
-          paginas.length > 1 && E("span", { style: { marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", fontSize: 12.5 } },
-            E("button", { onClick: () => setPi(Math.max(0, pi - 1)), disabled: pi === 0, style: btn(false) }, "←"),
-            "Página " + (pi + 1) + " de " + paginas.length,
-            E("button", { onClick: () => setPi(Math.min(paginas.length - 1, pi + 1)), disabled: pi === paginas.length - 1, style: btn(false) }, "→"))),
+        paginas.length > 1 && E("div", { style: { display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, marginBottom: 10 } },
+          E("button", { onClick: () => { setPi(Math.max(0, pi - 1)); setPrev(null); }, disabled: pi === 0, style: btn(false) }, "\u2190"),
+          "P\u00E1gina " + (pi + 1) + " de " + paginas.length,
+          E("button", { onClick: () => { setPi(Math.min(paginas.length - 1, pi + 1)); setPrev(null); }, disabled: pi === paginas.length - 1, style: btn(false) }, "\u2192")),
+
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 12, background: "#f4f7f9", borderRadius: 10, padding: "10px 14px" } },
+          E("div", null, E("label", { style: lbl }, "Quitar la franja de ARRIBA: " + arriba + "%"),
+            E("input", { type: "range", min: 0, max: 45, step: 1, value: arriba, onChange: (e) => franja("arriba", Number(e.target.value)), style: { width: "100%" } }),
+            E("div", { style: { fontSize: 11, color: "#5a6472" } }, "Logo, nombre y direcci\u00F3n del laboratorio.")),
+          E("div", null, E("label", { style: lbl }, "Quitar la franja de ABAJO: " + abajo + "%"),
+            E("input", { type: "range", min: 0, max: 45, step: 1, value: abajo, onChange: (e) => franja("abajo", Number(e.target.value)), style: { width: "100%" } }),
+            E("div", { style: { fontSize: 11, color: "#5a6472" } }, "Firma, sello y pie del laboratorio."))),
+
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 } },
+          E("button", { onClick: () => setModo("cubrir"), style: btn(modo === "cubrir") }, "\u25AD Tapar un recuadro"),
+          E("button", { onClick: () => setModo("recortar"), style: btn(modo === "recortar") }, "\u2702 Elegir \u00E1rea a conservar"),
+          E("button", { onClick: () => { setEd((e) => ({ ...e, cubrir: e.cubrir.slice(0, -1) })); setPrev(null); }, disabled: !ed.cubrir.length, style: { ...btn(false), opacity: ed.cubrir.length ? 1 : 0.45 } }, "\u21B6 Quitar \u00FAltimo recuadro"),
+          ed.crop && E("button", { onClick: () => { setEd((e) => ({ ...e, crop: null })); setPrev(null); }, style: btn(false) }, "Quitar recorte")),
         E("div", { style: { fontSize: 12, color: "#0f6f82", marginBottom: 8, fontWeight: 600 } },
-          modo === "cubrir" ? "Arrastra el ratón sobre el logo del laboratorio para cubrirlo (puedes marcar varios)."
+          modo === "cubrir" ? "Arrastra el rat\u00F3n sobre lo que quieras tapar (una marca de agua, un sello al costado\u2026). Puedes marcar varios."
                             : "Arrastra para elegir la parte del documento que se conserva; lo de afuera se quita."),
-        E("div", { ref: caja, onPointerDown: empezar, onPointerMove: mover, onPointerUp: soltar,
-          style: { position: "relative", width: "100%", maxWidth: 640, margin: "0 auto", cursor: "crosshair", touchAction: "none", userSelect: "none", border: "1.5px solid #cfd6dc", lineHeight: 0 } },
-          E("img", { src: pg.url, alt: "Documento original", draggable: false, style: { width: "100%", display: "block", pointerEvents: "none" } }),
-          ed.crop && caja2({ x: 0, y: 0, w: 1, h: ed.crop.y }, { background: "rgba(18,31,56,0.55)" }, "c1"),
-          ed.crop && caja2({ x: 0, y: ed.crop.y + ed.crop.h, w: 1, h: 1 - ed.crop.y - ed.crop.h }, { background: "rgba(18,31,56,0.55)" }, "c2"),
-          ed.crop && caja2({ x: 0, y: ed.crop.y, w: ed.crop.x, h: ed.crop.h }, { background: "rgba(18,31,56,0.55)" }, "c3"),
-          ed.crop && caja2({ x: ed.crop.x + ed.crop.w, y: ed.crop.y, w: 1 - ed.crop.x - ed.crop.w, h: ed.crop.h }, { background: "rgba(18,31,56,0.55)" }, "c4"),
-          ed.crop && caja2(ed.crop, { border: "2px dashed #2aa3b8" }, "c5"),
-          ed.cubrir.map((r, i) => E("div", { key: "v" + i, style: { position: "absolute", left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h), background: "#fff", border: "2px solid #f08a1c", boxSizing: "border-box", pointerEvents: "none" } })),
-          arr && caja2(rect(arr), { border: "2px dashed " + (modo === "cubrir" ? "#f08a1c" : "#2aa3b8"), background: modo === "cubrir" ? "rgba(240,138,28,0.18)" : "rgba(42,163,184,0.12)" })),
+
+        prev
+          ? E("div", null,
+              E("div", { style: { fontSize: 12.5, fontWeight: 800, color: "#1a6b3a", marginBottom: 6 } }, "As\u00ED queda la p\u00E1gina " + (pi + 1) + " (la cabecera y el pie de PetColinas se agregan al generar). Revisa que no quede nada del laboratorio."),
+              E("div", { style: { width: "100%", maxWidth: 640, margin: "0 auto", border: "2px solid #2aa3b8", lineHeight: 0 } },
+                E("img", { src: prev.url, alt: "Vista previa", style: { width: "100%", display: "block" } })),
+              E("div", { style: { textAlign: "center", marginTop: 8 } }, E("button", { onClick: () => setPrev(null), style: btn(false) }, "\u2190 Seguir editando")))
+          : E("div", { ref: caja, onPointerDown: empezar, onPointerMove: mover, onPointerUp: soltar,
+              style: { position: "relative", width: "100%", maxWidth: 640, margin: "0 auto", cursor: "crosshair", touchAction: "none", userSelect: "none", border: "1.5px solid #cfd6dc", lineHeight: 0 } },
+              E("img", { src: pg.url, alt: "Documento original", draggable: false, style: { width: "100%", display: "block", pointerEvents: "none" } }),
+              ed.crop && caja2({ x: 0, y: 0, w: 1, h: ed.crop.y }, sombra, "c1"),
+              ed.crop && caja2({ x: 0, y: ed.crop.y + ed.crop.h, w: 1, h: 1 - ed.crop.y - ed.crop.h }, sombra, "c2"),
+              ed.crop && caja2({ x: 0, y: ed.crop.y, w: ed.crop.x, h: ed.crop.h }, sombra, "c3"),
+              ed.crop && caja2({ x: ed.crop.x + ed.crop.w, y: ed.crop.y, w: 1 - ed.crop.x - ed.crop.w, h: ed.crop.h }, sombra, "c4"),
+              ed.crop && caja2(ed.crop, { border: "2px dashed #2aa3b8" }, "c5"),
+              ed.cubrir.map((r, i) => caja2(r, { background: "#fff", border: "2px solid #f08a1c" }, "v" + i)),
+              arr && caja2(rect(arr), { border: "2px dashed " + (modo === "cubrir" ? "#f08a1c" : "#2aa3b8"), background: modo === "cubrir" ? "rgba(240,138,28,0.18)" : "rgba(42,163,184,0.12)" }, "arr")),
+
         E("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14, alignItems: "flex-end" } },
-          E("div", { style: { flex: "2 1 220px" } }, E("label", { style: lbl }, "Laboratorio (para el pie del PDF)"),
-            E("input", { value: lab, onChange: (e) => setLab(e.target.value), style: inp, placeholder: "Nombre del laboratorio" })),
           E("div", { style: { flex: "0 0 150px" } }, E("label", { style: lbl }, "Fecha del resultado"),
-            E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: inp }))),
+            E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: inp })),
+          E("button", { onClick: verComoQueda, disabled: armando, style: btn(false) }, armando ? "Armando\u2026" : "\uD83D\uDC41 Ver c\u00F3mo queda")),
         E("label", { style: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, marginTop: 12, cursor: "pointer", lineHeight: 1.45 } },
-          E("input", { type: "checkbox", checked: tenir, onChange: (e) => setTenir(e.target.checked), style: { marginTop: 2 } }),
-          E("span", null, E("strong", null, "Teñir el texto de azul marino PetColinas. "),
-            "Los números no cambian de forma, pero lo que el laboratorio marcó en color (por ejemplo un valor alto en rojo) pasa a azul. Déjalo apagado si tu laboratorio señala así los valores fuera de rango."))),
+          E("input", { type: "checkbox", checked: tenir, onChange: (e) => { setTenir(e.target.checked); setPrev(null); }, style: { marginTop: 2 } }),
+          E("span", null, E("strong", null, "Te\u00F1ir el texto de azul marino PetColinas. "),
+            "Los n\u00FAmeros no cambian de forma, pero lo que el laboratorio marc\u00F3 en color (por ejemplo un valor alto en rojo) pasa a azul. D\u00E9jalo apagado si tu laboratorio se\u00F1ala as\u00ED los valores fuera de rango."))),
       E("div", { style: { padding: "12px 18px", borderTop: "1px solid #e0e4e8", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" } },
         E("div", { style: { flex: 1, fontSize: 12, color: "#5a6472", minWidth: 200 } },
-          nCub ? nCub + " recuadro(s) cubriendo el logo." : "Aún no cubres ningún logo: se verá el del laboratorio."),
+          (arriba || abajo ? "Se quita " + (arriba ? arriba + "% de arriba" : "") + (arriba && abajo ? " y " : "") + (abajo ? abajo + "% de abajo" : "") + ". " : "") +
+          (nCub ? nCub + " recuadro(s) tapando. " : "") +
+          (!arriba && !abajo && !nCub && !ed.crop ? "A\u00FAn no quitas nada del laboratorio: usa \u00ABVer c\u00F3mo queda\u00BB para revisar." : "")),
         E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
-        E("button", { onClick: () => onGuardar({ ediciones: eds, tenir, laboratorio: lab.trim(), fecha }), disabled: ocupado || !fecha,
+        E("button", { onClick: () => onGuardar({ ediciones: eds, tenir, fecha }), disabled: ocupado || !fecha,
           style: { padding: "10px 18px", borderRadius: 9, border: "none", background: ocupado ? "#aab3bd" : "#f08a1c", color: "#fff", cursor: ocupado ? "default" : "pointer", fontWeight: 800 } },
-          ocupado ? "Generando…" : "Generar PDF PetColinas"))));
+          ocupado ? "Generando\u2026" : "Generar PDF PetColinas"))));
 }
 
 function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, citas = [], setCitas, cliente }) {
