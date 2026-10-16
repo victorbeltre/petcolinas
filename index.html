@@ -11691,6 +11691,394 @@ function imprimirReceta(h, cliente) {
   win.document.close();
   setTimeout(() => win.print(), 400);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// RESULTADOS DE LABORATORIO (hemograma) · M21
+//
+// Se sube el informe del laboratorio (PDF o foto), una IA lo TRANSCRIBE a una
+// tabla, una persona la REVISA contra el original, y solo entonces se genera el
+// PDF con la identidad de PetColinas. Del laboratorio se cambia el logo y el
+// diseño; sus datos (nombre, direccion, telefono, quien valida, fechas, notas)
+// se conservan y se enseñan como "Realizado por".
+//
+// La lectura NO se da por buena: sin marcar "verifique los valores" no se puede
+// guardar. Un hemograma con un numero cambiado en la historia clinica es peor
+// que no tenerlo.
+// ─────────────────────────────────────────────────────────────────────────────
+const LAB_COLORES = {
+  naranja: [240, 138, 28], marino: [18, 31, 56], turquesa: [42, 163, 184],
+  gris: [90, 100, 114], claro: [244, 247, 249], alto: [192, 57, 43], bajo: [26, 79, 160]
+};
+
+// jsPDF con fuentes estandar solo dibuja Latin-1: lo demas (≥, ↑, µ fuera de
+// rango...) sale como basura. Se sustituye por algo legible en vez de corromper
+// un valor clinico.
+const latinPDF = (t) => sinEmoji(String(t == null ? "" : t))
+  .replace(/[–—]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+  .replace(/≥/g, ">=").replace(/≤/g, "<=").replace(/↑/g, "(alto)").replace(/↓/g, "(bajo)")
+  .replace(/μ/g, "µ")
+  // Los exponentes (x10⁶/µL) NO se pueden borrar: cambiarian la unidad. Los de
+  // Latin-1 (², ³, ¹) ya se dibujan; el resto pasa a ^n.
+  .replace(/[⁰⁴-⁹]/g, (c) => "^" + "0123456789"["⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(c)])
+  .replace(/⁻/g, "^-")
+  .replace(/[^\x00-\xFF]/g, "?");
+
+// El logo real, si esta en el sitio como logo.png; si no, el nombre dibujado con
+// los colores de la marca. Nunca falla el PDF por falta del archivo.
+async function cargarLogoPC() {
+  try {
+    const r = await fetch("logo.png", { cache: "force-cache" });
+    if (!r.ok) return null;
+    const b = await r.blob();
+    if (!/^image\//.test(b.type)) return null;
+    const url = await new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = no; f.readAsDataURL(b); });
+    const dim = await new Promise((ok) => { const im = new Image(); im.onload = () => ok({ w: im.width, h: im.height }); im.onerror = () => ok(null); im.src = url; });
+    return dim ? { url, ...dim } : null;
+  } catch (e) { return null; }
+}
+
+function generarLabPDFDoc(reg, cliente, logo) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const K = LAB_COLORES, W = 210, M = 14, PIE = 280;
+  const d = reg.datos || {}, lab = d.laboratorio || {}, pac = d.paciente || {}, fe = d.fechas || {};
+  const nombreLab = latinPDF(lab.nombre || reg.laboratorio || "Laboratorio");
+  const pt = (t, x, y, o) => doc.text(latinPDF(t), x, y, o);
+
+  const cabecera = () => {
+    doc.setFillColor(...K.marino); doc.rect(0, 0, W, 34, "F");
+    doc.setFillColor(...K.naranja); doc.rect(0, 34, W, 2.2, "F");
+    doc.setFillColor(...K.turquesa); doc.rect(0, 36.2, W, 0.9, "F");
+    if (logo) {
+      // Fondo blanco detras: el logo trae fondo claro y no se ve sobre el marino.
+      const h = 26, w = Math.min(60, h * logo.w / logo.h);
+      doc.setFillColor(255, 255, 255); doc.roundedRect(M - 2, 4, w + 4, h + 0, 2, 2, "F");
+      doc.addImage(logo.url, "PNG", M, 4, w, h);
+    } else {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(24);
+      doc.setTextColor(...K.naranja); doc.text("Pet", M, 17);
+      const wPet = doc.getTextWidth("Pet");
+      doc.setTextColor(255, 255, 255); doc.text("Colinas", M + wPet, 17);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(200, 215, 230);
+      doc.text("Veterinaria · Plaza Las Colinas, Santo Domingo Oeste", M, 24);
+      doc.text("Tel: 809-752-6806 · petcolinasrd@gmail.com", M, 29);
+    }
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+    doc.text("RESULTADOS DE HEMOGRAMA", W - M, 15, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(200, 215, 230);
+    pt("Informe reformateado por PetColinas", W - M, 21, { align: "right" });
+    pt("Fecha del resultado: " + (reg.fecha || fe.reporte || fe.toma || "-"), W - M, 26, { align: "right" });
+  };
+  const pieDePagina = (n, total) => {
+    doc.setDrawColor(...K.turquesa); doc.setLineWidth(0.4); doc.line(M, 284, W - M, 284);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...K.gris);
+    const aviso = "Resultados emitidos por " + nombreLab + ". Documento reformateado por PetColinas con fines de historia clinica; no sustituye el informe original del laboratorio.";
+    doc.text(doc.splitTextToSize(latinPDF(aviso), W - 2 * M - 22), M, 288);
+    doc.text("Pág. " + n + " de " + total, W - M, 288, { align: "right" });
+  };
+
+  cabecera();
+  let y = 46;
+  const asegurar = (alto) => { if (y + alto > PIE) { doc.addPage(); cabecera(); y = 46; } };
+
+  // Dos cajas: paciente y laboratorio. Se dibujan con la altura que necesiten.
+  const caja = (x, w, titulo, color, filas) => {
+    doc.setFillColor(...K.claro); doc.rect(x, y, w, 4 + 5.2 * (filas.length + 1) + 2, "F");
+    doc.setFillColor(...color); doc.rect(x, y, 1.6, 4 + 5.2 * (filas.length + 1) + 2, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...color);
+    pt(titulo, x + 5, y + 5);
+    let yy = y + 10.5;
+    filas.forEach(([k, v]) => {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...K.gris); pt(k + ":", x + 5, yy);
+      doc.setFont("helvetica", "normal"); doc.setTextColor(...K.marino);
+      const l = doc.splitTextToSize(latinPDF(v), w - 33); doc.text(l[0] || "", x + 28, yy); yy += 5.2;
+    });
+    return 4 + 5.2 * (filas.length + 1) + 2;
+  };
+  const filasPac = [
+    ["Paciente", pac.nombre || (cliente && (cliente.nombreMascota || cliente.nombre)) || "-"],
+    ["Especie", [pac.especie, pac.raza].filter(Boolean).join(" / ") || (cliente && cliente.especie) || "-"],
+    ["Sexo / edad", [pac.sexo, pac.edad].filter(Boolean).join(" / ") || "-"],
+    ["Propietario", pac.propietario || (cliente && (cliente.nombrePropietario || cliente.dueno)) || "-"],
+    ["Solicitante", pac.solicitante || "-"]
+  ];
+  const filasLab = [
+    ["Laboratorio", lab.nombre || "-"], ["Dirección", lab.direccion || "-"],
+    ["Teléfono", [lab.telefono, lab.email].filter(Boolean).join(" · ") || "-"],
+    ["Responsable", lab.responsable || "-"], ["Registro", lab.registro || "-"]
+  ];
+  const wC = (W - 2 * M - 5) / 2;
+  const h1 = caja(M, wC, "DATOS DEL PACIENTE", K.naranja, filasPac);
+  const h2 = caja(M + wC + 5, wC, "REALIZADO POR (LABORATORIO)", K.turquesa, filasLab);
+  y += Math.max(h1, h2) + 4;
+
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...K.gris);
+  const meta = [
+    fe.toma ? "Toma: " + fe.toma : "", fe.recepcion ? "Recepción: " + fe.recepcion : "",
+    fe.reporte ? "Reporte: " + fe.reporte : "", d.muestra ? "Muestra: " + d.muestra : "",
+    d.metodo ? "Método: " + d.metodo : "", pac.identificador ? "N.º: " + pac.identificador : ""
+  ].filter(Boolean).join("   ·   ");
+  if (meta) { const l = doc.splitTextToSize(latinPDF(meta), W - 2 * M); doc.text(l, M, y + 2); y += 4.2 * l.length + 4; }
+
+  // Tabla de resultados
+  const cols = { n: M + 2, r: 96, u: 124, g: 150 };
+  const encabezadoTabla = () => {
+    doc.setFillColor(...K.marino); doc.rect(M, y - 4.5, W - 2 * M, 7.5, "F");
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+    doc.text("PARÁMETRO", cols.n, y); doc.text("RESULTADO", cols.r, y, { align: "right" });
+    doc.text("UNIDAD", cols.u, y); doc.text("RANGO DE REFERENCIA", cols.g, y);
+    y += 6;
+  };
+  asegurar(20); encabezadoTabla();
+  let grupoActual = null, i = 0, hayDudoso = false;
+  (d.parametros || []).forEach((p) => {
+    const g = p.grupo || "";
+    if (g && g !== grupoActual) {
+      asegurar(16);
+      if (y + 7 > PIE) { doc.addPage(); cabecera(); y = 46; encabezadoTabla(); }
+      doc.setFillColor(...K.turquesa); doc.rect(M, y - 4, W - 2 * M, 5.4, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7.8); doc.setTextColor(255, 255, 255);
+      pt(g.toUpperCase(), cols.n, y - 0.2); y += 5.6; grupoActual = g;
+    }
+    if (y + 7 > PIE) { doc.addPage(); cabecera(); y = 46; encabezadoTabla(); }
+    if (i++ % 2 === 0) { doc.setFillColor(...K.claro); doc.rect(M, y - 4, W - 2 * M, 6.4, "F"); }
+    const fuera = p.bandera === "alto" || p.bandera === "bajo";
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...K.marino);
+    pt(p.nombre, cols.n, y);
+    doc.setFont("helvetica", fuera ? "bold" : "normal");
+    doc.setTextColor(...(p.bandera === "alto" ? K.alto : p.bandera === "bajo" ? K.bajo : K.marino));
+    pt(String(p.resultado) + (p.bandera === "alto" ? " ▲".replace("▲", "(alto)") : p.bandera === "bajo" ? " (bajo)" : ""), cols.r, y, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setTextColor(...K.gris);
+    pt(p.unidad || "", cols.u, y); pt(p.rango || "", cols.g, y);
+    y += 6.4;
+  });
+  doc.setDrawColor(...K.marino); doc.setLineWidth(0.3); doc.line(M, y - 3.4, W - M, y - 3.4);
+  y += 2;
+  doc.setFont("helvetica", "italic"); doc.setFontSize(7.5); doc.setTextColor(...K.gris);
+  pt("(alto) / (bajo): marcado así por el laboratorio en su informe original.", M, y); y += 6;
+
+  const bloque = (titulo, t, color) => {
+    if (!t) return;
+    const l = doc.splitTextToSize(latinPDF(t), W - 2 * M - 8);
+    asegurar(10 + 4.2 * l.length);
+    doc.setFillColor(...K.claro); doc.rect(M, y, W - 2 * M, 8 + 4.2 * l.length, "F");
+    doc.setFillColor(...color); doc.rect(M, y, 1.6, 8 + 4.2 * l.length, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...color); pt(titulo, M + 5, y + 5);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.2); doc.setTextColor(...K.marino);
+    doc.text(l, M + 5, y + 10); y += 12 + 4.2 * l.length;
+  };
+  bloque("OBSERVACIONES DEL LABORATORIO", d.observaciones, K.naranja);
+  bloque("NOTAS DEL LABORATORIO", d.notas_pie, K.turquesa);
+
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) { doc.setPage(p); pieDePagina(p, total); }
+  return doc;
+}
+
+async function descargarLabPDF(reg, cliente) {
+  const logo = await cargarLogoPC();
+  const doc = generarLabPDFDoc(reg, cliente, logo);
+  const nom = latinPDF((cliente && (cliente.nombreMascota || cliente.nombre)) || "paciente").replace(/[^A-Za-z0-9]+/g, "_");
+  doc.save("Hemograma_" + nom + "_" + (reg.fecha || hoy()) + ".pdf");
+}
+
+const LAB_FUNCION = () => SUPA_URL + "/functions/v1/lab-extraer";
+const aBase64 = (file) => new Promise((ok, no) => {
+  const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1]); f.onerror = no; f.readAsDataURL(file);
+});
+// "2026-10-16" si el laboratorio lo escribio asi o como 16/10/2026; si no se
+// entiende devuelve "" y la persona lo pone a mano. No se adivina una fecha.
+function fechaDeLab(t) {
+  const s = String(t || "").trim();
+  let m = s.match(/(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0];
+  m = s.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+  return "";
+}
+
+function LabResultados({ clienteId, cliente }) {
+  const E = React.createElement;
+  const [lista, setLista] = React.useState([]);
+  const [cargando, setCargando] = React.useState(true);
+  const [archivo, setArchivo] = React.useState(null);
+  const [leyendo, setLeyendo] = React.useState(false);
+  const [revision, setRevision] = React.useState(null);   // { datos, fecha }
+  const [error, setError] = React.useState("");
+  const [guardando, setGuardando] = React.useState(false);
+  const [abierto, setAbierto] = React.useState(false);
+
+  const cargar = React.useCallback(async () => {
+    try {
+      const r = await supaFetch("pc_lab_resultados", "GET", null,
+        "?clienteid=eq." + encodeURIComponent(String(clienteId)) + "&order=fecha.desc.nullslast,creado.desc");
+      setLista(Array.isArray(r) ? r : []);
+    } catch (e) { setLista([]); }
+    setCargando(false);
+  }, [clienteId]);
+  React.useEffect(() => { cargar(); }, [cargar]);
+
+  async function convertir() {
+    if (!archivo) return;
+    setError(""); setLeyendo(true);
+    try {
+      const res = await fetch(LAB_FUNCION(), {
+        method: "POST", headers: await supaHeaders(),
+        body: JSON.stringify({ archivo: await aBase64(archivo), mime: archivo.type })
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || ("HTTP " + res.status));
+      if (out.datos && out.datos.es_hemograma === false) {
+        throw new Error("Este documento no parece un hemograma. No se convirtió.");
+      }
+      const d = out.datos || {};
+      d.parametros = (d.parametros || []).map((p) => ({ ...p, resultado: p.resultado == null ? "" : String(p.resultado) }));
+      setRevision({ datos: d, fecha: fechaDeLab(d.fechas && (d.fechas.reporte || d.fechas.toma)) || hoy() });
+    } catch (e) { setError(e.message); }
+    setLeyendo(false);
+  }
+
+  async function guardar(datos, fecha) {
+    setGuardando(true);
+    try {
+      const id = "lab_" + Date.now();
+      const ext = archivo.type === "application/pdf" ? "pdf" : (archivo.type.split("/")[1] || "bin");
+      const ruta = String(clienteId).replace(/[^A-Za-z0-9_-]/g, "") + "/" + id + "." + ext;
+      const h = await supaHeaders();
+      const sube = await fetch(SUPA_URL + "/storage/v1/object/laboratorios/" + ruta, {
+        method: "POST", headers: { apikey: h.apikey, Authorization: h.Authorization, "Content-Type": archivo.type, "x-upsert": "false" },
+        body: archivo
+      });
+      if (!sube.ok) throw new Error("No se pudo guardar el original (" + sube.status + ")");
+      const fila = { id, clienteid: String(clienteId), fecha, tipo: "hemograma",
+        laboratorio: (datos.laboratorio && datos.laboratorio.nombre) || "", datos,
+        original_path: ruta, original_mime: archivo.type, verificado_por: usuarioActual() };
+      const r = await supaFetch("pc_lab_resultados", "POST", [fila]);
+      if (r && r.error) throw new Error(JSON.stringify(r.error));
+      avisar("Hemograma guardado en la historia.", "ok");
+      setRevision(null); setArchivo(null); setAbierto(true); cargar();
+      descargarLabPDF(fila, cliente);
+    } catch (e) { avisar("No se pudo guardar: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  async function verOriginal(reg) {
+    try {
+      const h = await supaHeaders();
+      const r = await fetch(SUPA_URL + "/storage/v1/object/sign/laboratorios/" + reg.original_path, {
+        method: "POST", headers: h, body: JSON.stringify({ expiresIn: 300 })
+      });
+      const o = await r.json();
+      if (!r.ok || !o.signedURL) throw new Error(o.message || "sin enlace");
+      window.open(SUPA_URL + "/storage/v1" + o.signedURL, "_blank");
+    } catch (e) { avisar("No se pudo abrir el original: " + e.message, "error"); }
+  }
+
+  const btn = (fondo, color, borde) => ({ background: fondo, color, border: "1.5px solid " + (borde || fondo),
+    borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700 });
+
+  return E("div", { style: { border: "1.5px solid #cfe9ee", borderRadius: 12, padding: 14, marginBottom: 14, background: "#f4fafc" } },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+      E("button", { onClick: () => setAbierto(!abierto), style: { background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "inherit" } },
+        E("span", { style: { fontWeight: 800, fontSize: 14, color: "#121f38" } }, (abierto ? "▾ " : "▸ ") + "🩸 Resultados de laboratorio"),
+        E("span", { style: { fontSize: 12, color: "#5a6472", marginLeft: 8 } }, cargando ? "" : lista.length + " guardado(s)"))),
+
+    abierto && E("div", { style: { marginTop: 12 } },
+      E("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 } },
+        E("input", { type: "file", accept: "application/pdf,image/jpeg,image/png,image/webp",
+          onChange: (e) => { setArchivo(e.target.files[0] || null); setError(""); }, style: { fontSize: 12.5 } }),
+        archivo && E("button", { onClick: convertir, disabled: leyendo,
+          style: btn("#f08a1c", "#fff") }, leyendo ? "Leyendo el documento…" : "✨ Convertir a formato PetColinas")),
+      error && E("div", { style: { background: "#fdeaea", border: "1.5px solid #c0392b", color: "#c0392b", borderRadius: 9,
+        padding: "10px 12px", fontSize: 12.5, fontWeight: 600, marginBottom: 10 } }, error),
+      cargando ? null : lista.length === 0
+        ? E("div", { style: { color: "#5a6472", fontSize: 12.5 } }, "Aún no hay hemogramas guardados para este paciente.")
+        : lista.map((r) => E("div", { key: r.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center",
+            gap: 8, flexWrap: "wrap", background: "#fff", border: "1px solid #e0e4e8", borderRadius: 9, padding: "9px 12px", marginBottom: 7 } },
+            E("div", null,
+              E("div", { style: { fontWeight: 700, fontSize: 13 } }, "Hemograma · " + (r.fecha || "sin fecha")),
+              E("div", { style: { fontSize: 11.5, color: "#5a6472" } }, "Laboratorio: " + (r.laboratorio || "-") +
+                " · " + ((r.datos && r.datos.parametros) || []).length + " parámetros")),
+            E("div", { style: { display: "flex", gap: 6 } },
+              E("button", { onClick: () => descargarLabPDF(r, cliente), style: btn("#121f38", "#fff") }, "📄 PDF PetColinas"),
+              r.original_path && E("button", { onClick: () => verOriginal(r), style: btn("#fff", "#334155", "#e0e4e8") }, "Ver original"))))),
+
+    revision && E(ModalLabRevision, {
+      datos: revision.datos, fechaInicial: revision.fecha, archivo, ocupado: guardando,
+      onCerrar: () => setRevision(null), onGuardar: guardar
+    }));
+}
+
+// La pantalla que importa: lo leido por la IA, al lado del documento original,
+// editable fila por fila. Las filas dudosas salen resaltadas, y no se puede
+// guardar sin confirmar que se compararon los valores con el original.
+function ModalLabRevision({ datos, fechaInicial, archivo, ocupado, onCerrar, onGuardar }) {
+  const E = React.createElement;
+  const [d, setD] = React.useState(() => JSON.parse(JSON.stringify(datos)));
+  const [fecha, setFecha] = React.useState(fechaInicial);
+  const [ok, setOk] = React.useState(false);
+  const [url, setUrl] = React.useState("");
+  React.useEffect(() => {
+    if (!archivo || typeof URL === "undefined" || !URL.createObjectURL) return undefined;
+    const u = URL.createObjectURL(archivo); setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [archivo]);
+
+  const setP = (i, k, v) => setD((x) => ({ ...x, parametros: x.parametros.map((p, j) => j === i ? { ...p, [k]: v, ...(k === "resultado" ? { dudoso: false } : {}) } : p) }));
+  const quitar = (i) => setD((x) => ({ ...x, parametros: x.parametros.filter((_, j) => j !== i) }));
+  const nDudosos = (d.parametros || []).filter((p) => p.dudoso).length;
+  const sinValor = (d.parametros || []).some((p) => !String(p.resultado).trim());
+  const bloqueado = ocupado || !ok || sinValor || (d.parametros || []).length === 0 || !fecha;
+
+  const inp = { padding: "5px 7px", borderRadius: 6, border: "1px solid #d0d5db", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
+  const th = { padding: "7px 6px", fontSize: 10.5, textTransform: "uppercase", color: "#fff", textAlign: "left", background: "#121f38" };
+  const lab = d.laboratorio || {};
+
+  return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
+    E("div", { style: { background: "#fff", borderRadius: 14, width: "100%", maxWidth: 1180, maxHeight: "94vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
+      E("div", { style: { padding: "14px 18px", borderBottom: "1px solid #e0e4e8" } },
+        E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Revisa el hemograma antes de guardarlo"),
+        E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2 } },
+          "La IA copió lo que ve; puede equivocarse. Compara cada valor con el documento original (a la derecha) y corrige lo que haga falta.")),
+      E("div", { style: { display: "grid", gridTemplateColumns: "minmax(0,1.25fr) minmax(0,1fr)", gap: 0, flex: 1, minHeight: 0 } },
+        E("div", { style: { overflowY: "auto", padding: "12px 16px" } },
+          (d.advertencias || []).length > 0 && E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#92400e", marginBottom: 10 } },
+            E("strong", null, "El lector avisa: "), (d.advertencias || []).join(" · ")),
+          E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, fontSize: 12 } },
+            E("div", null, E("div", { style: { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase" } }, "Fecha del resultado"),
+              E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: { ...inp, width: 150 } })),
+            E("div", { style: { flex: 1, minWidth: 180 } }, E("div", { style: { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase" } }, "Laboratorio"),
+              E("input", { value: lab.nombre || "", onChange: (e) => setD((x) => ({ ...x, laboratorio: { ...(x.laboratorio || {}), nombre: e.target.value } })), style: inp }))),
+          nDudosos > 0 && E("div", { style: { fontSize: 12, color: "#b45309", fontWeight: 700, marginBottom: 6 } },
+            "⚠ " + nDudosos + " valor(es) que el lector no pudo leer con certeza (en amarillo). Al corregirlos se desmarcan."),
+          E("table", { style: { width: "100%", borderCollapse: "collapse" } },
+            E("thead", null, E("tr", null,
+              ["Parámetro", "Resultado", "Unidad", "Rango", "Marca", ""].map((h, i) => E("th", { key: i, style: th }, h)))),
+            E("tbody", null, (d.parametros || []).map((p, i) => E("tr", { key: i, style: { background: p.dudoso ? "#fff7d6" : (i % 2 ? "#fafbfc" : "#fff") } },
+              E("td", { style: { padding: 3 } }, E("input", { value: p.nombre || "", onChange: (e) => setP(i, "nombre", e.target.value), style: inp })),
+              E("td", { style: { padding: 3, width: 90 } }, E("input", { value: p.resultado, onChange: (e) => setP(i, "resultado", e.target.value),
+                style: { ...inp, fontWeight: 700, borderColor: !String(p.resultado).trim() ? "#c0392b" : p.dudoso ? "#d9a441" : "#d0d5db" } })),
+              E("td", { style: { padding: 3, width: 80 } }, E("input", { value: p.unidad || "", onChange: (e) => setP(i, "unidad", e.target.value), style: inp })),
+              E("td", { style: { padding: 3, width: 100 } }, E("input", { value: p.rango || "", onChange: (e) => setP(i, "rango", e.target.value), style: inp })),
+              E("td", { style: { padding: 3, width: 70 } }, E("select", { value: p.bandera || "", onChange: (e) => setP(i, "bandera", e.target.value || null), style: inp },
+                E("option", { value: "" }, "—"), E("option", { value: "alto" }, "Alto"), E("option", { value: "bajo" }, "Bajo"))),
+              E("td", { style: { padding: 3, width: 26 } }, E("button", { onClick: () => quitar(i), title: "Quitar fila",
+                style: { background: "none", border: "none", cursor: "pointer", color: "#c0392b", fontSize: 15 } }, "✕")))))),
+          (d.parametros || []).length === 0 && E("div", { style: { color: "#c0392b", fontSize: 12.5, padding: 12 } }, "No se leyó ninguna fila. Prueba con el PDF original o una foto más nítida."),
+          d.observaciones && E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 10 } }, E("strong", null, "Observaciones del laboratorio (se conservarán): "), d.observaciones)),
+        E("div", { style: { background: "#f0f2f4", borderLeft: "1px solid #e0e4e8", minHeight: 0 } },
+          !url ? null : archivo && archivo.type === "application/pdf"
+            ? E("iframe", { src: url, title: "Original", style: { width: "100%", height: "100%", border: "none", minHeight: 420 } })
+            : E("div", { style: { overflow: "auto", height: "100%" } }, E("img", { src: url, alt: "Original", style: { width: "100%", display: "block" } })))),
+      E("div", { style: { padding: "12px 18px", borderTop: "1px solid #e0e4e8", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" } },
+        E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 240, cursor: "pointer" } },
+          E("input", { type: "checkbox", checked: ok, onChange: (e) => setOk(e.target.checked) }),
+          "Verifiqué los valores contra el documento original."),
+        sinValor && E("span", { style: { color: "#c0392b", fontSize: 12, fontWeight: 600 } }, "Hay filas sin resultado."),
+        E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
+        E("button", { onClick: () => onGuardar(d, fecha), disabled: bloqueado,
+          style: { padding: "10px 18px", borderRadius: 9, border: "none", background: bloqueado ? "#aab3bd" : "#f08a1c", color: "#fff", cursor: bloqueado ? "default" : "pointer", fontWeight: 800 } },
+          ocupado ? "Guardando…" : "Guardar y generar PDF"))));
+}
+
 function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, citas = [], setCitas, cliente }) {
   const TIPOS_H = ["Consulta", "Vacuna", "Diagn\xF3stico", "Cirug\xEDa", "Control", "Desparasitaci\xF3n", "Otro"];
   const emptyH = { fecha: hoy(), tipo: "Consulta", descripcion: "", veterinario: "", diagnostico: "", tratamiento: "", medicamentos: "", proximacita: "", notas: "" };
@@ -11735,6 +12123,7 @@ function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, c
   }
   const tipoColor = { "Consulta": "#1a4fa0", "Vacuna": "#1a6b3a", "Cirug\xEDa": "#b8232a", "Diagn\xF3stico": "#7c3aed", "Control": "#0891b2", "Desparasitaci\xF3n": "#d45f1e", "Otro": "#5a6472" };
   return React.createElement("div", null,
+    React.createElement(LabResultados, { clienteId, cliente }),
     mis.length === 0 && !agregando && React.createElement("div", { style: { color: "#5a6472", fontSize: 13, marginBottom: 10 } }, "Sin registros cl\xEDnicos."),
     mis.map(h => React.createElement("div", { key: h.id, style: { background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", marginBottom: 10, border: "1px solid #e8ecf0" } },
       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },

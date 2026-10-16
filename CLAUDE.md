@@ -133,6 +133,19 @@ PENDIENTE DE VICTOR en este modulo:
   agosto y 0 en septiembre. El flujo de caja solo puede ser tan cierto como lo
   que se anote.
 
+## HEMOGRAMAS (M21, oct 2026)
+Evolucion del paciente -> "Resultados de laboratorio": se sube el informe (PDF o
+foto), la Edge Function `lab-extraer` lo TRANSCRIBE con IA, una persona lo REVISA
+contra el original y solo entonces se genera el PDF con la marca PetColinas
+(naranja/azul marino/turquesa del logo; se conservan los datos del laboratorio).
+Reglas: la IA copia, no interpreta (valores como texto, sin convertir unidades);
+guardar exige marcar "verifique los valores" (hay prueba en render-check);
+`latinPDF` convierte los exponentes (x10^6) y NUNCA los borra: una unidad
+cambiada es un dato clinico falso. Requiere el secreto ANTHROPIC_API_KEY en
+Supabase. El logo real se toma de `logo.png` en la raiz del sitio; si no esta,
+se dibuja "PetColinas" en texto con los mismos colores. PENDIENTE: subir logo.png
+y probar con un hemograma real del laboratorio.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

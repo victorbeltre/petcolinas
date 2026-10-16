@@ -267,6 +267,43 @@ render("Gastos", sandbox.Gastos, {
   const txt = JSON.stringify(salida, (k, v) => (typeof v === "function" ? undefined : v));
   if (!txt.includes("Tarjeta empresarial")) errores.push("TarjetaPorCuenta: la tarjeta empresarial no aparece en ningun bloque");
 })();
+// M21 · Resultados de laboratorio. El PDF no se puede generar aqui (no hay jsPDF
+// en la caja de arena), pero SI se fija lo que lo corrompe en silencio: las
+// unidades. "x10^6/uL" convertido en "x10/uL" cambia el sentido del resultado.
+(() => {
+  [["x10\u2076/\u00B5L", "x10^6/\u00B5L"], ["x10\u2079/L", "x10^9/L"], ["x10\u00B3/\u00B5L", "x10\u00B3/\u00B5L"],
+   ["\u2265 5", ">= 5"]].forEach(([ent, esp]) => {
+    const r = enVM("latinPDF(" + JSON.stringify(ent) + ")");
+    if (r !== esp) errores.push("latinPDF(" + ent + ") dio \"" + r + "\", se esperaba \"" + esp + "\" (una unidad cambiada es un dato clinico falso)");
+  });
+  if (typeof sandbox.generarLabPDFDoc !== "function") errores.push("generarLabPDFDoc no existe");
+})();
+render("LabResultados", sandbox.LabResultados, { clienteId: "9", cliente: { nombreMascota: "Rocky" } }, (h) => {
+  const i = h.indexOf(false); if (i >= 0) h[i] = true;   // abierto
+}, "Resultados de laboratorio");
+const datosLab = { es_hemograma: true, advertencias: ["foto un poco torcida"],
+  laboratorio: { nombre: "Laboratorio Ejemplo" }, observaciones: "Nota del laboratorio",
+  parametros: [
+    { nombre: "Leucocitos", resultado: "21.4", unidad: "x10\u00B3/\u00B5L", rango: "5.05 - 16.76", bandera: "alto", dudoso: false },
+    { nombre: "Plaquetas", resultado: "148", unidad: "x10\u00B3/\u00B5L", rango: "148 - 484", bandera: null, dudoso: true }] };
+render("ModalLabRevision", sandbox.ModalLabRevision, {
+  datos: datosLab, fechaInicial: "2026-10-16", archivo: null, ocupado: false, onCerrar: () => {}, onGuardar: () => {}
+}, null, "Revisa el hemograma antes de guardarlo");
+// Lo que de verdad protege al paciente: sin la casilla de verificacion el boton
+// de guardar tiene que seguir bloqueado.
+(() => {
+  hookIdx = 0; hooks = [];
+  const props = { datos: datosLab, fechaInicial: "2026-10-16", archivo: null, ocupado: false, onCerrar() {}, onGuardar() {} };
+  const hallar = (n, f) => { if (!n || typeof n !== "object") return null; if (f(n)) return n; for (const c of [].concat(n.c || [])) { const r = hallar(c, f); if (r) return r; } return null; };
+  const ver = () => { hookIdx = 0; return sandbox.ModalLabRevision(props); };
+  ver(); const sinCasilla = ver();
+  const b1 = hallar(sinCasilla, (n) => n.t === "button" && n.p && n.p.disabled !== undefined && (n.c || []).join("").includes("Guardar y generar"));
+  if (!b1 || b1.p.disabled !== true) errores.push("ModalLabRevision: el boton Guardar deberia estar BLOQUEADO sin marcar la verificacion");
+  const iOk = hooks.indexOf(false); if (iOk >= 0) hooks[iOk] = true;
+  const conCasilla = ver();
+  const b2 = hallar(conCasilla, (n) => n.t === "button" && n.p && n.p.disabled !== undefined && (n.c || []).join("").includes("Guardar y generar"));
+  if (!b2 || b2.p.disabled !== false) errores.push("ModalLabRevision: con la verificacion marcada el boton deberia habilitarse");
+})();
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
   resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
@@ -442,4 +479,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (39 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+console.log(`✓ Vistas principales renderizan sin errores (41 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
