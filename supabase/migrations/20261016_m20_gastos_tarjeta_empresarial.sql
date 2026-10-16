@@ -77,3 +77,30 @@ revoke all on function public.pc_cuenta_de(text, text) from public, anon;
 --   salidas 2026: 270.577,00 -> 271.827,25 (sube exactamente 1.250,25)
 --   los metodos de los 68 gastos existentes no cambian (ninguno decia "empresarial").
 --   get_advisors(security): ningun ERROR.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- M20b · «Pendiente de pago» como método de un gasto
+--
+-- Una factura recibida y aun no pagada es un gasto del negocio (se incurrio) pero
+-- NO una salida de caja (el dinero no se ha movido). La rama de VENTAS del libro
+-- ya excluia PENDIENTE; la de GASTOS no, asi que un gasto pendiente aparecia como
+-- RD$ 5.000 que ya salieron. Comprobado antes de arreglarlo.
+--
+-- Efecto: el gasto SIGUE sumando en la pantalla de Gastos y en el estado de
+-- resultados (se incurrio), pero NO en el libro de caja, ni en el reporte, ni en
+-- ninguna cuenta. Cuando se paga, se edita el gasto y se le pone el metodo real:
+-- ahi entra al libro. OJO: entra con la fecha DEL GASTO, no la del pago, porque
+-- pc_gastos solo guarda una fecha. Si el pago cae en otro mes, el flujo de caja de
+-- ese mes no lo vera; es una limitacion conocida, no un descuido.
+--
+-- Se re-aplica security_invoker despues del create or replace (regla 7).
+-- Definicion de la rama de gastos tal como quedo desplegada:
+--   FROM pc_gastos g
+--  WHERE pc_fecha(g.fecha) IS NOT NULL AND pc_metodo_pago(g.formapago) <> 'PENDIENTE'
+-- (el resto de la vista es el de M18, sin cambios). Aplicado con un reemplazo
+-- sobre pg_get_viewdef para no retipear las otras tres ramas.
+--
+-- Comprobado el 16 oct 2026: gasto pendiente = 0 filas en el libro; el mismo
+-- gasto al pasar a «transferencia popular» = 1 fila; ningun gasto existente decia
+-- «pendiente», asi que ninguna cifra historica cambio.
+-- ─────────────────────────────────────────────────────────────────────────────
