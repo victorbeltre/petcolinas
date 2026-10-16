@@ -1,9 +1,10 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- M21 · Resultados de laboratorio (hemograma) en la Evolucion del paciente
 --
--- Se sube el informe del laboratorio (PDF/foto); la Edge Function `lab-extraer`
--- lo TRANSCRIBE con IA; una persona lo REVISA contra el original; y se genera un
--- PDF con la identidad de PetColinas conservando los datos del laboratorio.
+-- Se sube el informe del laboratorio (PDF/foto); el NAVEGADOR lo lee (texto del PDF
+-- con pdf.js, o OCR con tesseract.js para fotos/escaneos: sin IA, sin claves, sin
+-- servicios de pago); una persona lo REVISA contra el original; y se genera un PDF
+-- con la identidad de PetColinas conservando los datos del laboratorio.
 --
 -- Todo es solo-personal (admin, vet, groomer, caja), igual que pc_historias.
 -- El original va a un bucket PRIVADO: se ve con un enlace firmado de 5 minutos,
@@ -44,6 +45,7 @@ create policy "laboratorios personal sube" on storage.objects for insert to auth
 -- Sin politica de update/delete a proposito: un original subido no se sobrescribe
 -- ni se borra desde la app.
 
--- Pendiente de Victor: guardar ANTHROPIC_API_KEY como secreto de Edge Functions
--- (Supabase > Edge Functions > Secrets). Sin ella lab-extraer responde 503 con un
--- mensaje claro y la pantalla lo muestra.
+-- Una primera version leia con IA (Edge Function `lab-extraer`, necesitaba
+-- ANTHROPIC_API_KEY). Se quito: Victor no quiere depender de una clave. La funcion
+-- sigue DESPLEGADA pero huerfana (nadie la llama; sin clave responde 503 y exige
+-- sesion de personal); borrarla desde Supabase > Edge Functions cuando convenga.

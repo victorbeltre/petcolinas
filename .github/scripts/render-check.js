@@ -278,6 +278,33 @@ render("Gastos", sandbox.Gastos, {
   });
   if (typeof sandbox.generarLabPDFDoc !== "function") errores.push("generarLabPDFDoc no existe");
 })();
+// Lectura local del hemograma (sin IA): del texto del PDF a la tabla. Las filas
+// vienen como las entrega pdf.js: celdas con su texto y su posicion.
+(() => {
+  const C = (...t) => t.map((s, i) => ({ s, x: i * 40 }));
+  const filas = [C("LABORATORIO CLINICO EJEMPLO"), C("Tel: 809-555-0101", "lab@ejemplo.com"), C("Paciente: Rocky", "Especie: Canino"),
+    C("SERIE BLANCA"), C("Leucocitos", "21.4", "H", "x10\u00B3/\u00B5L", "5.05 - 16.76"), C("Linfocitos", "2.1", "x10\u00B3/\u00B5L", "1.05 - 5.10"),
+    C("Plaquetas", "148", "L", "x10\u00B3/\u00B5L", "148 - 484"), C("Edad: 5"), C("Observaciones: Leucocitosis")];
+  const r = enVM("parsearFilasLab(" + JSON.stringify(filas) + ")");
+  const p = r.parametros;
+  if (p.length !== 3) errores.push("parsearFilasLab: esperaba 3 parametros y dio " + p.length);
+  else {
+    if (p[0].resultado !== "21.4" || p[0].bandera !== "alto" || p[0].grupo !== "SERIE BLANCA") errores.push("parsearFilasLab: Leucocitos mal leido " + JSON.stringify(p[0]));
+    if (p[2].resultado !== "148" || p[2].bandera !== "bajo") errores.push("parsearFilasLab: Plaquetas mal leido " + JSON.stringify(p[2]));
+    if (p[1].bandera !== null) errores.push("parsearFilasLab: Linfocitos no tiene marca en el documento y no se le debe inventar una");
+    if (p[0].unidad !== "x10\u00B3/\u00B5L" || p[0].rango !== "5.05 - 16.76") errores.push("parsearFilasLab: unidad o rango de Leucocitos mal leidos");
+  }
+  if (p.some((x) => /edad/i.test(x.nombre))) errores.push("parsearFilasLab: 'Edad: 5' se tomo por un parametro");
+  const dt = enVM("datosDeTexto(" + JSON.stringify(r.antes) + "," + JSON.stringify(r.despues) + ")");
+  if (dt.paciente.nombre !== "Rocky" || dt.paciente.especie !== "Canino") errores.push("datosDeTexto: paciente/especie mal separados " + JSON.stringify(dt.paciente));
+  if (dt.laboratorio.telefono !== "809-555-0101") errores.push("datosDeTexto: telefono del laboratorio mal leido");
+  // Una fila con caracteres de codificacion rota NO puede pasar por buena.
+  const rota = enVM("parsearFilasLab(" + JSON.stringify([[{ s: "Eritrocitos", x: 0 }, { s: "6.85", x: 40 }, { s: "x10 v/L", x: 80, raro: true }, { s: "5.65 - 8.87", x: 120 }]]) + ")");
+  if (!rota.parametros[0] || rota.parametros[0].dudoso !== true) errores.push("parsearFilasLab: una celda con caracteres rotos deberia dejar la fila 'por verificar'");
+  // Plantilla a mano: sin resultados precargados (nunca un valor que no se midio).
+  const pl = enVM("plantillaLab(null)");
+  if (!pl.length || pl.some((x) => x.resultado !== "" || x.rango)) errores.push("plantillaLab: la plantilla no debe traer resultados ni rangos inventados");
+})();
 render("LabResultados", sandbox.LabResultados, { clienteId: "9", cliente: { nombreMascota: "Rocky" } }, (h) => {
   const i = h.indexOf(false); if (i >= 0) h[i] = true;   // abierto
 }, "Resultados de laboratorio");

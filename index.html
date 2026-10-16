@@ -11881,10 +11881,213 @@ async function descargarLabPDF(reg, cliente) {
   doc.save("Hemograma_" + nom + "_" + (reg.fecha || hoy()) + ".pdf");
 }
 
-const LAB_FUNCION = () => SUPA_URL + "/functions/v1/lab-extraer";
-const aBase64 = (file) => new Promise((ok, no) => {
-  const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1]); f.onerror = no; f.readAsDataURL(file);
-});
+// ── Lectura del documento, SIN IA ni claves: todo ocurre en el navegador ─────
+// 1) PDF digital (con texto): se lee el texto tal cual. Exacto.
+// 2) Foto o PDF escaneado: OCR en el navegador (tesseract.js). Menos exacto, asi
+//    que TODO lo que sale de ahi se marca "por verificar".
+// 3) A mano, con plantilla.
+// En los tres casos la persona revisa contra el original antes de guardar.
+const LAB_PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const LAB_PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const LAB_TESSERACT = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js";
+const _labScripts = {};
+function cargarScriptLab(url) {
+  if (!_labScripts[url]) {
+    _labScripts[url] = new Promise((ok, no) => {
+      const s = document.createElement("script");
+      s.src = url; s.onload = ok; s.onerror = () => { delete _labScripts[url]; no(new Error("No se pudo cargar " + url.split("/").pop())); };
+      document.head.appendChild(s);
+    });
+  }
+  return _labScripts[url];
+}
+
+// Une los fragmentos de una linea en celdas: dos fragmentos pegados son la misma
+// celda; con un hueco grande entre ellos son columnas distintas.
+function celdasDeLinea(items, factorHueco) {
+  const orden = items.slice().sort((a, b) => a.x - b.x);
+  const celdas = [];
+  orden.forEach((it) => {
+    const ult = celdas[celdas.length - 1];
+    if (ult && it.x - ult.fin < (it.alto || 10) * factorHueco) { ult.s += (ult.s && it.s ? " " : "") + it.s; ult.fin = it.fin; }
+    else celdas.push({ s: it.s, x: it.x, fin: it.fin });
+  });
+  // Un PDF con codificacion rara entrega caracteres de control o U+FFFD en vez
+  // de la letra. Se quitan, y la celda queda marcada `raro` para que la fila salga
+  // "por verificar" en vez de pasar por buena.
+  return celdas.map((c) => ({ s: c.s.replace(/[\u0000-\u0008\uFFFD]/g, "").trim(), x: c.x, raro: /[\u0000-\u0008\uFFFD]/.test(c.s) })).filter((c) => c.s);
+}
+// Agrupa fragmentos {s,x,y,fin,alto} en lineas (misma y, con tolerancia) de arriba a abajo.
+function filasDeFragmentos(frags, factorHueco) {
+  const lineas = [];
+  frags.slice().sort((a, b) => b.y - a.y).forEach((f) => {
+    const l = lineas.find((z) => Math.abs(z.y - f.y) <= Math.max(2.5, (f.alto || 8) * 0.45));
+    if (l) l.items.push(f); else lineas.push({ y: f.y, items: [f] });
+  });
+  return lineas.sort((a, b) => b.y - a.y).map((l) => celdasDeLinea(l.items, factorHueco)).filter((r) => r.length);
+}
+
+async function leerPDFLab(file) {
+  await cargarScriptLab(LAB_PDFJS);
+  const pdfjs = window.pdfjsLib;
+  pdfjs.GlobalWorkerOptions.workerSrc = LAB_PDFJS_WORKER;
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  return filasDePDF(pdf);
+}
+// Separada para poder probarla con un pdf.js de verdad fuera del navegador.
+async function filasDePDF(pdf) {
+  const filas = []; let letras = 0;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const tc = await (await pdf.getPage(p)).getTextContent();
+    const frags = tc.items.filter((i) => i.str && i.str.trim()).map((i) => ({
+      s: i.str, x: i.transform[4], y: i.transform[5], fin: i.transform[4] + (i.width || 0), alto: i.height || 8 }));
+    frags.forEach((f) => { letras += f.s.length; });
+    filas.push(...filasDeFragmentos(frags, 1.8));
+  }
+  return { filas, letras, paginas: pdf.numPages, pdf };
+}
+
+async function ocrLab(blob, progreso) {
+  await cargarScriptLab(LAB_TESSERACT);
+  const r = await window.Tesseract.recognize(blob, "spa+eng", {
+    logger: (m) => { if (progreso && m.status === "recognizing text") progreso(Math.round((m.progress || 0) * 100)); } });
+  const frags = [];
+  ((r.data && r.data.lines) || []).forEach((l) => (l.words || []).forEach((w) => {
+    if (w.text && w.text.trim()) frags.push({ s: w.text, x: w.bbox.x0, fin: w.bbox.x1, y: -((w.bbox.y0 + w.bbox.y1) / 2), alto: w.bbox.y1 - w.bbox.y0 });
+  }));
+  return filasDeFragmentos(frags, 1.4);
+}
+
+// ── Del texto a la tabla ────────────────────────────────────────────────────
+const LAB_NUM = /^[<>≤≥]?\s*[+-]?\d+(?:[.,]\d+)?$/;
+const LAB_RANGO = /^\(?\s*[<>≤≥]?\s*\d+(?:[.,]\d+)?\s*(?:[-–]|a)\s*\d+(?:[.,]\d+)?\s*\)?$|^\(?\s*[<>≤≥]\s*\d+(?:[.,]\d+)?\s*\)?$/;
+const LAB_BANDERA = /^(?:H|L|HI|LO|HIGH|LOW|ALTO|BAJO|↑|↓|\*)$/i;
+const LAB_NO_PARAM = /edad|peso|n[úu]mero|n\.?\s?[ºo]|tel[ée]f|fecha|p[áa]g|muestra|orden|historia|c[ée]dula|rnc/i;
+
+// Una linea de un solo bloque ("Leucocitos 21.4 x10^3/uL 5.05 - 16.76") se parte
+// en celdas; "5.05 - 16.76" vuelve a quedar como un solo rango.
+function partirLinea(s) {
+  const trozos = s.split(/\s{2,}/);
+  if (trozos.length > 1) return trozos;
+  const t = s.trim().split(/\s+/), out = [];
+  for (let i = 0; i < t.length; i++) {
+    if (LAB_NUM.test(t[i]) && /^(?:[-–]|a)$/.test(t[i + 1] || "") && LAB_NUM.test(t[i + 2] || "")) { out.push(t[i] + " - " + t[i + 2]); i += 2; }
+    else out.push(t[i]);
+  }
+  const k = out.findIndex((x, i) => i > 0 && LAB_NUM.test(x));
+  return k < 0 ? [s.trim()] : [out.slice(0, k).join(" "), ...out.slice(k)];
+}
+
+function parsearFilasLab(filas) {
+  const parametros = [], antes = [], despues = [];
+  let grupo = "", visto = false;
+  (filas || []).forEach((fila) => {
+    let c = fila.map((x) => x.s);
+    if (c.length === 1 && /\d/.test(c[0])) c = partirLinea(c[0]);
+    const i = c.findIndex((x, j) => j >= 1 && LAB_NUM.test(x.replace(/\s*[HL*↑↓]$/i, "")));
+    const nombre = i > 0 ? c.slice(0, i).join(" ").replace(/[:.]+$/, "").trim() : "";
+    if (i > 0 && /[A-Za-zÀ-ÿ]/.test(nombre) && !LAB_NO_PARAM.test(nombre)) {
+      let res = c[i], bandera = null;
+      const m = res.match(/^(.*?)\s*([HL*↑↓])$/i);
+      if (m) { res = m[1]; bandera = /[H↑]/i.test(m[2]) ? "alto" : /[L↓]/i.test(m[2]) ? "bajo" : null; }
+      let unidad = "", rango = "";
+      c.slice(i + 1).forEach((x) => {
+        if (LAB_BANDERA.test(x)) bandera = /^(H|HI|HIGH|ALTO|↑)$/i.test(x) ? "alto" : /^(L|LO|LOW|BAJO|↓)$/i.test(x) ? "bajo" : bandera;
+        else if (LAB_RANGO.test(x)) rango = rango || x.replace(/^\(|\)$/g, "").trim();
+        else if (!unidad && !LAB_NUM.test(x) && /[%\/A-Za-zµ]/.test(x)) unidad = x;
+      });
+      // Sin unidad ni rango es casi seguro un dato suelto (la edad, un numero de
+      // orden), no un parametro: se deja fuera y la persona lo agrega si lo era.
+      if (unidad || rango) { visto = true; parametros.push({ grupo: grupo || null, nombre, resultado: res, unidad: unidad || null, rango: rango || null, bandera, dudoso: fila.some((x) => x.raro) }); return; }
+    }
+    const texto = fila.map((x) => x.s).join("  ");
+    if (c.length === 1 && !/\d/.test(c[0]) && c[0].length >= 4 && c[0].length <= 40 && c[0] === c[0].toUpperCase()) { grupo = c[0].replace(/[:]+$/, ""); if (visto) return; }
+    (visto ? despues : antes).push(texto);
+  });
+  return { parametros, antes, despues };
+}
+
+// Encabezado/pie -> campos. Son SUGERENCIAS: la pantalla de revision los deja
+// editar, y lo que no se reconoce queda vacio en vez de inventarse.
+function datosDeTexto(antes, despues) {
+  const todo = antes.concat(despues);
+  // El valor termina donde termina la celda: dos campos en la misma linea llegan
+  // separados por 2+ espacios ("Paciente: Rocky  Especie: Canino").
+  const buscar = (re) => { for (const l of todo) { const m = l.match(re); const v = m && m[1] && m[1].split(/\s{2,}/)[0].trim(); if (v) return v; } return null; };
+  const fechaDe = (re) => { const l = todo.find((x) => re.test(x)); const m = l && l.match(/\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/); return m ? m[0] : null; };
+  return {
+    laboratorio: {
+      nombre: (antes[0] || "").replace(/\s{2,}/g, " ").trim() || null,
+      direccion: buscar(/(?:direcci[óo]n|dir\.?)\s*:?\s*(.+)/i),
+      telefono: (todo.join(" ").match(/\(?\d{3}\)?[-\s.]?\d{3}[-\s.]?\d{4}/) || [null])[0],
+      email: (todo.join(" ").match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [null])[0],
+      responsable: buscar(/(?:validado por|responsable|bioanalista|firma|dr\.?a?\.?)\s*:?\s*(.+)/i),
+      registro: buscar(/(?:rnc|exequ[áa]tur|registro)\s*:?\s*([\w-]+)/i)
+    },
+    paciente: {
+      nombre: buscar(/(?:paciente|mascota|nombre)\s*:?\s*(.+)/i), especie: buscar(/especie\s*:?\s*(.+)/i),
+      raza: buscar(/raza\s*:?\s*(.+)/i), sexo: buscar(/sexo\s*:?\s*(.+)/i), edad: buscar(/edad\s*:?\s*(.+)/i),
+      propietario: buscar(/(?:propietario|dueño|dueno)\s*:?\s*(.+)/i), solicitante: buscar(/(?:m[ée]dico|solicitante|veterinari[oa])\s*:?\s*(.+)/i),
+      identificador: buscar(/\b(?:muestra|orden|folio)\s*(?:n[º°o.]*)?\s*[:#]\s*([\w-]+)/i)
+    },
+    fechas: { toma: fechaDe(/toma|colecci/i), recepcion: fechaDe(/recepci|recibid/i), reporte: fechaDe(/reporte|resultado|emisi|fecha/i) },
+    observaciones: buscar(/(?:observaci[óo]nes?|comentarios?|interpretaci[óo]n)\s*:?\s*(.+)/i),
+    // Lo ya reconocido (observaciones, quien valida, edad/peso) no se repite aqui.
+    notas_pie: (() => { const r = despues.filter((l) => !/^\s*(?:observaci|comentario|interpretaci|validado|responsable|bioanalista|edad|peso)/i.test(l)); return r.length ? r.join("\n") : null; })()
+  };
+}
+
+// Plantilla para escribirlo a mano: si el paciente ya tiene un hemograma, sus mismas
+// filas (con unidades y rangos) y SIN resultados; si no, solo los nombres usuales.
+// Los rangos dependen de la especie y del laboratorio: no se escriben de memoria.
+const LAB_PARAMETROS_BASE = [
+  ["Serie roja", ["Eritrocitos (RBC)", "Hemoglobina (HGB)", "Hematocrito (HCT)", "VCM (MCV)", "HCM (MCH)", "CHCM (MCHC)", "RDW"]],
+  ["Serie blanca", ["Leucocitos (WBC)", "Neutrófilos", "Linfocitos", "Monocitos", "Eosinófilos", "Basófilos"]],
+  ["Plaquetas", ["Plaquetas (PLT)", "VPM (MPV)"]]
+];
+function plantillaLab(previo) {
+  if (previo && previo.datos && (previo.datos.parametros || []).length) {
+    return previo.datos.parametros.map((p) => ({ grupo: p.grupo || null, nombre: p.nombre, resultado: "", unidad: p.unidad || null, rango: p.rango || null, bandera: null, dudoso: false }));
+  }
+  const out = [];
+  LAB_PARAMETROS_BASE.forEach(([g, ns]) => ns.forEach((n) => out.push({ grupo: g, nombre: n, resultado: "", unidad: null, rango: null, bandera: null, dudoso: false })));
+  return out;
+}
+
+const dataURLaBlob = (u) => fetch(u).then((r) => r.blob());
+// Lee el documento y devuelve { datos, aviso }. Nunca inventa: si no reconoce
+// filas, lo dice y deja la plantilla para escribirlas mirando el original.
+async function leerDocumentoLab(file, previo, progreso) {
+  let filas = [], ocr = false, aviso = "";
+  if (file.type === "application/pdf") {
+    const r = await leerPDFLab(file);
+    filas = r.filas;
+    if (r.letras < 80) {          // PDF escaneado: sin texto, se pasa por OCR
+      ocr = true; progreso && progreso("Es un PDF escaneado: leyendo con OCR (puede tardar un minuto)…");
+      const pag = await r.pdf.getPage(1);
+      const vp = pag.getViewport({ scale: 2.2 });
+      const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+      await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      filas = await ocrLab(await new Promise((ok) => cv.toBlob(ok, "image/png")), (p) => progreso && progreso("OCR " + p + "%"));
+      if (r.paginas > 1) aviso = "Solo se leyó la primera página con OCR; agrega a mano las filas de las demás. ";
+    }
+  } else {
+    ocr = true; progreso && progreso("Leyendo la foto con OCR (puede tardar un minuto)…");
+    filas = await ocrLab(file, (p) => progreso && progreso("OCR " + p + "%"));
+  }
+  const { parametros, antes, despues } = parsearFilasLab(filas);
+  const base = datosDeTexto(antes, despues);
+  if (ocr) {
+    parametros.forEach((p) => { p.dudoso = true; });
+    aviso += "Lectura por OCR: puede confundir números (0/O, 1/l, coma/punto). Compara CADA valor con el original.";
+  }
+  if (parametros.length === 0) {
+    aviso += (aviso ? " " : "") + "No pude reconocer las filas de resultados de este documento; escríbelas mirando el original (ya están los nombres usuales).";
+    base.parametros = plantillaLab(previo);
+  } else base.parametros = parametros;
+  base.es_hemograma = true; base.advertencias = aviso ? [aviso] : [];
+  return base;
+}
 // "2026-10-16" si el laboratorio lo escribio asi o como 16/10/2026; si no se
 // entiende devuelve "" y la persona lo pone a mano. No se adivina una fecha.
 function fechaDeLab(t) {
@@ -11900,7 +12103,7 @@ function LabResultados({ clienteId, cliente }) {
   const [lista, setLista] = React.useState([]);
   const [cargando, setCargando] = React.useState(true);
   const [archivo, setArchivo] = React.useState(null);
-  const [leyendo, setLeyendo] = React.useState(false);
+  const [leyendo, setLeyendo] = React.useState("");
   const [revision, setRevision] = React.useState(null);   // { datos, fecha }
   const [error, setError] = React.useState("");
   const [guardando, setGuardando] = React.useState(false);
@@ -11918,39 +12121,37 @@ function LabResultados({ clienteId, cliente }) {
 
   async function convertir() {
     if (!archivo) return;
-    setError(""); setLeyendo(true);
+    setError(""); setLeyendo("Leyendo el documento…");
     try {
-      const res = await fetch(LAB_FUNCION(), {
-        method: "POST", headers: await supaHeaders(),
-        body: JSON.stringify({ archivo: await aBase64(archivo), mime: archivo.type })
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(out.error || ("HTTP " + res.status));
-      if (out.datos && out.datos.es_hemograma === false) {
-        throw new Error("Este documento no parece un hemograma. No se convirtió.");
-      }
-      const d = out.datos || {};
-      d.parametros = (d.parametros || []).map((p) => ({ ...p, resultado: p.resultado == null ? "" : String(p.resultado) }));
-      setRevision({ datos: d, fecha: fechaDeLab(d.fechas && (d.fechas.reporte || d.fechas.toma)) || hoy() });
-    } catch (e) { setError(e.message); }
-    setLeyendo(false);
+      const d = await leerDocumentoLab(archivo, lista[0], setLeyendo);
+      const f = d.fechas || {};
+      setRevision({ datos: d, fecha: fechaDeLab(f.reporte || f.toma) || hoy() });
+    } catch (e) { setError("No se pudo leer el documento: " + e.message + ". Puedes escribirlo a mano."); }
+    setLeyendo("");
+  }
+  function aMano() {
+    setError("");
+    setRevision({ datos: { es_hemograma: true, advertencias: [], laboratorio: {}, paciente: {}, fechas: {}, parametros: plantillaLab(lista[0]) }, fecha: hoy() });
   }
 
   async function guardar(datos, fecha) {
     setGuardando(true);
     try {
       const id = "lab_" + Date.now();
-      const ext = archivo.type === "application/pdf" ? "pdf" : (archivo.type.split("/")[1] || "bin");
-      const ruta = String(clienteId).replace(/[^A-Za-z0-9_-]/g, "") + "/" + id + "." + ext;
-      const h = await supaHeaders();
-      const sube = await fetch(SUPA_URL + "/storage/v1/object/laboratorios/" + ruta, {
-        method: "POST", headers: { apikey: h.apikey, Authorization: h.Authorization, "Content-Type": archivo.type, "x-upsert": "false" },
-        body: archivo
-      });
-      if (!sube.ok) throw new Error("No se pudo guardar el original (" + sube.status + ")");
+      let ruta = null;
+      if (archivo) {
+        const ext = archivo.type === "application/pdf" ? "pdf" : (archivo.type.split("/")[1] || "bin");
+        ruta = String(clienteId).replace(/[^A-Za-z0-9_-]/g, "") + "/" + id + "." + ext;
+        const h = await supaHeaders();
+        const sube = await fetch(SUPA_URL + "/storage/v1/object/laboratorios/" + ruta, {
+          method: "POST", headers: { apikey: h.apikey, Authorization: h.Authorization, "Content-Type": archivo.type, "x-upsert": "false" },
+          body: archivo
+        });
+        if (!sube.ok) throw new Error("No se pudo guardar el original (" + sube.status + ")");
+      }
       const fila = { id, clienteid: String(clienteId), fecha, tipo: "hemograma",
         laboratorio: (datos.laboratorio && datos.laboratorio.nombre) || "", datos,
-        original_path: ruta, original_mime: archivo.type, verificado_por: usuarioActual() };
+        original_path: ruta, original_mime: archivo ? archivo.type : null, verificado_por: usuarioActual() };
       const r = await supaFetch("pc_lab_resultados", "POST", [fila]);
       if (r && r.error) throw new Error(JSON.stringify(r.error));
       avisar("Hemograma guardado en la historia.", "ok");
@@ -11982,11 +12183,15 @@ function LabResultados({ clienteId, cliente }) {
         E("span", { style: { fontSize: 12, color: "#5a6472", marginLeft: 8 } }, cargando ? "" : lista.length + " guardado(s)"))),
 
     abierto && E("div", { style: { marginTop: 12 } },
-      E("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 } },
+      E("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 6 } },
         E("input", { type: "file", accept: "application/pdf,image/jpeg,image/png,image/webp",
           onChange: (e) => { setArchivo(e.target.files[0] || null); setError(""); }, style: { fontSize: 12.5 } }),
-        archivo && E("button", { onClick: convertir, disabled: leyendo,
-          style: btn("#f08a1c", "#fff") }, leyendo ? "Leyendo el documento…" : "✨ Convertir a formato PetColinas")),
+        archivo && E("button", { onClick: convertir, disabled: !!leyendo,
+          style: btn("#f08a1c", "#fff") }, leyendo ? "Leyendo…" : "✨ Convertir a formato PetColinas"),
+        E("button", { onClick: aMano, disabled: !!leyendo, style: btn("#fff", "#334155", "#cfd6dc") }, "✍️ Escribirlo a mano")),
+      leyendo && E("div", { style: { fontSize: 12.5, color: "#0f6f82", fontWeight: 600, marginBottom: 8 } }, "⏳ " + leyendo),
+      E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 10, lineHeight: 1.5 } },
+        "El PDF digital del laboratorio se lee exacto. Una foto o un PDF escaneado se lee con OCR, que puede equivocarse: siempre se revisa contra el original antes de guardar."),
       error && E("div", { style: { background: "#fdeaea", border: "1.5px solid #c0392b", color: "#c0392b", borderRadius: 9,
         padding: "10px 12px", fontSize: 12.5, fontWeight: 600, marginBottom: 10 } }, error),
       cargando ? null : lista.length === 0
@@ -12007,9 +12212,9 @@ function LabResultados({ clienteId, cliente }) {
     }));
 }
 
-// La pantalla que importa: lo leido por la IA, al lado del documento original,
-// editable fila por fila. Las filas dudosas salen resaltadas, y no se puede
-// guardar sin confirmar que se compararon los valores con el original.
+// La pantalla que importa: lo leido, al lado del documento original, editable
+// fila por fila. Las filas dudosas salen resaltadas, y no se puede guardar sin
+// confirmar que se compararon los valores con el original.
 function ModalLabRevision({ datos, fechaInicial, archivo, ocupado, onCerrar, onGuardar }) {
   const E = React.createElement;
   const [d, setD] = React.useState(() => JSON.parse(JSON.stringify(datos)));
@@ -12024,57 +12229,74 @@ function ModalLabRevision({ datos, fechaInicial, archivo, ocupado, onCerrar, onG
 
   const setP = (i, k, v) => setD((x) => ({ ...x, parametros: x.parametros.map((p, j) => j === i ? { ...p, [k]: v, ...(k === "resultado" ? { dudoso: false } : {}) } : p) }));
   const quitar = (i) => setD((x) => ({ ...x, parametros: x.parametros.filter((_, j) => j !== i) }));
-  const nDudosos = (d.parametros || []).filter((p) => p.dudoso).length;
-  const sinValor = (d.parametros || []).some((p) => !String(p.resultado).trim());
-  const bloqueado = ocupado || !ok || sinValor || (d.parametros || []).length === 0 || !fecha;
+  const agregar = () => setD((x) => ({ ...x, parametros: [...(x.parametros || []), { grupo: ((x.parametros || []).slice(-1)[0] || {}).grupo || null, nombre: "", resultado: "", unidad: null, rango: null, bandera: null, dudoso: false }] }));
+  const setSec = (sec, k, v) => setD((x) => ({ ...x, [sec]: { ...(x[sec] || {}), [k]: v } }));
+  // Filas que se quedaron sin resultado (la plantilla a mano) no se imprimen: se
+  // descartan al guardar para no dejar renglones vacios en el PDF.
+  const llenas = (d.parametros || []).filter((p) => String(p.resultado).trim());
+  const nDudosos = llenas.filter((p) => p.dudoso).length;
+  const sinNombre = llenas.some((p) => !String(p.nombre || "").trim());
+  const bloqueado = ocupado || !ok || llenas.length === 0 || sinNombre || !fecha;
 
   const inp = { padding: "5px 7px", borderRadius: 6, border: "1px solid #d0d5db", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
   const th = { padding: "7px 6px", fontSize: 10.5, textTransform: "uppercase", color: "#fff", textAlign: "left", background: "#121f38" };
-  const lab = d.laboratorio || {};
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 2 };
+  const campo = (sec, k, etq, ancho) => E("div", { style: { flex: ancho || "1 1 160px", minWidth: 130 } },
+    E("label", { style: lbl }, etq), E("input", { value: (d[sec] || {})[k] || "", onChange: (e) => setSec(sec, k, e.target.value), style: inp }));
 
   return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
     E("div", { style: { background: "#fff", borderRadius: 14, width: "100%", maxWidth: 1180, maxHeight: "94vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
       E("div", { style: { padding: "14px 18px", borderBottom: "1px solid #e0e4e8" } },
         E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Revisa el hemograma antes de guardarlo"),
         E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2 } },
-          "La IA copió lo que ve; puede equivocarse. Compara cada valor con el documento original (a la derecha) y corrige lo que haga falta.")),
-      E("div", { style: { display: "grid", gridTemplateColumns: "minmax(0,1.25fr) minmax(0,1fr)", gap: 0, flex: 1, minHeight: 0 } },
+          archivo ? "Compara cada valor con el documento original (a la derecha) y corrige lo que haga falta."
+                  : "Escribe los valores mirando el informe del laboratorio. Las filas sin resultado no se imprimen.")),
+      E("div", { style: { display: "grid", gridTemplateColumns: archivo ? "minmax(0,1.25fr) minmax(0,1fr)" : "minmax(0,1fr)", flex: 1, minHeight: 0 } },
         E("div", { style: { overflowY: "auto", padding: "12px 16px" } },
           (d.advertencias || []).length > 0 && E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#92400e", marginBottom: 10 } },
-            E("strong", null, "El lector avisa: "), (d.advertencias || []).join(" · ")),
-          E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, fontSize: 12 } },
-            E("div", null, E("div", { style: { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase" } }, "Fecha del resultado"),
-              E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: { ...inp, width: 150 } })),
-            E("div", { style: { flex: 1, minWidth: 180 } }, E("div", { style: { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase" } }, "Laboratorio"),
-              E("input", { value: lab.nombre || "", onChange: (e) => setD((x) => ({ ...x, laboratorio: { ...(x.laboratorio || {}), nombre: e.target.value } })), style: inp }))),
+            E("strong", null, "Ojo: "), (d.advertencias || []).join(" ")),
+          E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 } },
+            E("div", { style: { flex: "0 0 150px" } }, E("label", { style: lbl }, "Fecha del resultado"),
+              E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: inp })),
+            campo("laboratorio", "nombre", "Laboratorio", "2 1 220px"), campo("laboratorio", "telefono", "Teléfono"),
+            campo("laboratorio", "direccion", "Dirección", "2 1 220px"), campo("laboratorio", "responsable", "Responsable / quien valida"),
+            campo("laboratorio", "registro", "Registro / RNC")),
+          E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 } },
+            campo("paciente", "nombre", "Paciente"), campo("paciente", "especie", "Especie"), campo("paciente", "raza", "Raza"),
+            campo("paciente", "sexo", "Sexo"), campo("paciente", "edad", "Edad"), campo("paciente", "propietario", "Propietario")),
           nDudosos > 0 && E("div", { style: { fontSize: 12, color: "#b45309", fontWeight: 700, marginBottom: 6 } },
-            "⚠ " + nDudosos + " valor(es) que el lector no pudo leer con certeza (en amarillo). Al corregirlos se desmarcan."),
+            "⚠ " + nDudosos + " valor(es) por verificar (en amarillo). Al corregirlos o retocarlos se desmarcan."),
           E("table", { style: { width: "100%", borderCollapse: "collapse" } },
             E("thead", null, E("tr", null,
               ["Parámetro", "Resultado", "Unidad", "Rango", "Marca", ""].map((h, i) => E("th", { key: i, style: th }, h)))),
-            E("tbody", null, (d.parametros || []).map((p, i) => E("tr", { key: i, style: { background: p.dudoso ? "#fff7d6" : (i % 2 ? "#fafbfc" : "#fff") } },
+            E("tbody", null, (d.parametros || []).map((p, i) => E("tr", { key: i, style: { background: p.dudoso && String(p.resultado).trim() ? "#fff7d6" : (i % 2 ? "#fafbfc" : "#fff") } },
               E("td", { style: { padding: 3 } }, E("input", { value: p.nombre || "", onChange: (e) => setP(i, "nombre", e.target.value), style: inp })),
               E("td", { style: { padding: 3, width: 90 } }, E("input", { value: p.resultado, onChange: (e) => setP(i, "resultado", e.target.value),
-                style: { ...inp, fontWeight: 700, borderColor: !String(p.resultado).trim() ? "#c0392b" : p.dudoso ? "#d9a441" : "#d0d5db" } })),
+                style: { ...inp, fontWeight: 700, borderColor: p.dudoso && String(p.resultado).trim() ? "#d9a441" : "#d0d5db" } })),
               E("td", { style: { padding: 3, width: 80 } }, E("input", { value: p.unidad || "", onChange: (e) => setP(i, "unidad", e.target.value), style: inp })),
               E("td", { style: { padding: 3, width: 100 } }, E("input", { value: p.rango || "", onChange: (e) => setP(i, "rango", e.target.value), style: inp })),
               E("td", { style: { padding: 3, width: 70 } }, E("select", { value: p.bandera || "", onChange: (e) => setP(i, "bandera", e.target.value || null), style: inp },
                 E("option", { value: "" }, "—"), E("option", { value: "alto" }, "Alto"), E("option", { value: "bajo" }, "Bajo"))),
               E("td", { style: { padding: 3, width: 26 } }, E("button", { onClick: () => quitar(i), title: "Quitar fila",
                 style: { background: "none", border: "none", cursor: "pointer", color: "#c0392b", fontSize: 15 } }, "✕")))))),
-          (d.parametros || []).length === 0 && E("div", { style: { color: "#c0392b", fontSize: 12.5, padding: 12 } }, "No se leyó ninguna fila. Prueba con el PDF original o una foto más nítida."),
-          d.observaciones && E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 10 } }, E("strong", null, "Observaciones del laboratorio (se conservarán): "), d.observaciones)),
-        E("div", { style: { background: "#f0f2f4", borderLeft: "1px solid #e0e4e8", minHeight: 0 } },
-          !url ? null : archivo && archivo.type === "application/pdf"
+          E("button", { onClick: agregar, style: { marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1.5px dashed #9aa5b1", background: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 } }, "＋ Agregar fila"),
+          E("div", { style: { marginTop: 12 } },
+            E("label", { style: lbl }, "Observaciones del laboratorio (se conservan tal cual)"),
+            E("textarea", { value: d.observaciones || "", onChange: (e) => setD((x) => ({ ...x, observaciones: e.target.value })), rows: 2, style: { ...inp, fontFamily: "inherit" } })),
+          E("div", { style: { marginTop: 8 } },
+            E("label", { style: lbl }, "Notas del pie del laboratorio"),
+            E("textarea", { value: d.notas_pie || "", onChange: (e) => setD((x) => ({ ...x, notas_pie: e.target.value })), rows: 2, style: { ...inp, fontFamily: "inherit" } }))),
+        archivo && E("div", { style: { background: "#f0f2f4", borderLeft: "1px solid #e0e4e8", minHeight: 0 } },
+          !url ? null : archivo.type === "application/pdf"
             ? E("iframe", { src: url, title: "Original", style: { width: "100%", height: "100%", border: "none", minHeight: 420 } })
             : E("div", { style: { overflow: "auto", height: "100%" } }, E("img", { src: url, alt: "Original", style: { width: "100%", display: "block" } })))),
       E("div", { style: { padding: "12px 18px", borderTop: "1px solid #e0e4e8", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" } },
         E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 240, cursor: "pointer" } },
           E("input", { type: "checkbox", checked: ok, onChange: (e) => setOk(e.target.checked) }),
-          "Verifiqué los valores contra el documento original."),
-        sinValor && E("span", { style: { color: "#c0392b", fontSize: 12, fontWeight: 600 } }, "Hay filas sin resultado."),
+          archivo ? "Verifiqué los valores contra el documento original." : "Verifiqué los valores contra el informe del laboratorio."),
+        sinNombre && E("span", { style: { color: "#c0392b", fontSize: 12, fontWeight: 600 } }, "Hay filas con resultado y sin nombre."),
         E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
-        E("button", { onClick: () => onGuardar(d, fecha), disabled: bloqueado,
+        E("button", { onClick: () => onGuardar({ ...d, parametros: llenas.map((p) => ({ ...p, resultado: String(p.resultado).trim() })) }, fecha), disabled: bloqueado,
           style: { padding: "10px 18px", borderRadius: 9, border: "none", background: bloqueado ? "#aab3bd" : "#f08a1c", color: "#fff", cursor: bloqueado ? "default" : "pointer", fontWeight: 800 } },
           ocupado ? "Guardando…" : "Guardar y generar PDF"))));
 }
