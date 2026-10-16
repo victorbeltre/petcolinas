@@ -1352,6 +1352,10 @@ function normalizeRow(table, r) {
     descripcion: r.descripcion,
     monto: r.monto,
     formaPago: r.formapago,
+    // La app lee `metodo` y `pagadoPor`; antes solo se guardaba formapago desde
+    // formaPago, asi que lo que se elegia en el formulario se perdia al recargar.
+    metodo: r.formapago || "",
+    pagadoPor: r.pagadopor || "",
     proveedor: r.proveedor,
     notas: r.notas
   };
@@ -1552,7 +1556,8 @@ function denormalizeRow(table, r) {
     categoria: r.categoria,
     descripcion: r.descripcion,
     monto: r.monto,
-    formapago: r.formaPago,
+    formapago: r.formaPago || r.metodo || "",
+    pagadopor: r.pagadoPor || "",
     proveedor: r.proveedor,
     notas: r.notas
   };
@@ -11188,8 +11193,11 @@ function Gastos({ gastos, setGastos }) {
     setEditDesc(g.descripcion || "");
     setEditMonto(String(g.monto || ""));
     setEditCat(g.categoria || "insumo");
-    setEditPagPor(g.pagadoPor || "Victor Ballas");
-    setEditMetodo(g.metodo || "efectivo");
+    // Sin inventar: un gasto viejo no tiene metodo ni quien lo pago guardado, y
+    // rellenarlos con "efectivo"/"Victor Ballas" al editar los dejaria como
+    // datos falsos ya persistidos.
+    setEditPagPor(g.pagadoPor || "");
+    setEditMetodo(g.metodo || g.formaPago || "");
   };
   const saveEdit = () => {
     if (!editDesc || !editMonto) return avisar("Completa descripci\xF3n y monto");
@@ -11229,15 +11237,17 @@ function Gastos({ gastos, setGastos }) {
       label: "Pagado por",
       value: pagadoPor,
       onChange: setPagPor,
-      options: [{ value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }]
+      options: [{ value: "Petcolinas", label: "Petcolinas (la empresa)" }, { value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }]
     }
   ), /* @__PURE__ */ React.createElement(
     Select,
     {
       label: "M\xE9todo",
       value: metodo,
-      onChange: setMetodo,
-      options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }]
+      // Pagar con la tarjeta de la empresa es pagar la empresa: se marca solo,
+      // y sigue siendo editable por si lo pago alguien de su bolsillo.
+      onChange: (v) => { setMetodo(v); if (v === "tarjeta empresarial Banreservas") setPagPor("Petcolinas"); },
+      options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }, { value: "tarjeta empresarial Banreservas", label: "Tarjeta empresarial Banreservas" }]
     }
   )), /* @__PURE__ */ React.createElement(Btn, { onClick: addGasto }, "\u{1F4BE} Registrar gasto")), Object.keys(porCat).length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 24 } }, Object.entries(porCat).map(([cat, total]) => /* @__PURE__ */ React.createElement("div", { key: cat, style: {
     background: "#fff",
@@ -11255,7 +11265,7 @@ function Gastos({ gastos, setGastos }) {
     minWidth: 160
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 } }, "TOTAL MES"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.negro, fontWeight: 700 } }, RD(totalFiltrado)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CB} Historial de gastos"), /* @__PURE__ */ React.createElement(Input, { label: "", type: "month", value: filtromes, onChange: setFiltroMes })), gastosFiltrados.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "Sin gastos registrados en este per\xEDodo.") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Proveedor", "Descripci\xF3n", "Categor\xEDa", "Pagado por", "M\xE9todo", "Monto", ""].map(
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)
-  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, g.metodo), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
+  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, g.metodo || g.formaPago || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Petcolinas", label: "Petcolinas (la empresa)" }, { value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "", label: "(sin anotar)" }, { value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }, { value: "tarjeta empresarial Banreservas", label: "Tarjeta empresarial Banreservas" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
 }
 // Cabecera de Reportes: donde va el mes contra el punto de equilibrio y contra
 // los dos meses con los que tiene sentido compararse (el anterior y el mismo
@@ -17229,7 +17239,7 @@ function CajaReporte({ modo }) {
       E("select", { value: metodo, onChange: (e) => setMetodo(e.target.value),
         style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5 } },
         E("option", { value: "" }, "Todos los métodos"),
-        ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "CHEQUE", "SIN ANOTAR", "MIXTO", "OTRO"].map((m) => E("option", { key: m, value: m }, m))),
+        ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "TARJETA EMPRESA", "CHEQUE", "SIN ANOTAR", "MIXTO", "OTRO"].map((m) => E("option", { key: m, value: m }, m))),
       E("select", { value: categoria, onChange: (e) => setCategoria(e.target.value),
         style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5, maxWidth: 190 } },
         E("option", { value: "" }, "Todas las categorías"),
@@ -17346,6 +17356,8 @@ function TarjetaPorCuenta({ rep, C, n }) {
       "Ya esta en la cuenta. Se concilia contra el estado de cuenta."],
     ["PUENTE",      "💳 Tarjetas por liquidar", "#92400e",
       "Cobrado, pero el banco todavia no lo ha depositado (T+1 a T+3) y lo abonara neto de comision."],
+    ["CREDITO",     "🧾 Tarjeta empresarial",   "#6b21a8",
+      "Deuda, no dinero: lo pagado con la tarjeta de la empresa no sale del banco hasta que se paga el estado de cuenta."],
     ["SIN_ASIGNAR", "⚠️ Sin asignar",           C.rojo,
       "Transferencia sin banco anotado, cobros mixtos y gastos sin metodo. No se sabe donde cayo."]
   ];
@@ -17505,9 +17517,9 @@ function CajaCuentas() {
         E("span", { style: {
           fontSize: 10, fontWeight: 800, letterSpacing: 0.5, padding: "3px 8px", borderRadius: 20,
           background: c.tipo === "EFECTIVO" ? "#e8f5ee" : c.tipo === "BANCO" ? "#e8f0fe"
-                    : c.tipo === "PUENTE" ? "#fff7e6" : "#fdeaea",
+                    : c.tipo === "PUENTE" ? "#fff7e6" : c.tipo === "CREDITO" ? "#f3e8ff" : "#fdeaea",
           color: c.tipo === "EFECTIVO" ? C.verde : c.tipo === "BANCO" ? C.azul
-               : c.tipo === "PUENTE" ? "#92400e" : C.rojo
+               : c.tipo === "PUENTE" ? "#92400e" : c.tipo === "CREDITO" ? "#6b21a8" : C.rojo
         } }, c.tipo === "SIN_ASIGNAR" ? "SIN ASIGNAR" : c.tipo)),
 
       linea("Empezó el día con", RDc(c.saldo_inicial)),
@@ -17760,7 +17772,7 @@ function CajaDia() {
   const E = React.createElement;
   const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b",
               gold: "#b8860b", borde: "#e0e4e8" };
-  const METODOS = ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "CHEQUE"];
+  const METODOS = ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "TARJETA EMPRESA", "CHEQUE"];
 
   const [fecha, setFecha] = React.useState(hoy());
   const [libro, setLibro] = React.useState([]);

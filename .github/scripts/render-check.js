@@ -45,6 +45,7 @@ const factura = { id: "venta_2026-08-08_rocky", numero: "0001", fecha: "2026-08-
   itbis: false, subtotal: 799, itbisAmt: 0, total: 799, estado: "pagada", metodoPago: "Efectivo", notas: "" };
 
 const errores = [];
+const enVM = (codigo) => vm.runInContext(codigo, sandbox);
 function render(nombre, comp, props, prep, debeContener) {
   if (typeof comp !== "function") { errores.push(`${nombre}: el componente no existe`); return; }
   hookIdx = 0; hooks = [];
@@ -238,6 +239,34 @@ render("CajaReporte (caja, sin por_cuenta)", sandbox.CajaReporte, { modo: "mes" 
   const j = h.findIndex((x) => x === true);
   if (j >= 0) h[j] = false;
 }, "Por método de pago");
+// Gastos: "Pagado por" y "Metodo" se elegian en pantalla pero NO se guardaban
+// (la base solo escribia formapago desde formaPago y la app usa metodo/pagadoPor),
+// asi que se perdian al recargar: 55 de 68 gastos sin metodo. Ida y vuelta:
+(() => {
+  const g = { id: "9", fecha: "2026-10-16", categoria: "insumo", descripcion: "Shampoo", monto: 1250.25,
+    proveedor: "X", metodo: "tarjeta empresarial Banreservas", pagadoPor: "Petcolinas" };
+  const db = enVM('denormalizeRow("pc_gastos", ' + JSON.stringify(g) + ')');
+  if (db.formapago !== "tarjeta empresarial Banreservas") errores.push("Gastos: el metodo no llega a formapago (" + db.formapago + ")");
+  if (db.pagadopor !== "Petcolinas") errores.push("Gastos: pagadoPor no llega a pagadopor (" + db.pagadopor + ")");
+  const back = enVM('normalizeRow("pc_gastos", ' + JSON.stringify(db) + ')');
+  if (back.metodo !== g.metodo || back.pagadoPor !== g.pagadoPor) errores.push("Gastos: metodo/pagadoPor no sobreviven a recargar");
+  // Un gasto viejo sin nada no debe inventarse metodo ni pagador.
+  const viejo = enVM('normalizeRow("pc_gastos", { id: "1", fecha: "2026-01-01", monto: 5, formapago: null, pagadopor: null })');
+  if (viejo.metodo || viejo.pagadoPor) errores.push("Gastos: un gasto viejo no deberia traer metodo ni pagador inventados");
+})();
+render("Gastos", sandbox.Gastos, {
+  gastos: [{ id: "9", fecha: new Date().toISOString().slice(0, 7) + "-05", categoria: "insumo", descripcion: "Shampoo",
+    monto: 1250.25, metodo: "tarjeta empresarial Banreservas", pagadoPor: "Petcolinas" }],
+  setGastos: () => {}
+}, null, "Petcolinas");
+(() => {
+  const salida = sandbox.TarjetaPorCuenta({ rep: { por_cuenta: [
+    { cuenta_id: "tarjeta_empresa", nombre: "Tarjeta empresarial Banreservas", tipo: "CREDITO", orden: 60,
+      entradas: 0, salidas: 1250.25, neto: -1250.25, movimientos: 1 }], por_cuenta_categoria: [] },
+    C: CC, n: (x) => Number(x) || 0 });
+  const txt = JSON.stringify(salida, (k, v) => (typeof v === "function" ? undefined : v));
+  if (!txt.includes("Tarjeta empresarial")) errores.push("TarjetaPorCuenta: la tarjeta empresarial no aparece en ningun bloque");
+})();
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
   resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
@@ -401,7 +430,6 @@ render("ModalHistoriaDesdeFactura", sandbox.ModalHistoriaDesdeFactura, {
 // Y que acepte las dos formas de escribirlo: "30" y "0.30" son el mismo 30%.
 // PC_CONFIG se declara con `let`, y eso en un contexto de vm NO queda como
 // propiedad del objeto global: hay que tocarlo desde dentro.
-const enVM = (codigo) => vm.runInContext(codigo, sandbox);
 [["35", 0.35], ["0.35", 0.35], ["", 0.30]].forEach(([valor, esperado]) => {
   const r = enVM(`PC_CONFIG.comision_vet = ${JSON.stringify(valor)}; comisionPct("vet");`);
   if (r !== esperado) errores.push(`comisionPct con "${valor}" devolvió ${r}, se esperaba ${esperado}`);
@@ -414,4 +442,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (38 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+console.log(`✓ Vistas principales renderizan sin errores (39 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
