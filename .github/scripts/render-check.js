@@ -277,6 +277,7 @@ render("Gastos", sandbox.Gastos, {
     if (r !== esp) errores.push("latinPDF(" + ent + ") dio \"" + r + "\", se esperaba \"" + esp + "\" (una unidad cambiada es un dato clinico falso)");
   });
   if (typeof sandbox.generarLabPDFDoc !== "function") errores.push("generarLabPDFDoc no existe");
+  if (typeof sandbox.plantillaLab === "function") errores.push("plantillaLab: los resultados no se escriben a mano");
 })();
 // Lectura local del hemograma (sin IA): del texto del PDF a la tabla. Las filas
 // vienen como las entrega pdf.js: celdas con su texto y su posicion.
@@ -301,9 +302,6 @@ render("Gastos", sandbox.Gastos, {
   // Una fila con caracteres de codificacion rota NO puede pasar por buena.
   const rota = enVM("parsearFilasLab(" + JSON.stringify([[{ s: "Eritrocitos", x: 0 }, { s: "6.85", x: 40 }, { s: "x10 v/L", x: 80, raro: true }, { s: "5.65 - 8.87", x: 120 }]]) + ")");
   if (!rota.parametros[0] || rota.parametros[0].dudoso !== true) errores.push("parsearFilasLab: una celda con caracteres rotos deberia dejar la fila 'por verificar'");
-  // Plantilla a mano: sin resultados precargados (nunca un valor que no se midio).
-  const pl = enVM("plantillaLab(null)");
-  if (!pl.length || pl.some((x) => x.resultado !== "" || x.rango)) errores.push("plantillaLab: la plantilla no debe traer resultados ni rangos inventados");
 })();
 render("LabResultados", sandbox.LabResultados, { clienteId: "9", cliente: { nombreMascota: "Rocky" } }, (h) => {
   const i = h.indexOf(false); if (i >= 0) h[i] = true;   // abierto
@@ -315,7 +313,17 @@ const datosLab = { es_hemograma: true, advertencias: ["foto un poco torcida"],
     { nombre: "Plaquetas", resultado: "148", unidad: "x10\u00B3/\u00B5L", rango: "148 - 484", bandera: null, dudoso: true }] };
 render("ModalLabRevision", sandbox.ModalLabRevision, {
   datos: datosLab, fechaInicial: "2026-10-16", archivo: null, ocupado: false, onCerrar: () => {}, onGuardar: () => {}
-}, null, "Revisa el hemograma antes de guardarlo");
+}, null, "Compara con el original antes de guardarlo");
+// Los resultados NO se editan: la pantalla no puede tener ningun campo de texto,
+// select ni textarea; solo la casilla de verificacion. Si alguien vuelve a
+// hacerlos editables, esto falla.
+(() => {
+  hookIdx = 0; hooks = [];
+  const hallarTodos = (n, f, acc = []) => { if (!n || typeof n !== "object") return acc; if (Array.isArray(n)) { n.forEach((x) => hallarTodos(x, f, acc)); return acc; } if (f(n)) acc.push(n); [].concat(n.c || []).forEach((c) => hallarTodos(c, f, acc)); return acc; };
+  const arbol = sandbox.ModalLabRevision({ datos: datosLab, fechaInicial: "2026-10-16", archivo: null, ocupado: false, onCerrar() {}, onGuardar() {} });
+  const editables = hallarTodos(arbol, (n) => n.t === "textarea" || n.t === "select" || (n.t === "input" && !(n.p && n.p.type === "checkbox")));
+  if (editables.length) errores.push("ModalLabRevision: los resultados no deben poder editarse (" + editables.length + " campo(s) editable(s))");
+})();
 // Lo que de verdad protege al paciente: sin la casilla de verificacion el boton
 // de guardar tiene que seguir bloqueado.
 (() => {

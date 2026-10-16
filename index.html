@@ -12037,27 +12037,10 @@ function datosDeTexto(antes, despues) {
   };
 }
 
-// Plantilla para escribirlo a mano: si el paciente ya tiene un hemograma, sus mismas
-// filas (con unidades y rangos) y SIN resultados; si no, solo los nombres usuales.
-// Los rangos dependen de la especie y del laboratorio: no se escriben de memoria.
-const LAB_PARAMETROS_BASE = [
-  ["Serie roja", ["Eritrocitos (RBC)", "Hemoglobina (HGB)", "Hematocrito (HCT)", "VCM (MCV)", "HCM (MCH)", "CHCM (MCHC)", "RDW"]],
-  ["Serie blanca", ["Leucocitos (WBC)", "Neutrófilos", "Linfocitos", "Monocitos", "Eosinófilos", "Basófilos"]],
-  ["Plaquetas", ["Plaquetas (PLT)", "VPM (MPV)"]]
-];
-function plantillaLab(previo) {
-  if (previo && previo.datos && (previo.datos.parametros || []).length) {
-    return previo.datos.parametros.map((p) => ({ grupo: p.grupo || null, nombre: p.nombre, resultado: "", unidad: p.unidad || null, rango: p.rango || null, bandera: null, dudoso: false }));
-  }
-  const out = [];
-  LAB_PARAMETROS_BASE.forEach(([g, ns]) => ns.forEach((n) => out.push({ grupo: g, nombre: n, resultado: "", unidad: null, rango: null, bandera: null, dudoso: false })));
-  return out;
-}
-
 const dataURLaBlob = (u) => fetch(u).then((r) => r.blob());
 // Lee el documento y devuelve { datos, aviso }. Nunca inventa: si no reconoce
 // filas, lo dice y deja la plantilla para escribirlas mirando el original.
-async function leerDocumentoLab(file, previo, progreso) {
+async function leerDocumentoLab(file, progreso) {
   let filas = [], ocr = false, aviso = "";
   if (file.type === "application/pdf") {
     const r = await leerPDFLab(file);
@@ -12081,10 +12064,10 @@ async function leerDocumentoLab(file, previo, progreso) {
     parametros.forEach((p) => { p.dudoso = true; });
     aviso += "Lectura por OCR: puede confundir números (0/O, 1/l, coma/punto). Compara CADA valor con el original.";
   }
-  if (parametros.length === 0) {
-    aviso += (aviso ? " " : "") + "No pude reconocer las filas de resultados de este documento; escríbelas mirando el original (ya están los nombres usuales).";
-    base.parametros = plantillaLab(previo);
-  } else base.parametros = parametros;
+  // Sin filas reconocidas no se convierte nada: los resultados NO se escriben a
+  // mano ni se inventan. El documento original sigue en la historia tal cual.
+  if (parametros.length === 0) throw new Error("No pude reconocer los resultados de este documento");
+  base.parametros = parametros;
   base.es_hemograma = true; base.advertencias = aviso ? [aviso] : [];
   return base;
 }
@@ -12123,17 +12106,12 @@ function LabResultados({ clienteId, cliente }) {
     if (!archivo) return;
     setError(""); setLeyendo("Leyendo el documento…");
     try {
-      const d = await leerDocumentoLab(archivo, lista[0], setLeyendo);
+      const d = await leerDocumentoLab(archivo, setLeyendo);
       const f = d.fechas || {};
       setRevision({ datos: d, fecha: fechaDeLab(f.reporte || f.toma) || hoy() });
-    } catch (e) { setError("No se pudo leer el documento: " + e.message + ". Puedes escribirlo a mano."); }
+    } catch (e) { setError(e.message + ". Prueba con el PDF original del laboratorio (el digital, no una foto)."); }
     setLeyendo("");
   }
-  function aMano() {
-    setError("");
-    setRevision({ datos: { es_hemograma: true, advertencias: [], laboratorio: {}, paciente: {}, fechas: {}, parametros: plantillaLab(lista[0]) }, fecha: hoy() });
-  }
-
   async function guardar(datos, fecha) {
     setGuardando(true);
     try {
@@ -12188,10 +12166,10 @@ function LabResultados({ clienteId, cliente }) {
           onChange: (e) => { setArchivo(e.target.files[0] || null); setError(""); }, style: { fontSize: 12.5 } }),
         archivo && E("button", { onClick: convertir, disabled: !!leyendo,
           style: btn("#f08a1c", "#fff") }, leyendo ? "Leyendo…" : "✨ Convertir a formato PetColinas"),
-        E("button", { onClick: aMano, disabled: !!leyendo, style: btn("#fff", "#334155", "#cfd6dc") }, "✍️ Escribirlo a mano")),
+        null),
       leyendo && E("div", { style: { fontSize: 12.5, color: "#0f6f82", fontWeight: 600, marginBottom: 8 } }, "⏳ " + leyendo),
       E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 10, lineHeight: 1.5 } },
-        "El PDF digital del laboratorio se lee exacto. Una foto o un PDF escaneado se lee con OCR, que puede equivocarse: siempre se revisa contra el original antes de guardar."),
+        "Solo cambia el diseño y el logo: los resultados se copian tal cual del documento, sin poder editarse. El PDF digital se lee exacto; una foto o un escaneo se lee con OCR y puede equivocarse, así que antes de guardar compara con el original."),
       error && E("div", { style: { background: "#fdeaea", border: "1.5px solid #c0392b", color: "#c0392b", borderRadius: 9,
         padding: "10px 12px", fontSize: 12.5, fontWeight: 600, marginBottom: 10 } }, error),
       cargando ? null : lista.length === 0
@@ -12212,13 +12190,12 @@ function LabResultados({ clienteId, cliente }) {
     }));
 }
 
-// La pantalla que importa: lo leido, al lado del documento original, editable
-// fila por fila. Las filas dudosas salen resaltadas, y no se puede guardar sin
-// confirmar que se compararon los valores con el original.
+// Comparacion de SOLO LECTURA: lo leido a la izquierda, el original a la derecha.
+// Los resultados no se pueden editar: esto cambia el diseño y el logo, no los
+// valores. Si algo no coincide con el original, se DESCARTA; no se corrige a
+// mano. Y no se guarda sin confirmar que se compararon.
 function ModalLabRevision({ datos, fechaInicial, archivo, ocupado, onCerrar, onGuardar }) {
   const E = React.createElement;
-  const [d, setD] = React.useState(() => JSON.parse(JSON.stringify(datos)));
-  const [fecha, setFecha] = React.useState(fechaInicial);
   const [ok, setOk] = React.useState(false);
   const [url, setUrl] = React.useState("");
   React.useEffect(() => {
@@ -12227,65 +12204,37 @@ function ModalLabRevision({ datos, fechaInicial, archivo, ocupado, onCerrar, onG
     return () => URL.revokeObjectURL(u);
   }, [archivo]);
 
-  const setP = (i, k, v) => setD((x) => ({ ...x, parametros: x.parametros.map((p, j) => j === i ? { ...p, [k]: v, ...(k === "resultado" ? { dudoso: false } : {}) } : p) }));
-  const quitar = (i) => setD((x) => ({ ...x, parametros: x.parametros.filter((_, j) => j !== i) }));
-  const agregar = () => setD((x) => ({ ...x, parametros: [...(x.parametros || []), { grupo: ((x.parametros || []).slice(-1)[0] || {}).grupo || null, nombre: "", resultado: "", unidad: null, rango: null, bandera: null, dudoso: false }] }));
-  const setSec = (sec, k, v) => setD((x) => ({ ...x, [sec]: { ...(x[sec] || {}), [k]: v } }));
-  // Filas que se quedaron sin resultado (la plantilla a mano) no se imprimen: se
-  // descartan al guardar para no dejar renglones vacios en el PDF.
-  const llenas = (d.parametros || []).filter((p) => String(p.resultado).trim());
-  const nDudosos = llenas.filter((p) => p.dudoso).length;
-  const sinNombre = llenas.some((p) => !String(p.nombre || "").trim());
-  const bloqueado = ocupado || !ok || llenas.length === 0 || sinNombre || !fecha;
-
-  const inp = { padding: "5px 7px", borderRadius: 6, border: "1px solid #d0d5db", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
+  const d = datos || {}, lab = d.laboratorio || {}, pac = d.paciente || {};
+  const filas = d.parametros || [];
+  const nDudosos = filas.filter((p) => p.dudoso).length;
+  const bloqueado = ocupado || !ok || filas.length === 0;
   const th = { padding: "7px 6px", fontSize: 10.5, textTransform: "uppercase", color: "#fff", textAlign: "left", background: "#121f38" };
-  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 2 };
-  const campo = (sec, k, etq, ancho) => E("div", { style: { flex: ancho || "1 1 160px", minWidth: 130 } },
-    E("label", { style: lbl }, etq), E("input", { value: (d[sec] || {})[k] || "", onChange: (e) => setSec(sec, k, e.target.value), style: inp }));
+  const dato = (k, v) => v ? E("div", { style: { fontSize: 12.5, marginBottom: 2 } }, E("span", { style: { color: "#5a6472" } }, k + ": "), E("strong", null, v)) : null;
 
   return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
     E("div", { style: { background: "#fff", borderRadius: 14, width: "100%", maxWidth: 1180, maxHeight: "94vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
       E("div", { style: { padding: "14px 18px", borderBottom: "1px solid #e0e4e8" } },
-        E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Revisa el hemograma antes de guardarlo"),
+        E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Compara con el original antes de guardarlo"),
         E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2 } },
-          archivo ? "Compara cada valor con el documento original (a la derecha) y corrige lo que haga falta."
-                  : "Escribe los valores mirando el informe del laboratorio. Las filas sin resultado no se imprimen.")),
-      E("div", { style: { display: "grid", gridTemplateColumns: archivo ? "minmax(0,1.25fr) minmax(0,1fr)" : "minmax(0,1fr)", flex: 1, minHeight: 0 } },
+          "Esto solo cambia el dise\u00F1o y el logo; los resultados no se editan. Si algo no coincide con el documento original, cancela y no se guarda nada.")),
+      E("div", { style: { display: "grid", gridTemplateColumns: archivo ? "minmax(0,1fr) minmax(0,1fr)" : "minmax(0,1fr)", flex: 1, minHeight: 0 } },
         E("div", { style: { overflowY: "auto", padding: "12px 16px" } },
           (d.advertencias || []).length > 0 && E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#92400e", marginBottom: 10 } },
             E("strong", null, "Ojo: "), (d.advertencias || []).join(" ")),
-          E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 } },
-            E("div", { style: { flex: "0 0 150px" } }, E("label", { style: lbl }, "Fecha del resultado"),
-              E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: inp })),
-            campo("laboratorio", "nombre", "Laboratorio", "2 1 220px"), campo("laboratorio", "telefono", "Teléfono"),
-            campo("laboratorio", "direccion", "Dirección", "2 1 220px"), campo("laboratorio", "responsable", "Responsable / quien valida"),
-            campo("laboratorio", "registro", "Registro / RNC")),
-          E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 } },
-            campo("paciente", "nombre", "Paciente"), campo("paciente", "especie", "Especie"), campo("paciente", "raza", "Raza"),
-            campo("paciente", "sexo", "Sexo"), campo("paciente", "edad", "Edad"), campo("paciente", "propietario", "Propietario")),
+          E("div", { style: { background: "#f4f7f9", borderRadius: 9, padding: "10px 12px", marginBottom: 10 } },
+            dato("Laboratorio", lab.nombre), dato("Direcci\u00F3n", lab.direccion), dato("Tel\u00E9fono", lab.telefono), dato("Responsable", lab.responsable),
+            dato("Paciente", pac.nombre), dato("Especie", pac.especie), dato("Propietario", pac.propietario), dato("Fecha del resultado", fechaInicial)),
           nDudosos > 0 && E("div", { style: { fontSize: 12, color: "#b45309", fontWeight: 700, marginBottom: 6 } },
-            "⚠ " + nDudosos + " valor(es) por verificar (en amarillo). Al corregirlos o retocarlos se desmarcan."),
+            "\u26A0 " + nDudosos + " valor(es) por verificar (en amarillo): comp\u00E1ralos con el original con cuidado."),
           E("table", { style: { width: "100%", borderCollapse: "collapse" } },
-            E("thead", null, E("tr", null,
-              ["Parámetro", "Resultado", "Unidad", "Rango", "Marca", ""].map((h, i) => E("th", { key: i, style: th }, h)))),
-            E("tbody", null, (d.parametros || []).map((p, i) => E("tr", { key: i, style: { background: p.dudoso && String(p.resultado).trim() ? "#fff7d6" : (i % 2 ? "#fafbfc" : "#fff") } },
-              E("td", { style: { padding: 3 } }, E("input", { value: p.nombre || "", onChange: (e) => setP(i, "nombre", e.target.value), style: inp })),
-              E("td", { style: { padding: 3, width: 90 } }, E("input", { value: p.resultado, onChange: (e) => setP(i, "resultado", e.target.value),
-                style: { ...inp, fontWeight: 700, borderColor: p.dudoso && String(p.resultado).trim() ? "#d9a441" : "#d0d5db" } })),
-              E("td", { style: { padding: 3, width: 80 } }, E("input", { value: p.unidad || "", onChange: (e) => setP(i, "unidad", e.target.value), style: inp })),
-              E("td", { style: { padding: 3, width: 100 } }, E("input", { value: p.rango || "", onChange: (e) => setP(i, "rango", e.target.value), style: inp })),
-              E("td", { style: { padding: 3, width: 70 } }, E("select", { value: p.bandera || "", onChange: (e) => setP(i, "bandera", e.target.value || null), style: inp },
-                E("option", { value: "" }, "—"), E("option", { value: "alto" }, "Alto"), E("option", { value: "bajo" }, "Bajo"))),
-              E("td", { style: { padding: 3, width: 26 } }, E("button", { onClick: () => quitar(i), title: "Quitar fila",
-                style: { background: "none", border: "none", cursor: "pointer", color: "#c0392b", fontSize: 15 } }, "✕")))))),
-          E("button", { onClick: agregar, style: { marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1.5px dashed #9aa5b1", background: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 } }, "＋ Agregar fila"),
-          E("div", { style: { marginTop: 12 } },
-            E("label", { style: lbl }, "Observaciones del laboratorio (se conservan tal cual)"),
-            E("textarea", { value: d.observaciones || "", onChange: (e) => setD((x) => ({ ...x, observaciones: e.target.value })), rows: 2, style: { ...inp, fontFamily: "inherit" } })),
-          E("div", { style: { marginTop: 8 } },
-            E("label", { style: lbl }, "Notas del pie del laboratorio"),
-            E("textarea", { value: d.notas_pie || "", onChange: (e) => setD((x) => ({ ...x, notas_pie: e.target.value })), rows: 2, style: { ...inp, fontFamily: "inherit" } }))),
+            E("thead", null, E("tr", null, ["Par\u00E1metro", "Resultado", "Unidad", "Rango", "Marca"].map((h, i) => E("th", { key: i, style: th }, h)))),
+            E("tbody", null, filas.map((p, i) => E("tr", { key: i, style: { background: p.dudoso ? "#fff7d6" : (i % 2 ? "#fafbfc" : "#fff") } },
+              E("td", { style: { padding: "5px 6px", fontSize: 12.5 } }, p.nombre),
+              E("td", { style: { padding: "5px 6px", fontSize: 12.5, fontWeight: 800 } }, p.resultado),
+              E("td", { style: { padding: "5px 6px", fontSize: 12, color: "#5a6472" } }, p.unidad || ""),
+              E("td", { style: { padding: "5px 6px", fontSize: 12, color: "#5a6472" } }, p.rango || ""),
+              E("td", { style: { padding: "5px 6px", fontSize: 12, fontWeight: 700, color: p.bandera === "alto" ? "#c0392b" : "#1a4fa0" } }, p.bandera || ""))))),
+          d.observaciones && E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 10 } }, E("strong", null, "Observaciones del laboratorio: "), d.observaciones)),
         archivo && E("div", { style: { background: "#f0f2f4", borderLeft: "1px solid #e0e4e8", minHeight: 0 } },
           !url ? null : archivo.type === "application/pdf"
             ? E("iframe", { src: url, title: "Original", style: { width: "100%", height: "100%", border: "none", minHeight: 420 } })
@@ -12293,12 +12242,11 @@ function ModalLabRevision({ datos, fechaInicial, archivo, ocupado, onCerrar, onG
       E("div", { style: { padding: "12px 18px", borderTop: "1px solid #e0e4e8", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" } },
         E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 240, cursor: "pointer" } },
           E("input", { type: "checkbox", checked: ok, onChange: (e) => setOk(e.target.checked) }),
-          archivo ? "Verifiqué los valores contra el documento original." : "Verifiqué los valores contra el informe del laboratorio."),
-        sinNombre && E("span", { style: { color: "#c0392b", fontSize: 12, fontWeight: 600 } }, "Hay filas con resultado y sin nombre."),
-        E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
-        E("button", { onClick: () => onGuardar({ ...d, parametros: llenas.map((p) => ({ ...p, resultado: String(p.resultado).trim() })) }, fecha), disabled: bloqueado,
+          "Compar\u00E9 los valores y coinciden con el documento original."),
+        E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "No coincide: descartar"),
+        E("button", { onClick: () => onGuardar(d, fechaInicial), disabled: bloqueado,
           style: { padding: "10px 18px", borderRadius: 9, border: "none", background: bloqueado ? "#aab3bd" : "#f08a1c", color: "#fff", cursor: bloqueado ? "default" : "pointer", fontWeight: 800 } },
-          ocupado ? "Guardando…" : "Guardar y generar PDF"))));
+          ocupado ? "Guardando\u2026" : "Guardar y generar PDF"))));
 }
 
 function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, citas = [], setCitas, cliente }) {

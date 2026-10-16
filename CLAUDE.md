@@ -134,25 +134,26 @@ PENDIENTE DE VICTOR en este modulo:
   que se anote.
 
 ## HEMOGRAMAS (M21, oct 2026)
-Evolucion del paciente -> "Resultados de laboratorio": se sube el informe (PDF o
-foto), el NAVEGADOR lo lee (sin IA, sin claves, sin costo): PDF digital -> texto
-con pdf.js (exacto); foto o PDF escaneado -> OCR con tesseract.js (todo sale
-"por verificar"); o "Escribirlo a mano" con plantilla. Una persona lo REVISA
-contra el original y solo entonces se genera el PDF con la marca PetColinas
-(naranja/azul marino/turquesa del logo; se conservan los datos del laboratorio).
+Evolucion del paciente -> "Resultados de laboratorio": se sube el informe del
+laboratorio (PDF o foto) y "Convertir a formato PetColinas" SOLO CAMBIA EL DISEÑO
+Y EL LOGO; los resultados se copian tal cual y NO SE PUEDEN EDITAR NI ESCRIBIR A
+MANO (decision de Victor). La lectura ocurre en el navegador, sin IA ni claves:
+PDF digital -> texto con pdf.js (exacto); foto o escaneo -> OCR con tesseract.js
+(todo sale "por verificar"). La pantalla es de SOLO LECTURA: valores a la
+izquierda, original a la derecha; se guarda solo marcando que coinciden; si no
+coinciden se descarta (hay prueba en render-check que falla si un resultado se
+vuelve editable). Si no se reconocen los resultados, NO se convierte nada.
 Reglas: se transcribe, no se interpreta (valores como texto, sin convertir
-unidades ni calcular banderas: solo las que el laboratorio marco); guardar exige
-marcar "verifique los valores" (prueba en render-check); `latinPDF` convierte los
-exponentes (x10^6) y NUNCA los borra: una unidad cambiada es un dato clinico
-falso; una celda con caracteres rotos deja la fila "por verificar"; la plantilla
-a mano NO trae rangos ni resultados de memoria (los rangos dependen de la
-especie y del laboratorio).
-Se descartaron la IA (necesitaba ANTHROPIC_API_KEY) por decision de Victor. La
-Edge Function `lab-extraer` sigue desplegada pero huerfana: borrarla del panel.
-El logo real se toma de `logo.png` en la raiz del sitio; si no esta, se dibuja
-"PetColinas" en texto con los mismos colores. PENDIENTE: subir logo.png y probar
-con un hemograma REAL del laboratorio (el lector esta probado con PDFs de
-ejemplo; cada laboratorio ordena distinto y el OCR no esta probado en real).
+unidades ni calcular banderas: solo las que el laboratorio marco); `latinPDF`
+convierte los exponentes (x10^6) y NUNCA los borra (una unidad cambiada es un
+dato clinico falso); una celda con caracteres rotos deja la fila "por verificar".
+Colores del logo: naranja/azul marino/turquesa; se conservan los datos del
+laboratorio ("Realizado por") y el pie dice que es un documento reformateado.
+La Edge Function `lab-extraer` (IA, ya no se usa) sigue desplegada pero huerfana:
+borrarla del panel. El logo real se toma de `logo.png` en la raiz del sitio; si
+no esta, se dibuja "PetColinas" en texto. PENDIENTE: subir logo.png y probar con
+un hemograma REAL del laboratorio (cada laboratorio ordena distinto; el OCR no
+esta probado en real).
 
 ## FINANZAS
 PE real: RD$203,739/mes
