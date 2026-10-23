@@ -298,47 +298,76 @@ render("ModalLabPreparar", sandbox.ModalLabPreparar, {
   const txt = JSON.stringify(arbol, (k, v) => (typeof v === "function" ? undefined : v));
   if (/Laboratorio \(para el pie/.test(txt)) errores.push("ModalLabPreparar: no debe pedirse el nombre del laboratorio");
 })();
-// Desparasitacion: programar la proxima dosis (1 o 3 meses) con mensaje de WhatsApp.
+// Desparasitacion: el PRODUCTO manda (que cubre y cuanto dura) y de ahi salen el
+// recordatorio, la fecha y el mensaje de WhatsApp.
+//   NexGard Spectra: desparasita por dentro y por fuera, efecto 35 dias.
+//   Ferox: protege solo por fuera (pulgas y garrapatas), efecto 3 meses.
 (() => {
   const ev = (c) => enVM(c);
+  const fallo = (m) => errores.push(m);
   // Meses de CALENDARIO, no bloques de 30 dias.
   [["2026-10-15", 1, "2026-11-15"], ["2026-10-15", 3, "2027-01-15"], ["2026-01-31", 1, "2026-02-28"],
    ["2026-11-30", 3, "2027-02-28"], ["2028-01-31", 1, "2028-02-29"], ["2026-12-20", 1, "2027-01-20"]].forEach(([f, n, esp]) => {
     const r = ev(`sumarMeses("${f}", ${n})`);
-    if (r !== esp) errores.push(`sumarMeses(${f}, ${n}) dio ${r}, se esperaba ${esp}`);
+    if (r !== esp) fallo(`sumarMeses(${f}, ${n}) dio ${r}, se esperaba ${esp}`);
   });
-  const a1 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "1" })');
-  const a3 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "3" })');
-  if (a1.proximaFecha !== "2026-11-23" || a1.frecuencia !== 30) errores.push("recordatorio de 1 mes mal calculado: " + JSON.stringify(a1));
-  if (a3.proximaFecha !== "2027-01-23" || a3.frecuencia !== 90) errores.push("recordatorio de 3 meses mal calculado: " + JSON.stringify(a3));
-  if (a1.tipo !== "desparasitacion") errores.push("el tipo por defecto debe ser desparasitacion");
+  [[30, "1 mes"], [35, "35 d\u00EDas"], [84, "3 meses"], [90, "3 meses"], [45, "45 d\u00EDas"]].forEach(([n, esp]) => {
+    const r = ev(`duracionTexto(${n})`); if (r !== esp) fallo(`duracionTexto(${n}) dio "${r}", se esperaba "${esp}" (35 dias NO es "1 mes")`);
+  });
+  // ---- el catalogo ----
+  const sp = ev('detectarAntiparasitario("NexGard Spectra 15-30kg")'), fe = ev('detectarAntiparasitario("Ferox 2.5kg")'), ng = ev('detectarAntiparasitario("NexGard")');
+  if (!sp || sp.nombre !== "NexGard Spectra" || sp.dias !== 35 || sp.cobertura !== "interna_externa" || sp.tipo !== "desparasitacion") fallo("NexGard Spectra mal clasificado: " + JSON.stringify(sp));
+  if (!fe || fe.dias !== 90 || fe.meses !== 3 || fe.cobertura !== "externa" || fe.tipo !== "antipulgas") fallo("Ferox debe durar 3 meses y cubrir solo por fuera: " + JSON.stringify(fe));
+  if (!ng || ng.nombre !== "NexGard" || ng.cobertura !== "externa") fallo("NexGard comun no debe confundirse con Spectra: " + JSON.stringify(ng));
+  if (ev('proximaFechaProducto(infoProducto("Ferox"), "2026-10-23")') !== "2027-01-23") fallo("Ferox: +3 meses desde el 23 oct debe ser el 23 ene");
+  if (ev('proximaFechaProducto(infoProducto("NexGard Spectra"), "2026-10-23")') !== "2026-11-27") fallo("Spectra: +35 dias desde el 23 oct debe ser el 27 nov");
+  const sg = ev('seguimientoAntiparasitario("Rocky", "2026-10-23", detectarAntiparasitario("Ferox"), "")');
+  if (sg.proximaFecha !== "2027-01-23" || sg.tipo !== "antipulgas") fallo("recordatorio automatico de Ferox mal armado: " + JSON.stringify(sg));
+  const sg2 = ev('seguimientoAntiparasitario("Rocky", "2026-10-23", detectarAntiparasitario("NexGard Spectra"), "")');
+  if (sg2.proximaFecha !== "2026-11-27" || sg2.tipo !== "desparasitacion") fallo("recordatorio automatico de Spectra mal armado: " + JSON.stringify(sg2));
+  // La cadencia de citas: el producto con plazo propio gana sobre el generico.
+  [["Bravecto antipulgas", 90], ["Ferox antipulgas", 90], ["NexGard Spectra", 35], ["NexGard", 30]].forEach(([txt, d]) => {
+    const r = ev(`proximaCitaSugerida(${JSON.stringify(txt)}, "2026-10-23")`);
+    if (!r || r.dias !== d) fallo(`proximaCitaSugerida("${txt}") sugiere ${r && r.dias} dias, se esperaban ${d}`);
+  });
   // Un desparasitante SIN plazo conocido ya no se asume antipulgas de 35 dias.
-  if (ev('detectarAntiparasitario("Desparasitante Drontal")') !== null) errores.push("detectarAntiparasitario: 'desparasit' no debe asumirse antipulgas de 35 dias");
-  if (!ev('detectarDesparasitante("Pastilla desparasitante")')) errores.push("detectarDesparasitante no reconoce un desparasitante");
-  if (ev('detectarAntiparasitario("NexGard")').dias !== 35 || ev('detectarAntiparasitario("Bravecto")').dias !== 84) errores.push("NexGard/Bravecto deben conservar su plazo");
-  // El Dashboard avisa tambien de las desparasitaciones.
-  if (!ev('tocaReforzar({ tipo: "desparasitacion", proximaFecha: "2026-10-25", completado: false, activo: true }, "2026-10-23")')) errores.push("tocaReforzar no cubre el tipo desparasitacion");
-  // Sin duplicados: si ya tenia uno pendiente, se actualiza.
-  const f = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: false, activo: true, proximaFecha: "2026-10-01" }], armarRecordatorioParasitos({ mascota: "rocky ", fecha: "2026-10-23", opcion: "3" }))');
-  if (f.lista.length !== 1 || !f.actualizo || f.seg.id !== 7 || f.seg.proximaFecha !== "2027-01-23") errores.push("fusionarRecordatorio duplico o no actualizo: " + JSON.stringify(f));
-  const g = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: true }], armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23" }))');
-  if (g.lista.length !== 2) errores.push("un recordatorio YA completado no debe fusionarse con el nuevo");
-  // El mensaje: personalizado y veraz segun el dia.
-  const m = (hoyStr) => ev(`mensajeRecordatorioParasitos({ propietario: "Ana Diaz", mascota: "Rocky", producto: "Bravecto", tipo: "desparasitacion", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" }, "${hoyStr}")`);
-  const base = m("2027-01-20");
-  ["Hola Ana!", "Rocky", "Bravecto", "3 meses", "23 de octubre", "es el 23 de enero de 2027", "en 3 d\u00EDas", "PetColinas"].forEach((x) => { if (!base.includes(x)) errores.push('mensaje de desparasitacion: falta "' + x + '" en: ' + base); });
-  if (!m("2027-01-23").includes("es hoy")) errores.push("el mensaje del dia debe decir 'es hoy'");
-  if (!m("2027-01-24").includes("se venci\u00F3 hace 1 d\u00EDa")) errores.push("vencido por 1 dia: debe decir 'hace 1 d\u00EDa' (singular)");
-  if (!m("2027-01-30").includes("hace 7 d\u00EDas")) errores.push("vencido: debe decir 'hace 7 d\u00EDas'");
-  const sinProd = ev('mensajeRecordatorioParasitos({ propietario: "Ana", mascota: "Rocky", producto: "Desparasitante", tipo: "desparasitacion", frecuencia: 30, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-23" }, "2026-11-20")');
-  if (/con Desparasitante/.test(sinProd) || !sinProd.includes("se desparasitó el 23 de octubre (el tratamiento dura 1 mes)")) errores.push("sin producto el mensaje no debe decir 'con Desparasitante': " + sinProd);
-  if (/pulgas/.test(base)) errores.push("el mensaje de una desparasitacion NO debe hablar de pulgas y garrapatas");
-  const anti = ev('mensajeRecordatorioParasitos({ propietario: "", mascota: "Luna", producto: "NexGard", tipo: "antipulgas", frecuencia: 35, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-27" }, "2026-11-25")');
-  if (!anti.startsWith("Hola! ") || !anti.includes("pulgas y garrapatas") || !anti.includes("1 mes")) errores.push("mensaje antipulgas sin dueño mal armado: " + anti);
-  // El enlace de WhatsApp de Seguimientos usa el mensaje nuevo.
-  const wa = decodeURIComponent(ev('whatsappMsg({ tipo: "desparasitacion", mascota: "Rocky", propietario: "Ana Diaz", notas: "Bravecto \u2014 dura 3 meses", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" })'));
-  if (!wa.includes("Hola Ana!") || !wa.includes("Bravecto")) errores.push("whatsappMsg no usa el mensaje personalizado: " + wa);
-  if (!decodeURIComponent(ev('whatsappMsg({ tipo: "bano_regular", mascota: "Rocky", frecuencia: 21 })')).includes("ba\u00F1o")) errores.push("whatsappMsg: los otros tipos deben seguir igual");
+  if (ev('detectarAntiparasitario("Desparasitante generico")') !== null) fallo("'desparasit' no debe asumirse antipulgas de 35 dias");
+  if (!ev('detectarDesparasitante("Pastilla desparasitante")')) fallo("detectarDesparasitante no reconoce un desparasitante");
+  // El Dashboard avisa de los dos tipos.
+  if (!ev('tocaReforzar({ tipo: "desparasitacion", proximaFecha: "2026-10-25", completado: false, activo: true }, "2026-10-23")')) fallo("tocaReforzar no cubre desparasitacion");
+  // ---- el recordatorio manual ----
+  const a1 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "1" })');
+  const a3 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "3", tipo: "antipulgas", producto: "Ferox" })');
+  const a35 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "otro", diasOtro: 35, producto: "NexGard Spectra" })');
+  if (a1.proximaFecha !== "2026-11-23" || a1.frecuencia !== 30 || a1.tipo !== "desparasitacion") fallo("recordatorio de 1 mes mal calculado: " + JSON.stringify(a1));
+  if (a3.proximaFecha !== "2027-01-23" || a3.frecuencia !== 90) fallo("recordatorio de 3 meses mal calculado: " + JSON.stringify(a3));
+  if (a35.proximaFecha !== "2026-11-27" || a35.frecuencia !== 35 || !a35.notas.includes("35 d\u00EDas")) fallo("recordatorio de 35 dias mal calculado: " + JSON.stringify(a35));
+  // Sin duplicados, pero POR TIPO: dos Ferox no se acumulan; un Ferox y un Spectra si conviven.
+  const f1 = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: false, activo: true, proximaFecha: "2026-10-01" }], armarRecordatorioParasitos({ mascota: "rocky ", fecha: "2026-10-23", opcion: "3", tipo: "antipulgas" }))');
+  if (f1.lista.length !== 1 || !f1.actualizo || f1.seg.id !== 7 || f1.seg.proximaFecha !== "2027-01-23") fallo("fusionarRecordatorio duplico o no actualizo: " + JSON.stringify(f1));
+  const f2 = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: false, activo: true, proximaFecha: "2026-12-01" }], armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", tipo: "desparasitacion" }))');
+  if (f2.lista.length !== 2 || f2.actualizo) fallo("un Ferox (solo por fuera) y un Spectra (por dentro) NO deben pisarse: " + JSON.stringify(f2));
+  const f3 = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: true }], armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", tipo: "antipulgas" }))');
+  if (f3.lista.length !== 2) fallo("un recordatorio YA completado no debe fusionarse con el nuevo");
+  // ---- el mensaje: depende del producto ----
+  const m = (o, h) => ev(`mensajeRecordatorioParasitos(${JSON.stringify(o)}, "${h}")`);
+  const SPEC = { propietario: "Ana Diaz", mascota: "Rocky", producto: "NexGard Spectra", tipo: "desparasitacion", frecuencia: 35, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-27" };
+  const FER = { propietario: "Ana Diaz", mascota: "Rocky", producto: "Ferox", tipo: "antipulgas", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" };
+  const ms = m(SPEC, "2026-11-24"), mf = m(FER, "2027-01-20");
+  ["Hola Ana!", "Rocky", "NexGard Spectra", "23 de octubre", "desparasita por dentro y por fuera", "efecto de 35 d\u00EDas", "es el 27 de noviembre (en 3 d\u00EDas)", "PetColinas"].forEach((x) => { if (!ms.includes(x)) fallo('mensaje de Spectra: falta "' + x + '" en: ' + ms); });
+  ["Hola Ana!", "Ferox", "pulgas y garrapatas", "dura 3 meses", "protege por fuera", "desparasitaci\u00F3n interna es aparte", "es el 23 de enero de 2027"].forEach((x) => { if (!mf.includes(x)) fallo('mensaje de Ferox: falta "' + x + '" en: ' + mf); });
+  if (/por dentro y por fuera/.test(mf)) fallo("Ferox solo protege por fuera: su mensaje NO debe decir que desparasita por dentro: " + mf);
+  if (/pulgas|garrapatas/.test(ms)) fallo("Spectra desparasita por dentro y por fuera: su mensaje no debe presentarse como solo antipulgas: " + ms);
+  if (!m(SPEC, "2026-11-27").includes("es hoy") || !m(SPEC, "2026-11-26").includes("es ma\u00F1ana")) fallo("el mensaje debe decir 'es hoy' / 'es ma\u00F1ana'");
+  if (!m(SPEC, "2026-11-28").includes("se venci\u00F3 hace 1 d\u00EDa") || !m(SPEC, "2026-12-04").includes("hace 7 d\u00EDas")) fallo("vencido: singular y plural");
+  const gen = m({ propietario: "Ana", mascota: "Rocky", producto: "Desparasitante", tipo: "desparasitacion", frecuencia: 30, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-23" }, "2026-11-20");
+  if (/con Desparasitante/.test(gen) || !gen.includes("se desparasit\u00F3 el 23 de octubre (el tratamiento dura 1 mes)")) fallo("sin producto el mensaje no debe decir 'con Desparasitante': " + gen);
+  const sinDueno = m({ propietario: "", mascota: "Luna", producto: "Frontline", tipo: "antipulgas", frecuencia: 35, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-27" }, "2026-11-25");
+  if (!sinDueno.startsWith("Hola! ") || !sinDueno.includes("35 d\u00EDas")) fallo("mensaje sin due\u00F1o mal armado: " + sinDueno);
+  // El WhatsApp de Seguimientos usa el mensaje nuevo, y los otros tipos siguen igual.
+  const wa = decodeURIComponent(ev('whatsappMsg({ tipo: "antipulgas", mascota: "Rocky", propietario: "Ana Diaz", notas: "Ferox \u2014 dura 3 meses", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" })'));
+  if (!wa.includes("Hola Ana!") || !wa.includes("Ferox") || !wa.includes("protege por fuera")) fallo("whatsappMsg no usa el mensaje del producto: " + wa);
+  if (!decodeURIComponent(ev('whatsappMsg({ tipo: "bano_regular", mascota: "Rocky", frecuencia: 21 })')).includes("ba\u00F1o")) fallo("whatsappMsg: los otros tipos deben seguir igual");
 })();
 render("ProgramarDesparasitacion", sandbox.ProgramarDesparasitacion, {
   inicial: { mascota: "Rocky", producto: "Bravecto", opcion: "3", fecha: "2026-10-23", tipo: "antipulgas" },

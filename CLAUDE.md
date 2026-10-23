@@ -159,23 +159,32 @@ del repo (subido el 16 oct 2026, recortado a 313x272 desde el original de 500x50
 el PDF lo toma de ahi, y la factura impresa tambien lo referenciaba. Si el archivo
 falta, se dibuja "PetColinas" en texto. PENDIENTE: probar con un hemograma real.
 
-## DESPARASITACION: PROGRAMAR LA PROXIMA DOSIS (oct 2026)
+## DESPARASITACION: RECORDATORIOS POR PRODUCTO (oct 2026)
 Seguimientos -> "Programar desparasitacion", y al vender un desparasitante la app
-pregunta "Dura 1 mes / Dura 3 meses". Se guarda como seguimiento normal (tipo
-`desparasitacion`, o `antipulgas` si es de pulgas), sin tabla ni columna nueva.
-- Los meses son de CALENDARIO (`sumarMeses`): 31 ene + 1 mes = 28 feb; no bloques de
-  30 dias. La fecha se puede ajustar a mano ("Le toca la proxima el").
-- El mensaje de WhatsApp se arma al enviar (`mensajeRecordatorioParasitos`) con dueño,
-  mascota, producto, cuanto dura y la fecha; dice "es hoy"/"es mañana"/"se vencio hace
-  N dias" segun el dia real. Lo usan el Dashboard y el boton de WhatsApp de Seguimientos.
-- Sin duplicados: si la mascota ya tenia un recordatorio pendiente de desparasitacion o
-  antipulgas, se ACTUALIZA (`fusionarRecordatorio`); uno ya completado no se toca.
-- La palabra "desparasit" YA NO cae en "antipulgas a 35 dias" (antes una pastilla de 3
-  meses avisaba a las 5 semanas). Un desparasitante sin plazo conocido se pregunta, no
-  se adivina. NexGard (35 d) y Bravecto (84 d) conservan su plazo automatico.
-- Efecto: las ventas VIEJAS de "desparasitante" dejan de aparecer en el aviso del
-  Dashboard (su plazo real no se sabe); solo avisan las programadas o las de producto
-  con nombre conocido.
+pregunta "Dura 1 mes / 3 meses". EL PRODUCTO MANDA: del catalogo `ANTIPARASITARIOS`
+salen el tipo de recordatorio, el plazo y lo que dice el WhatsApp.
+- NexGard Spectra: desparasita por DENTRO Y POR FUERA, efecto 35 dias -> tipo
+  `desparasitacion`. Ferox: protege SOLO POR FUERA (pulgas y garrapatas), efecto 3
+  MESES -> tipo `antipulgas`. (Ferox estaba como mensual/35 dias: error de catalogo.)
+  Spectra va ANTES que NexGard en el catalogo ("NexGard Spectra" contiene "nexgard").
+- Cada entrada lleva `cobertura` ("interna_externa" | "externa"); un producto nuevo se
+  agrega ahi. El mensaje de Ferox NO puede decir que desparasita por dentro, y el de
+  Spectra no se presenta como solo antipulgas (hay pruebas que lo fijan).
+- Los meses son de CALENDARIO (`sumarMeses`: 31 ene + 1 mes = 28 feb). 35 dias se dice
+  "35 dias", no "1 mes". La fecha se puede ajustar a mano.
+- El mensaje de WhatsApp se arma al enviar (`mensajeRecordatorioParasitos`): dueño,
+  mascota, producto, que cubre, cuanto dura y la fecha; dice "es hoy"/"es mañana"/"se
+  vencio hace N dias". Lo usan el Dashboard y el boton de WhatsApp de Seguimientos.
+- Sin duplicados POR TIPO (`fusionarRecordatorio`): dos Ferox no se acumulan, pero un
+  Ferox (por fuera) y un Spectra (por dentro) conviven. Uno ya completado no se toca.
+- "desparasit" suelto NO cae en "antipulgas a 35 dias": un desparasitante sin producto
+  conocido se pregunta (1 mes / 3 meses). Las ventas VIEJAS de ese tipo ya no avisan.
+- `CADENCIA_SERVICIO` (cita sugerida al facturar) elige el plazo MAS CORTO que coincida;
+  por eso "Bravecto antipulgas" sugeria 30 dias en vez de 90. Ahora las entradas
+  genericas llevan `no:` para no aplicar si hay un producto con plazo propio.
+Los productos que no son Spectra/Ferox (NexGard, Bravecto, Simparica, Frontline...)
+estan clasificados como "solo por fuera" por el catalogo previo de la app: confirmar
+con Victor si alguno cubre tambien por dentro.
 Pendiente: el WhatsApp sale por wa.me (se abre el chat y se manda a mano); el envio
 automatico depende de conectar WhatsApp Business (M17).
 
