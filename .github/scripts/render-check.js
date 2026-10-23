@@ -298,6 +298,53 @@ render("ModalLabPreparar", sandbox.ModalLabPreparar, {
   const txt = JSON.stringify(arbol, (k, v) => (typeof v === "function" ? undefined : v));
   if (/Laboratorio \(para el pie/.test(txt)) errores.push("ModalLabPreparar: no debe pedirse el nombre del laboratorio");
 })();
+// Desparasitacion: programar la proxima dosis (1 o 3 meses) con mensaje de WhatsApp.
+(() => {
+  const ev = (c) => enVM(c);
+  // Meses de CALENDARIO, no bloques de 30 dias.
+  [["2026-10-15", 1, "2026-11-15"], ["2026-10-15", 3, "2027-01-15"], ["2026-01-31", 1, "2026-02-28"],
+   ["2026-11-30", 3, "2027-02-28"], ["2028-01-31", 1, "2028-02-29"], ["2026-12-20", 1, "2027-01-20"]].forEach(([f, n, esp]) => {
+    const r = ev(`sumarMeses("${f}", ${n})`);
+    if (r !== esp) errores.push(`sumarMeses(${f}, ${n}) dio ${r}, se esperaba ${esp}`);
+  });
+  const a1 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "1" })');
+  const a3 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "3" })');
+  if (a1.proximaFecha !== "2026-11-23" || a1.frecuencia !== 30) errores.push("recordatorio de 1 mes mal calculado: " + JSON.stringify(a1));
+  if (a3.proximaFecha !== "2027-01-23" || a3.frecuencia !== 90) errores.push("recordatorio de 3 meses mal calculado: " + JSON.stringify(a3));
+  if (a1.tipo !== "desparasitacion") errores.push("el tipo por defecto debe ser desparasitacion");
+  // Un desparasitante SIN plazo conocido ya no se asume antipulgas de 35 dias.
+  if (ev('detectarAntiparasitario("Desparasitante Drontal")') !== null) errores.push("detectarAntiparasitario: 'desparasit' no debe asumirse antipulgas de 35 dias");
+  if (!ev('detectarDesparasitante("Pastilla desparasitante")')) errores.push("detectarDesparasitante no reconoce un desparasitante");
+  if (ev('detectarAntiparasitario("NexGard")').dias !== 35 || ev('detectarAntiparasitario("Bravecto")').dias !== 84) errores.push("NexGard/Bravecto deben conservar su plazo");
+  // El Dashboard avisa tambien de las desparasitaciones.
+  if (!ev('tocaReforzar({ tipo: "desparasitacion", proximaFecha: "2026-10-25", completado: false, activo: true }, "2026-10-23")')) errores.push("tocaReforzar no cubre el tipo desparasitacion");
+  // Sin duplicados: si ya tenia uno pendiente, se actualiza.
+  const f = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: false, activo: true, proximaFecha: "2026-10-01" }], armarRecordatorioParasitos({ mascota: "rocky ", fecha: "2026-10-23", opcion: "3" }))');
+  if (f.lista.length !== 1 || !f.actualizo || f.seg.id !== 7 || f.seg.proximaFecha !== "2027-01-23") errores.push("fusionarRecordatorio duplico o no actualizo: " + JSON.stringify(f));
+  const g = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: true }], armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23" }))');
+  if (g.lista.length !== 2) errores.push("un recordatorio YA completado no debe fusionarse con el nuevo");
+  // El mensaje: personalizado y veraz segun el dia.
+  const m = (hoyStr) => ev(`mensajeRecordatorioParasitos({ propietario: "Ana Diaz", mascota: "Rocky", producto: "Bravecto", tipo: "desparasitacion", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" }, "${hoyStr}")`);
+  const base = m("2027-01-20");
+  ["Hola Ana!", "Rocky", "Bravecto", "3 meses", "23 de octubre", "es el 23 de enero de 2027", "en 3 d\u00EDas", "PetColinas"].forEach((x) => { if (!base.includes(x)) errores.push('mensaje de desparasitacion: falta "' + x + '" en: ' + base); });
+  if (!m("2027-01-23").includes("es hoy")) errores.push("el mensaje del dia debe decir 'es hoy'");
+  if (!m("2027-01-24").includes("se venci\u00F3 hace 1 d\u00EDa")) errores.push("vencido por 1 dia: debe decir 'hace 1 d\u00EDa' (singular)");
+  if (!m("2027-01-30").includes("hace 7 d\u00EDas")) errores.push("vencido: debe decir 'hace 7 d\u00EDas'");
+  const sinProd = ev('mensajeRecordatorioParasitos({ propietario: "Ana", mascota: "Rocky", producto: "Desparasitante", tipo: "desparasitacion", frecuencia: 30, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-23" }, "2026-11-20")');
+  if (/con Desparasitante/.test(sinProd) || !sinProd.includes("se desparasitó el 23 de octubre (el tratamiento dura 1 mes)")) errores.push("sin producto el mensaje no debe decir 'con Desparasitante': " + sinProd);
+  if (/pulgas/.test(base)) errores.push("el mensaje de una desparasitacion NO debe hablar de pulgas y garrapatas");
+  const anti = ev('mensajeRecordatorioParasitos({ propietario: "", mascota: "Luna", producto: "NexGard", tipo: "antipulgas", frecuencia: 35, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-27" }, "2026-11-25")');
+  if (!anti.startsWith("Hola! ") || !anti.includes("pulgas y garrapatas") || !anti.includes("1 mes")) errores.push("mensaje antipulgas sin dueño mal armado: " + anti);
+  // El enlace de WhatsApp de Seguimientos usa el mensaje nuevo.
+  const wa = decodeURIComponent(ev('whatsappMsg({ tipo: "desparasitacion", mascota: "Rocky", propietario: "Ana Diaz", notas: "Bravecto \u2014 dura 3 meses", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" })'));
+  if (!wa.includes("Hola Ana!") || !wa.includes("Bravecto")) errores.push("whatsappMsg no usa el mensaje personalizado: " + wa);
+  if (!decodeURIComponent(ev('whatsappMsg({ tipo: "bano_regular", mascota: "Rocky", frecuencia: 21 })')).includes("ba\u00F1o")) errores.push("whatsappMsg: los otros tipos deben seguir igual");
+})();
+render("ProgramarDesparasitacion", sandbox.ProgramarDesparasitacion, {
+  inicial: { mascota: "Rocky", producto: "Bravecto", opcion: "3", fecha: "2026-10-23", tipo: "antipulgas" },
+  clientes: [{ id: 1, nombreMascota: "Rocky", nombrePropietario: "Ana Diaz", telefono: "8095551234" }],
+  seguimientos: [], setSeguimientos: () => {}, onCerrar: () => {}
+}, null, "Programar pr\u00F3xima desparasitaci\u00F3n");
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
   resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
@@ -473,4 +520,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (41 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+console.log(`✓ Vistas principales renderizan sin errores (42 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);

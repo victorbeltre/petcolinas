@@ -159,6 +159,26 @@ del repo (subido el 16 oct 2026, recortado a 313x272 desde el original de 500x50
 el PDF lo toma de ahi, y la factura impresa tambien lo referenciaba. Si el archivo
 falta, se dibuja "PetColinas" en texto. PENDIENTE: probar con un hemograma real.
 
+## DESPARASITACION: PROGRAMAR LA PROXIMA DOSIS (oct 2026)
+Seguimientos -> "Programar desparasitacion", y al vender un desparasitante la app
+pregunta "Dura 1 mes / Dura 3 meses". Se guarda como seguimiento normal (tipo
+`desparasitacion`, o `antipulgas` si es de pulgas), sin tabla ni columna nueva.
+- Los meses son de CALENDARIO (`sumarMeses`): 31 ene + 1 mes = 28 feb; no bloques de
+  30 dias. La fecha se puede ajustar a mano ("Le toca la proxima el").
+- El mensaje de WhatsApp se arma al enviar (`mensajeRecordatorioParasitos`) con dueño,
+  mascota, producto, cuanto dura y la fecha; dice "es hoy"/"es mañana"/"se vencio hace
+  N dias" segun el dia real. Lo usan el Dashboard y el boton de WhatsApp de Seguimientos.
+- Sin duplicados: si la mascota ya tenia un recordatorio pendiente de desparasitacion o
+  antipulgas, se ACTUALIZA (`fusionarRecordatorio`); uno ya completado no se toca.
+- La palabra "desparasit" YA NO cae en "antipulgas a 35 dias" (antes una pastilla de 3
+  meses avisaba a las 5 semanas). Un desparasitante sin plazo conocido se pregunta, no
+  se adivina. NexGard (35 d) y Bravecto (84 d) conservan su plazo automatico.
+- Efecto: las ventas VIEJAS de "desparasitante" dejan de aparecer en el aviso del
+  Dashboard (su plazo real no se sabe); solo avisan las programadas o las de producto
+  con nombre conocido.
+Pendiente: el WhatsApp sale por wa.me (se abre el chat y se manda a mano); el envio
+automatico depende de conectar WhatsApp Business (M17).
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

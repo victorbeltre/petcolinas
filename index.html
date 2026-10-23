@@ -2835,24 +2835,17 @@ function AvisoAntiparasitarios({ seguimientos = [], clientes = [], ventas = [], 
 
   if (cerrado || pendientes.length === 0) return null;
 
-  const mensaje = (x) => {
-    const nombre = String(x.dueno || "").split(" ")[0] || "buenas";
-    const venc = x.dias < 0 ? "se le venció hace " + Math.abs(x.dias) + " día(s)"
-      : x.dias === 0 ? "se le vence hoy"
-      : "se le vence en " + x.dias + " día(s)";
-    return "Hola " + nombre + "! \u{1F43E} Le escribimos de PetColinas. A " +
-      (x.s.mascota || "su mascota") + " " + venc +
-      " la protección contra pulgas y garrapatas (" + x.producto + "). " +
-      "Le recomendamos reforzarla para que no quede desprotegido/a. " +
-      "\xBFLe preparamos la dosis? \xA1Gracias!";
-  };
+  const mensaje = (x) => mensajeRecordatorioParasitos({
+    propietario: x.dueno, mascota: x.s.mascota, tipo: x.s.tipo, producto: x.producto === "su antiparasitario" ? "" : x.producto,
+    frecuencia: x.s.frecuencia, ultimaFecha: x.s.ultimaFecha || x.s.desde, proximaFecha: x.prox
+  });
 
   return E("div", { style: { background: "#fef2f2", border: "2px solid #c0392b", borderRadius: 12,
     padding: "14px 16px", marginBottom: 16 } },
     E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
       E("div", { style: { fontWeight: 800, fontSize: 14, color: "#c0392b" } },
         "\u{1F41B} " + pendientes.length + " mascota" + (pendientes.length === 1 ? "" : "s") +
-        " necesita" + (pendientes.length === 1 ? "" : "n") + " reforzar la protecci\xF3n antipulgas"),
+        " necesita" + (pendientes.length === 1 ? "" : "n") + " su pr\xF3xima desparasitaci\xF3n o antipulgas"),
       E("button", { onClick: () => setCerrado(true),
         style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#c0392b" } }, "✕")),
 
@@ -7362,7 +7355,10 @@ const ANTIPARASITARIOS = [
   { nombre: "Protek",    dias: 35, re: /protek/i }
 ];
 // Cualquier otro antipulgas que no esté en la lista de arriba.
-const ANTIPARASITARIO_GENERICO = /antipulga|garrapatic|pipeta|spot ?on|desparasit/i;
+// OJO: "desparasit" NO esta aqui a proposito. Antes cualquier desparasitante caia
+// en "antipulgas a 35 dias", y una pastilla que protege 3 meses avisaba a las 5
+// semanas. Un desparasitante sin plazo conocido se programa a mano (1 o 3 meses).
+const ANTIPARASITARIO_GENERICO = /antipulga|garrapatic|pipeta|spot ?on/i;
 const DIAS_ANTIPARASITARIO = 35;
 // Se avisa unos días antes para tener tiempo de contactar al cliente.
 const AVISO_ANTIPARASITARIO_ANTES = 3;
@@ -7415,13 +7411,209 @@ function seguimientoAntiparasitario(mascota, fechaVenta, prod, telefono) {
 // ¿Ya toca avisar de esta recompra? Cuenta los días de margen.
 function tocaReforzar(seg, hoyStr) {
   if (!seg || seg.completado || seg.activo === false) return false;
-  if (seg.tipo !== "antipulgas") return false;
+  if (seg.tipo !== "antipulgas" && seg.tipo !== "desparasitacion") return false;
   const prox = String(seg.proximaFecha || "").slice(0, 10);
   if (!prox) return false;
   const h = hoyStr || hoy();
   if (prox > sumarDias(h, AVISO_ANTIPARASITARIO_ANTES)) return false;      // todavía no toca
   return prox >= sumarDias(h, -ANTIPARASITARIO_VENTANA_DIAS);              // ni tan viejo
 }
+// ─── DESPARASITACION · PROGRAMAR LA PROXIMA DOSIS ────────────────────────────
+// El cliente compra hoy una pastilla; aqui se agenda cuando le toca la siguiente,
+// segun cuanto dura ESE producto (1 mes o 3 meses), y queda un mensaje personalizado
+// listo para mandar por WhatsApp.
+//
+// Se guarda como un seguimiento normal (tipo "desparasitacion", o "antipulgas" si
+// es de pulgas y garrapatas), asi que el Dashboard avisa unos dias antes y se
+// cierra solo cuando el cliente vuelve a comprar.
+//
+// Los meses se cuentan en MESES DE CALENDARIO, no en bloques de 30 dias: "1 mes"
+// desde el 31 de enero es el 28 de febrero, y 3 meses desde el 15 de octubre es el
+// 15 de enero, no el 13.
+function sumarMeses(fechaISO, n) {
+  const [y, m, d] = String(fechaISO || "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const t = new Date(y, m - 1 + n, 1);
+  const ultimo = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(d, ultimo));
+  return fechaLocal(t);
+}
+const MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+function fechaLarga(iso) {
+  const [y, m, d] = String(iso || "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return d + " de " + MESES_ES[m - 1] + (y !== new Date().getFullYear() ? " de " + y : "");
+}
+// 30 o 35 dias son "1 mes"; 84 a 100 son "3 meses" (Bravecto protege 12 semanas).
+function duracionTexto(dias) {
+  const n = Number(dias) || 0;
+  if (n >= 25 && n <= 40) return "1 mes";
+  if (n >= 80 && n <= 100) return "3 meses";
+  return n ? n + " días" : "";
+}
+// Lo que se vende como desparasitante y NO tiene un plazo conocido: no se adivina.
+// (Los antipulgas con nombre propio, NexGard o Bravecto, ya traen su plazo.)
+const DESPARASITANTE_RE = /desparasit|albendazol|oxantel|panacob|ivermectina/i;
+function detectarDesparasitante(texto) { return DESPARASITANTE_RE.test(String(texto || "")); }
+const PASTILLAS_CONOCIDAS = [
+  { nombre: "NexGard", meses: 1, tipo: "antipulgas" },
+  { nombre: "Bravecto", meses: 3, tipo: "antipulgas" }
+];
+
+// El seguimiento que se guarda. `opcion` es "1" (1 mes), "3" (3 meses) u "otro" (N dias).
+function armarRecordatorioParasitos(d) {
+  const fecha = String(d.fecha || "").slice(0, 10) || hoy();
+  const opcion = String(d.opcion || "1");
+  const frecuencia = opcion === "3" ? 90 : opcion === "otro" ? Math.max(1, Math.round(Number(d.diasOtro) || 30)) : 30;
+  const prox = d.proxima || (opcion === "otro" ? sumarDias(fecha, frecuencia) : sumarMeses(fecha, opcion === "3" ? 3 : 1));
+  const tipo = d.tipo === "antipulgas" ? "antipulgas" : "desparasitacion";
+  const prod = String(d.producto || "").trim() || (tipo === "antipulgas" ? "Antiparasitario" : "Desparasitante");
+  return {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    mascota: String(d.mascota || "").trim(), propietario: d.propietario || "", telefono: d.telefono || "",
+    tipo, frecuencia, ultimaFecha: fecha, proximaFecha: prox,
+    notas: prod + " — dura " + duracionTexto(frecuencia), completado: false, activo: true
+  };
+}
+// Si la mascota ya tenia un recordatorio de este tipo pendiente, se ACTUALIZA en vez
+// de dejar dos: el mismo producto avisando dos veces es justo lo que hay que evitar.
+function fusionarRecordatorio(lista, seg) {
+  const clave = (m) => String(m || "").toLowerCase().trim();
+  const previo = (lista || []).find((s) => s && !s.completado && s.activo !== false &&
+    (s.tipo === "antipulgas" || s.tipo === "desparasitacion") && clave(s.mascota) === clave(seg.mascota));
+  if (!previo) return { lista: [...(lista || []), seg], seg, actualizo: false };
+  const unido = { ...previo, ...seg, id: previo.id, telefono: seg.telefono || previo.telefono, propietario: seg.propietario || previo.propietario };
+  return { lista: lista.map((s) => s === previo ? unido : s), seg: unido, actualizo: true };
+}
+const productoDeSeg = (s) => String((s && s.notas) || "").split("—")[0].trim();
+
+// El mensaje de WhatsApp: personalizado con el nombre del dueño, la mascota, el
+// producto, cuanto dura y la fecha. Se arma al momento de enviar, asi que "es hoy",
+// "es mañana" o "se venció hace N dias" siempre dicen la verdad de ese dia.
+function mensajeRecordatorioParasitos(d, hoyStr) {
+  const h = hoyStr || hoy();
+  const nombre = String(d.propietario || "").trim().split(/\s+/)[0];
+  const mascota = String(d.mascota || "").trim() || "su mascota";
+  const prox = String(d.proximaFecha || "").slice(0, 10), ult = String(d.ultimaFecha || "").slice(0, 10);
+  const dur = duracionTexto(d.frecuencia);
+  // El nombre generico de relleno ("Desparasitante") no es un producto: no se nombra.
+  const prod = /^(desparasitante|antiparasitario)?$/i.test(String(d.producto || "").trim()) ? "" : String(d.producto).trim();
+  const dias = prox ? Math.round((new Date(prox + "T12:00:00") - new Date(h + "T12:00:00")) / 864e5) : null;
+  const es = dias === null ? "" : dias < 0 ? "se venció hace " + Math.abs(dias) + " día" + (Math.abs(dias) === 1 ? "" : "s") + " (era el " + fechaLarga(prox) + ")"
+    : dias === 0 ? "es hoy" : dias === 1 ? "es mañana"
+    : "es el " + fechaLarga(prox) + (dias <= 7 ? " (en " + dias + " días)" : "");
+  const saludo = (nombre ? "Hola " + nombre + "!" : "Hola!") + " 🐾 Le escribimos de PetColinas. ";
+  if (d.tipo === "antipulgas") {
+    return saludo + mascota + " recibió " + (prod || "su antipulgas") + (ult ? " el " + fechaLarga(ult) : "") +
+      (dur ? " y esa protección contra pulgas y garrapatas dura " + dur : "") + "." +
+      (es ? " Su próximo refuerzo " + es + "." : "") +
+      " Para que no quede desprotegido/a, ¿le preparamos la dosis? ¡Gracias por confiar en PetColinas! 🐶";
+  }
+  return saludo + mascota + " se desparasitó" + (ult ? " el " + fechaLarga(ult) : "") + (prod ? " con " + prod : "") +
+    (dur ? " (el tratamiento dura " + dur + ")" : "") + "." +
+    (es ? " Su próxima desparasitación " + es + "." : "") +
+    " Para que no quede desprotegido/a, ¿le apartamos su próxima dosis? ¡Gracias por confiar en PetColinas! 🐶";
+}
+
+// Pantalla para programar la proxima dosis. Sirve desde Seguimientos y desde la venta.
+function ProgramarDesparasitacion({ inicial = {}, clientes = [], seguimientos = [], setSeguimientos, onCerrar }) {
+  const E = React.createElement;
+  const [mascota, setMascota] = React.useState(inicial.mascota || "");
+  const [producto, setProducto] = React.useState(inicial.producto || "");
+  const [tipo, setTipo] = React.useState(inicial.tipo || "desparasitacion");
+  const [opcion, setOpcion] = React.useState(inicial.opcion || "1");
+  const [diasOtro, setDiasOtro] = React.useState("45");
+  const [fecha, setFecha] = React.useState(inicial.fecha || hoy());
+  const [proxManual, setProxManual] = React.useState("");
+  const [tel, setTel] = React.useState("");
+  const [sugs, setSugs] = React.useState(false);
+
+  const clave = (m) => String(m || "").toLowerCase().trim();
+  const cli = (clientes || []).find((c) => clave(c.nombreMascota) === clave(mascota)) || null;
+  const coincid = mascota.trim().length > 1 && !cli
+    ? (clientes || []).filter((c) => clave(c.nombreMascota).includes(clave(mascota)) || clave(c.nombrePropietario).includes(clave(mascota))).slice(0, 5) : [];
+  const propietario = (cli && cli.nombrePropietario) || "";
+  const telefono = (cli && cli.telefono) || tel;
+  const base = armarRecordatorioParasitos({ mascota, propietario, telefono, producto, tipo, opcion, diasOtro, fecha });
+  const prox = proxManual || base.proximaFecha;
+  const seg = { ...base, proximaFecha: prox };
+  const yaTenia = (seguimientos || []).find((s) => s && !s.completado && s.activo !== false &&
+    (s.tipo === "antipulgas" || s.tipo === "desparasitacion") && clave(s.mascota) === clave(mascota));
+  const malo = !mascota.trim() || !fecha || !prox;
+
+  function guardar() {
+    if (malo || typeof setSeguimientos !== "function") return;
+    setSeguimientos((prev) => fusionarRecordatorio(prev || [], seg).lista);
+    avisar("Recordatorio puesto para el " + fechaLarga(prox) + ".", "ok");
+    onCerrar();
+  }
+  const chip = (act, txt, f) => E("button", { onClick: f, style: { padding: "8px 14px", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700,
+    border: "1.5px solid " + (act ? "#27ae60" : "#d0d5db"), background: act ? "#eafaf1" : "#fff", color: act ? "#1a6b3a" : "#334155" } }, txt);
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 3 };
+  const inp = { padding: "8px 10px", borderRadius: 8, border: "1.5px solid #d0d5db", fontSize: 13.5, width: "100%", boxSizing: "border-box" };
+  const previa = mensajeRecordatorioParasitos({ ...seg, producto: productoDeSeg(seg) }, sumarDias(prox, -3));
+
+  return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
+    E("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "94vh", overflowY: "auto", padding: 22 } },
+      E("div", { style: { fontWeight: 800, fontSize: 17, marginBottom: 2 } }, "🐛 Programar próxima desparasitación"),
+      E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 14, lineHeight: 1.5 } }, "Elige cuánto dura el producto y la app calcula cuándo le toca la siguiente, con el mensaje listo para WhatsApp."),
+
+      E("div", { style: { marginBottom: 12, position: "relative" } },
+        E("label", { style: lbl }, "Mascota"),
+        E("input", { value: mascota, onChange: (e) => { setMascota(e.target.value); setSugs(true); }, style: inp, placeholder: "Nombre de la mascota", autoFocus: !inicial.mascota }),
+        sugs && coincid.length > 0 && E("div", { style: { position: "absolute", left: 0, right: 0, top: "100%", background: "#fff", border: "1.5px solid #d0d5db", borderRadius: 8, zIndex: 5, boxShadow: "0 6px 18px rgba(0,0,0,0.12)" } },
+          coincid.map((c) => E("button", { key: c.id, onClick: () => { setMascota(c.nombreMascota); setSugs(false); },
+            style: { display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", background: "none", cursor: "pointer", fontSize: 13 } },
+            E("strong", null, c.nombreMascota), E("span", { style: { color: "#5a6472" } }, c.nombrePropietario ? "  · " + c.nombrePropietario : "")))),
+        cli ? E("div", { style: { fontSize: 11.5, color: "#1a6b3a", marginTop: 3 } }, "✓ " + (propietario || "Sin dueño anotado") + (cli.telefono ? " · " + cli.telefono : " · sin teléfono"))
+            : mascota.trim() ? E("div", { style: { fontSize: 11.5, color: "#b45309", marginTop: 3 } }, "No está en Clientes: el mensaje saldrá sin nombre del dueño.") : null),
+      (!cli || !cli.telefono) && E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Teléfono para el WhatsApp"),
+        E("input", { value: tel, onChange: (e) => setTel(e.target.value), style: inp, placeholder: "809-000-0000" })),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Producto"),
+        E("input", { value: producto, onChange: (e) => setProducto(e.target.value), style: inp, placeholder: "Ej. NexGard, Bravecto, la pastilla que compró…" }),
+        E("div", { style: { display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" } },
+          PASTILLAS_CONOCIDAS.map((p) => E("button", { key: p.nombre, onClick: () => { setProducto(p.nombre); setOpcion(String(p.meses)); setTipo(p.tipo); setProxManual(""); },
+            style: { padding: "4px 10px", borderRadius: 20, border: "1px solid #cfd6dc", background: "#f4f7f9", cursor: "pointer", fontSize: 11.5, fontWeight: 600 } }, p.nombre + " · " + p.meses + (p.meses === 1 ? " mes" : " meses"))))),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Tipo"),
+        E("div", { style: { display: "flex", gap: 8 } },
+          chip(tipo === "desparasitacion", "🐛 Desparasitante", () => setTipo("desparasitacion")),
+          chip(tipo === "antipulgas", "🦟 Antipulgas / garrapatas", () => setTipo("antipulgas")))),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "¿Cuánto dura?"),
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
+          chip(opcion === "1", "1 mes", () => { setOpcion("1"); setProxManual(""); }),
+          chip(opcion === "3", "3 meses", () => { setOpcion("3"); setProxManual(""); }),
+          chip(opcion === "otro", "Otro", () => { setOpcion("otro"); setProxManual(""); }),
+          opcion === "otro" && E("span", { style: { display: "flex", gap: 6, alignItems: "center", fontSize: 13 } },
+            E("input", { type: "number", min: 1, value: diasOtro, onChange: (e) => { setDiasOtro(e.target.value); setProxManual(""); }, style: { ...inp, width: 80 } }), "días"))),
+
+      E("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 } },
+        E("div", { style: { flex: "1 1 150px" } }, E("label", { style: lbl }, "Fecha de la dosis (compra)"),
+          E("input", { type: "date", value: fecha, onChange: (e) => { setFecha(e.target.value); setProxManual(""); }, style: inp })),
+        E("div", { style: { flex: "1 1 150px" } }, E("label", { style: lbl }, "Le toca la próxima el"),
+          E("input", { type: "date", value: prox, onChange: (e) => setProxManual(e.target.value), style: { ...inp, fontWeight: 800, borderColor: "#27ae60" } }))),
+      E("div", { style: { fontSize: 12.5, color: "#1a6b3a", fontWeight: 700, marginBottom: 12 } },
+        prox ? "📅 " + fechaLarga(prox) + " · la app te avisa " + AVISO_ANTIPARASITARIO_ANTES + " días antes en el Dashboard." : ""),
+
+      yaTenia && E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", borderRadius: 9, padding: "8px 12px", fontSize: 12, color: "#92400e", marginBottom: 12 } },
+        "Esta mascota ya tenía un recordatorio pendiente (" + (productoDeSeg(yaTenia) || "antiparasitario") + ", " + (yaTenia.proximaFecha || "") + "). Se actualiza con estos datos; no se duplica."),
+
+      E("div", { style: { marginBottom: 14 } },
+        E("label", { style: lbl }, "Así le llegará por WhatsApp (3 días antes)"),
+        E("div", { style: { background: "#dcf8c6", borderRadius: "10px 10px 10px 2px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, color: "#1a1d23", whiteSpace: "pre-wrap" } }, previa)),
+
+      E("div", { style: { display: "flex", gap: 10 } },
+        E("button", { onClick: onCerrar, style: { flex: 1, padding: 11, borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
+        E("button", { onClick: guardar, disabled: malo, style: { flex: 2, padding: 11, borderRadius: 9, border: "none", background: malo ? "#aab3bd" : "#27ae60", color: "#fff", cursor: malo ? "default" : "pointer", fontWeight: 800 } },
+          yaTenia ? "Actualizar recordatorio" : "Guardar recordatorio"))));
+}
+
 // Busca si el cliente ya recibió ese servicio DESPUÉS de la última vez anotada.
 // Devuelve la venta que lo cubre, o null. Así un seguimiento deja de aparecer
 // como pendiente en cuanto se le factura el servicio.
@@ -7482,6 +7674,11 @@ function estadoSeguimiento(seg) {
   return { label: `En ${dias} d\xEDas`, color: "#27ae60", bg: "#eafaf1", dias };
 }
 function whatsappMsg(seg) {
+  // Desparasitacion y antipulgas: mensaje personalizado (dueño, mascota, producto,
+  // cuanto dura y la fecha). Los demas tipos siguen con su texto de siempre.
+  if (seg.tipo === "desparasitacion" || seg.tipo === "antipulgas") {
+    return encodeURIComponent(mensajeRecordatorioParasitos({ ...seg, producto: productoDeSeg(seg) }));
+  }
   const tipo = TIPOS_SEGUIMIENTO.find((t) => t.id === seg.tipo);
   const textos = {
     bano_medicado: `Hola! Le recordamos que ${seg.mascota} tiene pendiente su *ba\xF1o medicado* en PetColinas \u{1F6C1}. Recomendamos realizarlo cada ${seg.frecuencia} d\xEDas para mantener su piel sana. \xBFLo agendamos?`,
@@ -7522,6 +7719,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   const [llamandoSegId, setLlamandoSegId] = useState(null);
   const [llamadaSegRes, setLlamadaSegRes] = useState({});
   const [llamandoMasivo, setLlamandoMasivo] = useState(false);
+  const [progDesp, setProgDesp] = useState(null);   // programar desparasitacion
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const sugerencias = busq.length > 0 ? clientes.filter(
     (c) => c.nombreMascota?.toLowerCase().includes(busq.toLowerCase()) || c.nombrePropietario?.toLowerCase().includes(busq.toLowerCase())
@@ -7766,7 +7964,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
       setBusq("");
     } }, "Cancelar"))));
   }
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20 } }, "\u{1F514} Seguimientos"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 2 } }, "Recordatorios de servicios y clientes sin venir")), subTab === "recordatorios" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowWaMasivo(true), style: { background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\uD83D\uDCF2 WA Masivo"), /* @__PURE__ */ React.createElement("button", { onClick: llamarTodosSofia, disabled: llamandoMasivo, style: { background: llamandoMasivo ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: llamandoMasivo ? "not-allowed" : "pointer" } }, llamandoMasivo ? "\uD83D\uDCDE Llamando..." : "\uD83D\uDCDE Llamar vencidos"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setVista("nuevo") }, "+ Nuevo seguimiento"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 0, borderBottom: "2px solid #eef0f2", marginBottom: 24 } }, [
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20 } }, "\u{1F514} Seguimientos"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 2 } }, "Recordatorios de servicios y clientes sin venir")), subTab === "recordatorios" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowWaMasivo(true), style: { background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\uD83D\uDCF2 WA Masivo"), /* @__PURE__ */ React.createElement("button", { onClick: llamarTodosSofia, disabled: llamandoMasivo, style: { background: llamandoMasivo ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: llamandoMasivo ? "not-allowed" : "pointer" } }, llamandoMasivo ? "\uD83D\uDCDE Llamando..." : "\uD83D\uDCDE Llamar vencidos"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setVista("nuevo") }, "+ Nuevo seguimiento"), React.createElement("button", { onClick: () => setProgDesp({}), style: { background: "#27ae60", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\uD83D\uDC1B Programar desparasitaci\u00F3n"), progDesp && React.createElement(ProgramarDesparasitacion, { inicial: progDesp, clientes, seguimientos, setSeguimientos, onCerrar: () => setProgDesp(null) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 0, borderBottom: "2px solid #eef0f2", marginBottom: 24 } }, [
     { id: "recordatorios", label: "\u{1F5D3}\uFE0F Recordatorios de servicio" },
     { id: "inactivos", label: "\u{1F504} Reactivaci\xF3n" }
   ].map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setSubTab(t.id), style: {
@@ -9570,6 +9768,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [notifDuplicado, setNotifDuplicado] = useState(null);
   const [notifExito, setNotifExito] = useState(null);
   const [notifAnti, setNotifAnti] = useState(null);   // recompra de antiparasitario
+  const [notifDesp, setNotifDesp] = useState(null);   // desparasitante sin plazo conocido: elegir 1 o 3 meses
+  const [progDesp, setProgDesp] = useState(null);
   const [usaPaquete, setUsaPaquete] = useState(false);
   const paqDelCliente = paqueteDe(cliente, paquetes);
   const itemsBano = items.filter((i) => BANO_RE.test(String(i.nombre || "")));
@@ -9815,8 +10015,12 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         return [...lista, segAnti];
       });
       setNotifAnti({ producto: prodAnti.nombre, dias: prodAnti.dias,
-                     fecha: segAnti.proximaFecha, mascota: cliente });
+                     fecha: segAnti.proximaFecha, mascota: cliente, desde: fecha });
       setTimeout(() => setNotifAnti(null), 14000);
+    } else if (cliente && detectarDesparasitante(textoDeVenta(nueva)) && typeof setSeguimientos === "function") {
+      // Un desparasitante (pastilla) NO trae plazo conocido: se pregunta, no se adivina.
+      const it = (Array.isArray(nueva.items) ? nueva.items : []).find((x) => x && detectarDesparasitante(x.nombre || x.descripcion));
+      setNotifDesp({ mascota: cliente, producto: (it && (it.nombre || it.descripcion)) || descripcion || "Desparasitante", fecha });
     }
     const notifTel = clientes ? ((clientes.find(c => (c.nombreMascota||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || clientes.find(c => (c.nombrePropietario||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || {}).telefono || "") : "";
     setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area, items: nueva.items, servicio: descripcion, fecha, telefono: notifTel });
@@ -9967,8 +10171,26 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         notifAnti.mascota + " debe reforzar la protecci\xF3n en " + notifAnti.dias +
         " d\xEDas \u2014 el " + notifAnti.fecha + ". La app te avisa " + AVISO_ANTIPARASITARIO_ANTES +
         " d\xEDas antes en el Dashboard.")),
+    React.createElement("button", { onClick: () => { setProgDesp({ mascota: notifAnti.mascota, producto: notifAnti.producto, fecha: notifAnti.desde || hoy(), opcion: notifAnti.dias > 60 ? "3" : "1", tipo: "antipulgas" }); setNotifAnti(null); },
+      style: { background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, "\u23F0 Cambiar fecha / mensaje"),
     /* @__PURE__ */ React.createElement("button", { onClick: () => setNotifAnti(null),
       style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#5b21b6" } }, "\u2715")),
+  notifDesp && React.createElement("div", { style: { background: "#eafaf1", border: "2px solid #27ae60", borderRadius: 12, padding: "14px 18px", marginBottom: 16 } },
+    React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#1a6b3a", marginBottom: 4 } }, "\uD83D\uDC1B " + notifDesp.mascota + ": \u00BFcu\u00E1ndo le toca la pr\u00F3xima desparasitaci\u00F3n?"),
+    React.createElement("div", { style: { fontSize: 12.5, color: "#1a6b3a", marginBottom: 10 } }, notifDesp.producto + " \u2014 elige cu\u00E1nto dura y queda el recordatorio con su mensaje de WhatsApp."),
+    React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+      [["1", "1 mes"], ["3", "3 meses"]].map(([op, txt]) => React.createElement("button", { key: op,
+        onClick: () => {
+          const c = (clientes || []).find((x) => String(x.nombreMascota || "").toLowerCase().trim() === String(notifDesp.mascota).toLowerCase().trim());
+          const sg = armarRecordatorioParasitos({ mascota: notifDesp.mascota, propietario: c && c.nombrePropietario, telefono: c && c.telefono, producto: notifDesp.producto, tipo: "desparasitacion", opcion: op, fecha: notifDesp.fecha });
+          setSeguimientos((prev) => fusionarRecordatorio(prev || [], sg).lista);
+          avisar("Recordatorio puesto para el " + fechaLarga(sg.proximaFecha) + ".", "ok"); setNotifDesp(null);
+        },
+        style: { background: "#27ae60", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer" } }, "Dura " + txt)),
+      React.createElement("button", { onClick: () => { setProgDesp({ mascota: notifDesp.mascota, producto: notifDesp.producto, fecha: notifDesp.fecha }); setNotifDesp(null); },
+        style: { background: "#fff", color: "#1a6b3a", border: "1.5px solid #27ae60", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Elegir fecha / ver mensaje\u2026"),
+      React.createElement("button", { onClick: () => setNotifDesp(null), style: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#5a6472" } }, "No programar"))),
+  progDesp && React.createElement(ProgramarDesparasitacion, { inicial: progDesp, clientes, setSeguimientos, onCerrar: () => setProgDesp(null) }),
   notifExito && /* @__PURE__ */ React.createElement("div", { style: {
     background: "#d1fae5",
     border: "2px solid #059669",
