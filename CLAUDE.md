@@ -188,6 +188,16 @@ con Victor si alguno cubre tambien por dentro.
 Pendiente: el WhatsApp sale por wa.me (se abre el chat y se manda a mano); el envio
 automatico depende de conectar WhatsApp Business (M17).
 
+## RESEÑAS GOOGLE (M22, 24 oct 2026)
+Enlace directo: `GOOGLE_RESENA_URL` (writereview?placeid=ChIJ2-vO-zFhpY4RKsqBAr6TjEU).
+Va al final del mensaje "mascota lista" (admin, Naylan y Agenda) y en la pestaña
+"⭐ Reseñas Google" (admin y portal de la doctora): campaña a TODOS los clientes,
+un mensaje por DUEÑO (agrupado por telefono), personalizado con nombre, mascotas y
+mes de la ultima visita, en 3 variantes. Uno por clic via wa.me; se marca enviado al
+pulsar Enviar. Estado compartido en `pc_resenas` (no localStorage) para que admin y
+doctora no le escriban dos veces al mismo cliente. Ritmo sugerido 20-30 al dia (avisa
+al pasar de 30) para que WhatsApp no marque el numero como spam.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

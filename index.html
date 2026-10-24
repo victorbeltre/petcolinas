@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-24 14:48Z";
+const PC_BUILD = "2026-10-24 15:01Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1870,6 +1870,198 @@ function msgMascotaLista(c) {
     "⚠️ *Nota Importante:* Una vez pasadas las dos primeras horas de haber culminado el servicio y enviado este mensaje, se procederá a cobrar un monto de *RD$400 adicionales por cada hora transcurrida* por servicios de Day Care.\n\n" +
     "¡Gracias por confiar en PetColinas! 💖" + lineaResenaGoogle();
 }
+// ─── CAMPAÑA DE RESEÑAS EN GOOGLE (M22, oct 2026) ───────────────────────────
+// Pedirle la reseña a TODOS los clientes, uno por uno, con un mensaje que se
+// sienta escrito para esa persona: nombre del dueño, nombre de cada mascota, el
+// mes de su ultima visita y la firma de quien escribe. Tres redacciones distintas
+// (se elige una fija por telefono) para que no salgan cientos de mensajes
+// identicos: se leen menos humanos y WhatsApp vigila los envios repetidos.
+// Uno por DUEÑO (agrupado por telefono): el dueño de Toby y Luna recibe uno solo.
+const capitalizar = (t) => String(t || "").toLowerCase().replace(/(^|[\s-])([a-z\u00e0-\u00ff])/g, (m, a, b) => a + b.toUpperCase()).trim();
+function listaNombres(ns) {
+  const l = (ns || []).filter(Boolean);
+  if (l.length <= 1) return l[0] || "";
+  return l.slice(0, -1).join(", ") + " y " + l[l.length - 1];
+}
+function mensajeResenaGoogle({ duenio, mascotas = [], ultimaVisita = "", firma = "", variante = 0 }, hoyStr) {
+  const nombre = capitalizar(String(duenio || "").split(/\s+/)[0]);
+  const pets = listaNombres((mascotas || []).map(capitalizar));
+  const varias = (mascotas || []).filter(Boolean).length > 1;
+  const quien = String(firma || "").trim() || "el equipo";
+  const saludo = nombre ? nombre : (pets ? "familia de " + pets : "");
+  let visita = "";
+  const [y, m] = String(ultimaVisita || "").slice(0, 7).split("-").map(Number);
+  if (y && m) {
+    const anioHoy = Number(String(hoyStr || hoy()).slice(0, 4));
+    visita = (varias ? ", que nos visitaron" : ", que nos visit\u00F3") + " por \u00FAltima vez en " + MESES_ES[m - 1] + (y !== anioHoy ? " de " + y : "");
+  }
+  const mas = pets || "su mascota";
+  const v = ((Number(variante) % 3) + 3) % 3;
+  if (v === 0) {
+    return "\u00A1Hola" + (saludo ? " " + saludo : "") + "! \u{1F60A} Le saluda " + quien + ", de PetColinas.\n\n" +
+      "Le escribo personalmente porque para nosotros ha sido un gusto cuidar de " + mas + visita + ". " +
+      "Somos un equipo peque\u00F1o y su opini\u00F3n nos ayuda much\u00EDsimo a que m\u00E1s familias nos conozcan.\n\n" +
+      "\u00BFNos regalar\u00EDa un minutito para dejarnos una rese\u00F1a en Google? \u{1F64F}\n" + GOOGLE_RESENA_URL + "\n\n" +
+      "De coraz\u00F3n, gracias por confiar en nosotros. \u00A1Un abrazo para " + mas + "! \u{1F43E}";
+  }
+  if (v === 1) {
+    return "Buenas" + (saludo ? ", " + saludo : "") + " \u{1F43E} Soy " + quien + ", de PetColinas.\n\n" +
+      "Quer\u00EDa agradecerle por confiarnos a " + mas + visita + "; cuidar de " + (varias ? "ellos" : mas) + " es de lo que m\u00E1s disfrutamos.\n\n" +
+      "Le tengo un favorcito: \u00BFpodr\u00EDa contar su experiencia en Google? Solo toma un minuto y para nosotros vale much\u00EDsimo \u2B50\n" + GOOGLE_RESENA_URL + "\n\n" +
+      "\u00A1Mil gracias! Aqu\u00ED estamos para lo que " + mas + (varias ? " necesiten" : " necesite") + " \u{1F49A}";
+  }
+  return "\u00A1Hola" + (saludo ? ", " + saludo : "") + "! \u{1F49B} Le escribe " + quien + ", de PetColinas.\n\n" +
+    "Gracias por confiarnos a " + mas + visita + ". Si su experiencia con nosotros fue buena, nos har\u00EDa muy felices que la compartiera en Google: as\u00ED otras familias con mascotas pueden encontrarnos.\n\n" +
+    "Le dejo el enlace directo \u2B50\n" + GOOGLE_RESENA_URL + "\n\n" +
+    "Y si hubo algo que podamos mejorar, resp\u00F3ndame por aqu\u00ED, que lo leo con mucho gusto. \u{1F43E}";
+}
+// Agrupa los clientes del CRM por telefono (10 digitos). La ultima visita sale de
+// las ventas, pero SOLO por nombres de mascota que no se repiten en el CRM: con
+// dos "Coco" no se sabe de cual es la venta, y decirle a un cliente que vino en
+// un mes en que no vino arruina justo lo que se busca, que se sienta personal.
+function gruposResenas(clientes, ventas) {
+  const dig = (t) => String(t || "").replace(/\D/g, "").slice(-10);
+  const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const veces = {};
+  (clientes || []).forEach((c) => { const n = norm(c.nombreMascota); if (n) veces[n] = (veces[n] || 0) + 1; });
+  const ultima = {};
+  (ventas || []).forEach((v) => {
+    const f = String(v.fecha || "").slice(0, 10);
+    const cli = norm(v.cliente);
+    if (!f || !cli) return;
+    Object.keys(veces).forEach((n) => {
+      if (veces[n] !== 1 || n.length < 3) return;
+      if (cli === n || cli.startsWith(n + " ")) { if (!ultima[n] || ultima[n] < f) ultima[n] = f; }
+    });
+  });
+  const grupos = new Map();
+  (clientes || []).forEach((c) => {
+    const tel = dig(c.telefono);
+    if (tel.length !== 10) return;
+    if (!grupos.has(tel)) grupos.set(tel, { tel, duenios: {}, mascotas: [], ultimaVisita: "" });
+    const g = grupos.get(tel);
+    const d = String(c.nombrePropietario || "").trim();
+    if (d) g.duenios[d] = (g.duenios[d] || 0) + 1;
+    const m = String(c.nombreMascota || "").trim();
+    if (m && !g.mascotas.some((x) => norm(x) === norm(m))) g.mascotas.push(m);
+    const u = ultima[norm(m)];
+    if (u && u > g.ultimaVisita) g.ultimaVisita = u;
+  });
+  return [...grupos.values()].map((g) => ({
+    tel: g.tel, mascotas: g.mascotas, ultimaVisita: g.ultimaVisita,
+    duenio: Object.entries(g.duenios).sort((a, b) => b[1] - a[1])[0]?.[0] || "",
+    variante: Number(g.tel.slice(-3)) % 3
+  }));
+}
+function CampanaResenas({ clientes = [], ventas = [], firmaPorDefecto = "" }) {
+  const E = React.createElement;
+  const [registro, setRegistro] = React.useState({});
+  const [cargando, setCargando] = React.useState(true);
+  const [filtro, setFiltro] = React.useState("pendientes");
+  const [buscar, setBuscar] = React.useState("");
+  const [mostrar, setMostrar] = React.useState(40);
+  const [firma, setFirma] = React.useState(() => { try { return localStorage.getItem("pc_resenas_firma") || firmaPorDefecto; } catch (e) { return firmaPorDefecto; } });
+  React.useEffect(() => { try { localStorage.setItem("pc_resenas_firma", firma); } catch (e) {} }, [firma]);
+
+  const cargar = React.useCallback(async () => {
+    const r = await supaFetch("pc_resenas", "GET", null, "?select=*&limit=5000");
+    if (Array.isArray(r)) { const m = {}; r.forEach((x) => { m[x.telefono] = x; }); setRegistro(m); }
+    setCargando(false);
+  }, []);
+  React.useEffect(() => { cargar(); }, [cargar]);
+
+  const grupos = React.useMemo(() => gruposResenas(clientes, ventas), [clientes, ventas]);
+  const sinTel = React.useMemo(() => (clientes || []).filter((c) => String(c.telefono || "").replace(/\D/g, "").length < 10).length, [clientes]);
+  const estadoDe = (g) => (registro[g.tel] && registro[g.tel].estado) || "pendiente";
+  // Primero los que vinieron hace poco: se acuerdan mejor y es mas probable que respondan.
+  const ordenados = React.useMemo(() => [...grupos].sort((a, b) => (b.ultimaVisita || "").localeCompare(a.ultimaVisita || "")), [grupos]);
+  const cuenta = (e) => grupos.filter((g) => estadoDe(g) === e).length;
+  const hoyStr = hoy();
+  const enviadosHoy = Object.values(registro).filter((r) => r.ultimo_envio && fechaLocal(new Date(r.ultimo_envio)) === hoyStr).length;
+
+  async function guardar(g, cambios) {
+    const prev = registro[g.tel] || {};
+    const fila = { telefono: g.tel, estado: prev.estado || "pendiente", envios: prev.envios || 0, ...cambios, actualizado: new Date().toISOString() };
+    setRegistro((r) => ({ ...r, [g.tel]: { ...prev, ...fila } }));
+    const res = await supaFetch("pc_resenas", "POST", [fila]);
+    if (res && res.error) { avisar("No se pudo guardar en la nube: " + JSON.stringify(res.error), "error"); cargar(); }
+  }
+  function enviar(g) {
+    const msg = mensajeResenaGoogle({ duenio: g.duenio, mascotas: g.mascotas, ultimaVisita: g.ultimaVisita, firma, variante: g.variante });
+    abrirWA(g.tel, msg, () => {
+      const prev = registro[g.tel] || {};
+      guardar(g, { estado: prev.estado === "reseno" ? "reseno" : "enviado", envios: (prev.envios || 0) + 1, ultimo_envio: new Date().toISOString(), enviado_por: firma || null });
+    });
+  }
+  const siguiente = ordenados.find((g) => estadoDe(g) === "pendiente");
+
+  const q = buscar.trim().toLowerCase();
+  const visibles = ordenados.filter((g) => {
+    const e = estadoDe(g);
+    if (filtro === "pendientes" && e !== "pendiente") return false;
+    if (filtro === "enviados" && e !== "enviado") return false;
+    if (filtro === "resenaron" && e !== "reseno") return false;
+    if (filtro === "no_contactar" && e !== "no_contactar") return false;
+    if (q && !(g.duenio.toLowerCase().includes(q) || g.mascotas.join(" ").toLowerCase().includes(q) || g.tel.includes(q.replace(/\D/g, "") || "~"))) return false;
+    return true;
+  });
+  const fmtFecha = (f) => { const [y, m] = String(f || "").split("-").map(Number); return y && m ? MESES_ES[m - 1].slice(0, 3) + " " + y : "\u2014"; };
+  const chip = (id, txt, n) => E("button", { key: id, onClick: () => { setFiltro(id); setMostrar(40); }, style: {
+    border: "1.5px solid " + (filtro === id ? "#1a6b3a" : "#e0e4e8"), background: filtro === id ? "#e8f5ee" : "#fff",
+    color: filtro === id ? "#1a6b3a" : "#334155", borderRadius: 20, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" } },
+    txt + (n != null ? " (" + n + ")" : ""));
+  const btn = (fondo, color, borde) => ({ background: fondo, color, border: "1.5px solid " + (borde || fondo), borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" });
+  const total = grupos.length, hechos = total - cuenta("pendiente");
+
+  return E("div", null,
+    E("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "\u2B50 Rese\xF1as en Google"),
+    E("p", { style: { color: "#5a6472", fontSize: 13, marginBottom: 16, lineHeight: 1.5 } },
+      "Un mensaje personal para cada cliente pidi\xE9ndole su rese\xF1a, con el enlace que abre directo la ventana de escribirla. Uno por due\xF1o (si tiene varias mascotas, las nombra a todas). Lo que se env\xEDa aqu\xED lo ve todo el equipo: nadie le escribe dos veces a la misma persona."),
+    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 16 } },
+      [["Clientes con tel\xE9fono", total, "#1a4fa0"], ["Ya contactados", hechos + " de " + total, "#1a6b3a"], ["Ya dejaron rese\xF1a", cuenta("reseno"), "#b8860b"], ["Enviados hoy", enviadosHoy, "#7c3aed"]].map(([k, v, c]) =>
+        E("div", { key: k, style: { background: "#fff", borderRadius: 12, padding: "12px 14px", borderTop: "4px solid " + c, boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
+          E("div", { style: { fontSize: 11, color: "#5a6472", textTransform: "uppercase", fontWeight: 700 } }, k),
+          E("div", { style: { fontSize: 22, fontWeight: 800, color: c, marginTop: 4 } }, v)))),
+    E("div", { style: { background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
+      E("div", { style: { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" } },
+        E("div", null,
+          E("div", { style: { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", marginBottom: 4 } }, "Firma del mensaje"),
+          E("input", { value: firma, onChange: (e) => setFirma(e.target.value), placeholder: "Ej: Victor", style: { padding: "8px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13.5, width: 200 } })),
+        E("button", { disabled: !siguiente || cargando, onClick: () => siguiente && enviar(siguiente), style: {
+          background: siguiente ? "#25D366" : "#c9ced4", color: "#fff", border: "none", borderRadius: 10, padding: "12px 20px",
+          fontSize: 14.5, fontWeight: 800, cursor: siguiente ? "pointer" : "default" } },
+          cargando ? "Cargando\u2026" : siguiente ? "\u{1F4AC} Siguiente cliente: " + (capitalizar(siguiente.duenio.split(" ")[0]) || listaNombres(siguiente.mascotas.map(capitalizar))) : "\u2705 No quedan pendientes")),
+      E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 10, lineHeight: 1.5 } },
+        "Cada mensaje se abre para revisarlo antes de mandarlo. Consejo: WhatsApp vigila los env\xEDos masivos a n\xFAmeros que no tienen guardado el del negocio; mejor unos 20 o 30 al d\xEDa, con calma, que cientos de golpe."),
+      enviadosHoy >= 30 && E("div", { style: { fontSize: 12.5, color: "#92400e", background: "#fff7e6", borderRadius: 8, padding: "8px 11px", marginTop: 8, fontWeight: 600 } },
+        "Hoy ya van " + enviadosHoy + ". Si siguen, h\xE1ganlo m\xE1s despacio o dejen el resto para ma\xF1ana.")),
+    E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
+      chip("pendientes", "Pendientes", cuenta("pendiente")), chip("enviados", "Enviados", cuenta("enviado")),
+      chip("resenaron", "Ya rese\xF1aron", cuenta("reseno")), chip("no_contactar", "No contactar", cuenta("no_contactar")), chip("todos", "Todos", total),
+      E("input", { value: buscar, onChange: (e) => { setBuscar(e.target.value); setMostrar(40); }, placeholder: "Buscar due\xF1o, mascota o tel\xE9fono", style: { padding: "7px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, minWidth: 220, flex: 1 } })),
+    sinTel > 0 && E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 10 } }, sinTel + " ficha(s) del CRM no tienen tel\xE9fono de 10 d\xEDgitos y no aparecen aqu\xED."),
+    E("div", { style: { background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
+      visibles.length === 0
+        ? E("div", { style: { padding: 24, textAlign: "center", color: "#5a6472", fontSize: 13 } }, "No hay clientes en esta lista.")
+        : visibles.slice(0, mostrar).map((g) => {
+            const r = registro[g.tel] || {}, e = estadoDe(g);
+            return E("div", { key: g.tel, style: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f0f2f4", flexWrap: "wrap" } },
+              E("div", { style: { flex: "1 1 220px", minWidth: 0 } },
+                E("div", { style: { fontWeight: 700, fontSize: 13.5 } }, capitalizar(g.duenio) || "(sin nombre del due\xF1o)"),
+                E("div", { style: { fontSize: 12, color: "#5a6472" } }, "\u{1F43E} " + (listaNombres(g.mascotas.map(capitalizar)) || "\u2014") + " \xB7 \u00FAltima visita: " + fmtFecha(g.ultimaVisita) + " \xB7 " + g.tel),
+                r.ultimo_envio && E("div", { style: { fontSize: 11, color: "#1a6b3a", marginTop: 2 } }, "Enviado " + fechaLocal(new Date(r.ultimo_envio)) + (r.enviado_por ? " por " + r.enviado_por : "") + (r.envios > 1 ? " \xB7 " + r.envios + " veces" : ""))),
+              e === "reseno"
+                ? E("span", { style: { fontSize: 12, fontWeight: 800, color: "#b8860b" } }, "\u2B50 Ya rese\xF1\xF3")
+                : e === "no_contactar" ? E("span", { style: { fontSize: 12, fontWeight: 700, color: "#9aa5ad" } }, "\u{1F6AB} No contactar") : null,
+              E("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+                e !== "no_contactar" && e !== "reseno" && E("button", { onClick: () => enviar(g), style: btn("#25D366", "#fff") }, e === "enviado" ? "\u{1F4AC} Reenviar" : "\u{1F4AC} Enviar"),
+                e !== "reseno" && E("button", { onClick: () => guardar(g, { estado: "reseno" }), title: "Ya dej\xF3 su rese\xF1a: no volver a escribirle", style: btn("#fff", "#b8860b", "#e8d38a") }, "\u2B50 Ya rese\xF1\xF3"),
+                e !== "no_contactar" ? E("button", { onClick: () => guardar(g, { estado: "no_contactar" }), title: "No escribirle (pidi\xF3 no recibir mensajes, n\xFAmero equivocado...)", style: btn("#fff", "#5a6472", "#e0e4e8") }, "\u{1F6AB}")
+                  : E("button", { onClick: () => guardar(g, { estado: r.ultimo_envio ? "enviado" : "pendiente" }), style: btn("#fff", "#334155", "#e0e4e8") }, "Volver a la lista")));
+          }),
+      visibles.length > mostrar && E("button", { onClick: () => setMostrar((n) => n + 60), style: { width: "100%", padding: 12, border: "none", background: "#f8f9fa", cursor: "pointer", fontWeight: 700, color: "#1a4fa0" } },
+        "Ver m\xE1s (" + (visibles.length - mostrar) + " restantes)")));
+}
 function msgBienvenida(c, lineas, total) {
   const ls = Array.isArray(lineas) ? lineas : [];
   const bloque = ls.length === 0
@@ -2163,6 +2355,7 @@ const TABS = [
   { id: "seguimientos", icon: "\u{1F514}", label: "Seguimientos", grupo: "Clientes" },
   { id: "planes", icon: "\u{1F4B3}", label: "Planes", grupo: "Clientes" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones", grupo: "Clientes" },
+  { id: "resenas", icon: "\u2B50", label: "Rese\xF1as Google", grupo: "Clientes" },
 
   { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp", grupo: "Comunicaci\xF3n" },
   { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa", grupo: "Comunicaci\xF3n" },
@@ -6415,6 +6608,7 @@ function WAPreviewModal() {
     const telFinal = tel.length >= 11 ? tel : (tel ? "1" + tel : "");
     if (!telFinal) { avisar("Sin teléfono registrado."); return; }
     window.open("https://wa.me/" + telFinal + "?text=" + encodeURIComponent(texto), "_blank");
+    if (typeof modal.alEnviar === "function") { try { modal.alEnviar(texto); } catch (e) { console.warn("[WA alEnviar]", e); } }
     setModal(null);
   };
   return /* @__PURE__ */ React.createElement("div", { style: { position:"fixed", inset:0, background:"rgba(0,0,0,0.52)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }, onClick: () => setModal(null) },
@@ -6434,7 +6628,10 @@ function WAPreviewModal() {
     )
   );
 }
-function abrirWA(tel, msg) { window.dispatchEvent(new CustomEvent("pc-wa", { detail: { tel, msg } })); }
+// `alEnviar` (opcional) se llama solo cuando se pulsa Enviar y se abre el chat:
+// la campaña de reseñas marca al cliente como contactado en ese momento, no al
+// abrir la vista previa (que se puede cancelar).
+function abrirWA(tel, msg, alEnviar) { window.dispatchEvent(new CustomEvent("pc-wa", { detail: { tel, msg, alEnviar } })); }
 // Sincroniza la Agenda con Google Calendar en ambos sentidos. Se dispara sin
 // esperar respuesta al guardar/cancelar/borrar una cita; se agrupan las llamadas
 // seguidas para no lanzar una por cada tecleo.
@@ -7144,6 +7341,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "planes" && React.createElement(Planes, { paquetes, setPaquetes, clientes: todosClientes, ventas, setVentas }),
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
+    tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, marcarNotifLeidas, desmarcarNotif,
       setTab, setCrmClienteInicial
@@ -15027,7 +15225,8 @@ const TABS_VET = [
   { id: "historias",       icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
   { id: "evolucion_vet",   icon: "\u{1F4C8}", label: "Evoluci\xF3n Cl\xEDnica" },
   { id: "reportes_lab",    icon: "\u{1F52C}", label: "Reportes de Lab" },
-  { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" }
+  { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" },
+  { id: "resenas_vet",     icon: "\u2B50", label: "Rese\xF1as Google" }
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -16968,7 +17167,8 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
         soloPropio: usuario.nombre.split(" ")[0]
       }),
       tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: window.__inventarioGlobal || [], clientes }),
-      tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] })
+      tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] }),
+      tabVet === "resenas_vet"    && React.createElement(CampanaResenas, { clientes, ventas, firmaPorDefecto: "Dra. " + String(usuario.nombre || "").replace(/^Dra\.?\s*/i, "").split(" ")[0] })
     )
   );
 }

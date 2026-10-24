@@ -369,6 +369,38 @@ render("ModalLabPreparar", sandbox.ModalLabPreparar, {
   if (!wa.includes("Hola Ana!") || !wa.includes("Ferox") || !wa.includes("protege por fuera")) fallo("whatsappMsg no usa el mensaje del producto: " + wa);
   if (!decodeURIComponent(ev('whatsappMsg({ tipo: "bano_regular", mascota: "Rocky", frecuencia: 21 })')).includes("ba\u00F1o")) fallo("whatsappMsg: los otros tipos deben seguir igual");
 })();
+// Campa\u00F1a de rese\u00F1as (M22): uno por due\u00F1o, nombres reales, ultima visita solo
+// cuando la venta es inequivoca, tres redacciones y siempre el enlace directo.
+(() => {
+  const fallo = (m) => errores.push(m);
+  const cli = [
+    { id: 1, nombreMascota: "toby", nombrePropietario: "mar\u00EDa p\u00E9rez", telefono: "(809) 555-0101" },
+    { id: 2, nombreMascota: "Luna", nombrePropietario: "Mar\u00EDa P\u00E9rez", telefono: "1-809-555-0101" },
+    { id: 3, nombreMascota: "Coco", nombrePropietario: "Jos\u00E9 G\u00F3mez", telefono: "8095550202" },
+    { id: 4, nombreMascota: "Coco", nombrePropietario: "Laura Ruiz", telefono: "8095550303" },
+    { id: 5, nombreMascota: "Max", nombrePropietario: "Sin Tel", telefono: "" }];
+  const ven = [{ fecha: "2026-09-12", cliente: "Toby Perez" }, { fecha: "2026-03-01", cliente: "Toby" }, { fecha: "2026-10-01", cliente: "Coco Gomez" }];
+  const g = enVM("gruposResenas")(cli, ven);
+  const toby = g.find((x) => x.tel === "8095550101"), coco = g.find((x) => x.tel === "8095550202");
+  if (g.length !== 3) fallo("rese\u00F1as: debe haber un grupo por tel\u00E9fono y omitir los sin tel\u00E9fono: " + JSON.stringify(g));
+  if (!toby || toby.mascotas.length !== 2 || toby.ultimaVisita !== "2026-09-12") fallo("rese\u00F1as: Toby y Luna son del mismo due\u00F1o y su \u00FAltima visita es la m\u00E1s reciente: " + JSON.stringify(toby));
+  if (!coco || coco.ultimaVisita) fallo("rese\u00F1as: con dos \"Coco\" en el CRM no se puede saber de qui\u00E9n es la venta; no debe inventar visita: " + JSON.stringify(coco));
+  const msg = (o) => enVM("mensajeResenaGoogle")(Object.assign({ duenio: "mar\u00EDa p\u00E9rez", mascotas: ["toby", "Luna"], ultimaVisita: "2026-09-12", firma: "Victor" }, o), "2026-10-24");
+  const url = enVM("GOOGLE_RESENA_URL");
+  [0, 1, 2].forEach((v) => {
+    const m = msg({ variante: v });
+    ["Mar\u00EDa", "Toby y Luna", "Victor", "septiembre", url].forEach((x) => { if (!m.includes(x)) fallo("rese\u00F1as variante " + v + ': falta "' + x + '" en: ' + m); });
+    if (/Mar\u00EDa P\u00E9rez|undefined|null/.test(m)) fallo("rese\u00F1as variante " + v + ": nombre completo o valores vac\u00EDos en: " + m);
+  });
+  if (msg({ variante: 0 }) === msg({ variante: 1 }) || msg({ variante: 1 }) === msg({ variante: 2 })) fallo("rese\u00F1as: las tres redacciones deben ser distintas");
+  const sinVisita = msg({ ultimaVisita: "", variante: 0 });
+  if (/visit/.test(sinVisita)) fallo("rese\u00F1as: sin venta segura no se menciona la visita: " + sinVisita);
+  const anioPasado = msg({ ultimaVisita: "2025-12-03", variante: 2 });
+  if (!anioPasado.includes("diciembre de 2025")) fallo("rese\u00F1as: una visita de otro a\u00F1o debe decir el a\u00F1o: " + anioPasado);
+  const sinDuenio = msg({ duenio: "", mascotas: ["Rocky"], variante: 2 });
+  if (!sinDuenio.includes("familia de Rocky")) fallo("rese\u00F1as: sin nombre del due\u00F1o se saluda a la familia de la mascota: " + sinDuenio);
+})();
+render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDefecto: "Victor" }, null, "Rese\u00F1as en Google");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la
 // ventana de escribirla (lo usan el CRM del admin y el portal de la doctora).
 (() => {
