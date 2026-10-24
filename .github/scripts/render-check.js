@@ -369,6 +369,15 @@ render("ModalLabPreparar", sandbox.ModalLabPreparar, {
   if (!wa.includes("Hola Ana!") || !wa.includes("Ferox") || !wa.includes("protege por fuera")) fallo("whatsappMsg no usa el mensaje del producto: " + wa);
   if (!decodeURIComponent(ev('whatsappMsg({ tipo: "bano_regular", mascota: "Rocky", frecuencia: 21 })')).includes("ba\u00F1o")) fallo("whatsappMsg: los otros tipos deben seguir igual");
 })();
+// "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la
+// ventana de escribirla (lo usan el CRM del admin y el portal de la doctora).
+(() => {
+  const fallo = (m) => errores.push(m);
+  const url = enVM("GOOGLE_RESENA_URL");
+  if (!/^https:\/\/search\.google\.com\/local\/writereview\?placeid=ChIJ[\w-]+$/.test(url)) fallo("GOOGLE_RESENA_URL debe abrir directo la rese\u00F1a de Google: " + url);
+  const msg = enVM('msgMascotaLista({ nombrePropietario: "Ana Diaz", nombreMascota: "Rocky" })');
+  if (!msg.includes(url) || !msg.includes("Rocky") || !msg.includes("RD$400")) fallo("el aviso de mascota lista debe conservar su texto y llevar el enlace de la rese\u00F1a: " + msg);
+})();
 render("ProgramarDesparasitacion", sandbox.ProgramarDesparasitacion, {
   inicial: { mascota: "Rocky", producto: "Bravecto", opcion: "3", fecha: "2026-10-23", tipo: "antipulgas" },
   clientes: [{ id: 1, nombreMascota: "Rocky", nombrePropietario: "Ana Diaz", telefono: "8095551234" }],

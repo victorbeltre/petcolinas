@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-11 15:08Z";
+const PC_BUILD = "2026-10-24 14:48Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1855,6 +1855,12 @@ function tituloFacturaPDF(numero, mascota, duenio) {
 // y uno de los dos se quedaria viejo.
 function nombreDuenio(c) { return (c && (c.nombrePropietario || c.nombrepropietario)) || "estimado cliente"; }
 function nombreMascota(c) { return (c && (c.nombreMascota || c.nombremascota)) || ""; }
+// Enlace que abre DIRECTO la ventana de "Escribir una reseña" de la ficha de
+// PetColinas en Google (no la ficha, donde el cliente tendria que buscar el
+// boton). Va al final del aviso de "mascota lista": es el momento en que el
+// cliente acaba de recibir el servicio y esta mas dispuesto a dejarla.
+const GOOGLE_RESENA_URL = "https://search.google.com/local/writereview?placeid=ChIJ2-vO-zFhpY4RKsqBAr6TjEU";
+const lineaResenaGoogle = () => "\n\n⭐ *¿Cómo le atendimos?* Su opinión nos ayuda muchísimo. Déjenos una reseña en Google, toma un minuto:\n" + GOOGLE_RESENA_URL;
 function msgMascotaLista(c) {
   return "🐾 *¡Su mascota está lista!* 🐾\n\n" +
     "Hola " + nombreDuenio(c) + ", le informamos que *" + (nombreMascota(c) || "su mascota") + "* ya está lista para recoger.\n\n" +
@@ -1862,7 +1868,7 @@ function msgMascotaLista(c) {
     "📍 *Dirección:* Plaza Las Colinas, Santo Domingo Oeste\n" +
     "📞 *Teléfono:* 809-752-6806\n\n" +
     "⚠️ *Nota Importante:* Una vez pasadas las dos primeras horas de haber culminado el servicio y enviado este mensaje, se procederá a cobrar un monto de *RD$400 adicionales por cada hora transcurrida* por servicios de Day Care.\n\n" +
-    "¡Gracias por confiar en PetColinas! 💖";
+    "¡Gracias por confiar en PetColinas! 💖" + lineaResenaGoogle();
 }
 function msgBienvenida(c, lineas, total) {
   const ls = Array.isArray(lineas) ? lineas : [];
@@ -19741,7 +19747,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
       recordatorio:    `¡Hola ${n}! 🐾 Te recordamos que *mañana* tienes cita de *${m}* en *PetColinas* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡No olvides venir! 😊`,
       recordatorio_hoy:`¡Buenos días ${n}! 🌞 Hoy tienes cita de *${m}* en *PetColinas* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡Te esperamos! 🐾`,
       recordatorio_2h: `¡Hola ${n}! 🐾 En *2 horas* tienes cita de *${m}* en *PetColinas* (${h}).\n\n¡Te esperamos pronto! 😊`,
-      lista:           `¡Hola ${n}! 🎉 *${m}* ya está lista para ser recogida 🐾\n\n💰 Total a pagar: *${pre}*\n\n¡Puedes pasar cuando gustes! Estamos en Plaza Las Colinas 📍`,
+      lista:           `¡Hola ${n}! 🎉 *${m}* ya está lista para ser recogida 🐾\n\n💰 Total a pagar: *${pre}*\n\n¡Puedes pasar cuando gustes! Estamos en Plaza Las Colinas 📍` + lineaResenaGoogle(),
       reagendar:       `¡Hola ${n}! 🙏 Necesitamos reagendar la cita de *${m}* del *${f}* a las *${h}*.\n\nPor favor escríbenos para coordinar. Disculpa los inconvenientes 😊`
     };
     return msgs[tipo] || "";
