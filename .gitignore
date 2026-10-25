@@ -1,1 +1,8 @@
 .claude/settings.local.json
+
+# Hojas del negocio: NO van a git. Llevan datos de clientes, sueldos con nombre
+# y las finanzas completas, y este repo fue publico hasta oct 2026. La fuente
+# viva son las hojas de Google Drive (las lee la skill de cierre mensual).
+*.xlsx
+*.xls
+*.csv
