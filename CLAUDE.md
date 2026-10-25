@@ -1,5 +1,4 @@
 # CLAUDE.md - PetColinas
-Leido automaticamente por Claude Code al iniciar.
 
 ## NEGOCIO
 PetColinas - Veterinaria, Plaza Las Colinas, Santo Domingo Oeste, RD
@@ -8,11 +7,14 @@ App: https://victorbeltre.github.io/petcolinas/
 Supabase: https://ulrzzddovkioxeaarnjk.supabase.co
 
 ## USUARIOS
-admin@petcolinas.com / Nickyjose00 -> Admin
-naylan@petcolinas.com / naylan2026 -> Vet 30% (veterinaria) + 5% (farmacia/ventas)
-valentina@petcolinas.com / valentina2026 -> Vet 40% (sin acceso a Supabase Auth actualmente)
-alexander@petcolinas.com / alexander2026 -> Groomer
+admin@petcolinas.com -> Admin
+naylan@petcolinas.com -> Vet 30% (veterinaria) + 5% (farmacia/ventas)
+valentina@petcolinas.com -> Vet 40% (sin usuario en Supabase Auth)
+alexander@petcolinas.com -> Groomer
 veterinaria@petcolinas.com -> Caja (factura y registra ventas, sin ver el negocio)
+
+Las contrasenas NO van en este archivo: el repo es PUBLICO. Viven en el gestor
+de claves de Victor.
 
 Aylein Santiago ya NO tiene acceso (20 Ago 2026, ya no labora con nosotros). Su
 historial de ventas/comisiones se conserva intacto (Regla Critica 2), pero se
@@ -129,14 +131,81 @@ PENDIENTE DE VICTOR en este modulo:
   RD$ 4.925 en 2026, parece el banco DESDE el que pago un cliente).
 - Anotar una vez el saldo real de cada banco: sin ese punto de partida el
   teorico es la suma de todo desde 2025 y no significa nada (la app lo avisa).
-- LOS GASTOS NO SE ESTAN REGISTRANDO: pc_gastos tiene 6 filas en junio, 1 en
-  agosto y 0 en septiembre. El flujo de caja solo puede ser tan cierto como lo
-  que se anote.
+- Registro de gastos (verificado 25 oct 2026): pc_gastos tiene 6 filas en junio,
+  1 en agosto, 0 en septiembre y 26 en octubre. Ya se esta anotando; sostenerlo.
+  El flujo de caja solo puede ser tan cierto como lo que se anote.
+
+## HEMOGRAMAS (M21, oct 2026)
+Evolucion del paciente -> "Resultados de laboratorio" -> "Convertir a formato
+PetColinas". DOS REGLAS DE VICTOR:
+1) LOS RESULTADOS NO SE LEEN, NO SE TRANSCRIBEN Y NO SE TOCAN. El documento del
+   laboratorio (foto, o paginas del PDF dibujadas por pdf.js) se usa como IMAGEN:
+   cada numero son los pixeles del laboratorio. Una primera version leia el
+   documento (IA, luego OCR) y CAMBIO RESULTADOS al probarla con una foto; se
+   elimino. render-check FALLA si reaparece parsearFilasLab, leerDocumentoLab,
+   ocrLab, tesseract, etc. NO volver a leer/transcribir resultados.
+2) NADA DEL LABORATORIO ORIGINAL debe salir (actualizado 16 oct): ni logo, ni
+   nombre, ni direccion, ni firma, ni "informe emitido por". Todo el PDF es de
+   PetColinas (cabecera con logo y colores, paciente y propietario tomados del
+   SISTEMA, marco, pie PetColinas). La app NO pide ni imprime el nombre del lab.
+Como se quita lo del laboratorio (el sistema no lo detecta, porque no lee): dos
+franjas deslizables (quitar X% de arriba / X% de abajo, donde suelen estar logo,
+nombre, direccion, firma y sello), recuadros blancos para lo suelto (marca de
+agua, sello al costado), recorte libre, y "Ver como queda" para revisar la
+pagina final ANTES de generar. Opcional, apagado por defecto: teñir el texto de
+azul marino (un valor que el lab marco en rojo pasaria a azul).
+Se guardan 2 archivos en el bucket privado `laboratorios`: original y PDF ya
+generado (no se regenera). La Edge Function `lab-extraer` (IA) sigue desplegada
+pero huerfana: borrarla del panel. El logo real vive en `logo.png` en la raiz
+del repo (subido el 16 oct 2026, recortado a 313x272 desde el original de 500x500);
+el PDF lo toma de ahi, y la factura impresa tambien lo referenciaba. Si el archivo
+falta, se dibuja "PetColinas" en texto. PENDIENTE: probar con un hemograma real.
+
+## DESPARASITACION: RECORDATORIOS POR PRODUCTO (oct 2026)
+Seguimientos -> "Programar desparasitacion", y al vender un desparasitante la app
+pregunta "Dura 1 mes / 3 meses". EL PRODUCTO MANDA: del catalogo `ANTIPARASITARIOS`
+salen el tipo de recordatorio, el plazo y lo que dice el WhatsApp.
+- NexGard Spectra: desparasita por DENTRO Y POR FUERA, efecto 35 dias -> tipo
+  `desparasitacion`. Ferox: protege SOLO POR FUERA (pulgas y garrapatas), efecto 3
+  MESES -> tipo `antipulgas`. (Ferox estaba como mensual/35 dias: error de catalogo.)
+  Spectra va ANTES que NexGard en el catalogo ("NexGard Spectra" contiene "nexgard").
+- Cada entrada lleva `cobertura` ("interna_externa" | "externa"); un producto nuevo se
+  agrega ahi. El mensaje de Ferox NO puede decir que desparasita por dentro, y el de
+  Spectra no se presenta como solo antipulgas (hay pruebas que lo fijan).
+- Los meses son de CALENDARIO (`sumarMeses`: 31 ene + 1 mes = 28 feb). 35 dias se dice
+  "35 dias", no "1 mes". La fecha se puede ajustar a mano.
+- El mensaje de WhatsApp se arma al enviar (`mensajeRecordatorioParasitos`): dueño,
+  mascota, producto, que cubre, cuanto dura y la fecha; dice "es hoy"/"es mañana"/"se
+  vencio hace N dias". Lo usan el Dashboard y el boton de WhatsApp de Seguimientos.
+- Sin duplicados POR TIPO (`fusionarRecordatorio`): dos Ferox no se acumulan, pero un
+  Ferox (por fuera) y un Spectra (por dentro) conviven. Uno ya completado no se toca.
+- "desparasit" suelto NO cae en "antipulgas a 35 dias": un desparasitante sin producto
+  conocido se pregunta (1 mes / 3 meses). Las ventas VIEJAS de ese tipo ya no avisan.
+- `CADENCIA_SERVICIO` (cita sugerida al facturar) elige el plazo MAS CORTO que coincida;
+  por eso "Bravecto antipulgas" sugeria 30 dias en vez de 90. Ahora las entradas
+  genericas llevan `no:` para no aplicar si hay un producto con plazo propio.
+Los productos que no son Spectra/Ferox (NexGard, Bravecto, Simparica, Frontline...)
+estan clasificados como "solo por fuera" por el catalogo previo de la app: confirmar
+con Victor si alguno cubre tambien por dentro.
+Pendiente: el WhatsApp sale por wa.me (se abre el chat y se manda a mano); el envio
+automatico depende de conectar WhatsApp Business (M17).
+
+## RESEÑAS GOOGLE (M22, 24 oct 2026)
+Enlace directo: `GOOGLE_RESENA_URL` (writereview?placeid=ChIJ2-vO-zFhpY4RKsqBAr6TjEU).
+Va al final del mensaje "mascota lista" (admin, Naylan y Agenda) y en la pestaña
+"⭐ Reseñas Google" (admin y portal de la doctora): campaña a TODOS los clientes,
+un mensaje por DUEÑO (agrupado por telefono), personalizado con nombre, mascotas y
+mes de la ultima visita, en 3 variantes. Uno por clic via wa.me; se marca enviado al
+pulsar Enviar. Estado compartido en `pc_resenas` (no localStorage) para que admin y
+doctora no le escriban dos veces al mismo cliente. Ritmo sugerido 20-30 al dia (avisa
+al pasar de 30) para que WhatsApp no marque el numero como spam.
 
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
-Ene 2026: RD$111,479 | Feb: RD$120,753 | Mar al 19: ~RD$146,863
+Ventas (corte 19 mar 2026, NO actualizado desde entonces):
+Ene RD$111,479 | Feb RD$120,753 | Mar al 19 ~RD$146,863
+Para la cifra de hoy, usar la pestana Caja (M18/M19), que la calcula en vivo.
 
 ## BOOST ENGINE
 Lunes=2X, Mierc=3X, Viernes=Lucky, Sabado=1.5X
@@ -148,10 +217,14 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
 3. Al aprobar: venta registrada + CRM actualizado automaticamente
 
 ## PENDIENTES QUE SOLO VICTOR PUEDE HACER (act. 8 Sep 2026)
-1. (M6) Supabase → Authentication → Providers → Email → activar
-   "Leaked password protection" (compara contra HaveIBeenPwned). Es un
-   interruptor del dashboard; no se puede por SQL ni por el conector.
-   AL 8 SEP SIGUE APAGADO: el advisor lo reporta en cada revision.
+1. (M6) "Leaked password protection" de Supabase Auth (compara contra
+   HaveIBeenPwned). BLOQUEADO POR PLAN: es funcion de Pro en adelante y la
+   organizacion esta en free (verificado 25 oct 2026), asi que el interruptor
+   no aparece. Opciones: subir a Pro y activarlo en Authentication →
+   Providers → Email, o aceptar el riesgo y dejar de listarlo como pendiente.
+   Lo que SI se puede hoy en free, en esa misma pantalla: subir la longitud
+   minima de contrasena y exigir mayusculas, digitos y simbolos.
+   El advisor lo seguira reportando mientras este apagado.
 1b. (M4) Pegar el nuevo `form-to-crm.gs` en Apps Script (Extensiones → Apps
    Script del formulario) y correr `diagnostico()`. Solo DESPUES de eso se
    puede quitar la politica `"pc_clientes insert formulario web"`, que hoy
@@ -196,10 +269,9 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
    verdad requiere `git filter-repo` + force push, que reescribe todo el
    historial y afecta a Laura: decision de Victor.
 
-## PENDIENTES (20 Mar 2026)
-1. Boton rojo ventas pendientes en header admin
-2. Verificar Top Servicios visible en Dashboard Aylein
-3. Confirmar Vacunas muestra todos los registros de Aylein
-4. Crear usuarios Supabase Auth para Alexander y Valentina
+## PENDIENTES MENORES (rev. 25 oct 2026)
+1. Boton rojo de ventas pendientes en el header del admin (sin verificar).
+2. Crear el usuario de Supabase Auth de Valentina. Alexander ya lo tiene
+   (verificado 25 oct 2026).
 
-Generado 20 Mar 2026
+Ultima revision: 25 oct 2026.

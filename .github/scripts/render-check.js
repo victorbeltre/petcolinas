@@ -45,6 +45,7 @@ const factura = { id: "venta_2026-08-08_rocky", numero: "0001", fecha: "2026-08-
   itbis: false, subtotal: 799, itbisAmt: 0, total: 799, estado: "pagada", metodoPago: "Efectivo", notas: "" };
 
 const errores = [];
+const enVM = (codigo) => vm.runInContext(codigo, sandbox);
 function render(nombre, comp, props, prep, debeContener) {
   if (typeof comp !== "function") { errores.push(`${nombre}: el componente no existe`); return; }
   hookIdx = 0; hooks = [];
@@ -238,6 +239,182 @@ render("CajaReporte (caja, sin por_cuenta)", sandbox.CajaReporte, { modo: "mes" 
   const j = h.findIndex((x) => x === true);
   if (j >= 0) h[j] = false;
 }, "Por método de pago");
+// Gastos: "Pagado por" y "Metodo" se elegian en pantalla pero NO se guardaban
+// (la base solo escribia formapago desde formaPago y la app usa metodo/pagadoPor),
+// asi que se perdian al recargar: 55 de 68 gastos sin metodo. Ida y vuelta:
+(() => {
+  const g = { id: "9", fecha: "2026-10-16", categoria: "insumo", descripcion: "Shampoo", monto: 1250.25,
+    proveedor: "X", metodo: "tarjeta empresarial Banreservas", pagadoPor: "Petcolinas" };
+  const db = enVM('denormalizeRow("pc_gastos", ' + JSON.stringify(g) + ')');
+  if (db.formapago !== "tarjeta empresarial Banreservas") errores.push("Gastos: el metodo no llega a formapago (" + db.formapago + ")");
+  if (db.pagadopor !== "Petcolinas") errores.push("Gastos: pagadoPor no llega a pagadopor (" + db.pagadopor + ")");
+  const back = enVM('normalizeRow("pc_gastos", ' + JSON.stringify(db) + ')');
+  if (back.metodo !== g.metodo || back.pagadoPor !== g.pagadoPor) errores.push("Gastos: metodo/pagadoPor no sobreviven a recargar");
+  // Un gasto viejo sin nada no debe inventarse metodo ni pagador.
+  const viejo = enVM('normalizeRow("pc_gastos", { id: "1", fecha: "2026-01-01", monto: 5, formapago: null, pagadopor: null })');
+  if (viejo.metodo || viejo.pagadoPor) errores.push("Gastos: un gasto viejo no deberia traer metodo ni pagador inventados");
+})();
+render("Gastos", sandbox.Gastos, {
+  gastos: [{ id: "9", fecha: new Date().toISOString().slice(0, 7) + "-05", categoria: "insumo", descripcion: "Shampoo",
+    monto: 1250.25, metodo: "tarjeta empresarial Banreservas", pagadoPor: "Petcolinas" }],
+  setGastos: () => {}
+}, null, "Petcolinas");
+(() => {
+  const salida = sandbox.TarjetaPorCuenta({ rep: { por_cuenta: [
+    { cuenta_id: "tarjeta_empresa", nombre: "Tarjeta empresarial Banreservas", tipo: "CREDITO", orden: 60,
+      entradas: 0, salidas: 1250.25, neto: -1250.25, movimientos: 1 }], por_cuenta_categoria: [] },
+    C: CC, n: (x) => Number(x) || 0 });
+  const txt = JSON.stringify(salida, (k, v) => (typeof v === "function" ? undefined : v));
+  if (!txt.includes("Tarjeta empresarial")) errores.push("TarjetaPorCuenta: la tarjeta empresarial no aparece en ningun bloque");
+})();
+// M21 · Resultados de laboratorio. REGLA: el documento se usa como imagen; NUNCA
+// se lee ni se reescribe un resultado. Una version anterior hacia OCR y cambio
+// valores al probarla con una foto. Si alguien vuelve a meter lectura, esto falla.
+(() => {
+  ["parsearFilasLab", "datosDeTexto", "leerDocumentoLab", "ocrLab", "leerPDFLab", "plantillaLab"].forEach((f) => {
+    if (typeof sandbox[f] === "function") errores.push("Laboratorio: existe " + f + "(): los resultados no se leen ni se reescriben");
+  });
+  if (/tesseract/i.test(html)) errores.push("Laboratorio: aparece tesseract (OCR) en index.html: los resultados no se leen");
+  ["generarLabPDFDoc", "componerPaginaLab", "paginasDeArchivo"].forEach((f) => {
+    if (typeof sandbox[f] !== "function") errores.push("Laboratorio: falta " + f);
+  });
+})();
+render("LabResultados", sandbox.LabResultados, { clienteId: "9", cliente: { nombreMascota: "Rocky" } }, null, "Resultados de laboratorio");
+const paginaLab = { url: "data:image/jpeg;base64,AAAA", w: 1000, h: 1400 };
+render("ModalLabPreparar", sandbox.ModalLabPreparar, {
+  paginas: [paginaLab, paginaLab], archivo: { type: "application/pdf" }, ocupado: false, cliente: { nombreMascota: "Rocky" },
+  onCerrar: () => {}, onGuardar: () => {}
+}, null, "Convertir a formato PetColinas");
+// El texto de la pantalla promete que los resultados no se tocan: que ningun
+// campo de la pantalla pueda ser de resultados. Solo hay laboratorio y fecha.
+(() => {
+  hookIdx = 0; hooks = [];
+  const todos = (n, f, acc = []) => { if (!n || typeof n !== "object") return acc; if (Array.isArray(n)) { n.forEach((x) => todos(x, f, acc)); return acc; } if (f(n)) acc.push(n); [].concat(n.c || []).forEach((c) => todos(c, f, acc)); return acc; };
+  const arbol = sandbox.ModalLabPreparar({ paginas: [paginaLab], archivo: null, ocupado: false, cliente: {}, onCerrar() {}, onGuardar() {} });
+  // Solo controles de PetColinas: fecha, las dos franjas (range) y la casilla de teñir.
+  // Ningun texto libre: nada donde escribir o cambiar un resultado.
+  const campos = todos(arbol, (n) => n.t === "textarea" || n.t === "select" || (n.t === "input" && !(n.p && ["date", "range", "checkbox"].includes(n.p.type))));
+  if (campos.length) errores.push("ModalLabPreparar: hay " + campos.length + " campo(s) de texto: no debe haber donde editar resultados");
+  const txt = JSON.stringify(arbol, (k, v) => (typeof v === "function" ? undefined : v));
+  if (/Laboratorio \(para el pie/.test(txt)) errores.push("ModalLabPreparar: no debe pedirse el nombre del laboratorio");
+})();
+// Desparasitacion: el PRODUCTO manda (que cubre y cuanto dura) y de ahi salen el
+// recordatorio, la fecha y el mensaje de WhatsApp.
+//   NexGard Spectra: desparasita por dentro y por fuera, efecto 35 dias.
+//   Ferox: protege solo por fuera (pulgas y garrapatas), efecto 3 meses.
+(() => {
+  const ev = (c) => enVM(c);
+  const fallo = (m) => errores.push(m);
+  // Meses de CALENDARIO, no bloques de 30 dias.
+  [["2026-10-15", 1, "2026-11-15"], ["2026-10-15", 3, "2027-01-15"], ["2026-01-31", 1, "2026-02-28"],
+   ["2026-11-30", 3, "2027-02-28"], ["2028-01-31", 1, "2028-02-29"], ["2026-12-20", 1, "2027-01-20"]].forEach(([f, n, esp]) => {
+    const r = ev(`sumarMeses("${f}", ${n})`);
+    if (r !== esp) fallo(`sumarMeses(${f}, ${n}) dio ${r}, se esperaba ${esp}`);
+  });
+  [[30, "1 mes"], [35, "35 d\u00EDas"], [84, "3 meses"], [90, "3 meses"], [45, "45 d\u00EDas"]].forEach(([n, esp]) => {
+    const r = ev(`duracionTexto(${n})`); if (r !== esp) fallo(`duracionTexto(${n}) dio "${r}", se esperaba "${esp}" (35 dias NO es "1 mes")`);
+  });
+  // ---- el catalogo ----
+  const sp = ev('detectarAntiparasitario("NexGard Spectra 15-30kg")'), fe = ev('detectarAntiparasitario("Ferox 2.5kg")'), ng = ev('detectarAntiparasitario("NexGard")');
+  if (!sp || sp.nombre !== "NexGard Spectra" || sp.dias !== 35 || sp.cobertura !== "interna_externa" || sp.tipo !== "desparasitacion") fallo("NexGard Spectra mal clasificado: " + JSON.stringify(sp));
+  if (!fe || fe.dias !== 90 || fe.meses !== 3 || fe.cobertura !== "externa" || fe.tipo !== "antipulgas") fallo("Ferox debe durar 3 meses y cubrir solo por fuera: " + JSON.stringify(fe));
+  if (!ng || ng.nombre !== "NexGard" || ng.cobertura !== "externa") fallo("NexGard comun no debe confundirse con Spectra: " + JSON.stringify(ng));
+  if (ev('proximaFechaProducto(infoProducto("Ferox"), "2026-10-23")') !== "2027-01-23") fallo("Ferox: +3 meses desde el 23 oct debe ser el 23 ene");
+  if (ev('proximaFechaProducto(infoProducto("NexGard Spectra"), "2026-10-23")') !== "2026-11-27") fallo("Spectra: +35 dias desde el 23 oct debe ser el 27 nov");
+  const sg = ev('seguimientoAntiparasitario("Rocky", "2026-10-23", detectarAntiparasitario("Ferox"), "")');
+  if (sg.proximaFecha !== "2027-01-23" || sg.tipo !== "antipulgas") fallo("recordatorio automatico de Ferox mal armado: " + JSON.stringify(sg));
+  const sg2 = ev('seguimientoAntiparasitario("Rocky", "2026-10-23", detectarAntiparasitario("NexGard Spectra"), "")');
+  if (sg2.proximaFecha !== "2026-11-27" || sg2.tipo !== "desparasitacion") fallo("recordatorio automatico de Spectra mal armado: " + JSON.stringify(sg2));
+  // La cadencia de citas: el producto con plazo propio gana sobre el generico.
+  [["Bravecto antipulgas", 90], ["Ferox antipulgas", 90], ["NexGard Spectra", 35], ["NexGard", 30]].forEach(([txt, d]) => {
+    const r = ev(`proximaCitaSugerida(${JSON.stringify(txt)}, "2026-10-23")`);
+    if (!r || r.dias !== d) fallo(`proximaCitaSugerida("${txt}") sugiere ${r && r.dias} dias, se esperaban ${d}`);
+  });
+  // Un desparasitante SIN plazo conocido ya no se asume antipulgas de 35 dias.
+  if (ev('detectarAntiparasitario("Desparasitante generico")') !== null) fallo("'desparasit' no debe asumirse antipulgas de 35 dias");
+  if (!ev('detectarDesparasitante("Pastilla desparasitante")')) fallo("detectarDesparasitante no reconoce un desparasitante");
+  // El Dashboard avisa de los dos tipos.
+  if (!ev('tocaReforzar({ tipo: "desparasitacion", proximaFecha: "2026-10-25", completado: false, activo: true }, "2026-10-23")')) fallo("tocaReforzar no cubre desparasitacion");
+  // ---- el recordatorio manual ----
+  const a1 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "1" })');
+  const a3 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "3", tipo: "antipulgas", producto: "Ferox" })');
+  const a35 = ev('armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", opcion: "otro", diasOtro: 35, producto: "NexGard Spectra" })');
+  if (a1.proximaFecha !== "2026-11-23" || a1.frecuencia !== 30 || a1.tipo !== "desparasitacion") fallo("recordatorio de 1 mes mal calculado: " + JSON.stringify(a1));
+  if (a3.proximaFecha !== "2027-01-23" || a3.frecuencia !== 90) fallo("recordatorio de 3 meses mal calculado: " + JSON.stringify(a3));
+  if (a35.proximaFecha !== "2026-11-27" || a35.frecuencia !== 35 || !a35.notas.includes("35 d\u00EDas")) fallo("recordatorio de 35 dias mal calculado: " + JSON.stringify(a35));
+  // Sin duplicados, pero POR TIPO: dos Ferox no se acumulan; un Ferox y un Spectra si conviven.
+  const f1 = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: false, activo: true, proximaFecha: "2026-10-01" }], armarRecordatorioParasitos({ mascota: "rocky ", fecha: "2026-10-23", opcion: "3", tipo: "antipulgas" }))');
+  if (f1.lista.length !== 1 || !f1.actualizo || f1.seg.id !== 7 || f1.seg.proximaFecha !== "2027-01-23") fallo("fusionarRecordatorio duplico o no actualizo: " + JSON.stringify(f1));
+  const f2 = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: false, activo: true, proximaFecha: "2026-12-01" }], armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", tipo: "desparasitacion" }))');
+  if (f2.lista.length !== 2 || f2.actualizo) fallo("un Ferox (solo por fuera) y un Spectra (por dentro) NO deben pisarse: " + JSON.stringify(f2));
+  const f3 = ev('fusionarRecordatorio([{ id: 7, mascota: "Rocky", tipo: "antipulgas", completado: true }], armarRecordatorioParasitos({ mascota: "Rocky", fecha: "2026-10-23", tipo: "antipulgas" }))');
+  if (f3.lista.length !== 2) fallo("un recordatorio YA completado no debe fusionarse con el nuevo");
+  // ---- el mensaje: depende del producto ----
+  const m = (o, h) => ev(`mensajeRecordatorioParasitos(${JSON.stringify(o)}, "${h}")`);
+  const SPEC = { propietario: "Ana Diaz", mascota: "Rocky", producto: "NexGard Spectra", tipo: "desparasitacion", frecuencia: 35, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-27" };
+  const FER = { propietario: "Ana Diaz", mascota: "Rocky", producto: "Ferox", tipo: "antipulgas", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" };
+  const ms = m(SPEC, "2026-11-24"), mf = m(FER, "2027-01-20");
+  ["Hola Ana!", "Rocky", "NexGard Spectra", "23 de octubre", "desparasita por dentro y por fuera", "efecto de 35 d\u00EDas", "es el 27 de noviembre (en 3 d\u00EDas)", "PetColinas"].forEach((x) => { if (!ms.includes(x)) fallo('mensaje de Spectra: falta "' + x + '" en: ' + ms); });
+  ["Hola Ana!", "Ferox", "pulgas y garrapatas", "dura 3 meses", "protege por fuera", "desparasitaci\u00F3n interna es aparte", "es el 23 de enero de 2027"].forEach((x) => { if (!mf.includes(x)) fallo('mensaje de Ferox: falta "' + x + '" en: ' + mf); });
+  if (/por dentro y por fuera/.test(mf)) fallo("Ferox solo protege por fuera: su mensaje NO debe decir que desparasita por dentro: " + mf);
+  if (/pulgas|garrapatas/.test(ms)) fallo("Spectra desparasita por dentro y por fuera: su mensaje no debe presentarse como solo antipulgas: " + ms);
+  if (!m(SPEC, "2026-11-27").includes("es hoy") || !m(SPEC, "2026-11-26").includes("es ma\u00F1ana")) fallo("el mensaje debe decir 'es hoy' / 'es ma\u00F1ana'");
+  if (!m(SPEC, "2026-11-28").includes("se venci\u00F3 hace 1 d\u00EDa") || !m(SPEC, "2026-12-04").includes("hace 7 d\u00EDas")) fallo("vencido: singular y plural");
+  const gen = m({ propietario: "Ana", mascota: "Rocky", producto: "Desparasitante", tipo: "desparasitacion", frecuencia: 30, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-23" }, "2026-11-20");
+  if (/con Desparasitante/.test(gen) || !gen.includes("se desparasit\u00F3 el 23 de octubre (el tratamiento dura 1 mes)")) fallo("sin producto el mensaje no debe decir 'con Desparasitante': " + gen);
+  const sinDueno = m({ propietario: "", mascota: "Luna", producto: "Frontline", tipo: "antipulgas", frecuencia: 35, ultimaFecha: "2026-10-23", proximaFecha: "2026-11-27" }, "2026-11-25");
+  if (!sinDueno.startsWith("Hola! ") || !sinDueno.includes("35 d\u00EDas")) fallo("mensaje sin due\u00F1o mal armado: " + sinDueno);
+  // El WhatsApp de Seguimientos usa el mensaje nuevo, y los otros tipos siguen igual.
+  const wa = decodeURIComponent(ev('whatsappMsg({ tipo: "antipulgas", mascota: "Rocky", propietario: "Ana Diaz", notas: "Ferox \u2014 dura 3 meses", frecuencia: 90, ultimaFecha: "2026-10-23", proximaFecha: "2027-01-23" })'));
+  if (!wa.includes("Hola Ana!") || !wa.includes("Ferox") || !wa.includes("protege por fuera")) fallo("whatsappMsg no usa el mensaje del producto: " + wa);
+  if (!decodeURIComponent(ev('whatsappMsg({ tipo: "bano_regular", mascota: "Rocky", frecuencia: 21 })')).includes("ba\u00F1o")) fallo("whatsappMsg: los otros tipos deben seguir igual");
+})();
+// Campa\u00F1a de rese\u00F1as (M22): uno por due\u00F1o, nombres reales, ultima visita solo
+// cuando la venta es inequivoca, tres redacciones y siempre el enlace directo.
+(() => {
+  const fallo = (m) => errores.push(m);
+  const cli = [
+    { id: 1, nombreMascota: "toby", nombrePropietario: "mar\u00EDa p\u00E9rez", telefono: "(809) 555-0101" },
+    { id: 2, nombreMascota: "Luna", nombrePropietario: "Mar\u00EDa P\u00E9rez", telefono: "1-809-555-0101" },
+    { id: 3, nombreMascota: "Coco", nombrePropietario: "Jos\u00E9 G\u00F3mez", telefono: "8095550202" },
+    { id: 4, nombreMascota: "Coco", nombrePropietario: "Laura Ruiz", telefono: "8095550303" },
+    { id: 5, nombreMascota: "Max", nombrePropietario: "Sin Tel", telefono: "" }];
+  const ven = [{ fecha: "2026-09-12", cliente: "Toby Perez" }, { fecha: "2026-03-01", cliente: "Toby" }, { fecha: "2026-10-01", cliente: "Coco Gomez" }];
+  const g = enVM("gruposResenas")(cli, ven);
+  const toby = g.find((x) => x.tel === "8095550101"), coco = g.find((x) => x.tel === "8095550202");
+  if (g.length !== 3) fallo("rese\u00F1as: debe haber un grupo por tel\u00E9fono y omitir los sin tel\u00E9fono: " + JSON.stringify(g));
+  if (!toby || toby.mascotas.length !== 2 || toby.ultimaVisita !== "2026-09-12") fallo("rese\u00F1as: Toby y Luna son del mismo due\u00F1o y su \u00FAltima visita es la m\u00E1s reciente: " + JSON.stringify(toby));
+  if (!coco || coco.ultimaVisita) fallo("rese\u00F1as: con dos \"Coco\" en el CRM no se puede saber de qui\u00E9n es la venta; no debe inventar visita: " + JSON.stringify(coco));
+  const msg = (o) => enVM("mensajeResenaGoogle")(Object.assign({ duenio: "mar\u00EDa p\u00E9rez", mascotas: ["toby", "Luna"], ultimaVisita: "2026-09-12", firma: "Victor" }, o), "2026-10-24");
+  const url = enVM("GOOGLE_RESENA_URL");
+  [0, 1, 2].forEach((v) => {
+    const m = msg({ variante: v });
+    ["Mar\u00EDa", "Toby y Luna", "Victor", "septiembre", url].forEach((x) => { if (!m.includes(x)) fallo("rese\u00F1as variante " + v + ': falta "' + x + '" en: ' + m); });
+    if (/Mar\u00EDa P\u00E9rez|undefined|null/.test(m)) fallo("rese\u00F1as variante " + v + ": nombre completo o valores vac\u00EDos en: " + m);
+  });
+  if (msg({ variante: 0 }) === msg({ variante: 1 }) || msg({ variante: 1 }) === msg({ variante: 2 })) fallo("rese\u00F1as: las tres redacciones deben ser distintas");
+  const sinVisita = msg({ ultimaVisita: "", variante: 0 });
+  if (/visit/.test(sinVisita)) fallo("rese\u00F1as: sin venta segura no se menciona la visita: " + sinVisita);
+  const anioPasado = msg({ ultimaVisita: "2025-12-03", variante: 2 });
+  if (!anioPasado.includes("diciembre de 2025")) fallo("rese\u00F1as: una visita de otro a\u00F1o debe decir el a\u00F1o: " + anioPasado);
+  const sinDuenio = msg({ duenio: "", mascotas: ["Rocky"], variante: 2 });
+  if (!sinDuenio.includes("familia de Rocky")) fallo("rese\u00F1as: sin nombre del due\u00F1o se saluda a la familia de la mascota: " + sinDuenio);
+})();
+render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDefecto: "Victor" }, null, "Rese\u00F1as en Google");
+// "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la
+// ventana de escribirla (lo usan el CRM del admin y el portal de la doctora).
+(() => {
+  const fallo = (m) => errores.push(m);
+  const url = enVM("GOOGLE_RESENA_URL");
+  if (!/^https:\/\/search\.google\.com\/local\/writereview\?placeid=ChIJ[\w-]+$/.test(url)) fallo("GOOGLE_RESENA_URL debe abrir directo la rese\u00F1a de Google: " + url);
+  const msg = enVM('msgMascotaLista({ nombrePropietario: "Ana Diaz", nombreMascota: "Rocky" })');
+  if (!msg.includes(url) || !msg.includes("Rocky") || !msg.includes("RD$400")) fallo("el aviso de mascota lista debe conservar su texto y llevar el enlace de la rese\u00F1a: " + msg);
+})();
+render("ProgramarDesparasitacion", sandbox.ProgramarDesparasitacion, {
+  inicial: { mascota: "Rocky", producto: "Bravecto", opcion: "3", fecha: "2026-10-23", tipo: "antipulgas" },
+  clientes: [{ id: 1, nombreMascota: "Rocky", nombrePropietario: "Ana Diaz", telefono: "8095551234" }],
+  seguimientos: [], setSeguimientos: () => {}, onCerrar: () => {}
+}, null, "Programar pr\u00F3xima desparasitaci\u00F3n");
 render("ModalArqueo", sandbox.ModalArqueo, {
   fecha: "2026-10-07", ocupado: false, onCerrar: () => {}, onCerrarCaja: () => {},
   resumen: { saldo_inicial: 1000.25, entradas_efectivo: 799.50, salidas_efectivo: 0, teorico_efectivo: 1799.75 }
@@ -401,7 +578,6 @@ render("ModalHistoriaDesdeFactura", sandbox.ModalHistoriaDesdeFactura, {
 // Y que acepte las dos formas de escribirlo: "30" y "0.30" son el mismo 30%.
 // PC_CONFIG se declara con `let`, y eso en un contexto de vm NO queda como
 // propiedad del objeto global: hay que tocarlo desde dentro.
-const enVM = (codigo) => vm.runInContext(codigo, sandbox);
 [["35", 0.35], ["0.35", 0.35], ["", 0.30]].forEach(([valor, esperado]) => {
   const r = enVM(`PC_CONFIG.comision_vet = ${JSON.stringify(valor)}; comisionPct("vet");`);
   if (r !== esperado) errores.push(`comisionPct con "${valor}" devolvió ${r}, se esperaba ${esperado}`);
@@ -414,4 +590,4 @@ if (errores.length) {
   console.error("\nNormalmente es una función que se llama pero ya no existe.");
   process.exit(1);
 }
-console.log(`✓ Vistas principales renderizan sin errores (38 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+console.log(`✓ Vistas principales renderizan sin errores (42 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);

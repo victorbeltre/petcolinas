@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-12 03:48Z";
+const PC_BUILD = "2026-10-25 18:40Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1352,6 +1352,10 @@ function normalizeRow(table, r) {
     descripcion: r.descripcion,
     monto: r.monto,
     formaPago: r.formapago,
+    // La app lee `metodo` y `pagadoPor`; antes solo se guardaba formapago desde
+    // formaPago, asi que lo que se elegia en el formulario se perdia al recargar.
+    metodo: r.formapago || "",
+    pagadoPor: r.pagadopor || "",
     proveedor: r.proveedor,
     notas: r.notas
   };
@@ -1552,7 +1556,8 @@ function denormalizeRow(table, r) {
     categoria: r.categoria,
     descripcion: r.descripcion,
     monto: r.monto,
-    formapago: r.formaPago,
+    formapago: r.formaPago || r.metodo || "",
+    pagadopor: r.pagadoPor || "",
     proveedor: r.proveedor,
     notas: r.notas
   };
@@ -1850,6 +1855,12 @@ function tituloFacturaPDF(numero, mascota, duenio) {
 // y uno de los dos se quedaria viejo.
 function nombreDuenio(c) { return (c && (c.nombrePropietario || c.nombrepropietario)) || "estimado cliente"; }
 function nombreMascota(c) { return (c && (c.nombreMascota || c.nombremascota)) || ""; }
+// Enlace que abre DIRECTO la ventana de "Escribir una reseña" de la ficha de
+// PetColinas en Google (no la ficha, donde el cliente tendria que buscar el
+// boton). Va al final del aviso de "mascota lista": es el momento en que el
+// cliente acaba de recibir el servicio y esta mas dispuesto a dejarla.
+const GOOGLE_RESENA_URL = "https://search.google.com/local/writereview?placeid=ChIJ2-vO-zFhpY4RKsqBAr6TjEU";
+const lineaResenaGoogle = () => "\n\n⭐ *¿Cómo le atendimos?* Su opinión nos ayuda muchísimo. Déjenos una reseña en Google, toma un minuto:\n" + GOOGLE_RESENA_URL;
 function msgMascotaLista(c) {
   return "🐾 *¡Su mascota está lista!* 🐾\n\n" +
     "Hola " + nombreDuenio(c) + ", le informamos que *" + (nombreMascota(c) || "su mascota") + "* ya está lista para recoger.\n\n" +
@@ -1857,7 +1868,199 @@ function msgMascotaLista(c) {
     "📍 *Dirección:* Plaza Las Colinas, Santo Domingo Oeste\n" +
     "📞 *Teléfono:* 809-752-6806\n\n" +
     "⚠️ *Nota Importante:* Una vez pasadas las dos primeras horas de haber culminado el servicio y enviado este mensaje, se procederá a cobrar un monto de *RD$400 adicionales por cada hora transcurrida* por servicios de Day Care.\n\n" +
-    "¡Gracias por confiar en PetColinas! 💖";
+    "¡Gracias por confiar en PetColinas! 💖" + lineaResenaGoogle();
+}
+// ─── CAMPAÑA DE RESEÑAS EN GOOGLE (M22, oct 2026) ───────────────────────────
+// Pedirle la reseña a TODOS los clientes, uno por uno, con un mensaje que se
+// sienta escrito para esa persona: nombre del dueño, nombre de cada mascota, el
+// mes de su ultima visita y la firma de quien escribe. Tres redacciones distintas
+// (se elige una fija por telefono) para que no salgan cientos de mensajes
+// identicos: se leen menos humanos y WhatsApp vigila los envios repetidos.
+// Uno por DUEÑO (agrupado por telefono): el dueño de Toby y Luna recibe uno solo.
+const capitalizar = (t) => String(t || "").toLowerCase().replace(/(^|[\s-])([a-z\u00e0-\u00ff])/g, (m, a, b) => a + b.toUpperCase()).trim();
+function listaNombres(ns) {
+  const l = (ns || []).filter(Boolean);
+  if (l.length <= 1) return l[0] || "";
+  return l.slice(0, -1).join(", ") + " y " + l[l.length - 1];
+}
+function mensajeResenaGoogle({ duenio, mascotas = [], ultimaVisita = "", firma = "", variante = 0 }, hoyStr) {
+  const nombre = capitalizar(String(duenio || "").split(/\s+/)[0]);
+  const pets = listaNombres((mascotas || []).map(capitalizar));
+  const varias = (mascotas || []).filter(Boolean).length > 1;
+  const quien = String(firma || "").trim() || "el equipo";
+  const saludo = nombre ? nombre : (pets ? "familia de " + pets : "");
+  let visita = "";
+  const [y, m] = String(ultimaVisita || "").slice(0, 7).split("-").map(Number);
+  if (y && m) {
+    const anioHoy = Number(String(hoyStr || hoy()).slice(0, 4));
+    visita = (varias ? ", que nos visitaron" : ", que nos visit\u00F3") + " por \u00FAltima vez en " + MESES_ES[m - 1] + (y !== anioHoy ? " de " + y : "");
+  }
+  const mas = pets || "su mascota";
+  const v = ((Number(variante) % 3) + 3) % 3;
+  if (v === 0) {
+    return "\u00A1Hola" + (saludo ? " " + saludo : "") + "! \u{1F60A} Le saluda " + quien + ", de PetColinas.\n\n" +
+      "Le escribo personalmente porque para nosotros ha sido un gusto cuidar de " + mas + visita + ". " +
+      "Somos un equipo peque\u00F1o y su opini\u00F3n nos ayuda much\u00EDsimo a que m\u00E1s familias nos conozcan.\n\n" +
+      "\u00BFNos regalar\u00EDa un minutito para dejarnos una rese\u00F1a en Google? \u{1F64F}\n" + GOOGLE_RESENA_URL + "\n\n" +
+      "De coraz\u00F3n, gracias por confiar en nosotros. \u00A1Un abrazo para " + mas + "! \u{1F43E}";
+  }
+  if (v === 1) {
+    return "Buenas" + (saludo ? ", " + saludo : "") + " \u{1F43E} Soy " + quien + ", de PetColinas.\n\n" +
+      "Quer\u00EDa agradecerle por confiarnos a " + mas + visita + "; cuidar de " + (varias ? "ellos" : mas) + " es de lo que m\u00E1s disfrutamos.\n\n" +
+      "Le tengo un favorcito: \u00BFpodr\u00EDa contar su experiencia en Google? Solo toma un minuto y para nosotros vale much\u00EDsimo \u2B50\n" + GOOGLE_RESENA_URL + "\n\n" +
+      "\u00A1Mil gracias! Aqu\u00ED estamos para lo que " + mas + (varias ? " necesiten" : " necesite") + " \u{1F49A}";
+  }
+  return "\u00A1Hola" + (saludo ? ", " + saludo : "") + "! \u{1F49B} Le escribe " + quien + ", de PetColinas.\n\n" +
+    "Gracias por confiarnos a " + mas + visita + ". Si su experiencia con nosotros fue buena, nos har\u00EDa muy felices que la compartiera en Google: as\u00ED otras familias con mascotas pueden encontrarnos.\n\n" +
+    "Le dejo el enlace directo \u2B50\n" + GOOGLE_RESENA_URL + "\n\n" +
+    "Y si hubo algo que podamos mejorar, resp\u00F3ndame por aqu\u00ED, que lo leo con mucho gusto. \u{1F43E}";
+}
+// Agrupa los clientes del CRM por telefono (10 digitos). La ultima visita sale de
+// las ventas, pero SOLO por nombres de mascota que no se repiten en el CRM: con
+// dos "Coco" no se sabe de cual es la venta, y decirle a un cliente que vino en
+// un mes en que no vino arruina justo lo que se busca, que se sienta personal.
+function gruposResenas(clientes, ventas) {
+  const dig = (t) => String(t || "").replace(/\D/g, "").slice(-10);
+  const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const veces = {};
+  (clientes || []).forEach((c) => { const n = norm(c.nombreMascota); if (n) veces[n] = (veces[n] || 0) + 1; });
+  const ultima = {};
+  (ventas || []).forEach((v) => {
+    const f = String(v.fecha || "").slice(0, 10);
+    const cli = norm(v.cliente);
+    if (!f || !cli) return;
+    Object.keys(veces).forEach((n) => {
+      if (veces[n] !== 1 || n.length < 3) return;
+      if (cli === n || cli.startsWith(n + " ")) { if (!ultima[n] || ultima[n] < f) ultima[n] = f; }
+    });
+  });
+  const grupos = new Map();
+  (clientes || []).forEach((c) => {
+    const tel = dig(c.telefono);
+    if (tel.length !== 10) return;
+    if (!grupos.has(tel)) grupos.set(tel, { tel, duenios: {}, mascotas: [], ultimaVisita: "" });
+    const g = grupos.get(tel);
+    const d = String(c.nombrePropietario || "").trim();
+    if (d) g.duenios[d] = (g.duenios[d] || 0) + 1;
+    const m = String(c.nombreMascota || "").trim();
+    if (m && !g.mascotas.some((x) => norm(x) === norm(m))) g.mascotas.push(m);
+    const u = ultima[norm(m)];
+    if (u && u > g.ultimaVisita) g.ultimaVisita = u;
+  });
+  return [...grupos.values()].map((g) => ({
+    tel: g.tel, mascotas: g.mascotas, ultimaVisita: g.ultimaVisita,
+    duenio: Object.entries(g.duenios).sort((a, b) => b[1] - a[1])[0]?.[0] || "",
+    variante: Number(g.tel.slice(-3)) % 3
+  }));
+}
+function CampanaResenas({ clientes = [], ventas = [], firmaPorDefecto = "" }) {
+  const E = React.createElement;
+  const [registro, setRegistro] = React.useState({});
+  const [cargando, setCargando] = React.useState(true);
+  const [filtro, setFiltro] = React.useState("pendientes");
+  const [buscar, setBuscar] = React.useState("");
+  const [mostrar, setMostrar] = React.useState(40);
+  const [firma, setFirma] = React.useState(() => { try { return localStorage.getItem("pc_resenas_firma") || firmaPorDefecto; } catch (e) { return firmaPorDefecto; } });
+  React.useEffect(() => { try { localStorage.setItem("pc_resenas_firma", firma); } catch (e) {} }, [firma]);
+
+  const cargar = React.useCallback(async () => {
+    const r = await supaFetch("pc_resenas", "GET", null, "?select=*&limit=5000");
+    if (Array.isArray(r)) { const m = {}; r.forEach((x) => { m[x.telefono] = x; }); setRegistro(m); }
+    setCargando(false);
+  }, []);
+  React.useEffect(() => { cargar(); }, [cargar]);
+
+  const grupos = React.useMemo(() => gruposResenas(clientes, ventas), [clientes, ventas]);
+  const sinTel = React.useMemo(() => (clientes || []).filter((c) => String(c.telefono || "").replace(/\D/g, "").length < 10).length, [clientes]);
+  const estadoDe = (g) => (registro[g.tel] && registro[g.tel].estado) || "pendiente";
+  // Primero los que vinieron hace poco: se acuerdan mejor y es mas probable que respondan.
+  const ordenados = React.useMemo(() => [...grupos].sort((a, b) => (b.ultimaVisita || "").localeCompare(a.ultimaVisita || "")), [grupos]);
+  const cuenta = (e) => grupos.filter((g) => estadoDe(g) === e).length;
+  const hoyStr = hoy();
+  const enviadosHoy = Object.values(registro).filter((r) => r.ultimo_envio && fechaLocal(new Date(r.ultimo_envio)) === hoyStr).length;
+
+  async function guardar(g, cambios) {
+    const prev = registro[g.tel] || {};
+    const fila = { telefono: g.tel, estado: prev.estado || "pendiente", envios: prev.envios || 0, ...cambios, actualizado: new Date().toISOString() };
+    setRegistro((r) => ({ ...r, [g.tel]: { ...prev, ...fila } }));
+    const res = await supaFetch("pc_resenas", "POST", [fila]);
+    if (res && res.error) { avisar("No se pudo guardar en la nube: " + JSON.stringify(res.error), "error"); cargar(); }
+  }
+  function enviar(g) {
+    const msg = mensajeResenaGoogle({ duenio: g.duenio, mascotas: g.mascotas, ultimaVisita: g.ultimaVisita, firma, variante: g.variante });
+    abrirWA(g.tel, msg, () => {
+      const prev = registro[g.tel] || {};
+      guardar(g, { estado: prev.estado === "reseno" ? "reseno" : "enviado", envios: (prev.envios || 0) + 1, ultimo_envio: new Date().toISOString(), enviado_por: firma || null });
+    });
+  }
+  const siguiente = ordenados.find((g) => estadoDe(g) === "pendiente");
+
+  const q = buscar.trim().toLowerCase();
+  const visibles = ordenados.filter((g) => {
+    const e = estadoDe(g);
+    if (filtro === "pendientes" && e !== "pendiente") return false;
+    if (filtro === "enviados" && e !== "enviado") return false;
+    if (filtro === "resenaron" && e !== "reseno") return false;
+    if (filtro === "no_contactar" && e !== "no_contactar") return false;
+    if (q && !(g.duenio.toLowerCase().includes(q) || g.mascotas.join(" ").toLowerCase().includes(q) || g.tel.includes(q.replace(/\D/g, "") || "~"))) return false;
+    return true;
+  });
+  const fmtFecha = (f) => { const [y, m] = String(f || "").split("-").map(Number); return y && m ? MESES_ES[m - 1].slice(0, 3) + " " + y : "\u2014"; };
+  const chip = (id, txt, n) => E("button", { key: id, onClick: () => { setFiltro(id); setMostrar(40); }, style: {
+    border: "1.5px solid " + (filtro === id ? "#1a6b3a" : "#e0e4e8"), background: filtro === id ? "#e8f5ee" : "#fff",
+    color: filtro === id ? "#1a6b3a" : "#334155", borderRadius: 20, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" } },
+    txt + (n != null ? " (" + n + ")" : ""));
+  const btn = (fondo, color, borde) => ({ background: fondo, color, border: "1.5px solid " + (borde || fondo), borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" });
+  const total = grupos.length, hechos = total - cuenta("pendiente");
+
+  return E("div", null,
+    E("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26, marginBottom: 4 } }, "\u2B50 Rese\xF1as en Google"),
+    E("p", { style: { color: "#5a6472", fontSize: 13, marginBottom: 16, lineHeight: 1.5 } },
+      "Un mensaje personal para cada cliente pidi\xE9ndole su rese\xF1a, con el enlace que abre directo la ventana de escribirla. Uno por due\xF1o (si tiene varias mascotas, las nombra a todas). Lo que se env\xEDa aqu\xED lo ve todo el equipo: nadie le escribe dos veces a la misma persona."),
+    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 16 } },
+      [["Clientes con tel\xE9fono", total, "#1a4fa0"], ["Ya contactados", hechos + " de " + total, "#1a6b3a"], ["Ya dejaron rese\xF1a", cuenta("reseno"), "#b8860b"], ["Enviados hoy", enviadosHoy, "#7c3aed"]].map(([k, v, c]) =>
+        E("div", { key: k, style: { background: "#fff", borderRadius: 12, padding: "12px 14px", borderTop: "4px solid " + c, boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
+          E("div", { style: { fontSize: 11, color: "#5a6472", textTransform: "uppercase", fontWeight: 700 } }, k),
+          E("div", { style: { fontSize: 22, fontWeight: 800, color: c, marginTop: 4 } }, v)))),
+    E("div", { style: { background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
+      E("div", { style: { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" } },
+        E("div", null,
+          E("div", { style: { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", marginBottom: 4 } }, "Firma del mensaje"),
+          E("input", { value: firma, onChange: (e) => setFirma(e.target.value), placeholder: "Ej: Victor", style: { padding: "8px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13.5, width: 200 } })),
+        E("button", { disabled: !siguiente || cargando, onClick: () => siguiente && enviar(siguiente), style: {
+          background: siguiente ? "#25D366" : "#c9ced4", color: "#fff", border: "none", borderRadius: 10, padding: "12px 20px",
+          fontSize: 14.5, fontWeight: 800, cursor: siguiente ? "pointer" : "default" } },
+          cargando ? "Cargando\u2026" : siguiente ? "\u{1F4AC} Siguiente cliente: " + (capitalizar(siguiente.duenio.split(" ")[0]) || listaNombres(siguiente.mascotas.map(capitalizar))) : "\u2705 No quedan pendientes")),
+      E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 10, lineHeight: 1.5 } },
+        "Cada mensaje se abre para revisarlo antes de mandarlo. Consejo: WhatsApp vigila los env\xEDos masivos a n\xFAmeros que no tienen guardado el del negocio; mejor unos 20 o 30 al d\xEDa, con calma, que cientos de golpe."),
+      enviadosHoy >= 30 && E("div", { style: { fontSize: 12.5, color: "#92400e", background: "#fff7e6", borderRadius: 8, padding: "8px 11px", marginTop: 8, fontWeight: 600 } },
+        "Hoy ya van " + enviadosHoy + ". Si siguen, h\xE1ganlo m\xE1s despacio o dejen el resto para ma\xF1ana.")),
+    E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
+      chip("pendientes", "Pendientes", cuenta("pendiente")), chip("enviados", "Enviados", cuenta("enviado")),
+      chip("resenaron", "Ya rese\xF1aron", cuenta("reseno")), chip("no_contactar", "No contactar", cuenta("no_contactar")), chip("todos", "Todos", total),
+      E("input", { value: buscar, onChange: (e) => { setBuscar(e.target.value); setMostrar(40); }, placeholder: "Buscar due\xF1o, mascota o tel\xE9fono", style: { padding: "7px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, minWidth: 220, flex: 1 } })),
+    sinTel > 0 && E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 10 } }, sinTel + " ficha(s) del CRM no tienen tel\xE9fono de 10 d\xEDgitos y no aparecen aqu\xED."),
+    E("div", { style: { background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
+      visibles.length === 0
+        ? E("div", { style: { padding: 24, textAlign: "center", color: "#5a6472", fontSize: 13 } }, "No hay clientes en esta lista.")
+        : visibles.slice(0, mostrar).map((g) => {
+            const r = registro[g.tel] || {}, e = estadoDe(g);
+            return E("div", { key: g.tel, style: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f0f2f4", flexWrap: "wrap" } },
+              E("div", { style: { flex: "1 1 220px", minWidth: 0 } },
+                E("div", { style: { fontWeight: 700, fontSize: 13.5 } }, capitalizar(g.duenio) || "(sin nombre del due\xF1o)"),
+                E("div", { style: { fontSize: 12, color: "#5a6472" } }, "\u{1F43E} " + (listaNombres(g.mascotas.map(capitalizar)) || "\u2014") + " \xB7 \u00FAltima visita: " + fmtFecha(g.ultimaVisita) + " \xB7 " + g.tel),
+                r.ultimo_envio && E("div", { style: { fontSize: 11, color: "#1a6b3a", marginTop: 2 } }, "Enviado " + fechaLocal(new Date(r.ultimo_envio)) + (r.enviado_por ? " por " + r.enviado_por : "") + (r.envios > 1 ? " \xB7 " + r.envios + " veces" : ""))),
+              e === "reseno"
+                ? E("span", { style: { fontSize: 12, fontWeight: 800, color: "#b8860b" } }, "\u2B50 Ya rese\xF1\xF3")
+                : e === "no_contactar" ? E("span", { style: { fontSize: 12, fontWeight: 700, color: "#9aa5ad" } }, "\u{1F6AB} No contactar") : null,
+              E("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+                e !== "no_contactar" && e !== "reseno" && E("button", { onClick: () => enviar(g), style: btn("#25D366", "#fff") }, e === "enviado" ? "\u{1F4AC} Reenviar" : "\u{1F4AC} Enviar"),
+                e !== "reseno" && E("button", { onClick: () => guardar(g, { estado: "reseno" }), title: "Ya dej\xF3 su rese\xF1a: no volver a escribirle", style: btn("#fff", "#b8860b", "#e8d38a") }, "\u2B50 Ya rese\xF1\xF3"),
+                e !== "no_contactar" ? E("button", { onClick: () => guardar(g, { estado: "no_contactar" }), title: "No escribirle (pidi\xF3 no recibir mensajes, n\xFAmero equivocado...)", style: btn("#fff", "#5a6472", "#e0e4e8") }, "\u{1F6AB}")
+                  : E("button", { onClick: () => guardar(g, { estado: r.ultimo_envio ? "enviado" : "pendiente" }), style: btn("#fff", "#334155", "#e0e4e8") }, "Volver a la lista")));
+          }),
+      visibles.length > mostrar && E("button", { onClick: () => setMostrar((n) => n + 60), style: { width: "100%", padding: 12, border: "none", background: "#f8f9fa", cursor: "pointer", fontWeight: 700, color: "#1a4fa0" } },
+        "Ver m\xE1s (" + (visibles.length - mostrar) + " restantes)")));
 }
 function msgBienvenida(c, lineas, total) {
   const ls = Array.isArray(lineas) ? lineas : [];
@@ -2152,6 +2355,7 @@ const TABS = [
   { id: "seguimientos", icon: "\u{1F514}", label: "Seguimientos", grupo: "Clientes" },
   { id: "planes", icon: "\u{1F4B3}", label: "Planes", grupo: "Clientes" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones", grupo: "Clientes" },
+  { id: "resenas", icon: "\u2B50", label: "Rese\xF1as Google", grupo: "Clientes" },
 
   { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp", grupo: "Comunicaci\xF3n" },
   { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa", grupo: "Comunicaci\xF3n" },
@@ -2790,9 +2994,9 @@ function AvisoAntiparasitarios({ seguimientos = [], clientes = [], ventas = [], 
       const prev = derivadosDeVentas.get(m);
       if (prev && prev.desde >= f) return;
       derivadosDeVentas.set(m, {
-        id: "venta_" + v.id, mascota: v.cliente, tipo: "antipulgas", desde: f,
-        proximaFecha: sumarDias(f, prod.dias), completado: false, activo: true,
-        notas: prod.nombre + " \u2014 toca reforzar la protecci\xF3n (" + prod.dias + " d\xEDas)",
+        id: "venta_" + v.id, mascota: v.cliente, tipo: prod.tipo, desde: f, ultimaFecha: f, frecuencia: prod.dias,
+        proximaFecha: prod.meses ? sumarMeses(f, prod.meses) : sumarDias(f, prod.dias), completado: false, activo: true,
+        notas: prod.nombre + " \u2014 dura " + duracionTexto(prod.dias),
         telefono: ""
       });
     });
@@ -2830,24 +3034,17 @@ function AvisoAntiparasitarios({ seguimientos = [], clientes = [], ventas = [], 
 
   if (cerrado || pendientes.length === 0) return null;
 
-  const mensaje = (x) => {
-    const nombre = String(x.dueno || "").split(" ")[0] || "buenas";
-    const venc = x.dias < 0 ? "se le venció hace " + Math.abs(x.dias) + " día(s)"
-      : x.dias === 0 ? "se le vence hoy"
-      : "se le vence en " + x.dias + " día(s)";
-    return "Hola " + nombre + "! \u{1F43E} Le escribimos de PetColinas. A " +
-      (x.s.mascota || "su mascota") + " " + venc +
-      " la protección contra pulgas y garrapatas (" + x.producto + "). " +
-      "Le recomendamos reforzarla para que no quede desprotegido/a. " +
-      "\xBFLe preparamos la dosis? \xA1Gracias!";
-  };
+  const mensaje = (x) => mensajeRecordatorioParasitos({
+    propietario: x.dueno, mascota: x.s.mascota, tipo: x.s.tipo, producto: x.producto === "su antiparasitario" ? "" : x.producto,
+    frecuencia: x.s.frecuencia, ultimaFecha: x.s.ultimaFecha || x.s.desde, proximaFecha: x.prox
+  });
 
   return E("div", { style: { background: "#fef2f2", border: "2px solid #c0392b", borderRadius: 12,
     padding: "14px 16px", marginBottom: 16 } },
     E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
       E("div", { style: { fontWeight: 800, fontSize: 14, color: "#c0392b" } },
         "\u{1F41B} " + pendientes.length + " mascota" + (pendientes.length === 1 ? "" : "s") +
-        " necesita" + (pendientes.length === 1 ? "" : "n") + " reforzar la protecci\xF3n antipulgas"),
+        " necesita" + (pendientes.length === 1 ? "" : "n") + " su pr\xF3xima desparasitaci\xF3n o antipulgas"),
       E("button", { onClick: () => setCerrado(true),
         style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#c0392b" } }, "✕")),
 
@@ -6411,6 +6608,7 @@ function WAPreviewModal() {
     const telFinal = tel.length >= 11 ? tel : (tel ? "1" + tel : "");
     if (!telFinal) { avisar("Sin teléfono registrado."); return; }
     window.open("https://wa.me/" + telFinal + "?text=" + encodeURIComponent(texto), "_blank");
+    if (typeof modal.alEnviar === "function") { try { modal.alEnviar(texto); } catch (e) { console.warn("[WA alEnviar]", e); } }
     setModal(null);
   };
   return /* @__PURE__ */ React.createElement("div", { style: { position:"fixed", inset:0, background:"rgba(0,0,0,0.52)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }, onClick: () => setModal(null) },
@@ -6430,7 +6628,10 @@ function WAPreviewModal() {
     )
   );
 }
-function abrirWA(tel, msg) { window.dispatchEvent(new CustomEvent("pc-wa", { detail: { tel, msg } })); }
+// `alEnviar` (opcional) se llama solo cuando se pulsa Enviar y se abre el chat:
+// la campaña de reseñas marca al cliente como contactado en ese momento, no al
+// abrir la vista previa (que se puede cancelar).
+function abrirWA(tel, msg, alEnviar) { window.dispatchEvent(new CustomEvent("pc-wa", { detail: { tel, msg, alEnviar } })); }
 // Sincroniza la Agenda con Google Calendar en ambos sentidos. Se dispara sin
 // esperar respuesta al guardar/cancelar/borrar una cita; se agrupan las llamadas
 // seguidas para no lanzar una por cada tecleo.
@@ -7160,6 +7361,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "planes" && React.createElement(Planes, { paquetes, setPaquetes, clientes: todosClientes, ventas, setVentas }),
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
+    tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, marcarNotifLeidas, desmarcarNotif,
       setTab, setCrmClienteInicial
@@ -7254,7 +7456,12 @@ const AREAS_SEGUIMIENTO = [
 const CADENCIA_SERVICIO = [
   { re: /ba[ñn]o.*medicad|medicad.*ba[ñn]o/i,                 dias: 14,  tipo: "grooming", label: "Ba\xF1o medicado" },
   { re: /bravecto/i,                                                     dias: 90,  tipo: "consulta", label: "Refuerzo de Bravecto" },
-  { re: /nexgard|frontline|simparica|pipeta|spot ?on|antipulga|garrapat|fiprostar|protek/i,
+  { re: /ferox/i,                                                        dias: 90,  tipo: "consulta", label: "Refuerzo de Ferox" },
+  { re: /nex ?gard ?spectra/i,                                           dias: 35,  tipo: "consulta", label: "Refuerzo de NexGard Spectra" },
+  // `no`: si el texto trae un producto con plazo propio, este generico NO aplica.
+  // Sin esto "Bravecto antipulgas" sugeria 30 dias, porque se elige el plazo MAS CORTO
+  // que coincida y "antipulga" tambien coincide.
+  { re: /nexgard|frontline|simparica|pipeta|spot ?on|antipulga|garrapat|fiprostar|protek/i, no: /bravecto|ferox|nex ?gard ?spectra/i,
                                                                           dias: 30,  tipo: "consulta", label: "Refuerzo antipulgas" },
   { re: /rabia|qu[íi]ntuple|s[ée]xtuple|giardia|bordetella|vacuna/i,
                                                                           dias: 365, tipo: "consulta", label: "Refuerzo de vacuna" },
@@ -7313,6 +7520,7 @@ function proximaCitaSugerida(descripcion, fechaBase) {
   let mejor = null;
   for (const c of CADENCIA_SERVICIO) {
     if (!c.re.test(txt)) continue;
+    if (c.no && c.no.test(txt)) continue;
     if (!mejor || c.dias < mejor.dias) mejor = c;
   }
   if (!mejor) return null;
@@ -7351,7 +7559,7 @@ const TIPOS_SEGUIMIENTO = [
   { id: "vacuna_quintuple", label: "Vacuna qu\xEDntuple", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /qu[\u00EDi]ntuple|s[\u00E9e]xtuple/i },
   { id: "vacuna_giardia", label: "Vacuna giardia", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /giardia/i },
   { id: "vacuna_bordetella", label: "Vacuna bordetella", color: "#e74c3c", icono: "\u{1F489}", frecDefault: 365, area: "veterinaria", detecta: /bordetella/i },
-  { id: "desparasitacion", label: "Desparasitaci\xF3n", color: "#27ae60", icono: "\u{1F41B}", frecDefault: 90, area: "veterinaria", detecta: /desparasit|albendazol|oxantel|panacob|ivermectina/i },
+  { id: "desparasitacion", label: "Desparasitaci\xF3n", color: "#27ae60", icono: "\u{1F41B}", frecDefault: 90, area: "veterinaria", detecta: /desparasit|albendazol|oxantel|panacob|ivermectina|nex ?gard ?spectra/i },
   { id: "bano_regular", label: "Ba\xF1o regular", color: "#2980b9", icono: "\u{1F6BF}", frecDefault: 21, area: "grooming", detecta: /ba[\u00F1n]o/i },
   { id: "control_vet", label: "Control veterinario", color: "#1a4fa0", icono: "\u{1FA7A}", frecDefault: 180, area: "veterinaria", detecta: /consulta|control|revisi[\u00F3o]n/i },
   { id: "antipulgas", label: "Antipulgas/garrapatas", color: "#c0392b", icono: "\u{1F99F}", frecDefault: 30, area: "farmacia", detecta: /nex ?gard|bravecto|ferox|frontline|simparica|pipeta|spot ?on|antipulga|garrapat|fiprostar|protek/i },
@@ -7367,17 +7575,26 @@ const TIPOS_SEGUIMIENTO = [
 // margen sobre los 30 de protección) pero Bravecto protege 12 semanas.
 // Avisarle a los 35 días a un cliente de Bravecto seria pedirle que recompre
 // casi dos meses antes de tiempo.
+// `cobertura`: "interna_externa" desparasita por dentro y por fuera; "externa" protege
+// solo contra pulgas y garrapatas. De ella depende el TIPO de recordatorio y lo que dice
+// el mensaje de WhatsApp. `meses: 3` = 3 meses de calendario (Ferox); el resto va en dias.
 const ANTIPARASITARIOS = [
-  { nombre: "Bravecto",  dias: 84, re: /bravecto/i },
-  { nombre: "NexGard",   dias: 35, re: /nex ?gard/i },
-  { nombre: "Ferox",     dias: 35, re: /ferox/i },
-  { nombre: "Simparica", dias: 35, re: /simparica/i },
-  { nombre: "Frontline", dias: 35, re: /frontline/i },
-  { nombre: "Fiprostar", dias: 35, re: /fiprostar/i },
-  { nombre: "Protek",    dias: 35, re: /protek/i }
+  { nombre: "Bravecto",  dias: 84, re: /bravecto/i, cobertura: "externa" },
+  // Spectra va ANTES que NexGard: "NexGard Spectra" tambien contiene "nexgard".
+  { nombre: "NexGard Spectra", dias: 35, re: /nex ?gard ?spectra/i, cobertura: "interna_externa" },
+  { nombre: "NexGard",   dias: 35, re: /nex ?gard/i, cobertura: "externa" },
+  // Ferox dura 3 meses (estaba como mensual, 35 dias: avisaba 2 meses antes de tiempo).
+  { nombre: "Ferox",     dias: 90, meses: 3, re: /ferox/i, cobertura: "externa" },
+  { nombre: "Simparica", dias: 35, re: /simparica/i, cobertura: "externa" },
+  { nombre: "Frontline", dias: 35, re: /frontline/i, cobertura: "externa" },
+  { nombre: "Fiprostar", dias: 35, re: /fiprostar/i, cobertura: "externa" },
+  { nombre: "Protek",    dias: 35, re: /protek/i, cobertura: "externa" }
 ];
 // Cualquier otro antipulgas que no esté en la lista de arriba.
-const ANTIPARASITARIO_GENERICO = /antipulga|garrapatic|pipeta|spot ?on|desparasit/i;
+// OJO: "desparasit" NO esta aqui a proposito. Antes cualquier desparasitante caia
+// en "antipulgas a 35 dias", y una pastilla que protege 3 meses avisaba a las 5
+// semanas. Un desparasitante sin plazo conocido se programa a mano (1 o 3 meses).
+const ANTIPARASITARIO_GENERICO = /antipulga|garrapatic|pipeta|spot ?on/i;
 const DIAS_ANTIPARASITARIO = 35;
 // Se avisa unos días antes para tener tiempo de contactar al cliente.
 const AVISO_ANTIPARASITARIO_ANTES = 3;
@@ -7395,9 +7612,9 @@ function detectarAntiparasitario(texto) {
   const t = String(texto || "");
   if (!t.trim()) return null;
   for (const p of ANTIPARASITARIOS) {
-    if (p.re.test(t)) return { nombre: p.nombre, dias: p.dias };
+    if (p.re.test(t)) return { nombre: p.nombre, dias: p.dias, meses: p.meses || 0, cobertura: p.cobertura, tipo: p.cobertura === "interna_externa" ? "desparasitacion" : "antipulgas" };
   }
-  if (ANTIPARASITARIO_GENERICO.test(t)) return { nombre: "Antiparasitario", dias: DIAS_ANTIPARASITARIO };
+  if (ANTIPARASITARIO_GENERICO.test(t)) return { nombre: "Antiparasitario", dias: DIAS_ANTIPARASITARIO, meses: 0, cobertura: "externa", tipo: "antipulgas" };
   return null;
 }
 
@@ -7408,8 +7625,9 @@ function textoDeVenta(v) {
   ].filter(Boolean).join(" ");
 }
 
-// Arma el seguimiento de recompra. Es del tipo "antipulgas", el mismo que ya
-// usa la app, para que se cierre solo cuando el cliente vuelva a comprar.
+// Arma el seguimiento de recompra. El tipo sale del producto (desparasitacion si cubre
+// por dentro, antipulgas si solo cubre por fuera) para que se cierre solo cuando el
+// cliente vuelva a comprar y el mensaje diga lo correcto.
 function seguimientoAntiparasitario(mascota, fechaVenta, prod, telefono) {
   const desde = String(fechaVenta || "").slice(0, 10) || hoy();
   return {
@@ -7417,11 +7635,11 @@ function seguimientoAntiparasitario(mascota, fechaVenta, prod, telefono) {
     mascota: mascota || "",
     propietario: "",
     telefono: telefono || "",
-    tipo: "antipulgas",
+    tipo: prod.tipo || "antipulgas",
     frecuencia: prod.dias,
     ultimaFecha: desde,
-    proximaFecha: sumarDias(desde, prod.dias),
-    notas: prod.nombre + " — toca reforzar la protecci\xF3n (" + prod.dias + " d\xEDas)",
+    proximaFecha: prod.meses ? sumarMeses(desde, prod.meses) : sumarDias(desde, prod.dias),
+    notas: prod.nombre + " \u2014 dura " + duracionTexto(prod.dias),
     completado: false,
     activo: true
   };
@@ -7430,13 +7648,256 @@ function seguimientoAntiparasitario(mascota, fechaVenta, prod, telefono) {
 // ¿Ya toca avisar de esta recompra? Cuenta los días de margen.
 function tocaReforzar(seg, hoyStr) {
   if (!seg || seg.completado || seg.activo === false) return false;
-  if (seg.tipo !== "antipulgas") return false;
+  if (seg.tipo !== "antipulgas" && seg.tipo !== "desparasitacion") return false;
   const prox = String(seg.proximaFecha || "").slice(0, 10);
   if (!prox) return false;
   const h = hoyStr || hoy();
   if (prox > sumarDias(h, AVISO_ANTIPARASITARIO_ANTES)) return false;      // todavía no toca
   return prox >= sumarDias(h, -ANTIPARASITARIO_VENTANA_DIAS);              // ni tan viejo
 }
+// ─── DESPARASITACION · PROGRAMAR LA PROXIMA DOSIS ────────────────────────────
+// El cliente compra hoy una pastilla; aqui se agenda cuando le toca la siguiente
+// segun EL PRODUCTO: cada uno protege contra algo distinto y dura lo suyo.
+//   NexGard Spectra  desparasita por dentro y por fuera  efecto 35 dias
+//   Ferox            protege solo por fuera (pulgas y garrapatas)  efecto 3 meses
+// Del producto salen el tipo de recordatorio, el plazo y lo que dice el mensaje de
+// WhatsApp (que NO es el mismo para uno que cubre dentro y fuera que para uno que
+// solo cubre por fuera).
+//
+// Se guarda como un seguimiento normal (tipo "desparasitacion" si cubre por dentro,
+// "antipulgas" si solo cubre por fuera), asi que el Dashboard avisa unos dias antes y
+// se cierra solo cuando el cliente vuelve a comprar.
+//
+// Los meses se cuentan en MESES DE CALENDARIO, no en bloques de 30 dias: "1 mes"
+// desde el 31 de enero es el 28 de febrero, y 3 meses desde el 15 de octubre es el
+// 15 de enero, no el 13.
+function sumarMeses(fechaISO, n) {
+  const [y, m, d] = String(fechaISO || "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const t = new Date(y, m - 1 + n, 1);
+  const ultimo = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(d, ultimo));
+  return fechaLocal(t);
+}
+const MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+function fechaLarga(iso) {
+  const [y, m, d] = String(iso || "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return d + " de " + MESES_ES[m - 1] + (y !== new Date().getFullYear() ? " de " + y : "");
+}
+// Solo 30 dias es "1 mes" y 84 a 100 son "3 meses". 35 dias se dice como 35 dias:
+// NexGard Spectra dura 35, y llamarle "1 mes" a un efecto de 35 dias es decir menos.
+function duracionTexto(dias) {
+  const n = Number(dias) || 0;
+  if (n >= 28 && n <= 31) return "1 mes";
+  if (n >= 80 && n <= 100) return "3 meses";
+  return n ? n + " días" : "";
+}
+// Lo que se vende como desparasitante y NO tiene un plazo conocido: no se adivina.
+const DESPARASITANTE_RE = /desparasit|albendazol|oxantel|panacob|ivermectina/i;
+function detectarDesparasitante(texto) { return DESPARASITANTE_RE.test(String(texto || "")); }
+
+// ---- el producto manda ------------------------------------------------------
+const infoProducto = (nombre) => {
+  const t = String(nombre || "");
+  return t.trim() ? (ANTIPARASITARIOS.find((p) => p.re.test(t)) || null) : null;
+};
+const tipoDeProducto = (p) => (p && p.cobertura === "interna_externa") ? "desparasitacion" : "antipulgas";
+// {opcion, dias} del selector de duracion: "1" = 1 mes, "3" = 3 meses, "otro" = N dias.
+function plazoDeProducto(p) {
+  if (p.meses === 3) return { opcion: "3", dias: 90 };
+  if (p.dias === 30) return { opcion: "1", dias: 30 };
+  return { opcion: "otro", dias: p.dias };
+}
+function proximaFechaProducto(p, desde) { return p.meses ? sumarMeses(desde, p.meses) : sumarDias(desde, p.dias); }
+const coberturaTexto = (cob) => cob === "interna_externa" ? "desparasita por dentro y por fuera" : "protege por fuera contra pulgas y garrapatas";
+
+// El seguimiento que se guarda. `opcion` es "1" (1 mes), "3" (3 meses) u "otro" (N dias).
+function armarRecordatorioParasitos(d) {
+  const fecha = String(d.fecha || "").slice(0, 10) || hoy();
+  const opcion = String(d.opcion || "1");
+  const frecuencia = opcion === "3" ? 90 : opcion === "otro" ? Math.max(1, Math.round(Number(d.diasOtro) || 30)) : 30;
+  const prox = d.proxima || (opcion === "otro" ? sumarDias(fecha, frecuencia) : sumarMeses(fecha, opcion === "3" ? 3 : 1));
+  const tipo = d.tipo === "antipulgas" ? "antipulgas" : "desparasitacion";
+  const prod = String(d.producto || "").trim() || (tipo === "antipulgas" ? "Antiparasitario" : "Desparasitante");
+  return {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    mascota: String(d.mascota || "").trim(), propietario: d.propietario || "", telefono: d.telefono || "",
+    tipo, frecuencia, ultimaFecha: fecha, proximaFecha: prox,
+    notas: prod + " — dura " + duracionTexto(frecuencia), completado: false, activo: true
+  };
+}
+// Si la mascota ya tenia un recordatorio del MISMO tipo pendiente, se ACTUALIZA en vez
+// de dejar dos. Son tipos distintos a proposito: un antipulgas (Ferox, solo por fuera)
+// y una desparasitacion que cubre por dentro (NexGard Spectra) no se reemplazan.
+function fusionarRecordatorio(lista, seg) {
+  const clave = (m) => String(m || "").toLowerCase().trim();
+  const previo = (lista || []).find((s) => s && !s.completado && s.activo !== false &&
+    s.tipo === seg.tipo && clave(s.mascota) === clave(seg.mascota));
+  if (!previo) return { lista: [...(lista || []), seg], seg, actualizo: false };
+  const unido = { ...previo, ...seg, id: previo.id, telefono: seg.telefono || previo.telefono, propietario: seg.propietario || previo.propietario };
+  return { lista: lista.map((s) => s === previo ? unido : s), seg: unido, actualizo: true };
+}
+const productoDeSeg = (s) => String((s && s.notas) || "").split("—")[0].trim();
+
+// El mensaje de WhatsApp: personalizado con el nombre del dueño, la mascota, el
+// producto, lo que cubre, cuanto dura y la fecha. Se arma al momento de enviar, asi
+// que "es hoy", "es mañana" o "se venció hace N dias" siempre dicen la verdad de ese dia.
+function mensajeRecordatorioParasitos(d, hoyStr) {
+  const h = hoyStr || hoy();
+  const nombre = String(d.propietario || "").trim().split(/\s+/)[0];
+  const mascota = String(d.mascota || "").trim() || "su mascota";
+  const prox = String(d.proximaFecha || "").slice(0, 10), ult = String(d.ultimaFecha || "").slice(0, 10);
+  const dur = duracionTexto(d.frecuencia);
+  // El nombre generico de relleno ("Desparasitante") no es un producto: no se nombra.
+  const prod = /^(desparasitante|antiparasitario)?$/i.test(String(d.producto || "").trim()) ? "" : String(d.producto).trim();
+  const info = infoProducto(prod);
+  const cob = d.cobertura || (info && info.cobertura) || (d.tipo === "antipulgas" ? "externa" : "interna");
+  const dias = prox ? Math.round((new Date(prox + "T12:00:00") - new Date(h + "T12:00:00")) / 864e5) : null;
+  const es = dias === null ? "" : dias < 0 ? "se venció hace " + Math.abs(dias) + " día" + (Math.abs(dias) === 1 ? "" : "s") + " (era el " + fechaLarga(prox) + ")"
+    : dias === 0 ? "es hoy" : dias === 1 ? "es mañana"
+    : "es el " + fechaLarga(prox) + (dias <= 7 ? " (en " + dias + " días)" : "");
+  const saludo = (nombre ? "Hola " + nombre + "!" : "Hola!") + " 🐾 Le escribimos de PetColinas. ";
+  const cuando = ult ? " el " + fechaLarga(ult) : "";
+  const cierre = " ¡Gracias por confiar en PetColinas! 🐶";
+  if (cob === "interna_externa") {
+    // Cubre por dentro Y por fuera: una sola pastilla resuelve las dos cosas.
+    return saludo + mascota + " recibió " + (prod || "su pastilla") + cuando + ", que lo desparasita por dentro y por fuera" +
+      (dur ? " y tiene un efecto de " + dur : "") + "." +
+      (es ? " Su próxima dosis " + es + "." : "") +
+      " Para que no quede desprotegido/a, ¿le apartamos la dosis?" + cierre;
+  }
+  if (cob === "externa") {
+    // Solo por fuera: se dice claro, porque no reemplaza la desparasitacion interna.
+    return saludo + mascota + " recibió " + (prod || "su antipulgas") + cuando + ". Esa protección contra pulgas y garrapatas dura " + (dur || "un tiempo") +
+      (info ? " (protege por fuera; la desparasitación interna es aparte)" : "") + "." +
+      (es ? " Su próximo refuerzo " + es + "." : "") +
+      " Para que no quede desprotegido/a, ¿le preparamos la dosis?" + cierre;
+  }
+  return saludo + mascota + " se desparasitó" + cuando + (prod ? " con " + prod : "") +
+    (dur ? " (el tratamiento dura " + dur + ")" : "") + "." +
+    (es ? " Su próxima desparasitación " + es + "." : "") +
+    " Para que no quede desprotegido/a, ¿le apartamos su próxima dosis?" + cierre;
+}
+
+// Pantalla para programar la proxima dosis. Sirve desde Seguimientos y desde la venta.
+function ProgramarDesparasitacion({ inicial = {}, clientes = [], seguimientos = [], setSeguimientos, onCerrar }) {
+  const E = React.createElement;
+  const cat0 = infoProducto(inicial.producto);
+  const pl0 = cat0 ? plazoDeProducto(cat0) : null;
+  const [mascota, setMascota] = React.useState(inicial.mascota || "");
+  const [producto, setProducto] = React.useState(inicial.producto || "");
+  const [tipo, setTipo] = React.useState(inicial.tipo || (cat0 ? tipoDeProducto(cat0) : "desparasitacion"));
+  const [opcion, setOpcion] = React.useState(inicial.opcion || (pl0 ? pl0.opcion : "1"));
+  const [diasOtro, setDiasOtro] = React.useState(String(inicial.diasOtro || (pl0 && pl0.opcion === "otro" ? pl0.dias : 45)));
+  const [fecha, setFecha] = React.useState(inicial.fecha || hoy());
+  const [proxManual, setProxManual] = React.useState("");
+  const [tel, setTel] = React.useState("");
+  const [sugs, setSugs] = React.useState(false);
+
+  const clave = (m) => String(m || "").toLowerCase().trim();
+  const cli = (clientes || []).find((c) => clave(c.nombreMascota) === clave(mascota)) || null;
+  const coincid = mascota.trim().length > 1 && !cli
+    ? (clientes || []).filter((c) => clave(c.nombreMascota).includes(clave(mascota)) || clave(c.nombrePropietario).includes(clave(mascota))).slice(0, 5) : [];
+  const propietario = (cli && cli.nombrePropietario) || "";
+  const telefono = (cli && cli.telefono) || tel;
+  const info = infoProducto(producto);
+  // Del producto salen el tipo y el plazo; se puede cambiar a mano despues.
+  const configurar = (p) => { const pl = plazoDeProducto(p); setTipo(tipoDeProducto(p)); setOpcion(pl.opcion); setDiasOtro(String(pl.dias)); setProxManual(""); };
+  const elegir = (p) => { setProducto(p.nombre); configurar(p); };
+  const escribir = (v) => { setProducto(v); const p = infoProducto(v); if (p && (!info || info.nombre !== p.nombre)) configurar(p); };
+
+  const base = armarRecordatorioParasitos({ mascota, propietario, telefono, producto, tipo, opcion, diasOtro, fecha });
+  // La fecha sale de la duracion elegida (que el producto ya dejo puesta): si la
+  // cambian a mano, manda lo que elijan.
+  const prox = proxManual || base.proximaFecha;
+  const seg = { ...base, proximaFecha: prox };
+  const yaTenia = (seguimientos || []).find((s) => s && !s.completado && s.activo !== false &&
+    s.tipo === tipo && clave(s.mascota) === clave(mascota));
+  const malo = !mascota.trim() || !fecha || !prox;
+
+  function guardar() {
+    if (malo || typeof setSeguimientos !== "function") return;
+    setSeguimientos((prev) => fusionarRecordatorio(prev || [], seg).lista);
+    avisar("Recordatorio puesto para el " + fechaLarga(prox) + ".", "ok");
+    onCerrar();
+  }
+  const chip = (act, txt, f) => E("button", { onClick: f, style: { padding: "8px 14px", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700,
+    border: "1.5px solid " + (act ? "#27ae60" : "#d0d5db"), background: act ? "#eafaf1" : "#fff", color: act ? "#1a6b3a" : "#334155" } }, txt);
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 3 };
+  const inp = { padding: "8px 10px", borderRadius: 8, border: "1.5px solid #d0d5db", fontSize: 13.5, width: "100%", boxSizing: "border-box" };
+  const previa = mensajeRecordatorioParasitos({ ...seg, producto: productoDeSeg(seg) }, sumarDias(prox, -3));
+
+  return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
+    E("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "94vh", overflowY: "auto", padding: 22 } },
+      E("div", { style: { fontWeight: 800, fontSize: 17, marginBottom: 2 } }, "🐛 Programar próxima desparasitación"),
+      E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 14, lineHeight: 1.5 } }, "Elige el producto y la app sabe qué cubre y cuánto dura: calcula cuándo le toca la siguiente, con el mensaje listo para WhatsApp."),
+
+      E("div", { style: { marginBottom: 12, position: "relative" } },
+        E("label", { style: lbl }, "Mascota"),
+        E("input", { value: mascota, onChange: (e) => { setMascota(e.target.value); setSugs(true); }, style: inp, placeholder: "Nombre de la mascota", autoFocus: !inicial.mascota }),
+        sugs && coincid.length > 0 && E("div", { style: { position: "absolute", left: 0, right: 0, top: "100%", background: "#fff", border: "1.5px solid #d0d5db", borderRadius: 8, zIndex: 5, boxShadow: "0 6px 18px rgba(0,0,0,0.12)" } },
+          coincid.map((c) => E("button", { key: c.id, onClick: () => { setMascota(c.nombreMascota); setSugs(false); },
+            style: { display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", background: "none", cursor: "pointer", fontSize: 13 } },
+            E("strong", null, c.nombreMascota), E("span", { style: { color: "#5a6472" } }, c.nombrePropietario ? "  · " + c.nombrePropietario : "")))),
+        cli ? E("div", { style: { fontSize: 11.5, color: "#1a6b3a", marginTop: 3 } }, "✓ " + (propietario || "Sin dueño anotado") + (cli.telefono ? " · " + cli.telefono : " · sin teléfono"))
+            : mascota.trim() ? E("div", { style: { fontSize: 11.5, color: "#b45309", marginTop: 3 } }, "No está en Clientes: el mensaje saldrá sin nombre del dueño.") : null),
+      (!cli || !cli.telefono) && E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Teléfono para el WhatsApp"),
+        E("input", { value: tel, onChange: (e) => setTel(e.target.value), style: inp, placeholder: "809-000-0000" })),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Producto"),
+        E("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 } },
+          ANTIPARASITARIOS.map((p) => {
+            const act = info && info.nombre === p.nombre;
+            return E("button", { key: p.nombre, onClick: () => elegir(p),
+              style: { padding: "6px 11px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                border: "1.5px solid " + (act ? "#27ae60" : "#cfd6dc"), background: act ? "#eafaf1" : "#f4f7f9", color: act ? "#1a6b3a" : "#334155" } }, p.nombre);
+          })),
+        E("input", { value: producto, onChange: (e) => escribir(e.target.value), style: inp, placeholder: "O escribe otro producto…" }),
+        info
+          ? E("div", { style: { background: "#f0faf4", border: "1.5px solid #bfe5cc", borderRadius: 9, padding: "8px 12px", marginTop: 8, fontSize: 12.5, color: "#1a6b3a", lineHeight: 1.5 } },
+              "🛡 ", E("strong", null, info.nombre), " " + coberturaTexto(info.cobertura) + " · efecto de " + duracionTexto(info.meses === 3 ? 90 : info.dias),
+              info.cobertura === "externa" && E("div", { style: { color: "#92400e", marginTop: 3 } }, "No desparasita por dentro: la desparasitación interna se programa aparte."))
+          : producto.trim() ? E("div", { style: { fontSize: 11.5, color: "#b45309", marginTop: 6 } }, "Producto que no está en la lista: elige abajo el tipo y cuánto dura.") : null),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "Tipo"),
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+          chip(tipo === "desparasitacion", "🐛 Desparasita (por dentro)", () => setTipo("desparasitacion")),
+          chip(tipo === "antipulgas", "🦟 Solo antipulgas / garrapatas", () => setTipo("antipulgas")))),
+
+      E("div", { style: { marginBottom: 12 } },
+        E("label", { style: lbl }, "¿Cuánto dura?"),
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
+          chip(opcion === "1", "1 mes", () => { setOpcion("1"); setProxManual(""); }),
+          chip(opcion === "3", "3 meses", () => { setOpcion("3"); setProxManual(""); }),
+          chip(opcion === "otro", "Otro", () => { setOpcion("otro"); setProxManual(""); }),
+          opcion === "otro" && E("span", { style: { display: "flex", gap: 6, alignItems: "center", fontSize: 13 } },
+            E("input", { type: "number", min: 1, value: diasOtro, onChange: (e) => { setDiasOtro(e.target.value); setProxManual(""); }, style: { ...inp, width: 80 } }), "días"))),
+
+      E("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 } },
+        E("div", { style: { flex: "1 1 150px" } }, E("label", { style: lbl }, "Fecha de la dosis (compra)"),
+          E("input", { type: "date", value: fecha, onChange: (e) => { setFecha(e.target.value); setProxManual(""); }, style: inp })),
+        E("div", { style: { flex: "1 1 150px" } }, E("label", { style: lbl }, "Le toca la próxima el"),
+          E("input", { type: "date", value: prox, onChange: (e) => setProxManual(e.target.value), style: { ...inp, fontWeight: 800, borderColor: "#27ae60" } }))),
+      E("div", { style: { fontSize: 12.5, color: "#1a6b3a", fontWeight: 700, marginBottom: 12 } },
+        prox ? "📅 " + fechaLarga(prox) + " · la app te avisa " + AVISO_ANTIPARASITARIO_ANTES + " días antes en el Dashboard." : ""),
+
+      yaTenia && E("div", { style: { background: "#fff7e6", border: "1.5px solid #d9a441", borderRadius: 9, padding: "8px 12px", fontSize: 12, color: "#92400e", marginBottom: 12 } },
+        "Esta mascota ya tenía un recordatorio de este tipo pendiente (" + (productoDeSeg(yaTenia) || "antiparasitario") + ", " + (yaTenia.proximaFecha || "") + "). Se actualiza con estos datos; no se duplica."),
+
+      E("div", { style: { marginBottom: 14 } },
+        E("label", { style: lbl }, "Así le llegará por WhatsApp (3 días antes)"),
+        E("div", { style: { background: "#dcf8c6", borderRadius: "10px 10px 10px 2px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, color: "#1a1d23", whiteSpace: "pre-wrap" } }, previa)),
+
+      E("div", { style: { display: "flex", gap: 10 } },
+        E("button", { onClick: onCerrar, style: { flex: 1, padding: 11, borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
+        E("button", { onClick: guardar, disabled: malo, style: { flex: 2, padding: 11, borderRadius: 9, border: "none", background: malo ? "#aab3bd" : "#27ae60", color: "#fff", cursor: malo ? "default" : "pointer", fontWeight: 800 } },
+          yaTenia ? "Actualizar recordatorio" : "Guardar recordatorio"))));
+}
+
 // Busca si el cliente ya recibió ese servicio DESPUÉS de la última vez anotada.
 // Devuelve la venta que lo cubre, o null. Así un seguimiento deja de aparecer
 // como pendiente en cuanto se le factura el servicio.
@@ -7497,6 +7958,11 @@ function estadoSeguimiento(seg) {
   return { label: `En ${dias} d\xEDas`, color: "#27ae60", bg: "#eafaf1", dias };
 }
 function whatsappMsg(seg) {
+  // Desparasitacion y antipulgas: mensaje personalizado (dueño, mascota, producto,
+  // cuanto dura y la fecha). Los demas tipos siguen con su texto de siempre.
+  if (seg.tipo === "desparasitacion" || seg.tipo === "antipulgas") {
+    return encodeURIComponent(mensajeRecordatorioParasitos({ ...seg, producto: productoDeSeg(seg) }));
+  }
   const tipo = TIPOS_SEGUIMIENTO.find((t) => t.id === seg.tipo);
   const textos = {
     bano_medicado: `Hola! Le recordamos que ${seg.mascota} tiene pendiente su *ba\xF1o medicado* en PetColinas \u{1F6C1}. Recomendamos realizarlo cada ${seg.frecuencia} d\xEDas para mantener su piel sana. \xBFLo agendamos?`,
@@ -7537,6 +8003,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
   const [llamandoSegId, setLlamandoSegId] = useState(null);
   const [llamadaSegRes, setLlamadaSegRes] = useState({});
   const [llamandoMasivo, setLlamandoMasivo] = useState(false);
+  const [progDesp, setProgDesp] = useState(null);   // programar desparasitacion
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const sugerencias = busq.length > 0 ? clientes.filter(
     (c) => c.nombreMascota?.toLowerCase().includes(busq.toLowerCase()) || c.nombrePropietario?.toLowerCase().includes(busq.toLowerCase())
@@ -7781,7 +8248,7 @@ function Seguimientos({ seguimientos, setSeguimientos, clientes, ventas, pushHis
       setBusq("");
     } }, "Cancelar"))));
   }
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20 } }, "\u{1F514} Seguimientos"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 2 } }, "Recordatorios de servicios y clientes sin venir")), subTab === "recordatorios" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowWaMasivo(true), style: { background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\uD83D\uDCF2 WA Masivo"), /* @__PURE__ */ React.createElement("button", { onClick: llamarTodosSofia, disabled: llamandoMasivo, style: { background: llamandoMasivo ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: llamandoMasivo ? "not-allowed" : "pointer" } }, llamandoMasivo ? "\uD83D\uDCDE Llamando..." : "\uD83D\uDCDE Llamar vencidos"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setVista("nuevo") }, "+ Nuevo seguimiento"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 0, borderBottom: "2px solid #eef0f2", marginBottom: 24 } }, [
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20 } }, "\u{1F514} Seguimientos"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 2 } }, "Recordatorios de servicios y clientes sin venir")), subTab === "recordatorios" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowWaMasivo(true), style: { background: "#25d366", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\uD83D\uDCF2 WA Masivo"), /* @__PURE__ */ React.createElement("button", { onClick: llamarTodosSofia, disabled: llamandoMasivo, style: { background: llamandoMasivo ? "#9ca3af" : C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: llamandoMasivo ? "not-allowed" : "pointer" } }, llamandoMasivo ? "\uD83D\uDCDE Llamando..." : "\uD83D\uDCDE Llamar vencidos"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => setVista("nuevo") }, "+ Nuevo seguimiento"), React.createElement("button", { onClick: () => setProgDesp({}), style: { background: "#27ae60", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\uD83D\uDC1B Programar desparasitaci\u00F3n"), progDesp && React.createElement(ProgramarDesparasitacion, { inicial: progDesp, clientes, seguimientos, setSeguimientos, onCerrar: () => setProgDesp(null) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 0, borderBottom: "2px solid #eef0f2", marginBottom: 24 } }, [
     { id: "recordatorios", label: "\u{1F5D3}\uFE0F Recordatorios de servicio" },
     { id: "inactivos", label: "\u{1F504} Reactivaci\xF3n" }
   ].map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setSubTab(t.id), style: {
@@ -9585,6 +10052,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
   const [notifDuplicado, setNotifDuplicado] = useState(null);
   const [notifExito, setNotifExito] = useState(null);
   const [notifAnti, setNotifAnti] = useState(null);   // recompra de antiparasitario
+  const [notifDesp, setNotifDesp] = useState(null);   // desparasitante sin plazo conocido: elegir 1 o 3 meses
+  const [progDesp, setProgDesp] = useState(null);
   const [usaPaquete, setUsaPaquete] = useState(false);
   const paqDelCliente = paqueteDe(cliente, paquetes);
   const itemsBano = items.filter((i) => BANO_RE.test(String(i.nombre || "")));
@@ -9814,7 +10283,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       const telAnti = (clientes || []).reduce((t, c) => t ||
         ((c.nombreMascota || "").toLowerCase().trim() === (cliente || "").toLowerCase().trim() ? (c.telefono || "") : ""), "");
       const segAnti = seguimientoAntiparasitario(cliente, fecha, prodAnti, telAnti);
-      const mismaMascota = (sg) => sg.tipo === "antipulgas" && !sg.completado && sg.activo !== false &&
+      const mismaMascota = (sg) => sg.tipo === segAnti.tipo && !sg.completado && sg.activo !== false &&
         String(sg.mascota || "").toLowerCase().trim() === String(cliente || "").toLowerCase().trim();
       setSeguimientos((prev) => {
         const lista = prev || [];
@@ -9830,8 +10299,12 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         return [...lista, segAnti];
       });
       setNotifAnti({ producto: prodAnti.nombre, dias: prodAnti.dias,
-                     fecha: segAnti.proximaFecha, mascota: cliente });
+                     fecha: segAnti.proximaFecha, mascota: cliente, desde: fecha });
       setTimeout(() => setNotifAnti(null), 14000);
+    } else if (cliente && detectarDesparasitante(textoDeVenta(nueva)) && typeof setSeguimientos === "function") {
+      // Un desparasitante (pastilla) NO trae plazo conocido: se pregunta, no se adivina.
+      const it = (Array.isArray(nueva.items) ? nueva.items : []).find((x) => x && detectarDesparasitante(x.nombre || x.descripcion));
+      setNotifDesp({ mascota: cliente, producto: (it && (it.nombre || it.descripcion)) || descripcion || "Desparasitante", fecha });
     }
     const notifTel = clientes ? ((clientes.find(c => (c.nombreMascota||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || clientes.find(c => (c.nombrePropietario||"").toLowerCase().trim() === (cliente||"").toLowerCase().trim()) || {}).telefono || "") : "";
     setNotifExito({ cliente: cliente || "Sin nombre", total: totalNeto, area, items: nueva.items, servicio: descripcion, fecha, telefono: notifTel });
@@ -9982,8 +10455,26 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         notifAnti.mascota + " debe reforzar la protecci\xF3n en " + notifAnti.dias +
         " d\xEDas \u2014 el " + notifAnti.fecha + ". La app te avisa " + AVISO_ANTIPARASITARIO_ANTES +
         " d\xEDas antes en el Dashboard.")),
+    React.createElement("button", { onClick: () => { setProgDesp({ mascota: notifAnti.mascota, producto: notifAnti.producto, fecha: notifAnti.desde || hoy(), opcion: notifAnti.dias > 60 ? "3" : "1", tipo: "antipulgas" }); setNotifAnti(null); },
+      style: { background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, "\u23F0 Cambiar fecha / mensaje"),
     /* @__PURE__ */ React.createElement("button", { onClick: () => setNotifAnti(null),
       style: { background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#5b21b6" } }, "\u2715")),
+  notifDesp && React.createElement("div", { style: { background: "#eafaf1", border: "2px solid #27ae60", borderRadius: 12, padding: "14px 18px", marginBottom: 16 } },
+    React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#1a6b3a", marginBottom: 4 } }, "\uD83D\uDC1B " + notifDesp.mascota + ": \u00BFcu\u00E1ndo le toca la pr\u00F3xima desparasitaci\u00F3n?"),
+    React.createElement("div", { style: { fontSize: 12.5, color: "#1a6b3a", marginBottom: 10 } }, notifDesp.producto + " \u2014 elige cu\u00E1nto dura y queda el recordatorio con su mensaje de WhatsApp."),
+    React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+      [["1", "1 mes"], ["3", "3 meses"]].map(([op, txt]) => React.createElement("button", { key: op,
+        onClick: () => {
+          const c = (clientes || []).find((x) => String(x.nombreMascota || "").toLowerCase().trim() === String(notifDesp.mascota).toLowerCase().trim());
+          const sg = armarRecordatorioParasitos({ mascota: notifDesp.mascota, propietario: c && c.nombrePropietario, telefono: c && c.telefono, producto: notifDesp.producto, tipo: "desparasitacion", opcion: op, fecha: notifDesp.fecha });
+          setSeguimientos((prev) => fusionarRecordatorio(prev || [], sg).lista);
+          avisar("Recordatorio puesto para el " + fechaLarga(sg.proximaFecha) + ".", "ok"); setNotifDesp(null);
+        },
+        style: { background: "#27ae60", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer" } }, "Dura " + txt)),
+      React.createElement("button", { onClick: () => { setProgDesp({ mascota: notifDesp.mascota, producto: notifDesp.producto, fecha: notifDesp.fecha }); setNotifDesp(null); },
+        style: { background: "#fff", color: "#1a6b3a", border: "1.5px solid #27ae60", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Elegir fecha / ver mensaje\u2026"),
+      React.createElement("button", { onClick: () => setNotifDesp(null), style: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#5a6472" } }, "No programar"))),
+  progDesp && React.createElement(ProgramarDesparasitacion, { inicial: progDesp, clientes, setSeguimientos, onCerrar: () => setProgDesp(null) }),
   notifExito && /* @__PURE__ */ React.createElement("div", { style: {
     background: "#d1fae5",
     border: "2px solid #059669",
@@ -11208,8 +11699,11 @@ function Gastos({ gastos, setGastos }) {
     setEditDesc(g.descripcion || "");
     setEditMonto(String(g.monto || ""));
     setEditCat(g.categoria || "insumo");
-    setEditPagPor(g.pagadoPor || "Victor Ballas");
-    setEditMetodo(g.metodo || "efectivo");
+    // Sin inventar: un gasto viejo no tiene metodo ni quien lo pago guardado, y
+    // rellenarlos con "efectivo"/"Victor Ballas" al editar los dejaria como
+    // datos falsos ya persistidos.
+    setEditPagPor(g.pagadoPor || "");
+    setEditMetodo(g.metodo || g.formaPago || "");
   };
   const saveEdit = () => {
     if (!editDesc || !editMonto) return avisar("Completa descripci\xF3n y monto");
@@ -11249,15 +11743,17 @@ function Gastos({ gastos, setGastos }) {
       label: "Pagado por",
       value: pagadoPor,
       onChange: setPagPor,
-      options: [{ value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }]
+      options: [{ value: "Petcolinas", label: "Petcolinas (la empresa)" }, { value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }]
     }
   ), /* @__PURE__ */ React.createElement(
     Select,
     {
       label: "M\xE9todo",
       value: metodo,
-      onChange: setMetodo,
-      options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }]
+      // Pagar con la tarjeta de la empresa es pagar la empresa: se marca solo,
+      // y sigue siendo editable por si lo pago alguien de su bolsillo.
+      onChange: (v) => { setMetodo(v); if (v === "tarjeta empresarial Banreservas") setPagPor("Petcolinas"); },
+      options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }, { value: "tarjeta empresarial Banreservas", label: "Tarjeta empresarial Banreservas" }, { value: "pendiente de pago", label: "Pendiente de pago" }]
     }
   )), /* @__PURE__ */ React.createElement(Btn, { onClick: addGasto }, "\u{1F4BE} Registrar gasto")), Object.keys(porCat).length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 24 } }, Object.entries(porCat).map(([cat, total]) => /* @__PURE__ */ React.createElement("div", { key: cat, style: {
     background: "#fff",
@@ -11275,7 +11771,7 @@ function Gastos({ gastos, setGastos }) {
     minWidth: 160
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 } }, "TOTAL MES"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 20, color: C.negro, fontWeight: 700 } }, RD(totalFiltrado)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CB} Historial de gastos"), /* @__PURE__ */ React.createElement(Input, { label: "", type: "month", value: filtromes, onChange: setFiltroMes })), gastosFiltrados.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "Sin gastos registrados en este per\xEDodo.") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Proveedor", "Descripci\xF3n", "Categor\xEDa", "Pagado por", "M\xE9todo", "Monto", ""].map(
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)
-  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, g.metodo), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
+  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, /pendiente/i.test(g.metodo || g.formaPago || "") ? /* @__PURE__ */ React.createElement("span", { style: { color: "#b45309", fontWeight: 700 } }, "Pendiente de pago") : (g.metodo || g.formaPago || "\u2014")), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Petcolinas", label: "Petcolinas (la empresa)" }, { value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "", label: "(sin anotar)" }, { value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }, { value: "tarjeta empresarial Banreservas", label: "Tarjeta empresarial Banreservas" }, { value: "pendiente de pago", label: "Pendiente de pago" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
 }
 // Cabecera de Reportes: donde va el mes contra el punto de equilibrio y contra
 // los dos meses con los que tiene sentido compararse (el anterior y el mismo
@@ -11701,6 +12197,419 @@ function imprimirReceta(h, cliente) {
   win.document.close();
   setTimeout(() => win.print(), 400);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// RESULTADOS DE LABORATORIO (hemograma) · M21
+//
+// REGLA DE ORO: los resultados NO se leen, NO se transcriben y NO se tocan. El
+// documento del laboratorio (la foto, o las paginas del PDF) se usa como IMAGEN
+// y se le pone alrededor la marca de PetColinas. Cada numero queda exactamente
+// como lo imprimio el laboratorio, porque son sus mismos pixeles.
+//
+// Una primera version leia el documento (OCR / texto del PDF) y reescribia los
+// valores: al probarla con una foto cambio resultados. Se elimino por completo.
+//
+// Lo unico que se hace sobre la imagen: recortar el fondo, CUBRIR el logo del
+// laboratorio con un recuadro, y (opcional) teñir el texto de azul marino. El
+// resto del documento — nombre del laboratorio, direccion, firma, notas — se
+// conserva tal cual.
+// ─────────────────────────────────────────────────────────────────────────────
+const LAB_COLORES = {
+  naranja: [240, 138, 28], marino: [18, 31, 56], turquesa: [42, 163, 184],
+  gris: [90, 100, 114], claro: [244, 247, 249]
+};
+
+// jsPDF con fuentes estandar solo dibuja Latin-1: lo demas sale como basura. Solo
+// se usa para los textos de PetColinas (cabecera y pie), nunca para resultados.
+const latinPDF = (t) => sinEmoji(String(t == null ? "" : t))
+  .replace(/[–—]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+  .replace(/[^\x00-\xFF]/g, "?");
+
+// El logo real, si esta en el sitio como logo.png; si no, el nombre dibujado con
+// los colores de la marca. Nunca falla el PDF por falta del archivo.
+async function cargarLogoPC() {
+  try {
+    const r = await fetch("logo.png", { cache: "force-cache" });
+    if (!r.ok) return null;
+    const b = await r.blob();
+    if (!/^image\//.test(b.type)) return null;
+    const url = await new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = no; f.readAsDataURL(b); });
+    const dim = await new Promise((ok) => { const im = new Image(); im.onload = () => ok({ w: im.width, h: im.height }); im.onerror = () => ok(null); im.src = url; });
+    return dim ? { url, ...dim } : null;
+  } catch (e) { return null; }
+}
+
+const LAB_PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const LAB_PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const LAB_MAX_PAGINAS = 6, LAB_LADO_MAX = 2400;
+let _labPdfjs = null;
+function cargarPdfjsLab() {
+  if (!_labPdfjs) {
+    _labPdfjs = new Promise((ok, no) => {
+      if (window.pdfjsLib) return ok(window.pdfjsLib);
+      const s = document.createElement("script");
+      s.src = LAB_PDFJS;
+      s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = LAB_PDFJS_WORKER; ok(window.pdfjsLib); };
+      s.onerror = () => { _labPdfjs = null; no(new Error("No se pudo cargar el visor de PDF")); };
+      document.head.appendChild(s);
+    });
+  }
+  return _labPdfjs;
+}
+const cargarImagenLab = (url) => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => no(new Error("No se pudo abrir la imagen")); im.src = url; });
+
+// El documento como una lista de imagenes (una por pagina). Para un PDF se dibuja
+// cada pagina tal como se ve; para una foto, la foto. No se lee ni un caracter.
+async function paginasDeArchivo(file) {
+  const out = [];
+  if (file.type === "application/pdf") {
+    const pdfjs = await cargarPdfjsLab();
+    const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+    for (let n = 1; n <= Math.min(pdf.numPages, LAB_MAX_PAGINAS); n++) {
+      const pag = await pdf.getPage(n);
+      const v1 = pag.getViewport({ scale: 1 });
+      const vp = pag.getViewport({ scale: Math.min(3, LAB_LADO_MAX / Math.max(v1.width, v1.height)) });
+      const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+      await pag.render({ canvasContext: cx, viewport: vp }).promise;
+      out.push({ url: cv.toDataURL("image/jpeg", 0.95), w: cv.width, h: cv.height });
+    }
+    out.truncado = pdf.numPages > LAB_MAX_PAGINAS ? pdf.numPages : 0;
+  } else {
+    const url = await new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = no; f.readAsDataURL(file); });
+    const im = await cargarImagenLab(url);
+    const k = Math.min(1, LAB_LADO_MAX / Math.max(im.width, im.height));
+    const cv = document.createElement("canvas"); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+    const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+    cx.drawImage(im, 0, 0, cv.width, cv.height);
+    out.push({ url: cv.toDataURL("image/jpeg", 0.95), w: cv.width, h: cv.height });
+    out.truncado = 0;
+  }
+  return out;
+}
+
+// Lo unico que se le hace a una pagina: recortar, cubrir recuadros con blanco y,
+// si se pide, teñir. `ed.crop` y `ed.cubrir` van en fracciones (0 a 1) de la
+// pagina completa, asi no dependen del tamaño en pantalla.
+async function componerPaginaLab(pag, ed, tenir) {
+  const im = await cargarImagenLab(pag.url);
+  const c = (ed && ed.crop) || { x: 0, y: 0, w: 1, h: 1 };
+  const sx = Math.round(c.x * im.width), sy = Math.round(c.y * im.height);
+  const sw = Math.max(1, Math.round(c.w * im.width)), sh = Math.max(1, Math.round(c.h * im.height));
+  const cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
+  const cx = cv.getContext("2d");
+  cx.drawImage(im, sx, sy, sw, sh, 0, 0, sw, sh);
+  if (tenir) {
+    // Duotono: negro -> azul marino, blanco -> blanco. Cada pixel conserva su
+    // luminosidad, asi que los trazos (los numeros) no cambian de forma.
+    const d = cx.getImageData(0, 0, sw, sh), p = d.data, K = LAB_COLORES.marino;
+    for (let i = 0; i < p.length; i += 4) {
+      const t = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) / 255;
+      p[i] = K[0] + (255 - K[0]) * t; p[i + 1] = K[1] + (255 - K[1]) * t; p[i + 2] = K[2] + (255 - K[2]) * t;
+    }
+    cx.putImageData(d, 0, 0);
+  }
+  cx.fillStyle = "#ffffff";
+  ((ed && ed.cubrir) || []).forEach((r) => {
+    cx.fillRect(Math.round(r.x * im.width) - sx, Math.round(r.y * im.height) - sy, Math.round(r.w * im.width), Math.round(r.h * im.height));
+  });
+  return { url: cv.toDataURL("image/jpeg", 0.93), w: sw, h: sh };
+}
+
+// El PDF PetColinas: cabecera con logo y colores, datos del PACIENTE tomados del
+// sistema (no del documento), la pagina del laboratorio tal cual, y un pie que
+// dice de quien es el informe.
+function generarLabPDFDoc(paginas, meta, logo) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const K = LAB_COLORES, W = 210, M = 12, TOPE = 52, BASE = 278;
+  const cabecera = () => {
+    doc.setFillColor(...K.marino); doc.rect(0, 0, W, 34, "F");
+    doc.setFillColor(...K.naranja); doc.rect(0, 34, W, 2.2, "F");
+    doc.setFillColor(...K.turquesa); doc.rect(0, 36.2, W, 0.9, "F");
+    if (logo) {
+      const h = 26, w = Math.min(60, h * logo.w / logo.h);
+      doc.setFillColor(255, 255, 255); doc.roundedRect(M - 2, 4, w + 4, h, 2, 2, "F");
+      doc.addImage(logo.url, "PNG", M, 4, w, h);
+    } else {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(24);
+      doc.setTextColor(...K.naranja); doc.text("Pet", M, 17);
+      const wPet = doc.getTextWidth("Pet");
+      doc.setTextColor(255, 255, 255); doc.text("Colinas", M + wPet, 17);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(200, 215, 230);
+      doc.text("Veterinaria · Plaza Las Colinas, Santo Domingo Oeste", M, 24);
+      doc.text("Tel: 809-752-6806 · petcolinasrd@gmail.com", M, 29);
+    }
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+    doc.text("RESULTADOS DE HEMOGRAMA", W - M, 15, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(200, 215, 230);
+    doc.text(latinPDF("Fecha: " + (meta.fecha || "")), W - M, 22, { align: "right" });
+  };
+  const franja = () => {
+    doc.setFillColor(...K.claro); doc.rect(M, 41, W - 2 * M, 8, "F");
+    doc.setFillColor(...K.naranja); doc.rect(M, 41, 1.6, 8, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...K.marino);
+    const partes = ["Paciente: " + (meta.paciente || "-"), meta.propietario ? "Propietario: " + meta.propietario : ""].filter(Boolean).join("   \u00B7   ");
+    doc.text(latinPDF(partes), M + 5, 46.2);
+  };
+  paginas.forEach((pg, i) => {
+    if (i > 0) doc.addPage();
+    cabecera(); franja();
+    const maxW = W - 2 * M, maxH = BASE - TOPE;
+    const k = Math.min(maxW / pg.w, maxH / pg.h), w = pg.w * k, h = pg.h * k, x = (W - w) / 2;
+    doc.addImage(pg.url, "JPEG", x, TOPE, w, h);
+    doc.setDrawColor(...K.turquesa); doc.setLineWidth(0.5); doc.rect(x, TOPE, w, h);
+  });
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p);
+    doc.setDrawColor(...K.turquesa); doc.setLineWidth(0.4); doc.line(M, 284, W - M, 284);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...K.gris);
+    // Todo el documento es de PetColinas: ninguna referencia al laboratorio original.
+    doc.text("PetColinas · Plaza Las Colinas, Santo Domingo Oeste · Tel: 809-752-6806 · petcolinasrd@gmail.com", M, 288);
+    doc.text("Pág. " + p + " de " + total, W - M, 288, { align: "right" });
+  }
+  return doc;
+}
+
+
+function LabResultados({ clienteId, cliente }) {
+  const E = React.createElement;
+  const [lista, setLista] = React.useState([]);
+  const [cargando, setCargando] = React.useState(true);
+  const [archivo, setArchivo] = React.useState(null);
+  const [leyendo, setLeyendo] = React.useState(false);
+  const [paginas, setPaginas] = React.useState(null);
+  const [error, setError] = React.useState("");
+  const [guardando, setGuardando] = React.useState(false);
+  const [abierto, setAbierto] = React.useState(false);
+
+  const cargar = React.useCallback(async () => {
+    try {
+      const r = await supaFetch("pc_lab_resultados", "GET", null,
+        "?clienteid=eq." + encodeURIComponent(String(clienteId)) + "&order=fecha.desc.nullslast,creado.desc");
+      setLista(Array.isArray(r) ? r : []);
+    } catch (e) { setLista([]); }
+    setCargando(false);
+  }, [clienteId]);
+  React.useEffect(() => { cargar(); }, [cargar]);
+
+  async function preparar() {
+    if (!archivo) return;
+    setError(""); setLeyendo(true);
+    try {
+      const pg = await paginasDeArchivo(archivo);
+      if (!pg.length) throw new Error("El documento no tiene páginas");
+      setPaginas(pg);
+    } catch (e) { setError("No se pudo abrir el documento: " + e.message); }
+    setLeyendo(false);
+  }
+
+  async function guardar({ ediciones, tenir, fecha }) {
+    setGuardando(true);
+    try {
+      const comp = [];
+      for (let i = 0; i < paginas.length; i++) comp.push(await componerPaginaLab(paginas[i], ediciones[i], tenir));
+      const logo = await cargarLogoPC();
+      const doc = generarLabPDFDoc(comp, {
+        fecha, paciente: (cliente && (cliente.nombreMascota || cliente.nombre)) || "",
+        propietario: (cliente && (cliente.nombrePropietario || cliente.dueno)) || ""
+      }, logo);
+      const pdfBlob = doc.output("blob");
+
+      const id = "lab_" + Date.now();
+      const base = String(clienteId).replace(/[^A-Za-z0-9_-]/g, "") + "/" + id;
+      const ext = archivo.type === "application/pdf" ? "pdf" : (archivo.type.split("/")[1] || "bin");
+      const h = await supaHeaders();
+      const subir = async (ruta, blob, tipo) => {
+        const r = await fetch(SUPA_URL + "/storage/v1/object/laboratorios/" + ruta, {
+          method: "POST", headers: { apikey: h.apikey, Authorization: h.Authorization, "Content-Type": tipo, "x-upsert": "false" }, body: blob });
+        if (!r.ok) throw new Error("No se pudo guardar el archivo (" + r.status + ")");
+      };
+      await subir(base + "_original." + ext, archivo, archivo.type);
+      await subir(base + "_petcolinas.pdf", pdfBlob, "application/pdf");
+      const fila = { id, clienteid: String(clienteId), fecha, tipo: "hemograma", laboratorio: "",
+        datos: { paginas: comp.length, tenido: !!tenir, logo_cubierto: ediciones.some((e) => e && (e.cubrir || []).length > 0), recortado: ediciones.some((e) => e && e.crop) },
+        original_path: base + "_original." + ext, original_mime: archivo.type,
+        pdf_path: base + "_petcolinas.pdf", verificado_por: usuarioActual() };
+      const r = await supaFetch("pc_lab_resultados", "POST", [fila]);
+      if (r && r.error) throw new Error(JSON.stringify(r.error));
+      avisar("Hemograma guardado en la historia.", "ok");
+      doc.save("Hemograma_" + latinPDF((cliente && (cliente.nombreMascota || cliente.nombre)) || "paciente").replace(/[^A-Za-z0-9]+/g, "_") + "_" + fecha + ".pdf");
+      setPaginas(null); setArchivo(null); setAbierto(true); cargar();
+    } catch (e) { avisar("No se pudo guardar: " + e.message, "error"); }
+    setGuardando(false);
+  }
+
+  async function abrirFirmado(ruta) {
+    try {
+      const h = await supaHeaders();
+      const r = await fetch(SUPA_URL + "/storage/v1/object/sign/laboratorios/" + ruta, {
+        method: "POST", headers: h, body: JSON.stringify({ expiresIn: 300 }) });
+      const o = await r.json();
+      if (!r.ok || !o.signedURL) throw new Error(o.message || "sin enlace");
+      window.open(SUPA_URL + "/storage/v1" + o.signedURL, "_blank");
+    } catch (e) { avisar("No se pudo abrir el archivo: " + e.message, "error"); }
+  }
+
+  const btn = (fondo, color, borde) => ({ background: fondo, color, border: "1.5px solid " + (borde || fondo),
+    borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 700 });
+
+  return E("div", { style: { border: "1.5px solid #cfe9ee", borderRadius: 12, padding: 14, marginBottom: 14, background: "#f4fafc" } },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+      E("button", { onClick: () => setAbierto(!abierto), style: { background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", fontFamily: "inherit" } },
+        E("span", { style: { fontWeight: 800, fontSize: 14, color: "#121f38" } }, (abierto ? "▾ " : "▸ ") + "🩸 Resultados de laboratorio"),
+        E("span", { style: { fontSize: 12, color: "#5a6472", marginLeft: 8 } }, cargando ? "" : lista.length + " guardado(s)"))),
+
+    abierto && E("div", { style: { marginTop: 12 } },
+      E("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 6 } },
+        E("input", { type: "file", accept: "application/pdf,image/jpeg,image/png,image/webp",
+          onChange: (e) => { setArchivo(e.target.files[0] || null); setError(""); }, style: { fontSize: 12.5 } }),
+        archivo && E("button", { onClick: preparar, disabled: leyendo, style: btn("#f08a1c", "#fff") },
+          leyendo ? "Abriendo…" : "✨ Convertir a formato PetColinas")),
+      E("div", { style: { fontSize: 11.5, color: "#5a6472", marginBottom: 10, lineHeight: 1.5 } },
+        "Los resultados NO se leen ni se reescriben: se usa la misma imagen del documento, sin nada del laboratorio original (le quitas el logo y sus datos) y con la marca de PetColinas."),
+      error && E("div", { style: { background: "#fdeaea", border: "1.5px solid #c0392b", color: "#c0392b", borderRadius: 9,
+        padding: "10px 12px", fontSize: 12.5, fontWeight: 600, marginBottom: 10 } }, error),
+      cargando ? null : lista.length === 0
+        ? E("div", { style: { color: "#5a6472", fontSize: 12.5 } }, "Aún no hay hemogramas guardados para este paciente.")
+        : lista.map((r) => E("div", { key: r.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center",
+            gap: 8, flexWrap: "wrap", background: "#fff", border: "1px solid #e0e4e8", borderRadius: 9, padding: "9px 12px", marginBottom: 7 } },
+            E("div", null,
+              E("div", { style: { fontWeight: 700, fontSize: 13 } }, "Hemograma · " + (r.fecha || "sin fecha")),
+              E("div", { style: { fontSize: 11.5, color: "#5a6472" } },
+                (r.datos && r.datos.paginas ? r.datos.paginas + " pág." : "") + (r.datos && r.datos.logo_cubierto ? " · logo cubierto" : ""))),
+            E("div", { style: { display: "flex", gap: 6 } },
+              r.pdf_path && E("button", { onClick: () => abrirFirmado(r.pdf_path), style: btn("#121f38", "#fff") }, "📄 PDF PetColinas"),
+              r.original_path && E("button", { onClick: () => abrirFirmado(r.original_path), style: btn("#fff", "#334155", "#e0e4e8") }, "Ver original"))))),
+
+    paginas && E(ModalLabPreparar, {
+      paginas, archivo, ocupado: guardando, cliente,
+      onCerrar: () => setPaginas(null), onGuardar: guardar
+    }));
+}
+
+// Preparar el documento: se quita TODO lo que sea del laboratorio original (logo,
+// nombre, direccion, firma, marcas de agua) y se ve el resultado antes de generar.
+// No hay ningun campo de resultados: lo que hay en el documento no se puede cambiar.
+//  - Franjas de arriba y de abajo: se quitan de un golpe (ahi suelen estar el logo,
+//    el nombre, la direccion y la firma del laboratorio).
+//  - Recuadros: para lo que quede suelto (una marca de agua, un sello al costado).
+function ModalLabPreparar({ paginas, archivo, ocupado, cliente, onCerrar, onGuardar }) {
+  const E = React.createElement;
+  const [pi, setPi] = React.useState(0);
+  const [modo, setModo] = React.useState("cubrir");           // "cubrir" | "recortar"
+  const [eds, setEds] = React.useState(() => paginas.map(() => ({ crop: null, cubrir: [] })));
+  const [arr, setArr] = React.useState(null);                 // arrastre en curso
+  const [tenir, setTenir] = React.useState(false);
+  const [fecha, setFecha] = React.useState(hoy());
+  const [prev, setPrev] = React.useState(null);               // vista previa del resultado
+  const [armando, setArmando] = React.useState(false);
+  const caja = React.useRef(null);
+
+  const pg = paginas[pi], ed = eds[pi];
+  const setEd = (f) => setEds((x) => x.map((e, j) => j === pi ? f(e) : e));
+  const frac = (ev) => {
+    const r = caja.current && caja.current.getBoundingClientRect ? caja.current.getBoundingClientRect() : { left: 0, top: 0, width: 1, height: 1 };
+    const cl = (v) => Math.min(1, Math.max(0, v));
+    return { x: cl((ev.clientX - r.left) / (r.width || 1)), y: cl((ev.clientY - r.top) / (r.height || 1)) };
+  };
+  const rect = (a) => ({ x: Math.min(a.x0, a.x1), y: Math.min(a.y0, a.y1), w: Math.abs(a.x1 - a.x0), h: Math.abs(a.y1 - a.y0) });
+  const empezar = (ev) => { const p = frac(ev); setArr({ x0: p.x, y0: p.y, x1: p.x, y1: p.y }); if (ev.currentTarget.setPointerCapture) { try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (e) {} } };
+  const mover = (ev) => { if (arr) { const p = frac(ev); setArr({ ...arr, x1: p.x, y1: p.y }); } };
+  const soltar = () => {
+    if (!arr) return;
+    const r = rect(arr); setArr(null);
+    if (r.w < 0.01 || r.h < 0.01) return;                      // un clic suelto no es un recuadro
+    if (modo === "cubrir") setEd((e) => ({ ...e, cubrir: [...e.cubrir, r] }));
+    else setEd((e) => ({ ...e, crop: r }));
+  };
+  // Franjas: viven dentro del recorte (que es lo que se conserva).
+  const c0 = ed.crop || { x: 0, y: 0, w: 1, h: 1 };
+  const arriba = Math.round(c0.y * 100), abajo = Math.round((1 - c0.y - c0.h) * 100);
+  const franja = (cual, v) => {
+    const t = cual === "arriba" ? v / 100 : c0.y, bj = cual === "abajo" ? v / 100 : 1 - c0.y - c0.h;
+    const h = Math.max(0.1, 1 - t - bj);
+    setEd((e) => (t <= 0 && bj <= 0 && c0.x === 0 && c0.w === 1) ? { ...e, crop: null } : { ...e, crop: { x: c0.x, y: t, w: c0.w, h } });
+    setPrev(null);
+  };
+  async function verComoQueda() {
+    setArmando(true);
+    try { setPrev(await componerPaginaLab(pg, ed, tenir)); } catch (e) { avisar("No se pudo armar la vista previa: " + e.message, "error"); }
+    setArmando(false);
+  }
+  const pct = (v) => (v * 100) + "%";
+  const caja2 = (r, est, key) => E("div", { key, style: { position: "absolute", left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h), boxSizing: "border-box", pointerEvents: "none", ...est } });
+  const nCub = eds.reduce((s, e) => s + e.cubrir.length, 0);
+  const btn = (act) => ({ padding: "7px 12px", borderRadius: 8, border: "1.5px solid " + (act ? "#f08a1c" : "#d0d5db"), background: act ? "#fff3e3" : "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 });
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 2 };
+  const inp = { padding: "6px 8px", borderRadius: 6, border: "1px solid #d0d5db", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
+  const sombra = { background: "rgba(18,31,56,0.55)" };
+
+  return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 } },
+    E("div", { style: { background: "#fff", borderRadius: 14, width: "100%", maxWidth: 1000, maxHeight: "94vh", display: "flex", flexDirection: "column", overflow: "hidden" } },
+      E("div", { style: { padding: "14px 18px", borderBottom: "1px solid #e0e4e8" } },
+        E("div", { style: { fontWeight: 800, fontSize: 16 } }, "Convertir a formato PetColinas"),
+        E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 2, lineHeight: 1.5 } },
+          "Quita todo lo del laboratorio original (logo, nombre, direcci\u00F3n, firma, marcas de agua). Los resultados quedan EXACTAMENTE como est\u00E1n: no se leen ni se reescriben.")),
+      E("div", { style: { flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 18px" } },
+        paginas.length > 1 && E("div", { style: { display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, marginBottom: 10 } },
+          E("button", { onClick: () => { setPi(Math.max(0, pi - 1)); setPrev(null); }, disabled: pi === 0, style: btn(false) }, "\u2190"),
+          "P\u00E1gina " + (pi + 1) + " de " + paginas.length,
+          E("button", { onClick: () => { setPi(Math.min(paginas.length - 1, pi + 1)); setPrev(null); }, disabled: pi === paginas.length - 1, style: btn(false) }, "\u2192")),
+
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 12, background: "#f4f7f9", borderRadius: 10, padding: "10px 14px" } },
+          E("div", null, E("label", { style: lbl }, "Quitar la franja de ARRIBA: " + arriba + "%"),
+            E("input", { type: "range", min: 0, max: 45, step: 1, value: arriba, onChange: (e) => franja("arriba", Number(e.target.value)), style: { width: "100%" } }),
+            E("div", { style: { fontSize: 11, color: "#5a6472" } }, "Logo, nombre y direcci\u00F3n del laboratorio.")),
+          E("div", null, E("label", { style: lbl }, "Quitar la franja de ABAJO: " + abajo + "%"),
+            E("input", { type: "range", min: 0, max: 45, step: 1, value: abajo, onChange: (e) => franja("abajo", Number(e.target.value)), style: { width: "100%" } }),
+            E("div", { style: { fontSize: 11, color: "#5a6472" } }, "Firma, sello y pie del laboratorio."))),
+
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 } },
+          E("button", { onClick: () => setModo("cubrir"), style: btn(modo === "cubrir") }, "\u25AD Tapar un recuadro"),
+          E("button", { onClick: () => setModo("recortar"), style: btn(modo === "recortar") }, "\u2702 Elegir \u00E1rea a conservar"),
+          E("button", { onClick: () => { setEd((e) => ({ ...e, cubrir: e.cubrir.slice(0, -1) })); setPrev(null); }, disabled: !ed.cubrir.length, style: { ...btn(false), opacity: ed.cubrir.length ? 1 : 0.45 } }, "\u21B6 Quitar \u00FAltimo recuadro"),
+          ed.crop && E("button", { onClick: () => { setEd((e) => ({ ...e, crop: null })); setPrev(null); }, style: btn(false) }, "Quitar recorte")),
+        E("div", { style: { fontSize: 12, color: "#0f6f82", marginBottom: 8, fontWeight: 600 } },
+          modo === "cubrir" ? "Arrastra el rat\u00F3n sobre lo que quieras tapar (una marca de agua, un sello al costado\u2026). Puedes marcar varios."
+                            : "Arrastra para elegir la parte del documento que se conserva; lo de afuera se quita."),
+
+        prev
+          ? E("div", null,
+              E("div", { style: { fontSize: 12.5, fontWeight: 800, color: "#1a6b3a", marginBottom: 6 } }, "As\u00ED queda la p\u00E1gina " + (pi + 1) + " (la cabecera y el pie de PetColinas se agregan al generar). Revisa que no quede nada del laboratorio."),
+              E("div", { style: { width: "100%", maxWidth: 640, margin: "0 auto", border: "2px solid #2aa3b8", lineHeight: 0 } },
+                E("img", { src: prev.url, alt: "Vista previa", style: { width: "100%", display: "block" } })),
+              E("div", { style: { textAlign: "center", marginTop: 8 } }, E("button", { onClick: () => setPrev(null), style: btn(false) }, "\u2190 Seguir editando")))
+          : E("div", { ref: caja, onPointerDown: empezar, onPointerMove: mover, onPointerUp: soltar,
+              style: { position: "relative", width: "100%", maxWidth: 640, margin: "0 auto", cursor: "crosshair", touchAction: "none", userSelect: "none", border: "1.5px solid #cfd6dc", lineHeight: 0 } },
+              E("img", { src: pg.url, alt: "Documento original", draggable: false, style: { width: "100%", display: "block", pointerEvents: "none" } }),
+              ed.crop && caja2({ x: 0, y: 0, w: 1, h: ed.crop.y }, sombra, "c1"),
+              ed.crop && caja2({ x: 0, y: ed.crop.y + ed.crop.h, w: 1, h: 1 - ed.crop.y - ed.crop.h }, sombra, "c2"),
+              ed.crop && caja2({ x: 0, y: ed.crop.y, w: ed.crop.x, h: ed.crop.h }, sombra, "c3"),
+              ed.crop && caja2({ x: ed.crop.x + ed.crop.w, y: ed.crop.y, w: 1 - ed.crop.x - ed.crop.w, h: ed.crop.h }, sombra, "c4"),
+              ed.crop && caja2(ed.crop, { border: "2px dashed #2aa3b8" }, "c5"),
+              ed.cubrir.map((r, i) => caja2(r, { background: "#fff", border: "2px solid #f08a1c" }, "v" + i)),
+              arr && caja2(rect(arr), { border: "2px dashed " + (modo === "cubrir" ? "#f08a1c" : "#2aa3b8"), background: modo === "cubrir" ? "rgba(240,138,28,0.18)" : "rgba(42,163,184,0.12)" }, "arr")),
+
+        E("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14, alignItems: "flex-end" } },
+          E("div", { style: { flex: "0 0 150px" } }, E("label", { style: lbl }, "Fecha del resultado"),
+            E("input", { type: "date", value: fecha, onChange: (e) => setFecha(e.target.value), style: inp })),
+          E("button", { onClick: verComoQueda, disabled: armando, style: btn(false) }, armando ? "Armando\u2026" : "\uD83D\uDC41 Ver c\u00F3mo queda")),
+        E("label", { style: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, marginTop: 12, cursor: "pointer", lineHeight: 1.45 } },
+          E("input", { type: "checkbox", checked: tenir, onChange: (e) => { setTenir(e.target.checked); setPrev(null); }, style: { marginTop: 2 } }),
+          E("span", null, E("strong", null, "Te\u00F1ir el texto de azul marino PetColinas. "),
+            "Los n\u00FAmeros no cambian de forma, pero lo que el laboratorio marc\u00F3 en color (por ejemplo un valor alto en rojo) pasa a azul. D\u00E9jalo apagado si tu laboratorio se\u00F1ala as\u00ED los valores fuera de rango."))),
+      E("div", { style: { padding: "12px 18px", borderTop: "1px solid #e0e4e8", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" } },
+        E("div", { style: { flex: 1, fontSize: 12, color: "#5a6472", minWidth: 200 } },
+          (arriba || abajo ? "Se quita " + (arriba ? arriba + "% de arriba" : "") + (arriba && abajo ? " y " : "") + (abajo ? abajo + "% de abajo" : "") + ". " : "") +
+          (nCub ? nCub + " recuadro(s) tapando. " : "") +
+          (!arriba && !abajo && !nCub && !ed.crop ? "A\u00FAn no quitas nada del laboratorio: usa \u00ABVer c\u00F3mo queda\u00BB para revisar." : "")),
+        E("button", { onClick: onCerrar, disabled: ocupado, style: { padding: "10px 16px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#f8f9fa", cursor: "pointer", fontWeight: 700 } }, "Cancelar"),
+        E("button", { onClick: () => onGuardar({ ediciones: eds, tenir, fecha }), disabled: ocupado || !fecha,
+          style: { padding: "10px 18px", borderRadius: 9, border: "none", background: ocupado ? "#aab3bd" : "#f08a1c", color: "#fff", cursor: ocupado ? "default" : "pointer", fontWeight: 800 } },
+          ocupado ? "Generando\u2026" : "Generar PDF PetColinas"))));
+}
+
 function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, citas = [], setCitas, cliente }) {
   const TIPOS_H = ["Consulta", "Vacuna", "Diagn\xF3stico", "Cirug\xEDa", "Control", "Desparasitaci\xF3n", "Otro"];
   const emptyH = { fecha: hoy(), tipo: "Consulta", descripcion: "", veterinario: "", diagnostico: "", tratamiento: "", medicamentos: "", proximacita: "", notas: "" };
@@ -11745,6 +12654,7 @@ function HistorialMedico({ clienteId, historias, setHistorias, deleteHistoria, c
   }
   const tipoColor = { "Consulta": "#1a4fa0", "Vacuna": "#1a6b3a", "Cirug\xEDa": "#b8232a", "Diagn\xF3stico": "#7c3aed", "Control": "#0891b2", "Desparasitaci\xF3n": "#d45f1e", "Otro": "#5a6472" };
   return React.createElement("div", null,
+    React.createElement(LabResultados, { clienteId, cliente }),
     mis.length === 0 && !agregando && React.createElement("div", { style: { color: "#5a6472", fontSize: 13, marginBottom: 10 } }, "Sin registros cl\xEDnicos."),
     mis.map(h => React.createElement("div", { key: h.id, style: { background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", marginBottom: 10, border: "1px solid #e8ecf0" } },
       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
@@ -14335,7 +15245,8 @@ const TABS_VET = [
   { id: "historias",       icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
   { id: "evolucion_vet",   icon: "\u{1F4C8}", label: "Evoluci\xF3n Cl\xEDnica" },
   { id: "reportes_lab",    icon: "\u{1F52C}", label: "Reportes de Lab" },
-  { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" }
+  { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" },
+  { id: "resenas_vet",     icon: "\u2B50", label: "Rese\xF1as Google" }
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -16314,7 +17225,8 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
         soloPropio: usuario.nombre.split(" ")[0]
       }),
       tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), clientes }),
-      tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] })
+      tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] }),
+      tabVet === "resenas_vet"    && React.createElement(CampanaResenas, { clientes, ventas, firmaPorDefecto: "Dra. " + String(usuario.nombre || "").replace(/^Dra\.?\s*/i, "").split(" ")[0] })
     )
   );
 }
@@ -17287,7 +18199,7 @@ function CajaReporte({ modo }) {
       E("select", { value: metodo, onChange: (e) => setMetodo(e.target.value),
         style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5 } },
         E("option", { value: "" }, "Todos los métodos"),
-        ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "CHEQUE", "SIN ANOTAR", "MIXTO", "OTRO"].map((m) => E("option", { key: m, value: m }, m))),
+        ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "TARJETA EMPRESA", "CHEQUE", "SIN ANOTAR", "MIXTO", "OTRO"].map((m) => E("option", { key: m, value: m }, m))),
       E("select", { value: categoria, onChange: (e) => setCategoria(e.target.value),
         style: { padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.borde, fontSize: 12.5, maxWidth: 190 } },
         E("option", { value: "" }, "Todas las categorías"),
@@ -17404,6 +18316,8 @@ function TarjetaPorCuenta({ rep, C, n }) {
       "Ya esta en la cuenta. Se concilia contra el estado de cuenta."],
     ["PUENTE",      "💳 Tarjetas por liquidar", "#92400e",
       "Cobrado, pero el banco todavia no lo ha depositado (T+1 a T+3) y lo abonara neto de comision."],
+    ["CREDITO",     "🧾 Tarjeta empresarial",   "#6b21a8",
+      "Deuda, no dinero: lo pagado con la tarjeta de la empresa no sale del banco hasta que se paga el estado de cuenta."],
     ["SIN_ASIGNAR", "⚠️ Sin asignar",           C.rojo,
       "Transferencia sin banco anotado, cobros mixtos y gastos sin metodo. No se sabe donde cayo."]
   ];
@@ -17563,9 +18477,9 @@ function CajaCuentas() {
         E("span", { style: {
           fontSize: 10, fontWeight: 800, letterSpacing: 0.5, padding: "3px 8px", borderRadius: 20,
           background: c.tipo === "EFECTIVO" ? "#e8f5ee" : c.tipo === "BANCO" ? "#e8f0fe"
-                    : c.tipo === "PUENTE" ? "#fff7e6" : "#fdeaea",
+                    : c.tipo === "PUENTE" ? "#fff7e6" : c.tipo === "CREDITO" ? "#f3e8ff" : "#fdeaea",
           color: c.tipo === "EFECTIVO" ? C.verde : c.tipo === "BANCO" ? C.azul
-               : c.tipo === "PUENTE" ? "#92400e" : C.rojo
+               : c.tipo === "PUENTE" ? "#92400e" : c.tipo === "CREDITO" ? "#6b21a8" : C.rojo
         } }, c.tipo === "SIN_ASIGNAR" ? "SIN ASIGNAR" : c.tipo)),
 
       linea("Empezó el día con", RDc(c.saldo_inicial)),
@@ -17818,7 +18732,7 @@ function CajaDia() {
   const E = React.createElement;
   const C = { verde: "#1a6b3a", azul: "#1a4fa0", grisd: "#5a6472", rojo: "#c0392b",
               gold: "#b8860b", borde: "#e0e4e8" };
-  const METODOS = ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "CHEQUE"];
+  const METODOS = ["EFECTIVO", "TRANSFERENCIA", "TARJETA", "TARJETA EMPRESA", "CHEQUE"];
 
   const [fecha, setFecha] = React.useState(hoy());
   const [libro, setLibro] = React.useState([]);
@@ -19091,7 +20005,7 @@ function Agenda({ citas: citasArg = [], setCitas, deleteCita, clientes = [], ven
       recordatorio:    `¡Hola ${n}! 🐾 Te recordamos que *mañana* tienes cita de *${m}* en *PetColinas* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡No olvides venir! 😊`,
       recordatorio_hoy:`¡Buenos días ${n}! 🌞 Hoy tienes cita de *${m}* en *PetColinas* a las *${h}*.\n\n🔧 Servicio: ${srv}\n\n¡Te esperamos! 🐾`,
       recordatorio_2h: `¡Hola ${n}! 🐾 En *2 horas* tienes cita de *${m}* en *PetColinas* (${h}).\n\n¡Te esperamos pronto! 😊`,
-      lista:           `¡Hola ${n}! 🎉 *${m}* ya está lista para ser recogida 🐾\n\n💰 Total a pagar: *${pre}*\n\n¡Puedes pasar cuando gustes! Estamos en Plaza Las Colinas 📍`,
+      lista:           `¡Hola ${n}! 🎉 *${m}* ya está lista para ser recogida 🐾\n\n💰 Total a pagar: *${pre}*\n\n¡Puedes pasar cuando gustes! Estamos en Plaza Las Colinas 📍` + lineaResenaGoogle(),
       reagendar:       `¡Hola ${n}! 🙏 Necesitamos reagendar la cita de *${m}* del *${f}* a las *${h}*.\n\nPor favor escríbenos para coordinar. Disculpa los inconvenientes 😊`
     };
     return msgs[tipo] || "";
