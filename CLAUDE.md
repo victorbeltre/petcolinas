@@ -1,5 +1,4 @@
 # CLAUDE.md - PetColinas
-Leido automaticamente por Claude Code al iniciar.
 
 ## NEGOCIO
 PetColinas - Veterinaria, Plaza Las Colinas, Santo Domingo Oeste, RD
@@ -8,11 +7,14 @@ App: https://victorbeltre.github.io/petcolinas/
 Supabase: https://ulrzzddovkioxeaarnjk.supabase.co
 
 ## USUARIOS
-admin@petcolinas.com / Nickyjose00 -> Admin
-naylan@petcolinas.com / naylan2026 -> Vet 30% (veterinaria) + 5% (farmacia/ventas)
-valentina@petcolinas.com / valentina2026 -> Vet 40% (sin acceso a Supabase Auth actualmente)
-alexander@petcolinas.com / alexander2026 -> Groomer
+admin@petcolinas.com -> Admin
+naylan@petcolinas.com -> Vet 30% (veterinaria) + 5% (farmacia/ventas)
+valentina@petcolinas.com -> Vet 40% (sin usuario en Supabase Auth)
+alexander@petcolinas.com -> Groomer
 veterinaria@petcolinas.com -> Caja (factura y registra ventas, sin ver el negocio)
+
+Las contrasenas NO van en este archivo: el repo es PUBLICO. Viven en el gestor
+de claves de Victor.
 
 Aylein Santiago ya NO tiene acceso (20 Ago 2026, ya no labora con nosotros). Su
 historial de ventas/comisiones se conserva intacto (Regla Critica 2), pero se
@@ -129,9 +131,9 @@ PENDIENTE DE VICTOR en este modulo:
   RD$ 4.925 en 2026, parece el banco DESDE el que pago un cliente).
 - Anotar una vez el saldo real de cada banco: sin ese punto de partida el
   teorico es la suma de todo desde 2025 y no significa nada (la app lo avisa).
-- LOS GASTOS NO SE ESTAN REGISTRANDO: pc_gastos tiene 6 filas en junio, 1 en
-  agosto y 0 en septiembre. El flujo de caja solo puede ser tan cierto como lo
-  que se anote.
+- Registro de gastos (verificado 25 oct 2026): pc_gastos tiene 6 filas en junio,
+  1 en agosto, 0 en septiembre y 26 en octubre. Ya se esta anotando; sostenerlo.
+  El flujo de caja solo puede ser tan cierto como lo que se anote.
 
 ## HEMOGRAMAS (M21, oct 2026)
 Evolucion del paciente -> "Resultados de laboratorio" -> "Convertir a formato
@@ -201,7 +203,9 @@ al pasar de 30) para que WhatsApp no marque el numero como spam.
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
-Ene 2026: RD$111,479 | Feb: RD$120,753 | Mar al 19: ~RD$146,863
+Ventas (corte 19 mar 2026, NO actualizado desde entonces):
+Ene RD$111,479 | Feb RD$120,753 | Mar al 19 ~RD$146,863
+Para la cifra de hoy, usar la pestana Caja (M18/M19), que la calcula en vivo.
 
 ## BOOST ENGINE
 Lunes=2X, Mierc=3X, Viernes=Lucky, Sabado=1.5X
@@ -213,10 +217,14 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
 3. Al aprobar: venta registrada + CRM actualizado automaticamente
 
 ## PENDIENTES QUE SOLO VICTOR PUEDE HACER (act. 8 Sep 2026)
-1. (M6) Supabase → Authentication → Providers → Email → activar
-   "Leaked password protection" (compara contra HaveIBeenPwned). Es un
-   interruptor del dashboard; no se puede por SQL ni por el conector.
-   AL 8 SEP SIGUE APAGADO: el advisor lo reporta en cada revision.
+1. (M6) "Leaked password protection" de Supabase Auth (compara contra
+   HaveIBeenPwned). BLOQUEADO POR PLAN: es funcion de Pro en adelante y la
+   organizacion esta en free (verificado 25 oct 2026), asi que el interruptor
+   no aparece. Opciones: subir a Pro y activarlo en Authentication →
+   Providers → Email, o aceptar el riesgo y dejar de listarlo como pendiente.
+   Lo que SI se puede hoy en free, en esa misma pantalla: subir la longitud
+   minima de contrasena y exigir mayusculas, digitos y simbolos.
+   El advisor lo seguira reportando mientras este apagado.
 1b. (M4) Pegar el nuevo `form-to-crm.gs` en Apps Script (Extensiones → Apps
    Script del formulario) y correr `diagnostico()`. Solo DESPUES de eso se
    puede quitar la politica `"pc_clientes insert formulario web"`, que hoy
@@ -261,10 +269,9 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
    verdad requiere `git filter-repo` + force push, que reescribe todo el
    historial y afecta a Laura: decision de Victor.
 
-## PENDIENTES (20 Mar 2026)
-1. Boton rojo ventas pendientes en header admin
-2. Verificar Top Servicios visible en Dashboard Aylein
-3. Confirmar Vacunas muestra todos los registros de Aylein
-4. Crear usuarios Supabase Auth para Alexander y Valentina
+## PENDIENTES MENORES (rev. 25 oct 2026)
+1. Boton rojo de ventas pendientes en el header del admin (sin verificar).
+2. Crear el usuario de Supabase Auth de Valentina. Alexander ya lo tiene
+   (verificado 25 oct 2026).
 
-Generado 20 Mar 2026
+Ultima revision: 25 oct 2026.
