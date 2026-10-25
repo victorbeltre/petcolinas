@@ -26103,8 +26103,8 @@ alter table pc_candidatos add column if not exists formqa text;
 ⚠️ **Importante sobre el punto 2:** al activar RLS, la app **exige sesión iniciada**. Ya funciona así para ti y Aylein, pero **Alexander y Valentina todavía no tienen usuario en Supabase Auth** (está pendiente desde marzo). Créalos antes o quedarán fuera:
 
 **Supabase → Authentication → Users → Add user** (marca *Auto Confirm*):
-- `valentina@petcolinas.com` / `valentina2026`
-- `alexander@petcolinas.com` / `alexander2026`
+- `valentina@petcolinas.com` / `(contrasena retirada del repo)`
+- `alexander@petcolinas.com` / `(contrasena retirada del repo)`
 
 Si prefieres, corre primero solo los bloques **1 y 3**, crea los usuarios, y el **2** después.
 
@@ -26257,8 +26257,8 @@ end $$;
 ```
 
 ⚠️ **Antes de correr el bloque 3**, crea los usuarios que faltan en **Authentication → Users → Add user** (marca *Auto Confirm*), o Alexander y Valentina quedan fuera:
-- `valentina@petcolinas.com` / `valentina2026`
-- `alexander@petcolinas.com` / `alexander2026`
+- `valentina@petcolinas.com` / `(contrasena retirada del repo)`
+- `alexander@petcolinas.com` / `(contrasena retirada del repo)`
 
 Si prefieres ir seguro: corre **1 y 2** ahora, crea los usuarios, prueba que entren, y el **3** después.
 
@@ -26821,7 +26821,7 @@ Sí había **una factura** con esa fecha (#0141 de Nicky De los Santos, RD$300).
 
 2. **Avísale a Laura, Aylein y Alexander** que si les da error, cierren sesión y entren de nuevo. Sus usuarios funcionan, pero necesitan sesión fresca.
 
-Un último detalle: activa **Leaked Password Protection** en *Authentication → Policies*. Las contraseñas actuales (`aylein2026`, `alexander2026`…) son muy predecibles y ahora son lo único que protege los datos.
+Un último detalle: activa **Leaked Password Protection** en *Authentication → Policies*. Las contraseñas actuales (retiradas de este documento) eran muy predecibles y ahora son lo único que protege los datos.
 
 Dime cómo te va tras el refresh y reviso los registros del servidor si algo sigue fallando.
 
