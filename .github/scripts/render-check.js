@@ -617,6 +617,66 @@ render("ModalHistoriaDesdeFactura", sandbox.ModalHistoriaDesdeFactura, {
 });
 enVM('delete PC_CONFIG.comision_vet;');
 
+// Stock al facturar (26 oct 2026): sin stock no se factura, se descuenta lo
+// vendido, la comprobacion es contra la BASE y dos ventas simultaneas no se
+// llevan la misma ultima unidad. Base falsa en memoria.
+async function pruebaStock() {
+  const fallo = (m) => errores.push("stock: " + m);
+  const inv = [{ id: "1", nombre: "NexGard Spectra L", stock: 5 }, { id: "2", nombre: "Ferox", stock: 0 }, { id: "3", nombre: "NexGard Spectra M", stock: 9 }];
+  const ls = enVM("lineasStockVenta")([
+    { prodId: "1", qty: 2, area: "farmacia", nombre: "2x NexGard Spectra L" },
+    { area: "farmacia", nombre: "1x nexgard spectra l", qty: 1 },
+    { area: "grooming", nombre: "Ba\u00F1o", qty: 1 },
+    { categoria: "farmacia", nombre: "Producto nuevo", qty: 1 },
+    { categoria: "farmacia", prodId: "3", qty: 1, sinControlStock: true }], inv);
+  if (ls.length !== 1 || ls[0].prod.id !== "1" || ls[0].qty !== 3) fallo("se suman las lineas del mismo producto, y no cuentan servicios, productos que no existen ni altas rapidas: " + JSON.stringify(ls));
+  const dif = enVM("diferenciaStockFactura");
+  const d1 = dif([{ descripcion: "NexGard Spectra L", cantidad: 1 }], [{ descripcion: "NexGard Spectra L", cantidad: 3 }, { descripcion: "Ba\u00F1o", cantidad: 1 }], inv);
+  if (d1.descontar.length !== 1 || d1.descontar[0].qty !== 2 || d1.devolver.length) fallo("editar factura de 1 a 3 descuenta solo 2: " + JSON.stringify(d1));
+  const d2 = dif([{ descripcion: "NexGard Spectra L", cantidad: 3 }], [{ descripcion: "NexGard Spectra L", cantidad: 1 }], inv);
+  if (d2.devolver.length !== 1 || d2.devolver[0].qty !== 2 || d2.descontar.length) fallo("bajar de 3 a 1 devuelve 2: " + JSON.stringify(d2));
+  const d3 = dif([{ descripcion: "Ferox", cantidad: 1 }], [{ descripcion: "Ferox", cantidad: 1 }], inv);
+  if (d3.descontar.length || d3.devolver.length) fallo("guardar sin cambiar productos no mueve el stock: " + JSON.stringify(d3));
+  let db = {};
+  const orig = { supaFetch: sandbox.supaFetch, fetch: sandbox.fetch, supaAccessToken: sandbox.supaAccessToken, auditar: sandbox.auditar };
+  let alPatch = null;
+  sandbox.supaAccessToken = async () => "t";
+  sandbox.auditar = () => {};
+  sandbox.supaFetch = async (t, m, body, q) => {
+    if (m === "GET") {
+      const ids = /id=in\.\((.*)\)/.test(q) ? decodeURIComponent(q.match(/id=in\.\((.*)\)/)[1]).split(",").map((x) => x.replace(/"/g, "")) : [q.match(/id=eq\.([^&]+)/)[1]];
+      return ids.filter((i) => i in db).map((i) => ({ id: i, stock: db[i] }));
+    }
+    if (m === "PATCH") { db[q.match(/id=eq\.([^&]+)/)[1]] = body.stock; return true; }
+  };
+  sandbox.fetch = async (url, o) => {
+    const id = decodeURIComponent(url.match(/id=eq\.([^&]+)/)[1]), esperado = Number(url.match(/stock=eq\.(-?\d+)/)[1]);
+    if (alPatch) { const f = alPatch; alPatch = null; f(); }
+    if (db[id] !== esperado) return { ok: true, json: async () => [] };
+    db[id] = JSON.parse(o.body).stock;
+    return { ok: true, json: async () => [{ id, stock: db[id] }] };
+  };
+  try {
+    const desc = enVM("descontarStockVenta");
+    db = { "1": 5, "2": 0 };
+    let r = await desc([{ prod: inv[0], qty: 2 }]);
+    if (!r.ok || db["1"] !== 3) fallo("vender 2 de 5 debe dejar 3: " + JSON.stringify(r) + " " + JSON.stringify(db));
+    db = { "1": 5, "2": 0 };
+    r = await desc([{ prod: inv[0], qty: 1 }, { prod: inv[1], qty: 1 }]);
+    if (r.ok || !r.faltantes.length || r.faltantes[0].nombre !== "Ferox" || db["1"] !== 5) fallo("sin stock de Ferox no se factura NADA de la venta: " + JSON.stringify(r) + " " + JSON.stringify(db));
+    db = { "1": 1 };
+    r = await desc([{ prod: { ...inv[0], stock: 50 }, qty: 2 }]);
+    if (r.ok || db["1"] !== 1) fallo("manda lo que dice la base, no lo que hay en pantalla: " + JSON.stringify(r));
+    db = { "1": 5 };
+    alPatch = () => { db["1"] = 1; };   // otra caja vende 4 en el mismo instante
+    r = await desc([{ prod: inv[0], qty: 2 }]);
+    if (r.ok || db["1"] !== 1) fallo("dos ventas simultaneas no pueden llevarse la misma ultima unidad: " + JSON.stringify(r) + " " + JSON.stringify(db));
+    if (!/quedan 0 unidades/.test(enVM("mensajeSinStock")([{ nombre: "Ferox", disponible: 0, pedido: 1 }]))) fallo("el aviso debe decir cuantas quedan");
+  } finally { Object.assign(sandbox, orig); }
+}
+
+(async () => {
+await pruebaStock();
 if (errores.length) {
   console.error("❌ Vistas que se romperían en pantalla:\n");
   errores.forEach((e) => console.error("  • " + e));
@@ -624,3 +684,4 @@ if (errores.length) {
   process.exit(1);
 }
 console.log(`✓ Vistas principales renderizan sin errores (42 comprobadas + la receta impresa, las comisiones, el menú y la caja).`);
+})();

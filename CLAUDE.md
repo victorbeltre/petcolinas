@@ -216,6 +216,27 @@ hemogramas: alli los resultados no se leen; una factura de compra si.)
   `respaldos.pc_inventario_20261026` (esquema no expuesto).
 - Categoria nueva `higiene`. "farmaco" sigue siendo la clave (se muestra Medicamento).
 
+## STOCK AL FACTURAR (26 oct 2026)
+Decision de Victor: facturar un producto DESCUENTA del inventario, y SIN STOCK NO SE
+FACTURA. Aplica en Ventas (admin/caja), Facturas (nueva o editada), Facturar de los
+portales y Mi Vitrina/Farmacia de la doctora. Todo pasa por `lineasStockVenta` +
+`descontarStockVenta` (global, antes de `function Ventas`):
+- Producto = elegido de la lista del inventario (prodId) o, escrito a mano en
+  farmacia, con nombre IDENTICO normalizado. Antes se comparaban 8 caracteres y
+  "NexGard Spectra M" descontaba de la L. Servicios y productos inexistentes no cuentan.
+- Se comprueba contra la BASE, no contra la memoria de la pestaña. El descuento es
+  condicional (`stock=eq.<leido>`): si otra caja vendio a la vez, se relee; no se
+  vende dos veces la ultima unidad. Si algo falla a mitad, se devuelve lo descontado.
+- Si falta UN producto, no se factura NADA de esa venta (mensajeSinStock dice cuantas quedan).
+- Facturas editadas: solo la diferencia (`diferenciaStockFactura`): subir cantidad
+  descuenta, bajar devuelve, guardar sin cambios no mueve nada.
+- Excepcion: "Alta rapida" de Facturar (`sinControlStock`): entra con stock 0 y
+  bloquearla impediria vender lo que esta en la mano.
+- Productos viejos con stock 0 que SI estan en el estante: hay que ponerles stock en
+  Inventario antes de poder venderlos.
+- Pendiente (no hecho): borrar o editar una venta YA registrada en Ventas no devuelve
+  el stock.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

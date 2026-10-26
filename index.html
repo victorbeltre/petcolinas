@@ -199,7 +199,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-26 19:47Z";
+const PC_BUILD = "2026-10-26 21:52Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -4150,7 +4150,22 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     }
   }
 
-  function crearFactura() {
+  const creandoFacturaRef = useRef(false);
+  async function crearFactura() {
+    if (creandoFacturaRef.current) return;
+    // Productos del inventario: sin stock no se factura y lo facturado se
+    // descuenta (Victor, 26 oct). Al editar, solo la diferencia.
+    const difStock = diferenciaStockFactura(editandoId ? (editandoOrig && editandoOrig.items) : [], form.items, inventario);
+    if (difStock.descontar.length || difStock.devolver.length) {
+      creandoFacturaRef.current = true;
+      try {
+        if (difStock.descontar.length) {
+          const rStock = await descontarStockVenta(difStock.descontar);
+          if (!rStock.ok) return avisar(rStock.error || mensajeSinStock(rStock.faltantes), "error");
+        }
+        if (difStock.devolver.length) await devolverStockVenta(difStock.devolver);
+      } finally { creandoFacturaRef.current = false; }
+    }
     const { subtotal, itbisAmt, total } = calcTotales(form.items, form.itbis);
     const numeroFinalFactura = editandoId ? (editandoNum || nextNumero()) : nextNumero();
     // Esta visita suma 1 solo si tiene grooming Y no hay otra factura de grooming para esa fecha
@@ -9846,6 +9861,132 @@ function EditorItemsVenta({ items, setItems, tarifasGrooming, tarifasVet, invent
   );
 }
 
+// ─── STOCK AL FACTURAR (26 oct 2026) ─────────────────────────────────────────
+// Victor: al facturar un producto el inventario debe bajar, y si no queda stock
+// la factura NO se registra. Lo usan Ventas (admin y caja), Facturar de los
+// portales y Mi Vitrina / Farmacia de la doctora.
+// Que cuenta como producto de inventario: lo elegido de la lista del inventario
+// (lleva prodId) o, si se escribio a mano en farmacia, un producto cuyo nombre
+// coincide EXACTO (coincidenciaInventario). Antes se comparaban los primeros 8
+// caracteres, asi que "NexGard Spectra M" descontaba de la talla L; con el
+// bloqueo, eso impediria facturar por culpa de otro producto.
+// Un servicio o un producto escrito a mano que no existe en inventario no se
+// controla (no hay de donde descontar).
+function lineasStockVenta(items, inventario) {
+  const inv = inventario || [];
+  const porId = new Map();
+  (items || []).forEach((it) => {
+    if (!it || it.sinControlStock) return;
+    const qty = Math.max(1, parseInt(it.qty) || 1);
+    let prod = null;
+    if (it.prodId != null && it.prodId !== "") prod = inv.find((p) => String(p.id) === String(it.prodId)) || null;
+    else if ((it.area || it.categoria || it.tipo) === "farmacia") prod = coincidenciaInventario(String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), inv);
+    if (!prod) return;
+    const k = String(prod.id);
+    const prev = porId.get(k);
+    porId.set(k, { prod, qty: (prev ? prev.qty : 0) + qty });
+  });
+  return [...porId.values()];
+}
+// Al EDITAR una factura solo cuenta la diferencia: subir de 1 a 3 descuenta 2,
+// bajar de 3 a 1 devuelve 2, y guardarla sin tocar los productos no mueve nada.
+function diferenciaStockFactura(itemsAntes, itemsAhora, inventario) {
+  const comoLineas = (its) => (its || []).filter((it) => String(it.descripcion || it.nombre || "").trim())
+    .map((it) => ({ nombre: it.descripcion || it.nombre, qty: Math.max(1, parseInt(it.cantidad ?? it.qty) || 1), area: "farmacia" }));
+  const antes = new Map(lineasStockVenta(comoLineas(itemsAntes), inventario).map((l) => [String(l.prod.id), l]));
+  const ahora = new Map(lineasStockVenta(comoLineas(itemsAhora), inventario).map((l) => [String(l.prod.id), l]));
+  const descontar = [], devolver = [];
+  new Set([...antes.keys(), ...ahora.keys()]).forEach((k) => {
+    const d = (ahora.has(k) ? ahora.get(k).qty : 0) - (antes.has(k) ? antes.get(k).qty : 0);
+    const prod = (ahora.get(k) || antes.get(k)).prod;
+    if (d > 0) descontar.push({ prod, qty: d });
+    else if (d < 0) devolver.push({ prod, qty: -d });
+  });
+  return { descontar, devolver };
+}
+// Devuelve unidades al inventario (al quitar un producto de una factura editada).
+async function devolverStockVenta(lineas) {
+  for (const l of lineas || []) {
+    if (/^inv_/.test(String(l.prod.id))) continue;
+    const fila = await supaFetch("pc_inventario", "GET", null, "?select=stock&id=eq." + encodeURIComponent(String(l.prod.id)));
+    if (!Array.isArray(fila) || !fila[0]) continue;
+    const antes = Number(fila[0].stock) || 0;
+    await supaFetch("pc_inventario", "PATCH", { stock: antes + l.qty }, "?id=eq." + encodeURIComponent(String(l.prod.id)));
+    auditar("pc_inventario", "devolucion", { servicio: l.prod.nombre }, ["stock: " + antes + " \u2192 " + (antes + l.qty)]);
+  }
+}
+function mensajeSinStock(faltantes) {
+  return "⛔ No se puede facturar: no hay suficiente en inventario.\n\n" +
+    faltantes.map((f) => "• " + f.nombre + ": quedan " + f.disponible + (f.disponible === 1 ? " unidad" : " unidades") + " y se intenta facturar " + f.pedido).join("\n") +
+    "\n\nSi lleg\xF3 mercanc\xEDa, s\xFAmala primero en Inventario (o carga la factura del proveedor).";
+}
+// Comprueba contra la BASE (no contra lo que tenga esta pestaña en memoria, que
+// puede llevar minutos sin refrescar) y descuenta. Devuelve { ok, faltantes }.
+// El descuento es condicional (stock=eq.<lo leido>): si otra caja vendio el
+// mismo producto en el mismo instante, se vuelve a leer y a comprobar, para que
+// dos ventas simultaneas no se lleven la misma ultima unidad.
+async function descontarStockVenta(lineas) {
+  if (!lineas || !lineas.length) return { ok: true, faltantes: [] };
+  // Productos "fantasma" sacados de los gastos (id inv_...): no estan en la
+  // base, se controlan con lo que hay en memoria y se guardan al descontar.
+  const reales = lineas.filter((l) => !/^inv_/.test(String(l.prod.id)));
+  const leerBase = async () => {
+    if (!reales.length) return new Map();
+    const ids = reales.map((l) => '"' + String(l.prod.id).replace(/"/g, "") + '"').join(",");
+    const filas = await supaFetch("pc_inventario", "GET", null, "?select=id,nombre,stock&id=in.(" + encodeURIComponent(ids) + ")");
+    return Array.isArray(filas) ? new Map(filas.map((r) => [String(r.id), Number(r.stock) || 0])) : null;
+  };
+  const hechos = new Set();   // ya descontados: un reintento no los vuelve a tocar
+  // Si la factura no sale despues de haber descontado algo, se devuelve.
+  const devolver = async () => {
+    for (const l of lineas.filter((x) => hechos.has(String(x.prod.id)) && !/^inv_/.test(String(x.prod.id)))) {
+      const fila = await supaFetch("pc_inventario", "GET", null, "?select=stock&id=eq." + encodeURIComponent(String(l.prod.id)));
+      if (Array.isArray(fila) && fila[0]) await supaFetch("pc_inventario", "PATCH", { stock: (Number(fila[0].stock) || 0) + l.qty }, "?id=eq." + encodeURIComponent(String(l.prod.id)));
+    }
+  };
+  for (let intento = 0; intento < 3; intento++) {
+    const base = await leerBase();
+    const disponible = (l) => {
+      if (/^inv_/.test(String(l.prod.id))) return Number(l.prod.stock) || 0;
+      // Sin conexion con la base: se usa lo que hay en memoria antes que facturar a ciegas.
+      if (base === null) return Number(l.prod.stock) || 0;
+      return base.has(String(l.prod.id)) ? base.get(String(l.prod.id)) : (Number(l.prod.stock) || 0);
+    };
+    const pendientes = lineas.filter((l) => !hechos.has(String(l.prod.id)));
+    const faltantes = pendientes.filter((l) => l.qty > disponible(l))
+      .map((l) => ({ id: l.prod.id, nombre: l.prod.nombre, disponible: Math.max(0, disponible(l)), pedido: l.qty }));
+    if (faltantes.length) { await devolver(); return { ok: false, faltantes }; }
+    let choque = false;
+    for (const l of pendientes) {
+      const k = String(l.prod.id), antes = disponible(l);
+      if (/^inv_/.test(k)) {
+        const p = { ...l.prod, stock: antes - l.qty };
+        delete p.autoGenerado;
+        upsertOne("pc_inventario", p).catch(() => {});
+        hechos.add(k);
+        continue;
+      }
+      try {
+        const token = await supaAccessToken();
+        const r = await fetch(SUPA_URL + "/rest/v1/pc_inventario?id=eq." + encodeURIComponent(k) + "&stock=eq." + antes, {
+          method: "PATCH",
+          headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=representation" },
+          body: JSON.stringify({ stock: antes - l.qty })
+        });
+        const filas = r.ok ? await r.json().catch(() => []) : null;
+        if (filas === null) { console.warn("[stock] no se pudo descontar", l.prod.nombre, r.status); hechos.add(k); }
+        else if (!filas.length && base && base.has(k)) { choque = true; break; }
+        else {
+          hechos.add(k);
+          auditar("pc_inventario", "venta", { servicio: l.prod.nombre }, ["stock: " + antes + " \u2192 " + (antes - l.qty)]);
+        }
+      } catch (e) { console.warn("[stock]", e); hechos.add(k); }
+    }
+    if (!choque) return { ok: true, faltantes: [] };
+  }
+  await devolver();
+  return { ok: false, faltantes: [], error: "El inventario cambi\xF3 mientras se facturaba. Vuelve a intentarlo." };
+}
 function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, clientes, setClientes, citas, setCitas, paquetes = [], setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial, clearClienteVentaInicial, tarifasGrooming = TARIFAS_GROOMING, tarifasVet = TARIFAS_VET, setSeguimientos }) {
   const [fecha, setFecha] = useState(hoy());
   const clienteVentaRef = useRef(null);
@@ -10009,7 +10150,10 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       if (modoFarmacia === "catalogo") {
         if (!prodSel) return avisar("Selecciona un producto");
         const qty = Math.max(1, parseInt(cantProd) || 1);
-        // Stock 0: se permite registrar igual (puede ser reposición o error de inventario)
+        // Sin stock no se factura (26 oct 2026). Aqui se avisa temprano con lo que
+        // hay en pantalla; la comprobacion que manda es la de handleAdd, contra la base.
+        const yaEnFactura = items.filter((i) => String(i.prodId) === String(prodSel.id)).reduce((s, i) => s + (i.qty || 1), 0);
+        if (qty + yaEnFactura > (Number(prodSel.stock) || 0)) return avisar(mensajeSinStock([{ nombre: prodSel.nombre, disponible: Math.max(0, Number(prodSel.stock) || 0), pedido: qty + yaEnFactura }]), "error");
         const precio = prodSel.pventa * qty;
         const dto = Math.round(precio * pct / 100);
         setItems([...items, {
@@ -10161,7 +10305,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       "Sin tel\xE9fono no vas a poder cobrarle si queda pendiente, ni traerlo de vuelta despu\xE9s.\n\n" +
       "\xBFRegistrar la venta igual?");
   }
-  const handleAdd = () => {
+  const facturandoRef = useRef(false);
+  const handleAdd = async () => {
+    if (facturandoRef.current) return;
     if (!fecha) return avisar("Selecciona una fecha");
     if (fecha > hoy()) return avisar("⚠️ No puedes registrar ventas con fecha futura. Selecciona la fecha correcta.");
     if (items.length === 0) return avisar("Agrega al menos un servicio o producto");
@@ -10186,18 +10332,8 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       setTimeout(() => setNotifDuplicado(null), 7e3);
       return;
     }
-    const invActualizado = inventario.map((p) => {
-      // Match por prodId (selección directa de inventario)
-      const itemDirecto = items.find((i) => i.prodId === p.id && i.desdeInv);
-      if (itemDirecto) return { ...p, stock: Math.max(0, (p.stock||0) - (itemDirecto.qty||1)) };
-      // Match por nombre para ventas de farmacia sin prodId
-      const pNom = (p.nombre || "").toLowerCase().trim();
-      const itemNombre = items.find((i) => !i.desdeInv && i.area === "farmacia" && pNom.length > 3 && (i.nombre||"").toLowerCase().trim().includes(pNom.slice(0,8)));
-      if (itemNombre && (p.stock||0) > 0) return { ...p, stock: Math.max(0, (p.stock||0) - (itemNombre.qty||1)) };
-      return p;
-    });
-    setInventario(invActualizado);
-    invActualizado.filter(p => { const o = inventario.find(x => x.id === p.id); return o && o.stock !== p.stock; }).forEach(p => upsertOne("pc_inventario", p).catch(() => {}));
+    // El stock se comprueba y se descuenta mas abajo, justo antes de registrar,
+    // cuando ya paso el resto de validaciones (ver descontarStockVenta).
     const areas = [...new Set(items.map((i) => i.area))];
     const area = areas.length === 1 ? areas[0] : "mixta";
     const descripcion = items.map((i) => {
@@ -10240,9 +10376,17 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
       abonos: abonosNueva,
       abonado: abonadoNueva,
       fechaRecordatorio: recordatorioNueva, fecharecordatorio: recordatorioNueva,
-      items: items.map((i) => ({ nombre: i.nombre, precio: i.precio, descPct: i.descPct, subtotal: i.subtotal, area: i.area }))
+      items: items.map((i) => ({ nombre: i.nombre, precio: i.precio, descPct: i.descPct, subtotal: i.subtotal, area: i.area, ...(i.prodId != null ? { prodId: i.prodId, qty: i.qty } : {}) }))
     };
-    setVentas([...ventas, nueva]);
+    // Sin stock no se factura (Victor, 26 oct). Se comprueba contra la base.
+    const lineasStock = lineasStockVenta(items, inventario);
+    if (lineasStock.length) {
+      facturandoRef.current = true;
+      let rStock;
+      try { rStock = await descontarStockVenta(lineasStock); } finally { facturandoRef.current = false; }
+      if (!rStock.ok) return avisar(rStock.error || mensajeSinStock(rStock.faltantes), "error");
+    }
+    setVentas((prev) => [...(prev || []), nueva]);
     upsertOne("pc_ventas", nueva).catch(e => console.error("[handleAdd] upsertOne error:", e));
     if (formaPago === "tarjeta_link") {
       const clienteParaLink = clienteEnCRM;
@@ -10894,7 +11038,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
                 p.categoria,
                 p.stock > 0
                   ? " \u00B7 Stock: " + p.stock + " unid."
-                  : " \u00B7 \u26A0\uFE0F Sin stock (se puede registrar igual)"
+                  : " \u00B7 \u26D4 Sin stock (no se puede facturar)"
               )
             ),
             p.pventa > 0 && /* @__PURE__ */ React.createElement("div", {
@@ -15639,8 +15783,15 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = comisionPc
   const gananciaActual = selProd ? selProd.ganancia * qty : 0;
   const miComisionActual = Math.round(gananciaActual * comPct);
 
-  function registrar() {
+  const registrandoRef = React.useRef(false);
+  async function registrar() {
+    if (registrandoRef.current) return;
     if (!selProd || !cliente.trim()) return avisar("Selecciona producto y escribe el nombre del cliente");
+    // Sin stock no se factura (Victor, 26 oct): se comprueba contra la base y se descuenta.
+    registrandoRef.current = true;
+    let rStock;
+    try { rStock = await descontarStockVenta([{ prod: selProd, qty: Math.max(1, parseInt(qty) || 1) }]); } finally { registrandoRef.current = false; }
+    if (!rStock.ok) return avisar(rStock.error || mensajeSinStock(rStock.faltantes), "error");
     const v = {
       id: Date.now(),
       fecha: fechaLocal(),
@@ -15809,7 +15960,7 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = comisionPc
                   color: p.miComision >= 50 ? CC.verde : CC.gris
                 }}, "+" + RD2(p.miComision))
               ),
-              p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#e67e22", marginTop:3 }}, "⚠️ Sin stock")
+              p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#e67e22", marginTop:3 }}, "⛔ Sin stock: no se puede facturar")
             );
           })
       ),
@@ -16003,7 +16154,7 @@ function FarmaciaVet_LEGACY({ usuario, ventas, setVentas, inventario }) {
               React.createElement("span", { style:{ fontWeight:800, color:CC.verde }}, RD2(p.pventa)),
               React.createElement("span", { style:{ fontSize:11, background:"#d1fae5", color:CC.verde, borderRadius:20, padding:"2px 6px", fontWeight:700 }}, "+" + RD2(com5))
             ),
-            p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#d97706", marginTop:2 }}, "⚠️ Sin stock")
+            p.stock <= 0 && React.createElement("div", { style:{ fontSize:10, color:"#d97706", marginTop:2 }}, "⛔ Sin stock: no se puede facturar")
           );
         })
       ),
@@ -16278,6 +16429,15 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     if (esLibre && !nombreLibre.trim()) return avisar("Escribe el nombre del servicio o producto.");
     if (!esLibre && !servSel && !precioCustom) return avisar("Selecciona un servicio o ingresa un precio");
     const nombre = esLibre ? nombreLibre.trim() : (servSel ? (servSel.nombre||servSel.servicio||servSel.descripcion||"") : (nota||"Servicio personalizado"));
+    // Producto del inventario: sin stock no se factura (26 oct 2026). Aviso
+    // temprano con lo que hay en pantalla; la comprobacion que manda es la de
+    // registrar(), contra la base.
+    const prodInv = categoria === "farmacia" && !esLibre && servSel ? servSel : null;
+    if (prodInv) {
+      const yaEnCarrito = carrito.filter(it => String(it.prodId) === String(prodInv.id)).reduce((s, it) => s + (it.qty || 1), 0);
+      const quedan = Math.max(0, Number(prodInv.stock) || 0);
+      if (qty + yaEnCarrito > quedan) return avisar(mensajeSinStock([{ nombre: prodInv.nombre, disponible: quedan, pedido: qty + yaEnCarrito }]), "error");
+    }
     const item = {
       id: Date.now(),
       categoria,
@@ -16286,7 +16446,11 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       precioUnit: precioBase,
       descPct: descItemVal,
       subtotal: subtotalItem,
-      nota
+      nota,
+      ...(prodInv ? { prodId: prodInv.id } : {}),
+      // Alta rapida: el producto entra al catalogo con stock 0 porque quien
+      // factura no lo sabe; bloquearlo aqui impediria vender lo que esta en la mano.
+      ...(esLibre && guardarEnInv ? { sinControlStock: true } : {})
     };
     setCarrito(prev => [...prev, item]);
     // Alta rapida al catalogo: sin esto, un producto que no estaba en inventario
@@ -16314,7 +16478,9 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
   function quitarItem(id) { setCarrito(prev => prev.filter(it => it.id !== id)); }
 
-  function registrar() {
+  const registrandoRef = React.useRef(false);
+  async function registrar() {
+    if (registrandoRef.current) return;
     if (!cliente.trim()) return avisar("Escribe el nombre del cliente o mascota");
     if (carrito.length === 0) return avisar("Agrega al menos un servicio al carrito");
     let abonosNueva = [], abonadoNueva = 0, recordatorioNueva = "";
@@ -16350,6 +16516,14 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       fechaRecordatorio: recordatorioNueva, fecharecordatorio: recordatorioNueva,
       ...(nota ? { notas: nota } : {})
     };
+    // Sin stock no se factura (Victor, 26 oct). Se comprueba contra la base.
+    const lineasStock = lineasStockVenta(carrito, inventario.length > 0 ? inventario : (window.__inventarioGlobal || []));
+    if (lineasStock.length) {
+      registrandoRef.current = true;
+      let rStock;
+      try { rStock = await descontarStockVenta(lineasStock); } finally { registrandoRef.current = false; }
+      if (!rStock.ok) return avisar(rStock.error || mensajeSinStock(rStock.faltantes), "error");
+    }
     setVentas(prev => [...(prev||[]), v]);
     // Push inmediato a Supabase para que el admin lo vea al sincronizar
     upsertOne("pc_ventas", v).catch(e => console.warn("[FacturarEmpleado] sync error", e));
