@@ -200,6 +200,22 @@ pulsar Enviar. Estado compartido en `pc_resenas` (no localStorage) para que admi
 doctora no le escriban dos veces al mismo cliente. Ritmo sugerido 20-30 al dia (avisa
 al pasar de 30) para que WhatsApp no marque el numero como spam.
 
+## INVENTARIO DESDE FACTURA DE PROVEEDOR (M23, 26 oct 2026)
+Inventario -> "Cargar factura de proveedor": foto o PDF -> Edge Function
+`factura-proveedor` (IA, solo-admin, secret ANTHROPIC_API_KEY) propone las lineas
+(nombre, descripcion, cantidad, costo, categoria) -> el admin las REVISA y corrige ->
+se guardan. La funcion solo lee; no escribe nada. (Esto NO contradice la regla de
+hemogramas: alli los resultados no se leen; una factura de compra si.)
+- Codigo unico por producto (MED/ALI/ACC/HIG/INS/PAP/OTR-00001): lo pone la BASE
+  (trigger `pc_inventario_codigo`), un solo contador, y no cambia nunca.
+- Mismo nombre normalizado = se SUMA al producto existente; otra talla/presentacion
+  entra como nuevo (el admin puede elegir a mano "Anadir a").
+- Cada factura queda en `pc_compras` (solo-admin).
+- Victor pidio NO borrar el inventario existente: los 101 productos viejos siguen,
+  sin codigo hasta que se editan o se les suma una compra. Copia previa en
+  `respaldos.pc_inventario_20261026` (esquema no expuesto).
+- Categoria nueva `higiene`. "farmaco" sigue siendo la clave (se muestra Medicamento).
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
