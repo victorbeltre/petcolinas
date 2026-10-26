@@ -425,6 +425,13 @@ render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDef
   const back = enVM('normalizeRow("pc_inventario", { id: "1", nombre: "x", codigo: "ALI-00001", descripcion: "d" })');
   if (back.codigo !== "ALI-00001" || back.descripcion !== "d") fallo("pc_inventario: codigo y descripcion deben leerse: " + JSON.stringify(back));
 })();
+// % de ganancia sobre el costo (Victor, 26 oct): costo 962, venta 1.462 -> 52%, no 34%.
+(() => {
+  const m = enVM("margenSobreCosto");
+  if (m(1462, 962) !== 52) errores.push("margen: costo 962 y venta 1462 debe dar 52% (sobre el costo), dio " + m(1462, 962));
+  if (m(100, 100) !== 0 || m(150, 100) !== 50 || m(80, 100) !== -20) errores.push("margen: 100->100=0%, 100->150=50%, 100->80=-20%");
+  if (m(100, 0) !== null || m(0, 50) !== null) errores.push("margen: sin costo o sin precio no hay porcentaje");
+})();
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la
