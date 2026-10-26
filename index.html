@@ -7238,11 +7238,45 @@ function PetColinasApp({ session, onLogout }) {
     ventas: (ventas || []).filter((v) =>
       (v.formaPago || v.formapago || "") === "Pago pendiente").length
   }), [todosClientes, ventas, notifLeidas]);
-  // Antes se sumaban al inventario productos "fantasma" sacados del texto de los
-  // gastos de categoria Inventario. Desde M23 (26 oct 2026) el inventario se
-  // carga desde la factura del proveedor y empieza de cero: lo que no este en
-  // pc_inventario no existe.
-  const todoInventario = inventario;
+  const inventarioDeGastos = useMemo(() => {
+    const existentes = new Set(inventario.map((p) => String(p.id)));
+    const parseProductosGasto = (g) => {
+      const desc = g.descripcion || "";
+      const dNorm = desc.replace(/\bc\/u\b/gi, "CPU");
+      const partes = dNorm.split(/\s*\/\s*(?=\(\d+\))/).map((s) => s.trim()).filter(Boolean);
+      return partes.map((parte, idx) => {
+        const cantMatch = parte.match(/^\((\d+)\)\s*/);
+        const cantidad = cantMatch ? parseInt(cantMatch[1]) : 1;
+        const precioMatch = parte.match(/\(\$\s*([\d,\.]+)\s*(?:CPU)?\s*\)\s*$/i);
+        const precioUnit = precioMatch ? parseFloat(precioMatch[1].replace(/,/g, "")) : 0;
+        let nombre = parte;
+        if (cantMatch) nombre = nombre.slice(cantMatch[0].length);
+        nombre = nombre.replace(/\s*\(\$[^)]*\)\s*$/, "").trim().slice(0, 55);
+        const costoUnit = precioUnit > 0 ? precioUnit : Math.round(g.monto / partes.length / Math.max(cantidad, 1));
+        return {
+          id: "inv_" + g.id + "_" + idx,
+          nombre,
+          categoria: "farmaco",
+          stock: cantidad,
+          stockInicial: cantidad,
+          stockMin: Math.max(1, Math.round(cantidad * 0.3)),
+          costo: costoUnit,
+          pventa: 0,
+          fechaEntrada: g.fecha,
+          proveedor: g.proveedor || "",
+          autoGenerado: true
+        };
+      });
+    };
+    // No auto-generar productos cuyo nombre ya existe en el inventario real
+    const nombresExistentes = new Set(inventario.map((p) => (p.nombre || "").toLowerCase().trim()));
+    return gastos.filter((g) => g.categoria === "Inventario" && g.descripcion && g.monto > 0).filter((g) => !existentes.has("inv_" + String(g.id) + "_0")).flatMap((g) => parseProductosGasto(g)).filter((p) => !nombresExistentes.has((p.nombre || "").toLowerCase().trim()));
+  }, [gastos, inventario]);
+  const todoInventario = useMemo(() => {
+    const deletedAuto = new Set(JSON.parse(localStorage.getItem("pc_deleted_inv_auto") || "[]"));
+    const todosAuto = inventarioDeGastos.filter((p) => !deletedAuto.has(String(p.id)));
+    return [...inventario, ...todosAuto];
+  }, [inventario, inventarioDeGastos]);
   if (!dbReady) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f4f5f6", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: "#1a6b3a" } }, "PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "#5a6472" } }, "Conectando con la base de datos..."), /* @__PURE__ */ React.createElement("div", { style: { width: 200, height: 4, background: "#e0e4e8", borderRadius: 4, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", background: "#1a6b3a", borderRadius: 4, animation: "loadbar 1.5s ease-in-out infinite" } })), /* @__PURE__ */ React.createElement("style", null, `@keyframes loadbar { 0%{width:0%} 60%{width:80%} 100%{width:100%} }`));
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const ventasMes = ventas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
@@ -11592,8 +11626,9 @@ function Inventario({ inventario, setInventario, ventas, deleteInv, refetchInven
     pventa: Number(p.pventa || p.precioVenta || p.precioventa || 0),
     stockMin: Number(p.stockMin || p.stockmin || 0),
     // Categoría automática solo si está en "farmaco" genérico (default incorrecto)
-    // Lo cargado desde una factura (trae codigo) ya viene clasificado y revisado.
-    categoria: p.codigo ? (p.categoria || "otro") : p.categoria && p.categoria !== "farmaco" ? p.categoria : detectarCategoria(p.nombre)
+    // Lo cargado desde una factura (trae descripcion) ya viene clasificado y
+    // revisado; lo viejo sigue con la deteccion por nombre de siempre.
+    categoria: p.descripcion ? (p.categoria || "otro") : p.categoria && p.categoria !== "farmaco" ? p.categoria : detectarCategoria(p.nombre)
   }));
   const nBusca = normalizarTextoInv(busca);
   const filtrados = filtro === "todo" ? inventarioConCat : filtro === "porvencer" ? inventarioConCat.filter((p) => { const v = vencimientoInfo(p.vencimiento); return v && (v.vencido || v.porVencer); }).sort((a, b) => String(a.vencimiento).localeCompare(String(b.vencimiento))) : filtro === "bajostock" ? inventarioConCat.filter((p) => p.stockMin > 0 && p.stock <= p.stockMin) : inventarioConCat.filter((p) => p.categoria === filtro);

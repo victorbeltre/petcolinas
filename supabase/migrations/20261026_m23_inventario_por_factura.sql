@@ -15,9 +15,10 @@
 --    total y las lineas tal como se aprobaron), para saber de donde salio cada
 --    unidad. Solo-admin: tiene costos.
 --
--- La limpieza del inventario viejo (101 productos) NO esta aqui: se hizo una
--- sola vez a mano, copiando antes la tabla a `respaldos.pc_inventario_20261026`
--- (esquema no expuesto por la API, Regla Critica 6.3).
+-- El inventario que ya existia NO se toca (decision de Victor, 26 oct): los
+-- productos viejos no tienen codigo hasta que se editan o se les suma una
+-- compra; ahi el trigger les asigna uno. Antes de aplicar se copio la tabla a
+-- `respaldos.pc_inventario_20261026` (esquema no expuesto, Regla Critica 6.3).
 -- Sin datos de clientes en el archivo: solo estructura.
 -- ─────────────────────────────────────────────────────────────────────────────
 alter table public.pc_inventario add column if not exists codigo text;

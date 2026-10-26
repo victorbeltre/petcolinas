@@ -403,7 +403,7 @@ render("ModalLabPreparar", sandbox.ModalLabPreparar, {
 render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDefecto: "Victor" }, null, "Rese\u00F1as en Google");
 // Inventario desde la factura del proveedor (M23): coincidencia solo exacta,
 // la compra se SUMA al stock existente, lo nuevo entra sin codigo (lo pone la
-// base) y el inventario ya no se inventa productos a partir de los gastos.
+// base) y el inventario existente no se toca.
 (() => {
   const fallo = (m) => errores.push(m);
   const inv = [{ id: "7", nombre: "NexGard Spectra L", categoria: "farmaco", stock: 2, costo: 900, pventa: 1500, codigo: "MED-00007", notas: "" }];
@@ -424,7 +424,6 @@ render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDef
   if (db.codigo !== "ALI-00001" || db.descripcion !== "d") fallo("pc_inventario: codigo y descripcion deben guardarse: " + JSON.stringify(db));
   const back = enVM('normalizeRow("pc_inventario", { id: "1", nombre: "x", codigo: "ALI-00001", descripcion: "d" })');
   if (back.codigo !== "ALI-00001" || back.descripcion !== "d") fallo("pc_inventario: codigo y descripcion deben leerse: " + JSON.stringify(back));
-  if (/inventarioDeGastos|parseProductosGasto/.test(html)) fallo("inventario: volvio la mezcla de productos inventados desde los gastos");
 })();
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
