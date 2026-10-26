@@ -401,6 +401,33 @@ render("ModalLabPreparar", sandbox.ModalLabPreparar, {
   if (!sinDuenio.includes("familia de Rocky")) fallo("rese\u00F1as: sin nombre del due\u00F1o se saluda a la familia de la mascota: " + sinDuenio);
 })();
 render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDefecto: "Victor" }, null, "Rese\u00F1as en Google");
+// Inventario desde la factura del proveedor (M23): coincidencia solo exacta,
+// la compra se SUMA al stock existente, lo nuevo entra sin codigo (lo pone la
+// base) y el inventario ya no se inventa productos a partir de los gastos.
+(() => {
+  const fallo = (m) => errores.push(m);
+  const inv = [{ id: "7", nombre: "NexGard Spectra L", categoria: "farmaco", stock: 2, costo: 900, pventa: 1500, codigo: "MED-00007", notas: "" }];
+  const ls = enVM("lineasDesdeFactura")({ items: [
+    { nombre: "Nexgard  spectra l", descripcion: "Antiparasitario", categoria: "farmaco", cantidad: 6, costo_unitario: 950, dudoso: false },
+    { nombre: "NexGard Spectra M", descripcion: "Antiparasitario", categoria: "farmaco", cantidad: 3, costo_unitario: null, dudoso: true },
+    { nombre: "Collar rojo", descripcion: "Collar", categoria: "inventada", cantidad: "2", dudoso: false }] }, inv);
+  if (ls[0].destino !== "7") fallo("factura: mismo nombre (sin importar mayusculas/espacios) debe sumarse al producto existente: " + JSON.stringify(ls[0]));
+  if (ls[1].destino !== "nuevo") fallo("factura: otra talla NO es el mismo producto: " + JSON.stringify(ls[1]));
+  if (ls[1].costo !== "") fallo("factura: costo ilegible queda vacio, no en 0: " + JSON.stringify(ls[1]));
+  if (ls[2].categoria !== "otro" || ls[2].cantidad !== 2) fallo("factura: categoria desconocida cae en otro y la cantidad es numero: " + JSON.stringify(ls[2]));
+  const cab = { proveedor: "Agrovet", numero: "F-123", fecha: "2026-10-26" };
+  const sum = enVM("filaInventarioDesdeLinea")(ls[0], cab, inv[0], "999");
+  if (sum.id !== "7" || sum.stock !== 8 || sum.costo !== 950 || sum.pventa !== 1500 || sum.codigo !== "MED-00007") fallo("factura: sumar a existente debe conservar id/codigo/precio y sumar stock: " + JSON.stringify(sum));
+  const nuevo = enVM("filaInventarioDesdeLinea")(ls[1], cab, null, "999");
+  if (nuevo.id !== "999" || nuevo.stock !== 3 || nuevo.stockInicial !== 3 || nuevo.codigo || !/F-123/.test(nuevo.notas)) fallo("factura: producto nuevo entra con su cantidad, sin codigo y con el origen anotado: " + JSON.stringify(nuevo));
+  const db = enVM('denormalizeRow("pc_inventario", { id: "1", nombre: "x", codigo: "ALI-00001", descripcion: "d" })');
+  if (db.codigo !== "ALI-00001" || db.descripcion !== "d") fallo("pc_inventario: codigo y descripcion deben guardarse: " + JSON.stringify(db));
+  const back = enVM('normalizeRow("pc_inventario", { id: "1", nombre: "x", codigo: "ALI-00001", descripcion: "d" })');
+  if (back.codigo !== "ALI-00001" || back.descripcion !== "d") fallo("pc_inventario: codigo y descripcion deben leerse: " + JSON.stringify(back));
+  if (/inventarioDeGastos|parseProductosGasto/.test(html)) fallo("inventario: volvio la mezcla de productos inventados desde los gastos");
+})();
+render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
+render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la
 // ventana de escribirla (lo usan el CRM del admin y el portal de la doctora).
 (() => {

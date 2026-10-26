@@ -865,7 +865,7 @@ function useSupabase(table, seed = []) {
 // corrió el SQL que las crea, PostgREST rechaza el INSERT entero y se perdería
 // la venta completa. Este respaldo detecta ese error, quita las columnas que no
 // existen y reintenta, para que el guardado nunca se caiga por eso.
-const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco", "abonos", "abonado", "fecharecordatorio"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"], pc_clientes: ["alertamedica"] };
+const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco", "abonos", "abonado", "fecharecordatorio"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"], pc_clientes: ["alertamedica"], pc_inventario: ["codigo", "descripcion"] };
 function faltaColumna(msg, table) {
   const m = String(msg || "").toLowerCase();
   if (!/column|schema cache|pgrst204|42703/.test(m)) return null;
@@ -1396,7 +1396,9 @@ function normalizeRow(table, r) {
     fechaEntrada: r.fechaentrada || r.fechaEntrada || "",
     stockInicial: Number(r.stockinicial || r.stockInicial || r.stock) || 0,
     vencimiento: r.vencimiento || "",
-    lote: r.lote || ""
+    lote: r.lote || "",
+    codigo: r.codigo || "",
+    descripcion: r.descripcion || ""
   };
   if (table === "pc_citas") return {
     id: r.id,
@@ -1594,7 +1596,11 @@ function denormalizeRow(table, r) {
     fechaentrada: r.fechaEntrada ?? r.fechaentrada ?? null,
     stockinicial: r.stockInicial ?? r.stockinicial ?? r.stock,
     vencimiento: r.vencimiento || null,
-    lote: r.lote || null
+    lote: r.lote || null,
+    // El codigo lo pone la base (trigger pc_inventario_codigo, M23) y no cambia:
+    // si llega vacio, el trigger conserva el que ya tenia o asigna uno nuevo.
+    codigo: r.codigo || null,
+    descripcion: r.descripcion || null
   };
   if (table === "pc_citas") return {
     id: r.id,
@@ -7232,45 +7238,11 @@ function PetColinasApp({ session, onLogout }) {
     ventas: (ventas || []).filter((v) =>
       (v.formaPago || v.formapago || "") === "Pago pendiente").length
   }), [todosClientes, ventas, notifLeidas]);
-  const inventarioDeGastos = useMemo(() => {
-    const existentes = new Set(inventario.map((p) => String(p.id)));
-    const parseProductosGasto = (g) => {
-      const desc = g.descripcion || "";
-      const dNorm = desc.replace(/\bc\/u\b/gi, "CPU");
-      const partes = dNorm.split(/\s*\/\s*(?=\(\d+\))/).map((s) => s.trim()).filter(Boolean);
-      return partes.map((parte, idx) => {
-        const cantMatch = parte.match(/^\((\d+)\)\s*/);
-        const cantidad = cantMatch ? parseInt(cantMatch[1]) : 1;
-        const precioMatch = parte.match(/\(\$\s*([\d,\.]+)\s*(?:CPU)?\s*\)\s*$/i);
-        const precioUnit = precioMatch ? parseFloat(precioMatch[1].replace(/,/g, "")) : 0;
-        let nombre = parte;
-        if (cantMatch) nombre = nombre.slice(cantMatch[0].length);
-        nombre = nombre.replace(/\s*\(\$[^)]*\)\s*$/, "").trim().slice(0, 55);
-        const costoUnit = precioUnit > 0 ? precioUnit : Math.round(g.monto / partes.length / Math.max(cantidad, 1));
-        return {
-          id: "inv_" + g.id + "_" + idx,
-          nombre,
-          categoria: "farmaco",
-          stock: cantidad,
-          stockInicial: cantidad,
-          stockMin: Math.max(1, Math.round(cantidad * 0.3)),
-          costo: costoUnit,
-          pventa: 0,
-          fechaEntrada: g.fecha,
-          proveedor: g.proveedor || "",
-          autoGenerado: true
-        };
-      });
-    };
-    // No auto-generar productos cuyo nombre ya existe en el inventario real
-    const nombresExistentes = new Set(inventario.map((p) => (p.nombre || "").toLowerCase().trim()));
-    return gastos.filter((g) => g.categoria === "Inventario" && g.descripcion && g.monto > 0).filter((g) => !existentes.has("inv_" + String(g.id) + "_0")).flatMap((g) => parseProductosGasto(g)).filter((p) => !nombresExistentes.has((p.nombre || "").toLowerCase().trim()));
-  }, [gastos, inventario]);
-  const todoInventario = useMemo(() => {
-    const deletedAuto = new Set(JSON.parse(localStorage.getItem("pc_deleted_inv_auto") || "[]"));
-    const todosAuto = inventarioDeGastos.filter((p) => !deletedAuto.has(String(p.id)));
-    return [...inventario, ...todosAuto];
-  }, [inventario, inventarioDeGastos]);
+  // Antes se sumaban al inventario productos "fantasma" sacados del texto de los
+  // gastos de categoria Inventario. Desde M23 (26 oct 2026) el inventario se
+  // carga desde la factura del proveedor y empieza de cero: lo que no este en
+  // pc_inventario no existe.
+  const todoInventario = inventario;
   if (!dbReady) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f4f5f6", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 22, color: "#1a6b3a" } }, "PetColinas"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "#5a6472" } }, "Conectando con la base de datos..."), /* @__PURE__ */ React.createElement("div", { style: { width: 200, height: 4, background: "#e0e4e8", borderRadius: 4, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", background: "#1a6b3a", borderRadius: 4, animation: "loadbar 1.5s ease-in-out infinite" } })), /* @__PURE__ */ React.createElement("style", null, `@keyframes loadbar { 0%{width:0%} 60%{width:80%} 100%{width:100%} }`));
   const mesActual = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
   const ventasMes = ventas.filter((v) => v.fecha?.slice(0, 7) === mesActual);
@@ -7353,7 +7325,7 @@ function PetColinasApp({ session, onLogout }) {
     style: { background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"#fff", borderRadius:6, padding:"2px 8px", fontSize:10, cursor:"pointer", fontWeight:700, opacity: pollingSync ? 0.6 : 1 }
   }, pollingSync ? "⏳ Sincronizando..." : "🔄 Sincronizar ahora")
 )), /* @__PURE__ */ React.createElement("style", null, `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`)), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv, refetchInventario }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "llamadas" && React.createElement(Llamadas, null),
     tab === "whatsapp" && React.createElement(PantallaWhatsApp, null),
@@ -11062,6 +11034,296 @@ items.length > 0 && /* @__PURE__ */ React.createElement(Btn, { onClick: handleAd
         )
       ), editandoVenta ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Cliente"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.cliente || "", onChange: e => setVentaEditForm({...ventaEditForm, cliente: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Fecha"), /* @__PURE__ */ React.createElement("input", { type: "date", value: ventaEditForm.fecha || "", onChange: e => setVentaEditForm({...ventaEditForm, fecha: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "\xC1rea"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.area || "grooming", onChange: e => setVentaEditForm({...ventaEditForm, area: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "grooming" }, "Grooming"), /* @__PURE__ */ React.createElement("option", { value: "veterinaria" }, "Veterinaria"), /* @__PURE__ */ React.createElement("option", { value: "farmacia" }, "Farmacia"), /* @__PURE__ */ React.createElement("option", { value: "tienda" }, "Tienda"), /* @__PURE__ */ React.createElement("option", { value: "mixta" }, "Mixta"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Descripci\xF3n / Servicio"), /* @__PURE__ */ React.createElement("input", { value: ventaEditForm.descripcion || "", onChange: e => setVentaEditForm({...ventaEditForm, descripcion: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } })), React.createElement(EditorItemsVenta, { items: ventaEditForm.items || [], setItems: (nv) => { const arr = typeof nv === "function" ? nv(ventaEditForm.items || []) : nv; const t = arr.reduce((n, it) => n + (Number(it.subtotal ?? it.precio) || 0), 0); const c = arr.reduce((n, it) => n + (Number(it.comision) || 0), 0); setVentaEditForm({ ...ventaEditForm, items: arr, total: arr.length ? t : ventaEditForm.total, comision: arr.length ? c : ventaEditForm.comision, descripcion: arr.length ? arr.map((it) => it.nombre || it.descripcion || "").filter(Boolean).join(" + ") : ventaEditForm.descripcion }); }, tarifasGrooming, tarifasVet, inventario }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Forma de pago"), /* @__PURE__ */ React.createElement("select", { value: ventaEditForm.formapago || "", onChange: e => setVentaEditForm({...ventaEditForm, formapago: e.target.value}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff", boxSizing: "border-box" } }, /* @__PURE__ */ React.createElement("option", { value: "Pago pendiente" }, "\u23F3 Pago pendiente"), /* @__PURE__ */ React.createElement("option", { value: "efectivo" }, "\uD83D\uDCB5 Efectivo"), /* @__PURE__ */ React.createElement("option", { value: "tarjeta" }, "\uD83D\uDCB3 Tarjeta"), /* @__PURE__ */ React.createElement("option", { value: "Transferencia" }, "\uD83C\uDFE6 Transferencia"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: C.grisd, textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Total (RD$)"), /* @__PURE__ */ React.createElement("input", { type: "number", value: ventaEditForm.total || 0, onChange: e => setVentaEditForm({...ventaEditForm, total: parseFloat(e.target.value) || 0}), style: { width: "100%", padding: "8px 10px", border: "1.5px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => { /* El formulario solo traia formapago en minuscula, asi que formaPago (camelCase) se quedaba con el valor viejo y denormalizeRow lo prefiere al guardar: el cambio de forma de pago se descartaba en silencio. Se escriben ambas. */ const fp = ventaEditForm.formapago || ""; const its = Array.isArray(ventaEditForm.items) ? ventaEditForm.items : []; const updated = { ...ventaDetalle, ...ventaEditForm, items: its, total: its.length ? its.reduce((n, it) => n + (Number(it.subtotal ?? it.precio) || 0), 0) : (Number(ventaEditForm.total) || 0), comision: Number(ventaEditForm.comision) || 0, servicio: ventaEditForm.descripcion, descripcion: ventaEditForm.descripcion, formapago: fp, formaPago: fp }; setVentas(prev => prev.map(v => String(v.id) === String(ventaDetalle.id) ? updated : v)); try { const pc = JSON.parse(localStorage.getItem("pc_pagos_conf") || "{}"); pc[String(ventaDetalle.id)] = fp; guardarLocal("pc_pagos_conf", pc); } catch (e) {} try { const camb = diffAuditoria(ventaDetalle, updated); if (camb.length) auditar("pc_ventas", "editar", updated, camb); } catch (e) {} upsertOne("pc_ventas", updated).catch(e => console.error("[editVenta]", e)); setVentaDetalle(updated); setEditandoVenta(false); }, style: { flex: 1, background: C.verde, color: "#fff", border: "none", cursor: "pointer", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 700 } }, "\u2714 Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditandoVenta(false), style: { background: "#f1f5f9", color: C.grisd, border: "none", cursor: "pointer", borderRadius: 10, padding: "12px 16px", fontSize: 14, fontWeight: 700 } }, "Cancelar"))) : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: C.verde } }, /* @__PURE__ */ React.createElement("span", null, "TOTAL"), /* @__PURE__ */ React.createElement("span", null, RD(ventaDetalle.total)))))));
 }
+// ─── INVENTARIO DESDE LA FACTURA DEL PROVEEDOR (M23, 26 oct 2026) ───────────
+// Victor sube la foto (o el PDF) de la factura; la Edge Function
+// factura-proveedor la lee y propone las lineas; aqui se revisan y corrigen
+// ANTES de guardar. El codigo unico (MED-00001, ALI-00002...) lo pone la base al
+// insertar, para que dos cargas a la vez no repitan numero.
+// Las claves son las de siempre en pc_inventario ("farmaco" sigue siendo la
+// clave aunque en pantalla diga Medicamento: cambiarla romperia los reportes).
+const CATEGORIAS_INV = [
+  ["farmaco", "\u{1F48A} Medicamento"],
+  ["alimento", "\u{1F356} Alimento"],
+  ["accesorio", "\u{1F380} Accesorio"],
+  ["higiene", "\u{1F9FC} Higiene y cuidado"],
+  ["insumo", "\u{1F9F4} Insumo cl\xEDnica/grooming"],
+  ["papeleria", "\u{1F4C4} Papeler\xEDa"],
+  ["otro", "\u{1F4E6} Otro"]
+];
+function normalizarTextoInv(t) {
+  return String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+// Solo coincidencia EXACTA del nombre normalizado: si la factura dice "NexGard
+// Spectra M" y en inventario esta "NexGard Spectra L", sumar a ese seria mezclar
+// dos tallas. Lo dudoso entra como nuevo y el admin elige a mano si es el mismo.
+function coincidenciaInventario(nombre, inventario) {
+  const n = normalizarTextoInv(nombre);
+  if (!n) return null;
+  return (inventario || []).find((p) => normalizarTextoInv(p.nombre) === n) || null;
+}
+function lineasDesdeFactura(datos, inventario) {
+  return (Array.isArray(datos && datos.items) ? datos.items : []).map((it, i) => {
+    const existe = coincidenciaInventario(it.nombre, inventario);
+    const cat = CATEGORIAS_INV.some(([v]) => v === it.categoria) ? it.categoria : "otro";
+    return {
+      key: i,
+      incluir: true,
+      nombre: String(it.nombre || "").trim(),
+      descripcion: String(it.descripcion || "").trim(),
+      categoria: cat,
+      cantidad: Math.max(0, Number(it.cantidad) || 0),
+      costo: it.costo_unitario != null ? Number(it.costo_unitario) || 0 : "",
+      pventa: "",
+      vencimiento: /^\d{4}-\d{2}-\d{2}$/.test(String(it.vencimiento || "")) ? it.vencimiento : "",
+      lote: it.lote || "",
+      nota: it.nota || "",
+      dudoso: !!it.dudoso,
+      destino: existe ? String(existe.id) : "nuevo"
+    };
+  });
+}
+// Fila de pc_inventario a guardar para una linea revisada. Producto existente:
+// se SUMA la cantidad comprada al stock y se actualiza el costo; nuevo: entra con
+// la cantidad comprada como stock inicial y sin codigo (lo pone la base).
+function filaInventarioDesdeLinea(l, cab, existente, idNuevo) {
+  const costo = l.costo === "" ? null : Number(l.costo) || 0;
+  const pventa = l.pventa === "" ? null : Number(l.pventa) || 0;
+  const cant = Math.max(0, Number(l.cantidad) || 0);
+  const origen = "Factura " + (cab.numero || "s/n") + (cab.proveedor ? " de " + cab.proveedor : "") + " (" + cab.fecha + ")";
+  if (existente) {
+    const c = costo != null ? costo : Number(existente.costo) || 0;
+    const v = pventa != null ? pventa : Number(existente.pventa) || 0;
+    return {
+      ...existente,
+      stock: (Number(existente.stock) || 0) + cant,
+      costo: c, precioCompra: c, pventa: v, precioVenta: v,
+      proveedor: cab.proveedor || existente.proveedor || "",
+      fechaEntrada: cab.fecha,
+      vencimiento: l.vencimiento || existente.vencimiento || "",
+      lote: l.lote || existente.lote || "",
+      descripcion: existente.descripcion || l.descripcion,
+      notas: (existente.notas ? existente.notas + " | " : "") + "+" + cant + " " + origen
+    };
+  }
+  return {
+    id: idNuevo,
+    nombre: l.nombre, descripcion: l.descripcion, categoria: l.categoria,
+    stock: cant, stockInicial: cant, stockMin: 0,
+    costo: costo || 0, precioCompra: costo || 0, pventa: pventa || 0, precioVenta: pventa || 0,
+    proveedor: cab.proveedor || "", fechaEntrada: cab.fecha,
+    vencimiento: l.vencimiento || "", lote: l.lote || "",
+    notas: origen + (l.nota ? ". " + l.nota : "")
+  };
+}
+// Las fotos del celular pesan 4-8 MB: se reducen a 2000 px de lado antes de
+// mandarlas, que sobra para leer una factura y sube en segundos.
+function archivoFacturaABase64(file) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onerror = () => reject(new Error("No se pudo abrir el archivo"));
+    lector.onload = () => {
+      const dataUrl = String(lector.result || "");
+      if (file.type === "application/pdf") return resolve({ mime: "application/pdf", archivo: dataUrl, vista: null });
+      const img = new Image();
+      img.onerror = () => reject(new Error("La imagen no se pudo abrir. Usa JPG, PNG o PDF."));
+      img.onload = () => {
+        const max = 2000, k = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        const jpg = cv.toDataURL("image/jpeg", 0.85);
+        resolve({ mime: "image/jpeg", archivo: jpg, vista: jpg });
+      };
+      img.src = dataUrl;
+    };
+    lector.readAsDataURL(file);
+  });
+}
+function ModalFacturaProveedor({ inventario, onCerrar, onGuardado }) {
+  const [paso, setPaso] = useState("subir");     // subir | leyendo | revisar | guardando | listo
+  const [error, setError] = useState("");
+  const [vista, setVista] = useState(null);
+  const [cab, setCab] = useState({ proveedor: "", numero: "", ncf: "", fecha: fechaLocal(), total: "" });
+  const [lineas, setLineas] = useState([]);
+  const [avisos, setAvisos] = useState([]);
+  const [resultado, setResultado] = useState([]);
+  const setL = (key, k, v) => setLineas((ls) => ls.map((l) => l.key === key ? { ...l, [k]: v } : l));
+  const opcionesExistentes = (inventario || []).slice().sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+
+  async function leer(file) {
+    if (!file) return;
+    setError(""); setPaso("leyendo");
+    try {
+      const a = await archivoFacturaABase64(file);
+      setVista(a.vista);
+      const token = await supaAccessToken();
+      const r = await fetch(SUPA_URL + "/functions/v1/factura-proveedor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SUPA_KEY, "Authorization": "Bearer " + token },
+        body: JSON.stringify({ archivo: a.archivo, mime: a.mime })
+      });
+      let d = null;
+      try { d = await r.json(); } catch (e) {}
+      if (!r.ok || !d || !d.datos) throw new Error((d && d.error) || "No se pudo leer la factura (HTTP " + r.status + ")");
+      const x = d.datos;
+      if (x.es_factura === false) throw new Error("Eso no parece una factura de compra. Prueba con otra foto.");
+      const ls = lineasDesdeFactura(x, inventario);
+      if (!ls.length) throw new Error("No se encontraron productos en la factura. Prueba con una foto m\xE1s n\xEDtida.");
+      setCab({
+        proveedor: x.proveedor || "", numero: x.numero || "", ncf: x.ncf || "",
+        fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(x.fecha || "")) ? x.fecha : fechaLocal(),
+        total: x.total != null ? x.total : ""
+      });
+      setAvisos(Array.isArray(x.advertencias) ? x.advertencias : []);
+      setLineas(ls);
+      setPaso("revisar");
+    } catch (e) {
+      setError(e.message || String(e));
+      setPaso("subir");
+    }
+  }
+
+  async function guardar() {
+    const elegidas = lineas.filter((l) => l.incluir && l.nombre.trim() && Number(l.cantidad) > 0);
+    if (!elegidas.length) return avisar("No hay l\xEDneas para guardar");
+    setPaso("guardando"); setError("");
+    const base = Date.now();
+    const filas = elegidas.map((l, i) => {
+      const ex = l.destino !== "nuevo" ? (inventario || []).find((p) => String(p.id) === l.destino) : null;
+      return { l, fila: filaInventarioDesdeLinea(l, cab, ex, String(base + i)), nuevo: !ex };
+    });
+    const fallos = [];
+    for (const f of filas) {
+      const ok = await upsertOne("pc_inventario", f.fila);
+      if (!ok) fallos.push(f.l.nombre);
+    }
+    // Registro de la compra (pc_compras, solo-admin). INSERT simple: no se
+    // reescribe una compra ya guardada.
+    try {
+      const token = await supaAccessToken();
+      await fetch(SUPA_URL + "/rest/v1/pc_compras", {
+        method: "POST",
+        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          fecha: cab.fecha, proveedor: cab.proveedor || null, numero: cab.numero || null, ncf: cab.ncf || null,
+          total: cab.total === "" ? null : Number(cab.total) || null,
+          items: filas.map((f) => ({ id: f.fila.id, nombre: f.l.nombre, categoria: f.l.categoria, cantidad: Number(f.l.cantidad) || 0, costo: f.l.costo === "" ? null : Number(f.l.costo), nuevo: f.nuevo })),
+          registrado_por: (() => { try { const ss = JSON.parse(sessionStorage.getItem("pc_session") || "null"); return (ss && ss.user && ss.user.email) || "admin"; } catch (e) { return "admin"; } })()
+        })
+      });
+    } catch (e) { console.warn("[pc_compras]", e); }
+    // Releer los codigos que acaba de asignar la base.
+    const ids = filas.map((f) => encodeURIComponent(String(f.fila.id))).join(",");
+    const filasDb = (await supaFetch("pc_inventario", "GET", null, "?select=id,codigo,nombre,stock,categoria&id=in.(" + ids + ")")) || [];
+    const porId = new Map(filasDb.map((r) => [String(r.id), r]));
+    setResultado(filas.map((f) => {
+      const r = porId.get(String(f.fila.id)) || {};
+      return { codigo: r.codigo || "", nombre: f.fila.nombre, cantidad: Number(f.l.cantidad) || 0, stock: r.stock != null ? Number(r.stock) : f.fila.stock, categoria: f.fila.categoria, nuevo: f.nuevo, fallo: fallos.includes(f.l.nombre) };
+    }));
+    if (fallos.length) setError("No se pudieron guardar: " + fallos.join(", ") + ". Revisa la conexi\xF3n y vuelve a intentarlo con esas l\xEDneas.");
+    if (typeof onGuardado === "function") onGuardado();
+    setPaso("listo");
+  }
+
+  const inp = { padding: "6px 8px", border: "1.5px solid #d6dbe1", borderRadius: 6, fontSize: 12, boxSizing: "border-box", width: "100%" };
+  const th = { padding: "6px 6px", textAlign: "left", color: C.grisd, fontSize: 10, textTransform: "uppercase", whiteSpace: "nowrap" };
+  const nIncl = lineas.filter((l) => l.incluir).length;
+  const nSuma = lineas.filter((l) => l.incluir && l.destino !== "nuevo").length;
+  const totalLineas = lineas.filter((l) => l.incluir).reduce((s, l) => s + (Number(l.costo) || 0) * (Number(l.cantidad) || 0), 0);
+
+  return React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9000, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "24px 10px" } },
+    React.createElement("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 1100, padding: 20, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } },
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } },
+        React.createElement("div", { style: { fontFamily: "Georgia,serif", fontSize: 22, fontWeight: 800 } }, "\u{1F4F7} Cargar factura de proveedor"),
+        paso !== "guardando" && paso !== "leyendo" && React.createElement("button", { onClick: onCerrar, style: { border: "none", background: "#f1f5f9", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700 } }, "✕ Cerrar")
+      ),
+      error && React.createElement("div", { style: { background: "#fff1f2", border: "1.5px solid #f43f5e", color: "#be123c", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 12 } }, error),
+
+      paso === "subir" && React.createElement("div", null,
+        React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginTop: 0 } },
+          "Toma una foto de la factura completa (bien iluminada y derecha) o sube el PDF. La app propone cada producto con nombre, descripci\xF3n, cantidad y categor\xEDa; t\xFA lo revisas antes de guardar, y cada producto nuevo recibe su c\xF3digo \xFAnico."),
+        React.createElement("label", { style: { display: "block", border: "2px dashed " + C.azul, borderRadius: 14, padding: "36px 16px", textAlign: "center", cursor: "pointer", background: "#f5f9ff" } },
+          React.createElement("div", { style: { fontSize: 40 } }, "\u{1F9FE}"),
+          React.createElement("div", { style: { fontWeight: 800, fontSize: 15, color: C.azul } }, "Tomar foto o elegir archivo"),
+          React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginTop: 4 } }, "JPG, PNG o PDF \xB7 hasta 8 MB"),
+          React.createElement("input", { type: "file", accept: "image/*,application/pdf", style: { display: "none" }, onChange: (e) => leer(e.target.files && e.target.files[0]) })
+        )
+      ),
+
+      paso === "leyendo" && React.createElement("div", { style: { textAlign: "center", padding: "40px 0", color: C.grisd } },
+        React.createElement("div", { style: { fontSize: 36 } }, "⏳"),
+        React.createElement("div", { style: { fontWeight: 700, marginTop: 8 } }, "Leyendo la factura…"),
+        React.createElement("div", { style: { fontSize: 12, marginTop: 4 } }, "Suele tardar entre 15 y 40 segundos.")
+      ),
+
+      (paso === "revisar" || paso === "guardando") && React.createElement("div", null,
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 12 } },
+          [["proveedor", "Proveedor"], ["numero", "N\xBA factura"], ["ncf", "NCF"], ["fecha", "Fecha"], ["total", "Total factura (RD$)"]].map(([k, l]) =>
+            React.createElement("label", { key: k, style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, l,
+              React.createElement("input", { type: k === "fecha" ? "date" : k === "total" ? "number" : "text", value: cab[k] ?? "", onChange: (e) => setCab((c) => ({ ...c, [k]: e.target.value })), style: { ...inp, marginTop: 3, fontSize: 13 } })))
+        ),
+        avisos.length > 0 && React.createElement("div", { style: { background: "#fff7ed", border: "1.5px solid #f59e0b", borderRadius: 10, padding: "8px 12px", fontSize: 12, color: "#92400e", marginBottom: 10 } }, "⚠️ ", avisos.join(" \xB7 ")),
+        React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 8 } },
+          "Revisa cada l\xEDnea. Las marcadas en amarillo no se leyeron con total seguridad. “A\xF1adir a” suma la cantidad a un producto que ya existe en lugar de crear otro."),
+        React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" } },
+          vista && React.createElement("a", { href: vista, target: "_blank", rel: "noopener", style: { flex: "0 0 160px" } },
+            React.createElement("img", { src: vista, alt: "Factura", style: { width: 160, borderRadius: 8, border: "1px solid #e0e4e8" } }),
+            React.createElement("div", { style: { fontSize: 11, color: C.azul, textAlign: "center" } }, "Ver en grande")),
+          React.createElement("div", { style: { flex: "1 1 600px", overflowX: "auto" } },
+            React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } },
+              React.createElement("thead", null, React.createElement("tr", { style: { background: "#f8f9fa" } },
+                ["", "Producto y descripci\xF3n", "Categor\xEDa", "Cant.", "Costo c/u", "P. venta", "Vence", "Destino"].map((h, i) => React.createElement("th", { key: i, style: th }, h)))),
+              React.createElement("tbody", null, lineas.map((l) => React.createElement("tr", { key: l.key, style: { borderBottom: "1px solid #eef0f2", background: !l.incluir ? "#f8f9fa" : l.dudoso ? "#fffbeb" : "#fff", opacity: l.incluir ? 1 : 0.5 } },
+                React.createElement("td", { style: { padding: 6 } }, React.createElement("input", { type: "checkbox", checked: l.incluir, onChange: (e) => setL(l.key, "incluir", e.target.checked), title: "Incluir esta l\xEDnea" })),
+                React.createElement("td", { style: { padding: 6, minWidth: 220 } },
+                  React.createElement("input", { value: l.nombre, onChange: (e) => setL(l.key, "nombre", e.target.value), style: { ...inp, fontWeight: 700 } }),
+                  React.createElement("textarea", { value: l.descripcion, rows: 2, onChange: (e) => setL(l.key, "descripcion", e.target.value), style: { ...inp, marginTop: 4, resize: "vertical", fontFamily: "inherit" } }),
+                  l.nota && React.createElement("div", { style: { fontSize: 11, color: "#92400e", marginTop: 2 } }, l.nota)),
+                React.createElement("td", { style: { padding: 6 } }, React.createElement("select", { value: l.categoria, disabled: l.destino !== "nuevo", onChange: (e) => setL(l.key, "categoria", e.target.value), style: inp },
+                  CATEGORIAS_INV.map(([v, t]) => React.createElement("option", { key: v, value: v }, t)))),
+                React.createElement("td", { style: { padding: 6, width: 70 } }, React.createElement("input", { type: "number", min: 0, value: l.cantidad, onChange: (e) => setL(l.key, "cantidad", e.target.value), style: inp })),
+                React.createElement("td", { style: { padding: 6, width: 90 } }, React.createElement("input", { type: "number", min: 0, value: l.costo, onChange: (e) => setL(l.key, "costo", e.target.value), style: inp })),
+                React.createElement("td", { style: { padding: 6, width: 90 } }, React.createElement("input", { type: "number", min: 0, value: l.pventa, placeholder: "opcional", onChange: (e) => setL(l.key, "pventa", e.target.value), style: inp })),
+                React.createElement("td", { style: { padding: 6, width: 130 } }, React.createElement("input", { type: "date", value: l.vencimiento, onChange: (e) => setL(l.key, "vencimiento", e.target.value), style: inp })),
+                React.createElement("td", { style: { padding: 6, minWidth: 170 } }, React.createElement("select", { value: l.destino, onChange: (e) => setL(l.key, "destino", e.target.value), style: { ...inp, fontWeight: 700, color: l.destino === "nuevo" ? C.verde : C.azul } },
+                  React.createElement("option", { value: "nuevo" }, "✨ Producto nuevo"),
+                  opcionesExistentes.map((p) => React.createElement("option", { key: p.id, value: String(p.id) }, "A\xF1adir a: " + (p.codigo ? p.codigo + " \xB7 " : "") + p.nombre))))
+              )))
+            )
+          )
+        ),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, flexWrap: "wrap", gap: 10 } },
+          React.createElement("div", { style: { fontSize: 13, color: C.grisd } },
+            nIncl, " l\xEDnea(s) \xB7 ", nIncl - nSuma, " nuevo(s) \xB7 ", nSuma, " se suman a existentes",
+            totalLineas > 0 && React.createElement("span", null, " \xB7 Suma de l\xEDneas: ", RD(totalLineas)),
+            cab.total !== "" && totalLineas > 0 && Math.abs(totalLineas - Number(cab.total)) > 1 && React.createElement("span", { style: { color: "#b45309" } }, " (la factura dice ", RD(Number(cab.total)), "; la diferencia suele ser el ITBIS o un descuento)")),
+          React.createElement("div", { style: { display: "flex", gap: 8 } },
+            React.createElement("button", { disabled: paso === "guardando", onClick: () => { setPaso("subir"); setLineas([]); setVista(null); }, style: { border: "1.5px solid #d6dbe1", background: "#fff", borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: "pointer" } }, "Otra foto"),
+            React.createElement("button", { disabled: paso === "guardando" || !nIncl, onClick: guardar, style: { border: "none", background: C.verde, color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 800, cursor: "pointer", opacity: paso === "guardando" ? 0.6 : 1 } },
+              paso === "guardando" ? "Guardando…" : "\u{1F4BE} Guardar " + nIncl + " producto(s) en inventario"))
+        )
+      ),
+
+      paso === "listo" && React.createElement("div", null,
+        React.createElement("div", { style: { background: "#f0fdf4", border: "1.5px solid " + C.verde, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.verde, fontWeight: 700, marginBottom: 12 } },
+          "✅ Factura cargada: ", resultado.filter((r) => !r.fallo).length, " producto(s) en inventario."),
+        React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } },
+          React.createElement("thead", null, React.createElement("tr", { style: { background: "#f8f9fa" } }, ["C\xF3digo", "Producto", "Categor\xEDa", "Comprado", "Stock ahora", ""].map((h, i) => React.createElement("th", { key: i, style: th }, h)))),
+          React.createElement("tbody", null, resultado.map((r, i) => React.createElement("tr", { key: i, style: { borderBottom: "1px solid #eef0f2" } },
+            React.createElement("td", { style: { padding: 6, fontFamily: "monospace", fontWeight: 700, color: C.azul } }, r.codigo || "—"),
+            React.createElement("td", { style: { padding: 6, fontWeight: 600 } }, r.nombre),
+            React.createElement("td", { style: { padding: 6 } }, (CATEGORIAS_INV.find(([v]) => v === r.categoria) || [, r.categoria])[1]),
+            React.createElement("td", { style: { padding: 6 } }, r.cantidad),
+            React.createElement("td", { style: { padding: 6 } }, r.stock),
+            React.createElement("td", { style: { padding: 6, fontSize: 11, color: r.fallo ? "#be123c" : C.grisd } }, r.fallo ? "No se guard\xF3" : r.nuevo ? "Nuevo" : "Sumado")))))
+        ,
+        React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 } },
+          React.createElement("button", { onClick: () => { setPaso("subir"); setLineas([]); setResultado([]); setVista(null); setError(""); }, style: { border: "1.5px solid #d6dbe1", background: "#fff", borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: "pointer" } }, "\u{1F4F7} Cargar otra factura"),
+          React.createElement("button", { onClick: onCerrar, style: { border: "none", background: C.verde, color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 800, cursor: "pointer" } }, "Listo"))
+      )
+    )
+  );
+}
 function InventarioAnalytics({ inventario, ventas }) {
   const [seccion, setSeccion] = React.useState("resumen");
   const ventasFarmacia = ventas.filter((v) => v.area === "farmacia" || v.area === "veterinaria");
@@ -11217,7 +11479,9 @@ function InventarioAnalytics({ inventario, ventas }) {
     ["\u{1F381}", "Muestra gratis", "Pide a tus proveedores (ESPAVET, MEDIVET) muestras de productos nuevos. \xDAsalas para que los clientes los prueben antes de comprar."]
   ].map(([ico, tit, desc]) => /* @__PURE__ */ React.createElement("div", { key: tit, style: { display: "flex", gap: 10, padding: "10px 12px", background: "rgba(255,255,255,0.7)", borderRadius: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20 } }, ico), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, tit), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 2 } }, desc))))))));
 }
-function Inventario({ inventario, setInventario, ventas, deleteInv }) {
+function Inventario({ inventario, setInventario, ventas, deleteInv, refetchInventario }) {
+  const [verFactura, setVerFactura] = useState(false);
+  const [busca, setBusca] = useState("");
   const [form, setForm] = useState({ nombre: "", categoria: "farmaco", stock: "", stockMin: "", costo: "", pventa: "" });
   const [filtro, setFiltro] = useState("todo");
   const [editId, setEditId] = useState(null);
@@ -11254,7 +11518,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
       vencimiento: form.vencimiento || "",
       lote: form.lote || ""
     };
-    setInventario((prev) => [...prev, nuevo]);
+    Promise.resolve(setInventario((prev) => [...prev, nuevo])).then(() => refetchInventario && refetchInventario());
     setForm({ nombre: "", categoria: "farmaco", stock: "", stockMin: "", costo: "", pventa: "", vencimiento: "", lote: "" });
   };
   const startEdit = (p) => {
@@ -11328,15 +11592,18 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     pventa: Number(p.pventa || p.precioVenta || p.precioventa || 0),
     stockMin: Number(p.stockMin || p.stockmin || 0),
     // Categoría automática solo si está en "farmaco" genérico (default incorrecto)
-    categoria: p.categoria && p.categoria !== "farmaco" ? p.categoria : detectarCategoria(p.nombre)
+    // Lo cargado desde una factura (trae codigo) ya viene clasificado y revisado.
+    categoria: p.codigo ? (p.categoria || "otro") : p.categoria && p.categoria !== "farmaco" ? p.categoria : detectarCategoria(p.nombre)
   }));
+  const nBusca = normalizarTextoInv(busca);
   const filtrados = filtro === "todo" ? inventarioConCat : filtro === "porvencer" ? inventarioConCat.filter((p) => { const v = vencimientoInfo(p.vencimiento); return v && (v.vencido || v.porVencer); }).sort((a, b) => String(a.vencimiento).localeCompare(String(b.vencimiento))) : filtro === "bajostock" ? inventarioConCat.filter((p) => p.stockMin > 0 && p.stock <= p.stockMin) : inventarioConCat.filter((p) => p.categoria === filtro);
+  const filtradosBusca = nBusca ? filtrados.filter((p) => normalizarTextoInv([p.nombre, p.codigo, p.descripcion, p.proveedor].join(" ")).includes(nBusca)) : filtrados;
   const alertas = inventarioConCat.filter((p) => p.stockMin > 0 && p.stock <= p.stockMin);
   const agotados = inventarioConCat.filter((p) => p.stock === 0);
   const nPendientes = Object.keys(pendientes).length + (hayBorrados ? 1 : 0);
-  const CAT_COLORS = { farmaco: C.azul, alimento: C.verde, accesorio: C.gold, insumo: C.naranja, papeleria: C.grisd, otro: C.grisd };
-  const CAT_LABELS = { farmaco: "\u{1F48A} F\xE1rmaco", alimento: "\u{1F356} Alimento", accesorio: "\u{1F380} Accesorio", insumo: "\u{1F9F4} Insumo", papeleria: "\u{1F4C4} Papeler\xEDa", otro: "\u{1F4E6} Otro" };
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(InventarioAnalytics, { inventario, ventas }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26 } }, "Inventario"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, "Farmacia, accesorios, insumos de grooming y productos de tienda")), nPendientes > 0 && /* @__PURE__ */ React.createElement("button", { onClick: guardarTodo, style: {
+  const CAT_COLORS = { farmaco: C.azul, alimento: C.verde, accesorio: C.gold, higiene: "#0891b2", insumo: C.naranja, papeleria: C.grisd, otro: C.grisd };
+  const CAT_LABELS = Object.fromEntries(CATEGORIAS_INV.map(([v, l]) => [v, l]));
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(InventarioAnalytics, { inventario, ventas }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia,serif", fontSize: 26 } }, "Inventario"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, "Farmacia, accesorios, insumos de grooming y productos de tienda")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVerFactura(true), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 800, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 } }, "\u{1F4F7} Cargar factura de proveedor"), nPendientes > 0 && /* @__PURE__ */ React.createElement("button", { onClick: guardarTodo, style: {
     background: C.verde,
     color: "#fff",
     border: "none",
@@ -11349,22 +11616,15 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     display: "flex",
     alignItems: "center",
     gap: 8
-  } }, "\u{1F4BE} Guardar cambios (", nPendientes, ")")), alertas.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fff7ed", border: "1.5px solid #f59e0b", borderRadius: 12, padding: "12px 16px", marginBottom: 10, marginTop: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#d97706", fontSize: 13, marginBottom: 8 } }, "\u26A0\uFE0F Stock bajo \u2014 requieren reposici\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, alertas.map((p) => /* @__PURE__ */ React.createElement("span", { key: p.id, style: { background: "#fef3c7", color: "#92400e", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20 } }, p.nombre.slice(0, 30), " \xB7 ", p.stock, " unid.")))), agotados.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fff1f2", border: "1.5px solid #f43f5e", borderRadius: 12, padding: "12px 16px", marginBottom: 16, marginTop: alertas.length ? 8 : 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#e11d48", fontSize: 13, marginBottom: 8 } }, "\u{1F6A8} Sin stock \u2014 agotados"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, agotados.map((p) => /* @__PURE__ */ React.createElement("span", { key: p.id, style: { background: "#ffe4e6", color: "#be123c", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20 } }, p.nombre.slice(0, 30))))), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 20, marginTop: alertas.length || agotados.length ? 0 : 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u2795 Agregar producto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre del producto", value: form.nombre, onChange: (v) => setF("nombre", v), placeholder: "Nexgard, champ\xFA, croquetas\u2026", style: { minWidth: 200 } }), /* @__PURE__ */ React.createElement(
+  } }, "\u{1F4BE} Guardar cambios (", nPendientes, ")"))), verFactura && /* @__PURE__ */ React.createElement(ModalFacturaProveedor, { inventario: inventarioConCat, onCerrar: () => setVerFactura(false), onGuardado: () => refetchInventario && refetchInventario() }), alertas.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fff7ed", border: "1.5px solid #f59e0b", borderRadius: 12, padding: "12px 16px", marginBottom: 10, marginTop: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#d97706", fontSize: 13, marginBottom: 8 } }, "\u26A0\uFE0F Stock bajo \u2014 requieren reposici\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, alertas.map((p) => /* @__PURE__ */ React.createElement("span", { key: p.id, style: { background: "#fef3c7", color: "#92400e", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20 } }, p.nombre.slice(0, 30), " \xB7 ", p.stock, " unid.")))), agotados.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: "#fff1f2", border: "1.5px solid #f43f5e", borderRadius: 12, padding: "12px 16px", marginBottom: 16, marginTop: alertas.length ? 8 : 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, color: "#e11d48", fontSize: 13, marginBottom: 8 } }, "\u{1F6A8} Sin stock \u2014 agotados"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, agotados.map((p) => /* @__PURE__ */ React.createElement("span", { key: p.id, style: { background: "#ffe4e6", color: "#be123c", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20 } }, p.nombre.slice(0, 30))))), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 20, marginTop: alertas.length || agotados.length ? 0 : 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u2795 Agregar producto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Nombre del producto", value: form.nombre, onChange: (v) => setF("nombre", v), placeholder: "Nexgard, champ\xFA, croquetas\u2026", style: { minWidth: 200 } }), /* @__PURE__ */ React.createElement(
     Select,
     {
       label: "Categor\xEDa",
       value: form.categoria,
       onChange: (v) => setF("categoria", v),
-      options: [
-        { value: "farmaco", label: "\u{1F48A} F\xE1rmaco/Medicamento" },
-        { value: "alimento", label: "\u{1F356} Alimento" },
-        { value: "accesorio", label: "\u{1F380} Accesorio" },
-        { value: "insumo", label: "\u{1F9F4} Insumo grooming" },
-        { value: "papeleria", label: "\u{1F4C4} Papeler\xEDa" },
-        { value: "otro", label: "\u{1F4E6} Otro" }
-      ]
+      options: CATEGORIAS_INV.map(([value, label]) => ({ value, label }))
     }
-  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Input, { label: "Stock actual", type: "number", value: form.stock, onChange: (v) => setF("stock", v), placeholder: "10" }), /* @__PURE__ */ React.createElement(Input, { label: "Stock m\xEDnimo", type: "number", value: form.stockMin, onChange: (v) => setF("stockMin", v), placeholder: "2" }), /* @__PURE__ */ React.createElement(Input, { label: "Costo (RD$)", type: "number", value: form.costo, onChange: (v) => setF("costo", v), placeholder: "0" }), /* @__PURE__ */ React.createElement(Input, { label: "Precio venta (RD$)", type: "number", value: form.pventa, onChange: (v) => setF("pventa", v), placeholder: "0" }), /* @__PURE__ */ React.createElement(Input, { label: "Vence (opcional)", type: "date", value: form.vencimiento || "", onChange: (v) => setF("vencimiento", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Lote (opcional)", value: form.lote || "", onChange: (v) => setF("lote", v), placeholder: "L-2026-04" })), /* @__PURE__ */ React.createElement(Btn, { onClick: addProducto }, "\u{1F4BE} Agregar al inventario")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" } }, [["todo", "Todos"], ["farmaco", "\u{1F48A} F\xE1rmacos"], ["alimento", "\u{1F356} Alimentos"], ["accesorio", "\u{1F380} Accesorios"], ["insumo", "\u{1F9F4} Insumos"], ["papeleria", "\u{1F4C4} Papeler\xEDa"], ["bajostock", "\u26A0\uFE0F Stock bajo"], ["porvencer", "\u{1F4C5} Por vencer"]].map(([v, l]) => /* @__PURE__ */ React.createElement("button", { key: v, onClick: () => setFiltro(v), style: {
+  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Input, { label: "Stock actual", type: "number", value: form.stock, onChange: (v) => setF("stock", v), placeholder: "10" }), /* @__PURE__ */ React.createElement(Input, { label: "Stock m\xEDnimo", type: "number", value: form.stockMin, onChange: (v) => setF("stockMin", v), placeholder: "2" }), /* @__PURE__ */ React.createElement(Input, { label: "Costo (RD$)", type: "number", value: form.costo, onChange: (v) => setF("costo", v), placeholder: "0" }), /* @__PURE__ */ React.createElement(Input, { label: "Precio venta (RD$)", type: "number", value: form.pventa, onChange: (v) => setF("pventa", v), placeholder: "0" }), /* @__PURE__ */ React.createElement(Input, { label: "Vence (opcional)", type: "date", value: form.vencimiento || "", onChange: (v) => setF("vencimiento", v) }), /* @__PURE__ */ React.createElement(Input, { label: "Lote (opcional)", value: form.lote || "", onChange: (v) => setF("lote", v), placeholder: "L-2026-04" })), /* @__PURE__ */ React.createElement(Btn, { onClick: addProducto }, "\u{1F4BE} Agregar al inventario")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" } }, [["todo", "Todos"], ...CATEGORIAS_INV.filter(([v]) => v !== "otro"), ["bajostock", "\u26A0\uFE0F Stock bajo"], ["porvencer", "\u{1F4C5} Por vencer"]].map(([v, l]) => /* @__PURE__ */ React.createElement("button", { key: v, onClick: () => setFiltro(v), style: {
     padding: "6px 14px",
     borderRadius: 20,
     border: `2px solid ${filtro === v ? C.verde : "#e0e4e8"}`,
@@ -11373,9 +11633,9 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
     fontSize: 12,
     fontWeight: 700,
     cursor: "pointer"
-  } }, l)), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", fontSize: 12, color: C.grisd } }, filtrados.length, " producto(s)")), /* @__PURE__ */ React.createElement(Card, null, filtrados.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "No hay productos en esta categor\xEDa") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Producto", "Categor\xEDa", "Stock", "M\xEDn.", "Costo", "P.Venta", "Vence", "Margen", "Acciones"].map(
+  } }, l)), /* @__PURE__ */ React.createElement("input", { value: busca, onChange: (e) => setBusca(e.target.value), placeholder: "\u{1F50D} Buscar por nombre o c\xF3digo", style: { marginLeft: "auto", padding: "7px 12px", border: "1.5px solid #e0e4e8", borderRadius: 20, fontSize: 12, minWidth: 190 } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, filtradosBusca.length, " producto(s)")), /* @__PURE__ */ React.createElement(Card, null, filtradosBusca.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "No hay productos en esta categor\xEDa") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Producto", "Categor\xEDa", "Stock", "M\xEDn.", "Costo", "P.Venta", "Vence", "Margen", "Acciones"].map(
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase", whiteSpace: "nowrap" } }, h)
-  ))), /* @__PURE__ */ React.createElement("tbody", null, filtrados.map((p) => {
+  ))), /* @__PURE__ */ React.createElement("tbody", null, filtradosBusca.map((p) => {
     const enEdicion = editId !== null && String(editId) === String(p.id);
     const _pv = parseFloat(p.pventa) || 0; const _pc = parseFloat(p.costo) || 0;
     const margen = _pv > 0 && _pc > 0 && _pv !== _pc ? Math.round((_pv - _pc) / _pv * 100) : (p.margen != null ? p.margen : null);
@@ -11396,7 +11656,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
           onChange: (e) => setEditData((d) => ({ ...d, categoria: e.target.value })),
           style: { padding: "6px 8px", border: `2px solid ${C.verde}`, borderRadius: 6, fontSize: 12 }
         },
-        [["farmaco", "\u{1F48A} F\xE1rmaco"], ["alimento", "\u{1F356} Alimento"], ["accesorio", "\u{1F380} Accesorio"], ["insumo", "\u{1F9F4} Insumo"], ["papeleria", "\u{1F4C4} Papeler\xEDa"], ["otro", "\u{1F4E6} Otro"]].map(
+        CATEGORIAS_INV.map(
           ([v, l]) => /* @__PURE__ */ React.createElement("option", { key: v, value: v }, l)
         )
       )), /* @__PURE__ */ React.createElement("td", { style: { padding: "8px 10px" } }, /* @__PURE__ */ React.createElement(
@@ -11445,7 +11705,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv }) {
       borderBottom: "1px solid #f4f5f6",
       background: bajo ? "#fff8f8" : tieneChange ? "#f0fdf4" : "#fff",
       transition: "background .1s"
-    } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, p.nombre, tieneChange && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 6, fontSize: 10, color: C.verde, fontWeight: 700 } }, "\u25CF sin guardar")), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: CAT_COLORS[p.categoria] || C.grisd }, CAT_LABELS[p.categoria] || p.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: bajo ? C.rojo : C.negro } }, p.stock), bajo && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 4, fontSize: 14 } }, "\u26A0\uFE0F")), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, p.stockMin || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, p.costo > 0 ? RD(p.costo) : "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.verde, fontWeight: 700 } }, p.pventa > 0 ? RD(p.pventa) : "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, whiteSpace: "nowrap" } }, (() => {
+    } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700 } }, p.codigo && /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "monospace", fontSize: 11, background: "#eef2f7", color: C.azul, padding: "2px 6px", borderRadius: 5, marginRight: 6 } }, p.codigo), p.nombre, p.descripcion && /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 400, fontSize: 11, color: C.grisd, marginTop: 2, maxWidth: 320 } }, p.descripcion), tieneChange && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 6, fontSize: 10, color: C.verde, fontWeight: 700 } }, "\u25CF sin guardar")), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: CAT_COLORS[p.categoria] || C.grisd }, CAT_LABELS[p.categoria] || p.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: bajo ? C.rojo : C.negro } }, p.stock), bajo && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 4, fontSize: 14 } }, "\u26A0\uFE0F")), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.grisd } }, p.stockMin || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, p.costo > 0 ? RD(p.costo) : "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", color: C.verde, fontWeight: 700 } }, p.pventa > 0 ? RD(p.pventa) : "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, whiteSpace: "nowrap" } }, (() => {
       const v = vencimientoInfo(p.vencimiento);
       if (!v) return /* @__PURE__ */ React.createElement("span", { style: { color: "#c9ced4" } }, "\u2014");
       const col = v.vencido ? "#e11d48" : v.porVencer ? "#d97706" : C.grisd;
