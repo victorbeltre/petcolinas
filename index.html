@@ -58,14 +58,16 @@
        lado ancho; el formulario va a la derecha. En tablet y telefono la
        portada queda arriba y el formulario debajo. */
     .pc-login { min-height: 100vh; display: flex; background: #fff; }
-    .pc-login-marca { flex: 1.7; display: flex; align-items: center; justify-content: center; padding: 48px 40px; background: #fff; min-width: 0; }
-    .pc-login-marca img { width: 100%; max-width: 980px; height: auto; display: block; }
-    .pc-login-form { width: 440px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 40px 32px;
+    /* La portada ocupa el 40% del ancho (Victor, 29 oct: a mas de la mitad pesaba demasiado). */
+    .pc-login-marca { flex: 0 0 40%; display: flex; align-items: center; justify-content: center; padding: 40px 32px; background: #fff; min-width: 0; }
+    .pc-login-marca img { width: 100%; max-width: 640px; height: auto; display: block; }
+    .pc-login-form { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 32px;
       background: #f5f7f6; border-left: 1px solid #e6e9ec; }
+    .pc-login-form > div { max-width: 400px !important; }
     .pc-login-form > div { background: #fff; border: 1px solid #e6e9ec; border-radius: 18px; padding: 32px 28px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
     @media (max-width: 980px) {
       .pc-login { flex-direction: column; background: #f5f7f6; }
-      .pc-login-marca { flex: none; padding: 28px 20px 8px; background: #fff; border-bottom: 1px solid #e6e9ec; }
+      .pc-login-marca { flex: none; width: auto; padding: 28px 20px 8px; background: #fff; border-bottom: 1px solid #e6e9ec; }
       .pc-login-marca img { max-width: 560px; }
       .pc-login-form { width: auto; flex: 1; align-items: flex-start; border-left: none; padding: 24px 16px 40px; }
       .pc-login-form > div { padding: 28px 22px; }
@@ -269,7 +271,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 20:32Z";
+const PC_BUILD = "2026-10-28 20:35Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
