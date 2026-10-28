@@ -58,9 +58,9 @@
        lado ancho; el formulario va a la derecha. En tablet y telefono la
        portada queda arriba y el formulario debajo. */
     .pc-login { min-height: 100vh; display: flex; background: #fff; }
-    /* La portada ocupa el 40% del ancho (Victor, 29 oct: a mas de la mitad pesaba demasiado). */
-    .pc-login-marca { flex: 0 0 40%; display: flex; align-items: center; justify-content: center; padding: 40px 32px; background: #fff; min-width: 0; }
-    .pc-login-marca img { width: 100%; max-width: 640px; height: auto; display: block; }
+    /* La portada ocupa el 45% del ancho (Victor, 29 oct: a mas de la mitad pesaba demasiado). */
+    .pc-login-marca { flex: 0 0 45%; display: flex; align-items: center; justify-content: center; padding: 40px 32px; background: #fff; min-width: 0; }
+    .pc-login-marca img { width: 100%; max-width: 720px; height: auto; display: block; }
     .pc-login-form { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 32px;
       background: #f5f7f6; border-left: 1px solid #e6e9ec; }
     .pc-login-form > div { max-width: 400px !important; }
@@ -271,7 +271,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 20:35Z";
+const PC_BUILD = "2026-10-28 21:08Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
