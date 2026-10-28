@@ -270,7 +270,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 20:07Z";
+const PC_BUILD = "2026-10-28 20:20Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1872,7 +1872,9 @@ const TARIFAS_VET = [
   { id: "v23", nombre: "Refuerzo anual+consulta (qu\xEDntuple+bordetella+rabia)", precio: 3800, comision: 0.3 },
   { id: "v24", nombre: "Mi primera vacuna canina", precio: 3500, comision: 0.3 },
   { id: "v25", nombre: "Refuerzo anual canino", precio: 6000, comision: 0.3 },
-  { id: "v26", nombre: "Completo esquema vacuna canina", precio: 5500, comision: 0.3 }
+  { id: "v26", nombre: "Completo esquema vacuna canina", precio: 5500, comision: 0.3 },
+  { id: "v27", nombre: "Coprol\xF3gico", precio: 600, comision: 0.3 },
+  { id: "v28", nombre: "Hemograma", precio: 800, comision: 0.3 }
 ];
 const EMPLEADOS_INIT = [
   { id: "e1", nombre: "Alexander Ram\xEDrez", cargo: "Groomer", mensualidad: 25e3, comPct: 0, comTipo: "fija" },
@@ -14507,6 +14509,8 @@ const TARIFAS_VET_MODAL = [
   { id: "v14", nombre: "Rx / Radiograf\xEDa", precio: 1800 },
   { id: "v15", nombre: "Ecograf\xEDa", precio: 2e3 },
   { id: "v16", nombre: "Sutura/Herida", precio: 1500 },
+  { id: "v18", nombre: "Coprol\xF3gico", precio: 600 },
+  { id: "v19", nombre: "Hemograma", precio: 800 },
   { id: "v17", nombre: "Otro (precio libre)", precio: 0 }
 ];
 
