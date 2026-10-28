@@ -270,7 +270,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 14:20Z";
+const PC_BUILD = "2026-10-28 15:51Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2382,7 +2382,7 @@ const TABS = [
   { id: "planes", icon: "\u{1F4B3}", label: "Planes", grupo: "Clientes" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones", grupo: "Clientes" },
   { id: "resenas", icon: "\u2B50", label: "Rese\xF1as Google", grupo: "Clientes" },
-  { id: "recetarios", icon: "\u{1F4DD}", label: "Recetarios", grupo: "Clientes" },
+  { id: "recetarios", icon: "\u{1F48A}", label: "Recetarios", grupo: "Clientes" },
 
   { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp", grupo: "Comunicaci\xF3n" },
   { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa", grupo: "Comunicaci\xF3n" },
@@ -7261,7 +7261,7 @@ function PetColinas() {
       marcarNotifLeidas: marcarNotifsCaja, desmarcarNotif: desmarcarNotifCaja
     }));
 
-  if (isVet) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalVeterinaria, {
+  if (isVet) return /* @__PURE__ */ React.createElement(React.Fragment, null, React.createElement(VigilanteVersion, null), /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalVeterinaria, {
     session, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     clientes: clientesVet, setClientes: setClientesVet,
@@ -7273,7 +7273,7 @@ function PetColinas() {
     inventario: invGlobal, setInventario: setInvCaja
   }));
 
-  if (isGrm) return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalGroomer, {
+  if (isGrm) return /* @__PURE__ */ React.createElement(React.Fragment, null, React.createElement(VigilanteVersion, null), /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(PortalGroomer, {
     session, onLogout: handleLogout,
     ventas: ventasVet, setVentas: setVentasVet,
     pagosNom: pagosNomVet || [],
@@ -16042,11 +16042,11 @@ const TABS_VET = [
   { id: "agenda_vet",      icon: "\u{1F4C5}", label: "Agenda" },
   { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" },
   { id: "historias",       icon: "\u{1F4CB}", label: "Historias Cl\xEDnicas" },
+  { id: "recetarios_vet",  icon: "\u{1F48A}", label: "Recetarios" },
   { id: "evolucion_vet",   icon: "\u{1F4C8}", label: "Evoluci\xF3n Cl\xEDnica" },
   { id: "reportes_lab",    icon: "\u{1F52C}", label: "Reportes de Lab" },
   { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" },
-  { id: "resenas_vet",     icon: "\u2B50", label: "Rese\xF1as Google" },
-  { id: "recetarios_vet",  icon: "\u{1F4DD}", label: "Recetarios" }
+  { id: "resenas_vet",     icon: "\u2B50", label: "Rese\xF1as Google" }
 ];
 
 // ═══════════════════════════════════════════════════════════
