@@ -270,7 +270,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 16:59Z";
+const PC_BUILD = "2026-10-28 20:07Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -4281,17 +4281,19 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
   const catalogoServicios = useMemo(() => {
     const out = [];
     const vistos = new Set();
-    const push = (nombre, precio, grupo) => {
+    const push = (nombre, precio, grupo, prod) => {
       const n = String(nombre || "").trim();
       if (!n) return;
       const k = grupo + "|" + n.toLowerCase();
       if (vistos.has(k)) return;
       vistos.add(k);
-      out.push({ nombre: n, precio: Number(precio) || 0, grupo });
+      out.push({ nombre: n, precio: Number(precio) || 0, grupo,
+        buscar: prod ? textoBusquedaProducto(prod) : normalizarTextoInv(n + " " + grupo),
+        stock: prod ? Number(prod.stock) || 0 : null, codigo: prod ? prod.codigo || "" : "" });
     };
     (tarifasGrooming || []).forEach((t) => push(t.nombre, t.precio, "Grooming"));
     (tarifasVet || []).forEach((t) => push(t.nombre, t.precio, "Veterinaria"));
-    (inventario || []).forEach((p) => push(p.nombre, p.precioVenta ?? p.pventa ?? p.precio, "Producto"));
+    (inventario || []).forEach((p) => push(p.nombre, p.precioVenta ?? p.pventa ?? p.precio, "Producto", p));
     return out;
   }, [tarifasGrooming, tarifasVet, inventario]);
   const [form, setForm] = useState({
@@ -5309,8 +5311,9 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
       }
     ), sugItem === i && (() => {
       // Autocompletado igual que en Ventas: tarifas de grooming, veterinaria y productos.
-      const q = String(item.descripcion || "").toLowerCase().trim();
-      const lista = catalogoServicios.filter((s) => !q || s.nombre.toLowerCase().includes(q)).slice(0, 50);
+      // Palabras clave; los productos solo si tienen stock (sin stock no se factura).
+      const palabras = normalizarTextoInv(item.descripcion).split(" ").filter(Boolean);
+      const lista = catalogoServicios.filter((s) => (s.grupo !== "Producto" || s.stock > 0) && palabras.every((w) => s.buscar.includes(w))).slice(0, 50);
       if (lista.length === 0) return null;
       const colores = { Grooming: "#6b21a8", Veterinaria: "#1a6b3a", Producto: "#b45309" };
       return React.createElement("div", { style: { position: "absolute", top: "100%", left: 0, right: 0, zIndex: 80, background: "#fff", border: "1px solid #e0e4e8", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,.14)", maxHeight: 250, overflowY: "auto", marginTop: 4 } },
@@ -10312,6 +10315,26 @@ async function devolverStockVenta(lineas) {
     auditar("pc_inventario", "devolucion", { servicio: l.prod.nombre }, ["stock: " + antes + " \u2192 " + (antes + l.qty)]);
   }
 }
+// Busqueda de productos POR PALABRAS CLAVE al facturar (Victor, 28 oct 2026).
+// Cada palabra escrita tiene que aparecer en algun lado (nombre, codigo,
+// descripcion, categoria o proveedor), en cualquier orden y sin importar
+// acentos ni mayusculas: "spectra l", "nexg 15", "MED-00003", "shampoo avena".
+// Por defecto solo devuelve lo que tiene STOCK: sin stock no se puede facturar.
+function textoBusquedaProducto(p) {
+  const cat = (typeof CATEGORIAS_INV !== "undefined" ? (CATEGORIAS_INV.find(([v]) => v === p.categoria) || [])[1] : "") || p.categoria;
+  return normalizarTextoInv([p.nombre, p.codigo, p.descripcion, cat, p.proveedor].join(" "));
+}
+function buscarEnInventario(inventario, q, opciones) {
+  const soloConStock = !opciones || opciones.soloConStock !== false;
+  const palabras = normalizarTextoInv(q).split(" ").filter(Boolean);
+  let lista = (inventario || []).filter((p) => !soloConStock || Number(p.stock) > 0);
+  const nom = (p) => normalizarTextoInv(p.nombre);
+  if (!palabras.length) return lista.slice().sort((a, b) => nom(a).localeCompare(nom(b)));
+  lista = lista.filter((p) => { const t = textoBusquedaProducto(p); return palabras.every((w) => t.includes(w)); });
+  // Primero lo que EMPIEZA por lo escrito, despues lo que lo tiene en el nombre, despues el resto.
+  const rango = (p) => nom(p).startsWith(palabras[0]) ? 0 : palabras.every((w) => nom(p).includes(w)) ? 1 : 2;
+  return lista.sort((a, b) => rango(a) - rango(b) || nom(a).localeCompare(nom(b)));
+}
 function mensajeSinStock(faltantes) {
   return "⛔ No se puede facturar: no hay suficiente en inventario.\n\n" +
     faltantes.map((f) => "• " + f.nombre + ": quedan " + f.disponible + (f.disponible === 1 ? " unidad" : " unidades") + " y se intenta facturar " + f.pedido).join("\n") +
@@ -11321,7 +11344,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         type:"text",
         value: busqProd,
         onChange: e => { setBusqProd(e.target.value); setProdSelId(""); },
-        placeholder: "\uD83D\uDD0D Buscar producto por nombre...",
+        placeholder: "\uD83D\uDD0D Buscar por nombre, marca, c\xF3digo o palabra clave\u2026",
         style:{ width:"100%", boxSizing:"border-box", padding:"9px 36px 9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, background:"#fff", outline:"none" }
       }),
       busqProd && /* @__PURE__ */ React.createElement("button", {
@@ -11329,6 +11352,13 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         style:{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:16, color:C.grisd }
       }, "\u2715")
     ),
+    productosInv.length > 0 && (() => {
+      const disp = buscarEnInventario(productosInv, busqProd).length;
+      const ocultos = buscarEnInventario(productosInv, busqProd, { soloConStock: false }).length - disp;
+      return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.grisd, margin: "-6px 0 8px" } },
+        disp === 0 ? (busqProd.trim() ? "Ning\xFAn producto con stock coincide con \u201C" + busqProd.trim() + "\u201D." : "No hay productos con stock.") : disp + " disponible(s) en stock",
+        ocultos > 0 ? " \xB7 " + ocultos + " sin stock no se muestran" : "");
+    })(),
     productosInv.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { background: C.naranjaL, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: C.naranja } }, "\u26A0\uFE0F No hay productos en inventario con precio de venta. Ve a ", /* @__PURE__ */ React.createElement("strong", null, "Inventario"), ".") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))",
@@ -11337,7 +11367,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     maxHeight: 200,
     overflowY: "auto",
     padding: 4
-  } }, (busqProd.trim() ? productosInv.filter(p => p.nombre.toLowerCase().includes(busqProd.toLowerCase())) : productosInv).map((p) => {
+  } }, buscarEnInventario(productosInv, busqProd).map((p) => {
     const sel = prodSelId === String(p.id);
     const sinStock = p.stock === 0;
     return /* @__PURE__ */ React.createElement(
@@ -11406,9 +11436,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         style:{ width:"100%", boxSizing:"border-box", padding:"9px 12px", borderRadius:8, border:"1.5px solid #d1d5db", fontSize:13, background:"#fff", outline:"none" }
       }),
       descLibre.length >= 2 && (() => {
-        const sugs = inventario
-          .filter(p => p.nombre.toLowerCase().includes(descLibre.toLowerCase()))
-          .slice(0, 7);
+        const sugs = buscarEnInventario(inventario, descLibre).slice(0, 7);
         if (sugs.length === 0) return null;
         return /* @__PURE__ */ React.createElement("div", {
           style:{ position:"absolute", top:"100%", left:0, right:0, zIndex:200,
@@ -16174,9 +16202,8 @@ function MiVitrina({ usuario, ventas, setVentas, inventario, comPct = comisionPc
     : catFiltro === "tienda"
     ? inv.filter(p => (p.categoria || "").toLowerCase() !== "farmaco")
     : inv;
-  const invFiltrado = busq.length >= 2
-    ? invPorCat.filter(p => p.nombre.toLowerCase().includes(busq.toLowerCase()))
-    : invPorCat;
+  // Palabras clave y solo lo que tiene stock (sin stock no se puede facturar).
+  const invFiltrado = buscarEnInventario(invPorCat, busq);
 
   const gananciaActual = selProd ? selProd.ganancia * qty : 0;
   const miComisionActual = Math.round(gananciaActual * comPct);
@@ -16757,6 +16784,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
   const [cliente, setCliente] = React.useState("");
   const [showSugg, setShowSugg] = React.useState(false);
   const [servSelId, setServSelId] = React.useState("");
+  const [buscaProd, setBuscaProd] = React.useState("");
   const [precioCustom, setPrecioCustom] = React.useState("");
   const [qty, setQty] = React.useState(1);
   const [descItem, setDescItem] = React.useState("");
@@ -17114,7 +17142,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
           React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Tipo"),
           React.createElement("div", { style:{ display:"flex", gap:6, flexWrap:"wrap" }},
             CATS.map(cat => React.createElement("button", {
-              key:cat.id, onClick:()=>{ setCategoria(cat.id); setServSelId(""); setPrecioCustom(""); },
+              key:cat.id, onClick:()=>{ setCategoria(cat.id); setServSelId(""); setPrecioCustom(""); setBuscaProd(""); },
               style:{ padding:"6px 12px", borderRadius:16, border:"2px solid "+(categoria===cat.id?cat.color:"#e0e4e8"), background:categoria===cat.id?cat.color:"#fff", color:categoria===cat.id?"#fff":CC.gris, fontSize:11, fontWeight:700, cursor:"pointer" }
             }, cat.label))
           )
@@ -17123,7 +17151,45 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
         // Servicio
         React.createElement("div", { style:{ marginBottom:12 }},
           React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Servicio / Producto"),
-          servicios.length > 0
+          // Productos de la tienda: buscador por palabras clave con solo lo que
+          // tiene stock (28 oct 2026). Antes era una lista desplegable con los 140
+          // productos, con y sin stock, que habia que recorrer a mano.
+          categoria === "farmacia" && servicios.length > 0
+            ? React.createElement("div", null,
+                servSel && servSelId !== "__libre__"
+                  ? React.createElement("div", { style:{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", border:"1.5px solid #1a6b3a", background:"#f0f9f3", borderRadius:10 } },
+                      React.createElement("div", { style:{ flex:1, minWidth:0 } },
+                        React.createElement("div", { style:{ fontWeight:700, fontSize:13.5 } }, servSel.nombre),
+                        React.createElement("div", { style:{ fontSize:12, color:CC.gris } }, [servSel.codigo, "Stock: " + (Number(servSel.stock) || 0), "RD$ " + Math.round(servSel.pventa || 0).toLocaleString("es-DO")].filter(Boolean).join(" \xB7 "))),
+                      React.createElement("button", { onClick:()=>{ setServSelId(""); setPrecioCustom(""); }, title:"Cambiar producto", style:{ background:"#fff", border:"1px solid #d9dee3", borderRadius:8, padding:"5px 10px", cursor:"pointer", fontSize:12, fontWeight:600, minHeight:0 } }, "Cambiar"))
+                  : React.createElement("div", null,
+                      React.createElement("input", {
+                        value:buscaProd, onChange:e=>{ setBuscaProd(e.target.value); if (servSelId === "__libre__") setServSelId(""); },
+                        placeholder:"\uD83D\uDD0D Buscar producto: nombre, marca, c\xF3digo o palabra clave\u2026",
+                        style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13, boxSizing:"border-box" }
+                      }),
+                      servSelId !== "__libre__" && (() => {
+                        const lista = buscarEnInventario(servicios, buscaProd);
+                        const ocultos = buscarEnInventario(servicios, buscaProd, { soloConStock:false }).length - lista.length;
+                        return React.createElement("div", null,
+                          React.createElement("div", { style:{ fontSize:11.5, color:CC.gris, margin:"6px 2px" } },
+                            lista.length ? lista.length + " disponible(s) en stock" : (buscaProd.trim() ? "Ning\xFAn producto con stock coincide." : "No hay productos con stock."),
+                            ocultos > 0 ? " \xB7 " + ocultos + " sin stock no se muestran" : ""),
+                          lista.length > 0 && React.createElement("div", { style:{ maxHeight:240, overflowY:"auto", border:"1px solid #e6e9ec", borderRadius:10 } },
+                            lista.slice(0, 40).map(p2 => React.createElement("button", {
+                              key:p2.id, onClick:()=>{ setServSelId(p2.id); setPrecioCustom(""); setBuscaProd(""); },
+                              style:{ display:"flex", width:"100%", justifyContent:"space-between", alignItems:"center", gap:10, textAlign:"left", background:"#fff",
+                                      border:"none", borderBottom:"1px solid #f1f3f4", padding:"8px 12px", cursor:"pointer", fontSize:13, minHeight:0 }
+                            },
+                              React.createElement("span", { style:{ minWidth:0 } },
+                                React.createElement("b", null, p2.nombre),
+                                React.createElement("span", { style:{ display:"block", fontSize:11.5, color:CC.gris } }, [p2.codigo, "Stock: " + (Number(p2.stock) || 0)].filter(Boolean).join(" \xB7 "))),
+                              React.createElement("span", { style:{ fontWeight:700, whiteSpace:"nowrap" } }, "RD$ " + Math.round(p2.pventa || 0).toLocaleString("es-DO"))))));
+                      })()),
+                React.createElement("button", { onClick:()=>{ setServSelId(servSelId === "__libre__" ? "" : "__libre__"); setPrecioCustom(""); },
+                  style:{ marginTop:8, background:"none", border:"none", color:"#7c3aed", fontSize:12.5, fontWeight:600, cursor:"pointer", padding:0, minHeight:0 } },
+                  servSelId === "__libre__" ? "\u2190 Volver al buscador" : "\u270F\uFE0F Otro producto (entrada libre)"))
+          : servicios.length > 0
             ? React.createElement("select", {
                 value:servSelId, onChange:e=>{ setServSelId(e.target.value); setPrecioCustom(""); },
                 style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13 }

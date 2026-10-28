@@ -454,6 +454,24 @@ render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDef
   if (aj("uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciseis diecisiete dieciocho diecinueve veinte veintiuno", medir).lineas.some((l) => medir(l, 11) > 352 + 0.01 && l.includes(" "))) fallo("ninguna linea pasa del ancho del area");
 })();
 render("Recetario", sandbox.Recetario, { clientes, historias: [], medicoPorDefecto: "Dra. Naylan", usuarioNombre: "Naylan" }, null, "Recetarios");
+// Busqueda de productos al facturar (28 oct 2026): palabras clave en cualquier
+// orden, sin acentos, por codigo o descripcion, y solo lo que tiene stock.
+(() => {
+  const fallo = (m) => errores.push("buscar producto: " + m);
+  const inv = [
+    { id: "1", nombre: "NexGard Spectra L 15-30 kg", categoria: "farmaco", stock: 4, codigo: "MED-00003", descripcion: "Antiparasitario masticable" },
+    { id: "2", nombre: "NexGard Spectra M", categoria: "farmaco", stock: 0, codigo: "MED-00004" },
+    { id: "3", nombre: "Champ\u00FA de avena", categoria: "higiene", stock: 7, descripcion: "Piel sensible" },
+    { id: "4", nombre: "Royal Canin Mini", categoria: "alimento", stock: 2 }];
+  const b = (q, o) => enVM("buscarEnInventario")(inv, q, o).map((p) => p.id).join(",");
+  if (b("spectra l") !== "1") fallo("'spectra l' encuentra la talla L con stock: " + b("spectra l"));
+  if (b("spectra") !== "1") fallo("la talla M sin stock no aparece: " + b("spectra"));
+  if (b("spectra", { soloConStock: false }) !== "1,2") fallo("sin filtro de stock aparecen las dos: " + b("spectra", { soloConStock: false }));
+  if (b("CHAMPU avena") !== "3" || b("piel") !== "3") fallo("sin acentos ni mayusculas, y por descripcion");
+  if (b("med-00003") !== "1") fallo("por codigo");
+  if (b("alimento") !== "4") fallo("por categoria");
+  if (b("") !== "3,1,4") fallo("sin texto: todo lo que tiene stock, en orden alfabetico: " + b(""));
+})();
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la

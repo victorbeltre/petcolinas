@@ -242,6 +242,11 @@ portales y Mi Vitrina/Farmacia de la doctora. Todo pasa por `lineasStockVenta` +
   Inventario antes de poder venderlos.
 - Pendiente (no hecho): borrar o editar una venta YA registrada en Ventas no devuelve
   el stock.
+- Buscar producto al facturar (28 oct): `buscarEnInventario(inv, q)` = palabras clave en
+  cualquier orden, sin acentos, en nombre/codigo/descripcion/categoria/proveedor, y SOLO lo
+  que tiene stock (`{soloConStock:false}` para ver todo). La usan Ventas (catalogo y entrada
+  libre), Facturas (autocompletado), Facturar de los portales (buscador en vez de la lista
+  desplegable) y Mi Vitrina. Se dice cuantos sin stock quedaron fuera.
 
 ## DISEÑO "MODERNO Y LIMPIO" (etapa 1, 28 oct 2026)
 Decision de Victor: nuevo look de la app interna, estilo moderno y limpio, por etapas
