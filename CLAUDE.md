@@ -255,6 +255,22 @@ y SIN tocar como funciona nada. Etapa 1 (hecha):
 Pendiente (etapa 2+): portales de la doctora (rosado) y del groomer, tarjetas del Dashboard,
 cambiar los emojis del menu por iconos SVG, tablas.
 
+## RECETARIOS (M24, 28 oct 2026)
+Pestaña "Recetarios" (admin, grupo Clientes) y "recetarios_vet" (portal de la doctora).
+Se escribe ENCIMA de la plantilla de Victor (Canva, A5): `receta-plantilla.jpg` en la
+raiz del repo = la plantilla a 216 ppp SIN la fecha "28/10/2026" que traia impresa.
+- Medidas en puntos de la hoja A5 (419.25 x 595.5): `RECETA_CAMPOS`, `RECETA_TX`,
+  `RECETA_FIRMA`. Las usan la vista (inputs sobre la imagen) y el PDF (canvas -> jsPDF),
+  asi lo que se ve es lo que sale. Si cambia la plantilla, hay que remedir.
+- La plantilla no tenia SEXO: se rotula "SEXO:" junto a la edad (mismo color #0c1e31).
+- Indicaciones: la letra baja sola de 11 a 7.5 pt (`ajustarIndicaciones`); si ni asi
+  caben, no se genera y se pide resumir (no se invade el sello de abajo a la derecha).
+- Buscar paciente en el CRM llena nombre, especie·raza, sexo, edad (de fechaNacimiento)
+  y el ultimo peso de pc_historias. Todo editable.
+- Historial en `pc_recetas` (Abrir / Duplicar). Si la tabla no existe, la receta se
+  genera igual y solo avisa que no se guardo.
+- Distinto de "imprimir receta" del historial clinico (`imprimirReceta`), que sigue igual.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

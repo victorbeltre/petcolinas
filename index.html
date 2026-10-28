@@ -72,6 +72,18 @@
       .pc-login-logo-movil img { width: 64px; height: auto; }
     }
 
+    /* Recetarios: la hoja A5 de la plantilla con los campos escritos encima. */
+    .pc-receta-grid { display: grid; grid-template-columns: minmax(0, 560px) minmax(300px, 1fr); gap: 22px; align-items: start; }
+    @media (max-width: 1000px) { .pc-receta-grid { grid-template-columns: minmax(0, 1fr); } }
+    .pc-receta-hoja { position: relative; width: 100%; max-width: 560px; margin: 0 auto; aspect-ratio: 419.25 / 595.5;
+      background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(16,24,40,.08), 0 10px 30px rgba(16,24,40,.08); overflow: hidden; }
+    .pc-receta-hoja img { width: 100%; height: 100%; display: block; user-select: none; pointer-events: none; }
+    .pc-receta-hoja .pc-receta-campo { font-size: var(--fs) !important; background: transparent; border: none !important; padding: 0; margin: 0;
+      border-radius: 3px; min-height: 0 !important; box-sizing: border-box; }
+    .pc-receta-hoja .pc-receta-campo:hover { background: rgba(26,107,58,.06); }
+    .pc-receta-hoja .pc-receta-campo:focus { background: rgba(26,107,58,.07); box-shadow: 0 0 0 1.5px rgba(26,107,58,.45) !important; }
+    .pc-receta-hoja .pc-receta-campo::placeholder { color: #9aa7b3; }
+
     /* Cabecera del admin: una franja blanca fina que se queda arriba al bajar. */
     .pc-cabecera {
       position: sticky; top: 0; z-index: 800; background: rgba(255,255,255,.92);
@@ -258,7 +270,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 13:48Z";
+const PC_BUILD = "2026-10-28 14:20Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2370,6 +2382,7 @@ const TABS = [
   { id: "planes", icon: "\u{1F4B3}", label: "Planes", grupo: "Clientes" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones", grupo: "Clientes" },
   { id: "resenas", icon: "\u2B50", label: "Rese\xF1as Google", grupo: "Clientes" },
+  { id: "recetarios", icon: "\u{1F4DD}", label: "Recetarios", grupo: "Clientes" },
 
   { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp", grupo: "Comunicaci\xF3n" },
   { id: "llamadas", icon: "\u{1F4DE}", label: "Llamadas Sof\xEDa", grupo: "Comunicaci\xF3n" },
@@ -2394,6 +2407,332 @@ const MENU_ANCHO = 236, MENU_MINI = 64;
 // En pantalla grande vive siempre abierto (se puede encoger a solo iconos, y
 // esa eleccion se recuerda). En el telefono se esconde y sale como cajon desde
 // el boton de hamburguesa de la cabecera.
+// ─── RECETARIOS (M24, 28 oct 2026) ──────────────────────────────────────────
+// Recetas digitales sobre la plantilla de PetColinas que Victor hizo en Canva
+// (receta-plantilla.jpg: la misma hoja A5, sin la fecha que traia impresa). Se
+// escribe ENCIMA de la plantilla, como en papel: cada campo esta en el sitio
+// de su rotulo. Lo que se ve es lo que sale: el PDF se dibuja con las mismas
+// medidas (puntos de la hoja A5: 419.25 x 595.5).
+// La plantilla no traia SEXO: se rotula aqui, junto a la edad, con el mismo
+// color que los demas rotulos.
+const RECETA_PAG = { w: 419.25, h: 595.5 };
+const RECETA_TINTA = "#0c1e31";
+const RECETA_CAMPOS = [
+  // b = linea base del texto (la misma de su rotulo), w = ancho disponible
+  { k: "fecha",       x: 66,  b: 133,   w: 140, size: 10 },
+  { k: "paciente",    x: 70,  b: 158.6, w: 196, size: 8.8 },
+  { k: "edad",        x: 257, b: 158.6, w: 57,  size: 8.8 },
+  { k: "sexo",        x: 345, b: 158.6, w: 38,  size: 8.8, rotulo: { texto: "SEXO:", x: 316 } },
+  { k: "especie",     x: 64,  b: 185.5, w: 202, size: 8.8 },
+  { k: "peso",        x: 255, b: 185.5, w: 127, size: 8.8 },
+  { k: "diagnostico", x: 88,  b: 212.6, w: 294, size: 8.8 }
+];
+// Area de indicaciones: debajo de "Tx" y por encima del sello (que empieza en
+// y=440 a la derecha). La letra baja sola de 11 a 7.5 si el texto es largo.
+const RECETA_TX = { x: 30, y: 284, w: 352, h: 150, max: 11, min: 7.5, lh: 1.42 };
+const RECETA_FIRMA = { cx: 287.5, b: 539.5, w: 150, size: 8.6 };
+const RECETA_ROTULOS = { fecha: "Fecha", paciente: "Paciente", edad: "Edad", sexo: "Sexo", especie: "Especie",
+  peso: "Peso", diagnostico: "Diagn\xF3stico", indicaciones: "Indicaciones (Tx)", medico: "M\xE9dico (sobre la firma)" };
+
+function fechaRecetaHoy(d) {
+  const x = d || new Date();
+  return String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0") + "/" + x.getFullYear();
+}
+// "28/10/2026" -> "2026-10-26"; si no se entiende, null (se guarda la de hoy).
+function fechaRecetaISO(t) {
+  const m = String(t || "").trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (!m) return null;
+  const d = +m[1], mo = +m[2], y = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return y + "-" + String(mo).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+}
+// Edad legible a partir de la fecha de nacimiento del CRM.
+function edadDesdeNacimiento(nac, hoyISO) {
+  const m = String(nac || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const h = String(hoyISO || fechaLocal()).split("-").map(Number);
+  let meses = (h[0] - +m[1]) * 12 + (h[1] - +m[2]) - (h[2] < +m[3] ? 1 : 0);
+  if (meses < 0) return "";
+  if (meses < 1) return "Menos de 1 mes";
+  if (meses < 12) return meses + (meses === 1 ? " mes" : " meses");
+  const a = Math.floor(meses / 12), r = meses % 12;
+  return a + (a === 1 ? " a\xF1o" : " a\xF1os") + (r && a < 3 ? " y " + r + (r === 1 ? " mes" : " meses") : "");
+}
+// Parte el texto en lineas que caben en `ancho` y baja la letra hasta que
+// todo cabe en el area. `medir(texto, tam)` devuelve el ancho en puntos.
+function ajustarIndicaciones(texto, medir, area) {
+  const A = area || RECETA_TX;
+  const partir = (tam) => {
+    const lineas = [];
+    String(texto || "").replace(/\r/g, "").split("\n").forEach((par) => {
+      if (!par.trim()) { lineas.push(""); return; }
+      let actual = "";
+      par.split(/(\s+)/).forEach((pedazo) => {
+        if (!pedazo) return;
+        const prueba = actual + pedazo;
+        if (medir(prueba.trimEnd(), tam) <= A.w || !actual.trim()) actual = prueba;
+        else { lineas.push(actual.trimEnd()); actual = pedazo.trimStart(); }
+      });
+      lineas.push(actual.trimEnd());
+    });
+    return lineas;
+  };
+  for (let tam = A.max; tam >= A.min - 0.001; tam -= 0.5) {
+    const lineas = partir(tam);
+    if (lineas.length * tam * A.lh <= A.h) return { tam, lineas, cabe: true };
+  }
+  const lineas = partir(A.min);
+  return { tam: A.min, lineas, cabe: false, maxLineas: Math.floor(A.h / (A.min * A.lh)) };
+}
+const RECETA_LETRA = "Inter, Arial, sans-serif";
+let recetaPlantillaImg = null;
+function cargarPlantillaReceta() {
+  if (recetaPlantillaImg) return recetaPlantillaImg;
+  recetaPlantillaImg = new Promise((ok, mal) => {
+    const im = new Image();
+    im.onload = () => ok(im);
+    im.onerror = () => { recetaPlantillaImg = null; mal(new Error("No se pudo cargar la plantilla de la receta (receta-plantilla.jpg).")); };
+    im.src = "receta-plantilla.jpg";
+  });
+  return recetaPlantillaImg;
+}
+// Dibuja la receta completa (plantilla + texto) en un canvas de ~216 ppp.
+async function dibujarReceta(d) {
+  const im = await cargarPlantillaReceta();
+  try { if (document.fonts && document.fonts.load) await Promise.all([document.fonts.load("10px Inter"), document.fonts.load("700 10px Inter")]); } catch (e) {}
+  const k = 3;
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(RECETA_PAG.w * k); cv.height = Math.round(RECETA_PAG.h * k);
+  const g = cv.getContext("2d");
+  g.scale(k, k);
+  g.drawImage(im, 0, 0, RECETA_PAG.w, RECETA_PAG.h);
+  g.fillStyle = RECETA_TINTA; g.textBaseline = "alphabetic";
+  const medir = (t, tam, peso) => { g.font = (peso || 400) + " " + tam + "px " + RECETA_LETRA; return g.measureText(t).width; };
+  RECETA_CAMPOS.forEach((c) => {
+    if (c.rotulo) { g.font = "700 8px " + RECETA_LETRA; g.fillText(c.rotulo.texto, c.rotulo.x, c.b); }
+    const v = String(d[c.k] || "").trim();
+    if (!v) return;
+    let tam = c.size;
+    while (tam > 6 && medir(v, tam, 500) > c.w) tam -= 0.25;
+    g.font = "500 " + tam + "px " + RECETA_LETRA;
+    g.fillText(v, c.x, c.b);
+  });
+  const tx = ajustarIndicaciones(d.indicaciones, (t, tam) => medir(t, tam));
+  g.font = "400 " + tx.tam + "px " + RECETA_LETRA;
+  tx.lineas.forEach((l, i) => { if (l) g.fillText(l, RECETA_TX.x, RECETA_TX.y + tx.tam + i * tx.tam * RECETA_TX.lh); });
+  const med = String(d.medico || "").trim();
+  if (med) {
+    let tam = RECETA_FIRMA.size;
+    while (tam > 6 && medir(med, tam, 600) > RECETA_FIRMA.w) tam -= 0.25;
+    g.font = "600 " + tam + "px " + RECETA_LETRA; g.textAlign = "center";
+    g.fillText(med, RECETA_FIRMA.cx, RECETA_FIRMA.b); g.textAlign = "left";
+  }
+  return cv;
+}
+function nombreArchivoReceta(d) {
+  const limpio = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, " ").trim();
+  return ("Receta " + limpio(d.paciente) + " " + limpio(d.fecha).replace(/ /g, "-")).trim() + ".pdf";
+}
+async function pdfReceta(d) {
+  if (!window.jspdf) throw new Error("No se pudo cargar el generador de PDF. Revisa la conexi\xF3n y recarga la p\xE1gina.");
+  const cv = await dibujarReceta(d);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: [RECETA_PAG.w, RECETA_PAG.h], orientation: "portrait" });
+  doc.setProperties({ title: nombreArchivoReceta(d).replace(/\.pdf$/, ""), author: "PetColinas" });
+  doc.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, RECETA_PAG.w, RECETA_PAG.h);
+  return { doc, cv };
+}
+
+function Recetario({ clientes = [], historias = [], medicoPorDefecto = "", usuarioNombre = "" }) {
+  const E = React.createElement;
+  const vacia = () => ({ id: null, cliente_id: null, fecha: fechaRecetaHoy(), paciente: "", edad: "", sexo: "", especie: "", peso: "",
+    diagnostico: "", indicaciones: "", medico: (() => { try { return localStorage.getItem("pc_receta_medico") || medicoPorDefecto; } catch (e) { return medicoPorDefecto; } })() });
+  const [r, setR] = useState(vacia);
+  const [busca, setBusca] = useState("");
+  const [historial, setHistorial] = useState(null);   // null = cargando, false = no disponible
+  const [filtroHist, setFiltroHist] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [escala, setEscala] = useState(1);
+  const hojaRef = useRef(null);
+  const set = (k, v) => setR((x) => ({ ...x, [k]: v }));
+
+  useEffect(() => {
+    const el = hojaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setEscala(el.clientWidth / RECETA_PAG.w));
+    ro.observe(el); setEscala(el.clientWidth / RECETA_PAG.w);
+    return () => ro.disconnect();
+  }, []);
+  const cargarHistorial = async () => {
+    const filas = await supaFetch("pc_recetas", "GET", null, "?select=*&order=created_at.desc&limit=300");
+    setHistorial(Array.isArray(filas) ? filas : false);
+  };
+  useEffect(() => { cargarHistorial(); }, []);
+
+  // Medida para partir lineas igual que el PDF (misma letra).
+  const medirRef = useRef(null);
+  const medir = (t, tam) => {
+    if (!medirRef.current) medirRef.current = document.createElement("canvas").getContext("2d");
+    const g = medirRef.current; g.font = "400 " + tam + "px " + RECETA_LETRA; return g.measureText(t).width;
+  };
+  const tx = ajustarIndicaciones(r.indicaciones, medir);
+
+  const q = normalizarTextoInv(busca);
+  const sugerencias = q.length < 2 ? [] : (clientes || []).filter((c) =>
+    normalizarTextoInv([c.nombreMascota, c.nombrePropietario, c.telefono].join(" ")).includes(q)).slice(0, 8);
+  const elegirPaciente = (c) => {
+    const ultimoPeso = (historias || []).filter((h) => String(h.clienteid) === String(c.id) && String(h.peso || "").trim())
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
+    const peso = ultimoPeso ? String(ultimoPeso.peso).trim() : "";
+    setR((x) => ({ ...x, cliente_id: String(c.id), paciente: c.nombreMascota || "",
+      especie: [c.especie, c.raza].filter((s) => String(s || "").trim()).join(" \xB7 "),
+      sexo: c.sexo || "", edad: edadDesdeNacimiento(c.fechaNacimiento) || x.edad,
+      peso: peso ? (/^\d+([.,]\d+)?$/.test(peso) ? peso + " kg" : peso) : x.peso }));
+    setBusca("");
+  };
+
+  const validar = () => {
+    if (!r.paciente.trim()) { avisar("Escribe el nombre del paciente.", "error"); return false; }
+    if (!r.indicaciones.trim()) { avisar("Escribe las indicaciones (Tx).", "error"); return false; }
+    if (!tx.cabe) { avisar("Las indicaciones no caben en la hoja (m\xE1ximo " + tx.maxLineas + " l\xEDneas con la letra m\xE1s peque\xF1a). Res\xFAmelas o haz una segunda receta.", "error"); return false; }
+    return true;
+  };
+  // Guarda en el historial (pc_recetas). Si la tabla no existe todavia, la
+  // receta se genera igual: el historial es un extra, no un requisito.
+  const guardar = async () => {
+    try { localStorage.setItem("pc_receta_medico", r.medico || ""); } catch (e) {}
+    const fila = { fecha: fechaRecetaISO(r.fecha) || fechaLocal(), cliente_id: r.cliente_id, paciente: r.paciente.trim(),
+      edad: r.edad, sexo: r.sexo, especie: r.especie, peso: r.peso, diagnostico: r.diagnostico,
+      indicaciones: r.indicaciones, medico: r.medico, creado_por: usuarioNombre || null };
+    try {
+      const token = await supaAccessToken();
+      const url = SUPA_URL + "/rest/v1/pc_recetas" + (r.id ? "?id=eq." + encodeURIComponent(r.id) : "");
+      const res = await fetch(url, { method: r.id ? "PATCH" : "POST",
+        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=representation" },
+        body: JSON.stringify(fila) });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const out = await res.json().catch(() => []);
+      if (Array.isArray(out) && out[0] && out[0].id) setR((x) => ({ ...x, id: out[0].id }));
+      cargarHistorial();
+      return true;
+    } catch (e) {
+      console.warn("[pc_recetas]", e);
+      avisar("La receta se gener\xF3, pero no se pudo guardar en el historial.", "error");
+      return false;
+    }
+  };
+  const accion = async (tipo) => {
+    if (ocupado || !validar()) return;
+    setOcupado(true);
+    try {
+      await guardar();
+      const { doc } = await pdfReceta(r);
+      const nombre = nombreArchivoReceta(r);
+      if (tipo === "pdf") doc.save(nombre);
+      else if (tipo === "imprimir") {
+        const url = URL.createObjectURL(doc.output("blob"));
+        const w = window.open(url, "_blank");
+        if (!w) doc.save(nombre);
+      } else if (tipo === "compartir") {
+        const archivo = new File([doc.output("blob")], nombre, { type: "application/pdf" });
+        if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+          await navigator.share({ files: [archivo], title: nombre.replace(/\.pdf$/, "") }).catch(() => {});
+        } else { doc.save(nombre); avisar("Este equipo no permite compartir directo: se descarg\xF3 el PDF para enviarlo por WhatsApp.", "ok"); }
+      }
+    } catch (e) { avisar(e.message || String(e), "error"); }
+    setOcupado(false);
+  };
+  const abrir = (h, duplicar) => {
+    const f = String(h.fecha || "").split("-");
+    setR({ id: duplicar ? null : h.id, cliente_id: h.cliente_id || null,
+      fecha: duplicar || f.length !== 3 ? fechaRecetaHoy() : f[2] + "/" + f[1] + "/" + f[0],
+      paciente: h.paciente || "", edad: h.edad || "", sexo: h.sexo || "", especie: h.especie || "", peso: h.peso || "",
+      diagnostico: h.diagnostico || "", indicaciones: h.indicaciones || "", medico: h.medico || r.medico });
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
+  };
+
+  // Campo escrito encima de la plantilla
+  const sobre = (c) => E("input", {
+    key: c.k, value: r[c.k], onChange: (e) => set(c.k, e.target.value), "aria-label": RECETA_ROTULOS[c.k],
+    placeholder: c.k === "fecha" ? "dd/mm/aaaa" : "",
+    className: "pc-receta-campo",
+    style: { position: "absolute", left: c.x * escala, top: (c.b - c.size * 0.98) * escala, width: c.w * escala, height: c.size * 1.3 * escala,
+             "--fs": (c.size * escala) + "px", fontWeight: 500, fontFamily: RECETA_LETRA, color: RECETA_TINTA, lineHeight: 1 }
+  });
+  const hoja = E("div", { ref: hojaRef, className: "pc-receta-hoja" },
+    E("img", { src: "receta-plantilla.jpg", alt: "Plantilla de receta PetColinas", draggable: false }),
+    RECETA_CAMPOS.filter((c) => c.rotulo).map((c) => E("span", { key: "r" + c.k, style: { position: "absolute", left: c.rotulo.x * escala,
+      top: (c.b - 8 * 0.98) * escala, fontSize: 8 * escala, fontWeight: 700, color: RECETA_TINTA, fontFamily: RECETA_LETRA, lineHeight: 1, pointerEvents: "none" } }, c.rotulo.texto)),
+    RECETA_CAMPOS.map(sobre),
+    E("textarea", { value: r.indicaciones, onChange: (e) => set("indicaciones", e.target.value), "aria-label": RECETA_ROTULOS.indicaciones,
+      placeholder: "Escribe aqu\xED las indicaciones…", className: "pc-receta-campo", spellCheck: true,
+      style: { position: "absolute", left: RECETA_TX.x * escala, top: RECETA_TX.y * escala, width: RECETA_TX.w * escala, height: RECETA_TX.h * escala,
+               "--fs": (tx.tam * escala) + "px", lineHeight: RECETA_TX.lh, fontFamily: RECETA_LETRA, color: RECETA_TINTA, resize: "none", overflow: "hidden",
+               outline: tx.cabe ? undefined : "2px solid #e5484d" } }),
+    E("input", { value: r.medico, onChange: (e) => set("medico", e.target.value), "aria-label": RECETA_ROTULOS.medico, placeholder: "Nombre del m\xE9dico",
+      className: "pc-receta-campo",
+      style: { position: "absolute", left: (RECETA_FIRMA.cx - RECETA_FIRMA.w / 2) * escala, top: (RECETA_FIRMA.b - RECETA_FIRMA.size) * escala,
+               width: RECETA_FIRMA.w * escala, height: RECETA_FIRMA.size * 1.3 * escala, "--fs": (RECETA_FIRMA.size * escala) + "px", fontWeight: 600,
+               textAlign: "center", fontFamily: RECETA_LETRA, color: RECETA_TINTA, lineHeight: 1 } }));
+
+  const campoPanel = (k, extra) => E("label", { key: k, style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, fontWeight: 600, color: "#3d444d", ...extra } },
+    RECETA_ROTULOS[k],
+    k === "indicaciones"
+      ? E("textarea", { value: r[k], rows: 7, onChange: (e) => set(k, e.target.value), style: { width: "100%", minWidth: 0, border: "1px solid #d9dee3", borderRadius: 10, padding: "9px 12px", fontSize: 14, fontFamily: "inherit", resize: "vertical" } })
+      : E("input", { value: r[k], onChange: (e) => set(k, e.target.value), placeholder: k === "fecha" ? "dd/mm/aaaa" : "",
+          style: { width: "100%", minWidth: 0, border: "1px solid #d9dee3", borderRadius: 10, padding: "9px 12px", fontSize: 14 } }));
+  const histFiltrado = Array.isArray(historial) ? historial.filter((h) => !filtroHist || normalizarTextoInv([h.paciente, h.diagnostico, h.medico].join(" ")).includes(normalizarTextoInv(filtroHist))) : [];
+
+  return E("div", null,
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 } },
+      E("div", null,
+        E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, margin: 0 } }, "Recetarios"),
+        E("p", { style: { color: C.suave, fontSize: 13.5, margin: "4px 0 0" } }, "Escribe la receta directamente sobre la plantilla de PetColinas y desc\xE1rgala en PDF.")),
+      E("button", { className: "pc-btn-suave", onClick: () => { setR(vacia()); setBusca(""); } }, "＋ Nueva receta")),
+    E("div", { className: "pc-receta-grid" },
+      E("div", null,
+        hoja,
+        E("div", { style: { fontSize: 12, color: tx.cabe ? C.suave : "#b42318", marginTop: 8 } },
+          tx.cabe ? "Toca cualquier rengl\xF3n de la hoja para escribir. Si las indicaciones son largas, la letra se ajusta sola."
+                  : "Las indicaciones no caben en la hoja: res\xFAmelas o divide en dos recetas.")),
+      E("div", { style: { display: "flex", flexDirection: "column", gap: 14 } },
+        E(Card, { style: { padding: 18 } },
+          E("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 10 } }, "Paciente del CRM"),
+          E("div", { style: { position: "relative" } },
+            E("input", { value: busca, onChange: (e) => setBusca(e.target.value), placeholder: "Buscar mascota, due\xF1o o tel\xE9fono…",
+              style: { width: "100%", border: "1px solid #d9dee3", borderRadius: 10, padding: "10px 12px", fontSize: 14 } }),
+            sugerencias.length > 0 && E("div", { style: { position: "absolute", left: 0, right: 0, top: "100%", marginTop: 4, background: "#fff", border: "1px solid " + C.borde,
+              borderRadius: 10, boxShadow: "0 8px 24px rgba(16,24,40,.1)", zIndex: 20, overflow: "hidden" } },
+              sugerencias.map((c) => E("button", { key: c.id, onClick: () => elegirPaciente(c), style: { display: "block", width: "100%", textAlign: "left", background: "#fff",
+                border: "none", borderBottom: "1px solid #f1f3f4", padding: "9px 12px", cursor: "pointer", fontSize: 13.5 } },
+                E("b", null, c.nombreMascota || "(sin nombre)"), " ",
+                E("span", { style: { color: C.suave } }, [c.especie, c.nombrePropietario].filter(Boolean).join(" \xB7 ")))))),
+          E("div", { style: { fontSize: 12, color: C.suave, marginTop: 8 } }, "Al elegirlo se llenan nombre, especie, sexo, edad y el \xFAltimo peso registrado. Todo se puede cambiar.")),
+        E(Card, { style: { padding: 18, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 } },
+          campoPanel("fecha"), campoPanel("paciente"), campoPanel("edad"), campoPanel("sexo"), campoPanel("especie"), campoPanel("peso"),
+          campoPanel("diagnostico", { gridColumn: "1 / -1" }), campoPanel("indicaciones", { gridColumn: "1 / -1" }), campoPanel("medico", { gridColumn: "1 / -1" })),
+        E("div", { style: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 } },
+          E("button", { onClick: () => accion("pdf"), disabled: ocupado, style: { gridColumn: "1 / -1", background: C.verde, color: "#fff", border: "none", borderRadius: 10,
+            padding: "12px", fontWeight: 700, fontSize: 15, cursor: "pointer", opacity: ocupado ? 0.6 : 1 } }, ocupado ? "Preparando…" : "Guardar y descargar PDF"),
+          E("button", { className: "pc-btn-suave", onClick: () => accion("imprimir"), disabled: ocupado, style: { padding: "10px" } }, "Imprimir"),
+          E("button", { className: "pc-btn-suave", onClick: () => accion("compartir"), disabled: ocupado, style: { padding: "10px" } }, "Compartir (WhatsApp)")),
+        r.id && E("div", { style: { fontSize: 12, color: C.suave } }, "Editando una receta guardada: al guardar se actualiza esa misma."))),
+    E(Card, { style: { marginTop: 22 } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 } },
+        E("div", { style: { fontWeight: 700, fontSize: 16 } }, "Historial de recetas"),
+        Array.isArray(historial) && historial.length > 0 && E("input", { value: filtroHist, onChange: (e) => setFiltroHist(e.target.value), placeholder: "Buscar paciente o diagn\xF3stico",
+          style: { border: "1px solid #d9dee3", borderRadius: 999, padding: "7px 12px", fontSize: 13, width: "100%", maxWidth: 280 } })),
+      historial === null ? E("div", { style: { color: C.suave, fontSize: 13 } }, "Cargando…")
+      : historial === false ? E("div", { style: { color: C.suave, fontSize: 13 } }, "El historial no est\xE1 disponible todav\xEDa. Las recetas se pueden generar igual.")
+      : histFiltrado.length === 0 ? E("div", { style: { color: C.suave, fontSize: 13 } }, historial.length ? "Ninguna receta coincide con la b\xFAsqueda." : "A\xFAn no hay recetas guardadas.")
+      : E("div", { style: { display: "flex", flexDirection: "column" } }, histFiltrado.map((h) => E("div", { key: h.id, style: { display: "flex", alignItems: "center", gap: 12,
+          padding: "10px 0", borderTop: "1px solid #f1f3f4", flexWrap: "wrap" } },
+          E("div", { style: { flex: 1, minWidth: 180 } },
+            E("div", { style: { fontWeight: 600, fontSize: 14 } }, h.paciente, h.diagnostico ? E("span", { style: { color: C.suave, fontWeight: 400 } }, " \xB7 " + h.diagnostico) : null),
+            E("div", { style: { fontSize: 12, color: C.suave } }, String(h.fecha || "").split("-").reverse().join("/") + (h.medico ? " \xB7 " + h.medico : ""))),
+          E("button", { className: "pc-btn-suave", onClick: () => abrir(h, false) }, "Abrir"),
+          E("button", { className: "pc-btn-suave", onClick: () => abrir(h, true), title: "Nueva receta con lo mismo y la fecha de hoy" }, "Duplicar"))))));
+}
 // Cabecera del admin (diseño "moderno y limpio", oct 2026). Antes era un bloque
 // verde de ~170 px con seis renglones de estado apilados; ahora una franja de
 // 62 px: donde estoy, que dia es, lo que hay por cobrar, si esta sincronizado,
@@ -7394,6 +7733,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
+    tab === "recetarios" && React.createElement(Recetario, { clientes: todosClientes, historias, medicoPorDefecto: "", usuarioNombre: "Victor" }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, marcarNotifLeidas, desmarcarNotif,
       setTab, setCrmClienteInicial
@@ -15705,7 +16045,8 @@ const TABS_VET = [
   { id: "evolucion_vet",   icon: "\u{1F4C8}", label: "Evoluci\xF3n Cl\xEDnica" },
   { id: "reportes_lab",    icon: "\u{1F52C}", label: "Reportes de Lab" },
   { id: "vacunas",         icon: "\u{1F489}", label: "Vacunas" },
-  { id: "resenas_vet",     icon: "\u2B50", label: "Rese\xF1as Google" }
+  { id: "resenas_vet",     icon: "\u2B50", label: "Rese\xF1as Google" },
+  { id: "recetarios_vet",  icon: "\u{1F4DD}", label: "Recetarios" }
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -17715,7 +18056,8 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       }),
       tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), clientes }),
       tabVet === "mis_comisiones" && React.createElement(MisComisionesVet, { usuario, ventas, pagosNom: window.__pagosNomGlobal || [] }),
-      tabVet === "resenas_vet"    && React.createElement(CampanaResenas, { clientes, ventas, firmaPorDefecto: "Dra. " + String(usuario.nombre || "").replace(/^Dra\.?\s*/i, "").split(" ")[0] })
+      tabVet === "resenas_vet"    && React.createElement(CampanaResenas, { clientes, ventas, firmaPorDefecto: "Dra. " + String(usuario.nombre || "").replace(/^Dra\.?\s*/i, "").split(" ")[0] }),
+      tabVet === "recetarios_vet" && React.createElement(Recetario, { clientes, historias, medicoPorDefecto: "Dra. " + String(usuario.nombre || "").replace(/^Dra\.?\s*/i, ""), usuarioNombre: usuario.nombre })
     )
   );
 }

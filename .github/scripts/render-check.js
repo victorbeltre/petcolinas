@@ -432,6 +432,28 @@ render("CampanaResenas", sandbox.CampanaResenas, { clientes, ventas, firmaPorDef
   if (m(100, 100) !== 0 || m(150, 100) !== 50 || m(80, 100) !== -20) errores.push("margen: 100->100=0%, 100->150=50%, 100->80=-20%");
   if (m(100, 0) !== null || m(0, 50) !== null) errores.push("margen: sin costo o sin precio no hay porcentaje");
 })();
+// Recetarios (M24): edad desde el nacimiento, fecha dd/mm/aaaa, y las
+// indicaciones bajan de letra para caber en la hoja (y avisan si no caben).
+(() => {
+  const fallo = (m) => errores.push("recetario: " + m);
+  const edad = enVM("edadDesdeNacimiento");
+  if (edad("2023-05-10", "2026-10-28") !== "3 a\u00F1os") fallo("3 a\u00F1os y 5 meses se dice 3 a\u00F1os: " + edad("2023-05-10", "2026-10-28"));
+  if (edad("2025-08-01", "2026-10-28") !== "1 a\u00F1o y 2 meses") fallo("cachorro de 14 meses: " + edad("2025-08-01", "2026-10-28"));
+  if (edad("2026-06-20", "2026-10-28") !== "4 meses") fallo("4 meses: " + edad("2026-06-20", "2026-10-28"));
+  if (edad("", "2026-10-28") !== "") fallo("sin fecha de nacimiento no se inventa edad");
+  const iso = enVM("fechaRecetaISO");
+  if (iso("28/10/2026") !== "2026-10-28" || iso("5-3-2026") !== "2026-03-05" || iso("ayer") !== null) fallo("fecha dd/mm/aaaa a ISO");
+  const aj = enVM("ajustarIndicaciones");
+  const medir = (t, tam) => t.length * tam * 0.5;   // letra de ancho fijo para la prueba
+  const corto = aj("Apoquel 1/2 tableta cada 12 horas", medir);
+  if (!corto.cabe || corto.tam !== 11) fallo("un texto corto va con la letra grande: " + JSON.stringify(corto));
+  const largo = aj(Array(14).fill("Linea de indicacion numero tal con dosis").join("\n"), medir);
+  if (!largo.cabe || largo.tam >= 11) fallo("un texto largo baja la letra para caber: " + JSON.stringify({ tam: largo.tam, n: largo.lineas.length }));
+  const enorme = aj(Array(40).fill("Linea").join("\n"), medir);
+  if (enorme.cabe) fallo("40 lineas no caben en la hoja y debe avisarse");
+  if (aj("uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciseis diecisiete dieciocho diecinueve veinte veintiuno", medir).lineas.some((l) => medir(l, 11) > 352 + 0.01 && l.includes(" "))) fallo("ninguna linea pasa del ancho del area");
+})();
+render("Recetario", sandbox.Recetario, { clientes, historias: [], medicoPorDefecto: "Dra. Naylan", usuarioNombre: "Naylan" }, null, "Recetarios");
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la
