@@ -511,6 +511,26 @@ render("Cotizaciones", sandbox.Cotizaciones, { clientes, tarifasGrooming: [], ta
   if (!/OC-0003/.test(msg) || !/6 x NexGard \(talla L\)/.test(msg) || !/02\/11\/2026/.test(msg)) fallo("mensaje: " + msg);
 })();
 render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], refetchInventario: () => {} }, null, "rdenes de compra");
+// Cuentas por pagar (M27): antiguedad como Alegra, saldo y estado.
+(() => {
+  const fallo = (m) => errores.push("cuentas por pagar: " + m);
+  const hoy = "2026-10-29";
+  const cs = [
+    { total: 1000, pagado: 0, vence: "2026-11-10" },           // no vencida
+    { total: 500, pagado: 200, vence: "2026-10-20" },          // vencida 9 dias, saldo 300
+    { total: 800, pagado: 0, vence: "2026-09-10" },            // 49 dias
+    { total: 400, pagado: 0, vence: "2026-08-10" },            // 80 dias
+    { total: 900, pagado: 0, vence: "2026-06-01" },            // 150 dias
+    { total: 700, pagado: 700, vence: "2026-06-01" },          // pagada: no cuenta
+    { total: 999, pagado: 0, vence: "2026-06-01", anulada: true }];
+  const r = enVM("antiguedadCxP")(cs, hoy);
+  if (r.noVencidas !== 1000 || r.d30 !== 300 || r.d60 !== 800 || r.d90 !== 400 || r.d91 !== 900 || r.total !== 3400) fallo("tramos: " + JSON.stringify(r));
+  const est = enVM("estadoCxP");
+  if (est(cs[0], hoy) !== "pendiente" || est(cs[1], hoy) !== "vencida" || est(cs[5], hoy) !== "pagada" || est(cs[6], hoy) !== "anulada") fallo("estados");
+  if (est({ total: 500, pagado: 100, vence: "2026-12-01" }, hoy) !== "parcial") fallo("abonada sin vencer = parcial");
+  if (enVM("saldoCxP")({ total: 100.1, pagado: 100.2 }) !== 0) fallo("el saldo nunca es negativo");
+})();
+render("CuentasPorPagar", sandbox.CuentasPorPagar, { gastos: [], setGastos: () => {}, inventario: [] }, null, "Cuentas por pagar");
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la

@@ -273,7 +273,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 21:28Z";
+const PC_BUILD = "2026-10-28 22:01Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2428,6 +2428,7 @@ const TABS = [
 
   { id: "reportes", icon: "\u{1F4C8}", label: "Reportes", grupo: "Negocio" },
   { id: "gastos", icon: "\u{1F4B8}", label: "Gastos", grupo: "Negocio" },
+  { id: "cuentas_pagar", icon: "\u23F3", label: "Cuentas por pagar", grupo: "Negocio" },
   { id: "nomina", icon: "\u{1F465}", label: "N\xF3mina", grupo: "Negocio" },
   { id: "inventario", icon: "\u{1F4E6}", label: "Inventario", grupo: "Negocio" },
   { id: "ordenes_compra", icon: "\u{1F69A}", label: "\xD3rdenes de compra", grupo: "Negocio" },
@@ -3356,6 +3357,7 @@ function OrdenesCompra({ inventario = [], gastos = [], refetchInventario, usuari
   const [verProv, setVerProv] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [recibir, setRecibir] = useState(false);
+  const [credito, setCredito] = useState({ activo: false, dias: 30 });
   const hoyISO = fechaLocal();
   const cargar = async () => {
     const filas = await supaFetch("pc_ordenes_compra", "GET", null, "?select=*&order=numero.desc&limit=500");
@@ -3448,6 +3450,11 @@ function OrdenesCompra({ inventario = [], gastos = [], refetchInventario, usuari
             items: plan.map((p) => ({ nombre: p.linea.nombre, cantidad: p.cantidad, costo: p.costo, nuevo: !p.prod })), registrado_por: usuarioNombre }) });
       } catch (e) { console.warn("[pc_compras]", e); }
       await guardarOrdenCompra({ ...o, estado: "recibida", recibida_en: new Date().toISOString() });
+      // A credito: queda como cuenta por pagar (seccion Cuentas por pagar).
+      if (credito.activo) {
+        try { await crearCuentaPorPagarDesdeOC(o, calc.total, credito.dias); }
+        catch (e) { avisar("La mercanc\xEDa entr\xF3, pero no se pudo crear la cuenta por pagar: " + e.message, "error"); }
+      }
       setO((x) => ({ ...x, estado: "recibida", recibida_en: new Date().toISOString() }));
       setRecibir(false); cargar();
       if (typeof refetchInventario === "function") refetchInventario();
@@ -3584,10 +3591,303 @@ function OrdenesCompra({ inventario = [], gastos = [], refetchInventario, usuari
           E("b", null, p.cantidad + " x " + p.linea.nombre), " — ",
           p.prod ? "se suma a “" + p.prod.nombre + "” (stock " + (Number(p.prod.stock) || 0) + " → " + ((Number(p.prod.stock) || 0) + p.cantidad) + "), costo " + dinero(p.costo)
                  : E("span", { style: { color: "#b45309" } }, "producto nuevo en inventario (despu\xE9s ponle precio de venta y categor\xEDa)")))),
+        E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 13, marginBottom: 12, flexWrap: "wrap", cursor: "pointer" } },
+          E("input", { type: "checkbox", checked: credito.activo, onChange: (e) => setCredito({ ...credito, activo: e.target.checked }) }),
+          E("span", null, E("b", null, "A cr\xE9dito:"), " crear la cuenta por pagar de " + dinero(calc.total) + " que vence en"),
+          E("input", { type: "number", min: 0, value: credito.dias, disabled: !credito.activo, onChange: (e) => setCredito({ ...credito, dias: e.target.value }),
+            style: { width: 64, border: "1px solid #d9dee3", borderRadius: 8, padding: "4px 6px", fontSize: 13 } }), "d\xEDas"),
         E("div", { style: { display: "flex", gap: 8 } },
           E("button", { disabled: ocupado || !plan.length, onClick: recibirMercancia, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" } },
             ocupado ? "Actualizando…" : "Confirmar recepci\xF3n"),
           E("button", { className: "pc-btn-suave", onClick: () => setRecibir(false) }, "Cancelar")))));
+}
+// ─── CUENTAS POR PAGAR (M27, 29 oct 2026) ───────────────────────────────────
+// Como el reporte de Alegra: periodo, antiguedad de lo vencido (1-30, 31-60,
+// 61-90, 91+ dias y no vencido), total por pagar y el detalle por documento
+// (tipo, numero, proveedor, creacion, vencimiento, total, pagado, por pagar).
+// Las deudas entran a mano, desde las compras ya cargadas (facturas de
+// proveedor y ordenes de compra) o al recibir una orden "a credito".
+// Un pago puede anotarse como gasto (categoria "Proveedores") para que salga
+// del flujo de caja. NUNCA como "Inventario": esa categoria crea productos.
+const CXP_TIPOS = { factura_proveedor: "Factura de proveedor", servicio: "Servicio (luz, agua, internet…)", prestamo: "Pr\xE9stamo", otro: "Otro" };
+const CXP_METODOS = [["efectivo", "Efectivo"], ["transferencia", "Transferencia"], ["tarjeta", "Tarjeta"], ["reservas", "Reservas"],
+  ["tarjeta empresarial Banreservas", "Tarjeta empresarial Banreservas"], ["cheque", "Cheque"]];
+const saldoCxP = (c) => Math.max(0, Math.round(((Number(c.total) || 0) - (Number(c.pagado) || 0)) * 100) / 100);
+function diasVencidaCxP(c, hoyISO) {
+  if (!c.vence) return 0;
+  return Math.round((new Date((hoyISO || fechaLocal()) + "T12:00:00") - new Date(c.vence + "T12:00:00")) / 86400000);
+}
+function estadoCxP(c, hoyISO) {
+  if (c.anulada) return "anulada";
+  if (saldoCxP(c) <= 0.005) return "pagada";
+  if (diasVencidaCxP(c, hoyISO) > 0) return "vencida";
+  return (Number(c.pagado) || 0) > 0 ? "parcial" : "pendiente";
+}
+// Antiguedad de lo que falta por pagar (solo lo no anulado y con saldo).
+function antiguedadCxP(cuentas, hoyISO) {
+  const r = { noVencidas: 0, d30: 0, d60: 0, d90: 0, d91: 0, total: 0 };
+  (cuentas || []).forEach((c) => {
+    if (c.anulada) return;
+    const s = saldoCxP(c); if (s <= 0.005) return;
+    const d = diasVencidaCxP(c, hoyISO);
+    if (d <= 0) r.noVencidas += s; else if (d <= 30) r.d30 += s; else if (d <= 60) r.d60 += s; else if (d <= 90) r.d90 += s; else r.d91 += s;
+    r.total += s;
+  });
+  Object.keys(r).forEach((k) => { r[k] = Math.round(r[k] * 100) / 100; });
+  return r;
+}
+async function cxpFetch(metodo, cuerpo, filtro) {
+  const token = await supaAccessToken();
+  const res = await fetch(SUPA_URL + "/rest/v1/pc_cuentas_pagar" + (filtro || ""), { method: metodo,
+    headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=representation" },
+    body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  const out = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = out && (out.message || out.hint) || ("HTTP " + res.status);
+    throw new Error(/pc_cuentas_pagar/.test(msg) || res.status === 404 ? "Falta crear la tabla de cuentas por pagar en Supabase (ver instrucciones)."
+      : /duplicate|unique/i.test(msg) ? "Esa compra ya est\xE1 registrada como cuenta por pagar." : "No se pudo guardar: " + msg);
+  }
+  return out;
+}
+// Desde Ordenes de compra: al recibir "a credito".
+async function crearCuentaPorPagarDesdeOC(o, total, dias) {
+  return cxpFetch("POST", { tipo: "factura_proveedor", proveedor: o.proveedor, identificacion: o.identificacion || null, numero: null,
+    fecha: fechaLocal(), vence: sumarDiasISO(fechaLocal(), Number(dias) || 30), total, origen: numeroOC(o.numero),
+    notas: "Mercanc\xEDa de la orden " + numeroOC(o.numero) + ". Anota el n\xFAmero de la factura del proveedor cuando llegue." });
+}
+
+function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombre = "Victor" }) {
+  const E = React.createElement;
+  const hoyISO = fechaLocal();
+  const [cuentas, setCuentas] = useState(null);
+  const [periodo, setPeriodo] = useState({ desde: "", hasta: "" });
+  const [filtroEst, setFiltroEst] = useState("abiertas");
+  const [busca, setBusca] = useState("");
+  const [form, setForm] = useState(null);       // cuenta en edicion
+  const [pago, setPago] = useState(null);       // { cuenta, monto, fecha, metodo, nota, gasto }
+  const [importar, setImportar] = useState(null); // lista de compras candidatas
+  const [abierta, setAbierta] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const cargar = async () => {
+    const filas = await supaFetch("pc_cuentas_pagar", "GET", null, "?select=*&order=vence.asc.nullslast&limit=1000");
+    setCuentas(Array.isArray(filas) ? filas : false);
+  };
+  useEffect(() => { cargar(); }, []);
+  const proveedores = useMemo(() => {
+    const m = new Map();
+    [...(Array.isArray(cuentas) ? cuentas : []), ...(gastos || []), ...(inventario || [])].forEach((x) => {
+      const k = normalizarTextoInv(x.proveedor); if (k && !m.has(k)) m.set(k, { nombre: String(x.proveedor).trim(), identificacion: x.identificacion || "" }); });
+    return [...m.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [cuentas, gastos, inventario]);
+
+  const enPeriodo = (c) => (!periodo.desde || c.fecha >= periodo.desde) && (!periodo.hasta || c.fecha <= periodo.hasta);
+  const lista = Array.isArray(cuentas) ? cuentas.filter(enPeriodo) : [];
+  const edad = antiguedadCxP(lista, hoyISO);
+  const q = normalizarTextoInv(busca);
+  const filas = lista.filter((c) => {
+    const est = estadoCxP(c, hoyISO);
+    if (filtroEst === "abiertas" && (est === "pagada" || est === "anulada")) return false;
+    if (filtroEst === "vencidas" && est !== "vencida") return false;
+    if (filtroEst === "pagadas" && est !== "pagada") return false;
+    return !q || normalizarTextoInv([c.proveedor, c.numero, c.ncf, c.origen].join(" ")).includes(q);
+  });
+  const rango = (k) => {
+    if (k === "todo") return setPeriodo({ desde: "", hasta: "" });
+    if (k === "mes") return setPeriodo({ desde: hoyISO.slice(0, 8) + "01", hasta: hoyISO });
+    if (k === "90") return setPeriodo({ desde: sumarDiasISO(hoyISO, -90), hasta: hoyISO });
+  };
+  const exportar = () => {
+    const datos = filas.map((c) => ({ "Tipo de documento": CXP_TIPOS[c.tipo] || c.tipo, "N\xFAmero": c.numero || c.origen || "", NCF: c.ncf || "",
+      Proveedor: c.proveedor, "Creaci\xF3n": fechaCorta(c.fecha), Vencimiento: fechaCorta(c.vence), Total: Number(c.total) || 0,
+      Pagado: Number(c.pagado) || 0, "Por pagar": saldoCxP(c), Estado: estadoCxP(c, hoyISO) }));
+    const nombre = "Cuentas por pagar " + hoyISO;
+    if (window.XLSX) {
+      const ws = window.XLSX.utils.json_to_sheet(datos); const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, "Cuentas por pagar"); window.XLSX.writeFile(wb, nombre + ".xlsx");
+    } else {
+      const cols = Object.keys(datos[0] || { Proveedor: "" });
+      const csv = [cols.join(",")].concat(datos.map((d) => cols.map((k) => '"' + String(d[k]).replace(/"/g, '""') + '"').join(","))).join("\n");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = nombre + ".csv"; a.click();
+    }
+  };
+  const guardarForm = async () => {
+    const f = form;
+    if (!String(f.proveedor || "").trim()) return avisar("Escribe el proveedor.", "error");
+    const total = Math.round((parseFloat(f.total) || 0) * 100) / 100;
+    if (!(total > 0)) return avisar("Escribe el total de la factura.", "error");
+    if (f.id && total < (Number(f.pagado) || 0)) return avisar("El total no puede ser menor que lo ya pagado (" + dinero(f.pagado) + ").", "error");
+    if (f.vence && f.vence < f.fecha) return avisar("El vencimiento no puede ser antes de la fecha de la factura.", "error");
+    setOcupado(true);
+    try {
+      const fila = { tipo: f.tipo, proveedor: f.proveedor.trim(), identificacion: f.identificacion || null, numero: f.numero || null, ncf: f.ncf || null,
+        fecha: f.fecha, vence: f.vence || null, total, notas: f.notas || null, updated_at: new Date().toISOString(), ...(f.id ? {} : { creado_por: usuarioNombre, origen: f.origen || null }) };
+      await cxpFetch(f.id ? "PATCH" : "POST", fila, f.id ? "?id=eq." + f.id : "");
+      setForm(null); cargar(); avisar("Cuenta por pagar guardada.", "ok");
+    } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
+  };
+  const registrarPago = async () => {
+    const c = pago.cuenta, monto = Math.round((parseFloat(pago.monto) || 0) * 100) / 100, saldo = saldoCxP(c);
+    if (!(monto > 0)) return avisar("Escribe el monto del pago.", "error");
+    if (monto > saldo + 0.009) return avisar("El pago (" + dinero(monto) + ") es mayor que lo que falta (" + dinero(saldo) + ").", "error");
+    setOcupado(true);
+    try {
+      const pagos = [...(Array.isArray(c.pagos) ? c.pagos : []), { fecha: pago.fecha, monto, metodo: pago.metodo, nota: pago.nota || "", por: usuarioNombre }];
+      const pagado = Math.round(((Number(c.pagado) || 0) + monto) * 100) / 100;
+      await cxpFetch("PATCH", { pagos, pagado, updated_at: new Date().toISOString() }, "?id=eq." + c.id);
+      if (pago.gasto && typeof setGastos === "function") {
+        const doc = (c.numero ? "factura " + c.numero : c.origen || CXP_TIPOS[c.tipo] || "cuenta") ;
+        setGastos((prev) => [...(prev || []), { id: Date.now(), fecha: pago.fecha, proveedor: c.proveedor, categoria: "Proveedores",
+          descripcion: "Pago " + doc + " — " + c.proveedor + (monto < saldo ? " (abono)" : ""), monto, pagadoPor: usuarioNombre, metodo: pago.metodo, notas: pago.nota || "" }]);
+      }
+      setPago(null); cargar();
+      avisar(monto < saldo ? "Abono registrado. Falta " + dinero(saldo - monto) + "." : "Factura pagada por completo.", "ok");
+    } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
+  };
+  const anular = async (c) => {
+    if ((Number(c.pagado) || 0) > 0) return avisar("Tiene pagos registrados: no se puede anular.", "error");
+    if (!window.confirm("\xBFAnular la cuenta de " + c.proveedor + " por " + dinero(c.total) + "? Deja de contar como deuda.")) return;
+    try { await cxpFetch("PATCH", { anulada: true, updated_at: new Date().toISOString() }, "?id=eq." + c.id); cargar(); } catch (e) { avisar(e.message, "error"); }
+  };
+  const abrirImportar = async () => {
+    const compras = await supaFetch("pc_compras", "GET", null, "?select=*&order=fecha.desc&limit=200");
+    if (!Array.isArray(compras)) return avisar("No se pudieron leer las compras.", "error");
+    const usados = new Set((Array.isArray(cuentas) ? cuentas : []).filter((c) => !c.anulada).map((c) => c.origen).filter(Boolean));
+    setImportar(compras.filter((cp) => Number(cp.total) > 0 && !usados.has("compra:" + cp.id) && !usados.has(cp.numero))
+      .map((cp) => ({ cp, elegir: false, vence: sumarDiasISO(cp.fecha || hoyISO, 30) })));
+  };
+  const registrarImportadas = async () => {
+    const sel = importar.filter((x) => x.elegir);
+    if (!sel.length) return avisar("Marca al menos una compra.", "error");
+    setOcupado(true);
+    try {
+      for (const x of sel) await cxpFetch("POST", { tipo: "factura_proveedor", proveedor: x.cp.proveedor || "(sin proveedor)", numero: x.cp.numero || null, ncf: x.cp.ncf || null,
+        fecha: x.cp.fecha || hoyISO, vence: x.vence, total: Number(x.cp.total), origen: /^OC-/.test(x.cp.numero || "") ? x.cp.numero : "compra:" + x.cp.id, creado_por: usuarioNombre });
+      setImportar(null); cargar(); avisar(sel.length + " compra(s) registradas como cuentas por pagar.", "ok");
+    } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
+  };
+
+  const inp = { width: "100%", minWidth: 0, border: "1px solid #d9dee3", borderRadius: 9, padding: "9px 11px", fontSize: 14 };
+  const lbl = (t) => E("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#3d444d", marginBottom: 5 } }, t);
+  const panel = (titulo, hijos) => E(Card, { style: { marginBottom: 16, border: "1px solid #b7dfc5", background: "#fbfefc" } },
+    E("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 12 } }, titulo), hijos);
+  const ESTILO_EST = { pendiente: ["Pendiente", "#1a4fa0"], parcial: ["Abonada", "#7c3aed"], vencida: ["Vencida", "#b42318"], pagada: ["Pagada", "#1a6b3a"], anulada: ["Anulada", "#6b7280"] };
+
+  return E("div", null,
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 } },
+      E("div", null,
+        E("div", { style: { fontSize: 12, color: C.suave } }, "Reportes › Administrativos › Cuentas por pagar"),
+        E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, margin: "2px 0 0" } }, "Cuentas por pagar"),
+        E("p", { style: { color: C.suave, fontSize: 13.5, margin: "4px 0 0" } }, "Conoce las deudas que tienes registradas y lleva un control de tus pagos pendientes.")),
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+        E("button", { className: "pc-btn-suave", onClick: abrirImportar, disabled: cuentas === false }, "Traer de compras"),
+        E("button", { className: "pc-btn-suave", onClick: exportar, disabled: !filas.length }, "⬇ Exportar Excel"),
+        E("button", { onClick: () => setForm({ tipo: "factura_proveedor", proveedor: "", identificacion: "", numero: "", ncf: "", fecha: hoyISO, vence: sumarDiasISO(hoyISO, 30), total: "", notas: "" }),
+          disabled: cuentas === false, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" } }, "＋ Registrar factura por pagar"))),
+    cuentas === false && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, marginBottom: 14 } },
+      "Falta crear la tabla de cuentas por pagar en Supabase. Cuando se cree, aqu\xED aparecer\xE1n las deudas con proveedores."),
+    form && panel(form.id ? "Editar cuenta por pagar" : "Registrar factura por pagar", E("div", null,
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 } },
+        E("div", null, lbl("Tipo de documento"), E("select", { value: form.tipo, onChange: (e) => setForm({ ...form, tipo: e.target.value }), style: inp },
+          Object.entries(CXP_TIPOS).map(([v, t]) => E("option", { key: v, value: v }, t)))),
+        E("div", null, lbl("Proveedor *"), E("input", { value: form.proveedor, list: "pc-cxp-prov", onChange: (e) => {
+            const p = proveedores.find((x) => x.nombre === e.target.value); setForm({ ...form, proveedor: e.target.value, identificacion: p && p.identificacion ? p.identificacion : form.identificacion }); }, style: inp }),
+          E("datalist", { id: "pc-cxp-prov" }, proveedores.map((p) => E("option", { key: p.nombre, value: p.nombre })))),
+        E("div", null, lbl("RNC / c\xE9dula"), E("input", { value: form.identificacion || "", onChange: (e) => setForm({ ...form, identificacion: e.target.value }), style: inp })),
+        E("div", null, lbl("N\xFAmero de factura"), E("input", { value: form.numero || "", onChange: (e) => setForm({ ...form, numero: e.target.value }), style: inp })),
+        E("div", null, lbl("NCF"), E("input", { value: form.ncf || "", placeholder: "B01…", onChange: (e) => setForm({ ...form, ncf: e.target.value.toUpperCase() }), style: inp })),
+        E("div", null, lbl("Fecha de la factura"), E("input", { type: "date", value: form.fecha, onChange: (e) => setForm({ ...form, fecha: e.target.value }), style: inp })),
+        E("div", null, lbl("Vencimiento"), E("input", { type: "date", value: form.vence || "", onChange: (e) => setForm({ ...form, vence: e.target.value }), style: inp }),
+          E("div", { style: { display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" } }, [0, 15, 30, 45, 60].map((d) => E("button", { key: d, onClick: () => setForm({ ...form, vence: sumarDiasISO(form.fecha, d) }),
+            style: { border: "1px solid #d9dee3", background: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 11.5, cursor: "pointer", minHeight: 0 } }, d ? d + " d\xEDas" : "Contado")))),
+        E("div", null, lbl("Total (RD$) *"), E("input", { type: "number", min: 0, step: "0.01", value: form.total, onChange: (e) => setForm({ ...form, total: e.target.value }), style: inp }))),
+      E("div", { style: { marginTop: 12 } }, lbl("Notas"), E("textarea", { rows: 2, value: form.notas || "", onChange: (e) => setForm({ ...form, notas: e.target.value }), style: { ...inp, fontFamily: "inherit" } })),
+      E("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
+        E("button", { disabled: ocupado, onClick: guardarForm, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer" } }, "Guardar"),
+        E("button", { className: "pc-btn-suave", onClick: () => setForm(null) }, "Cancelar")))),
+    pago && panel("Registrar pago — " + pago.cuenta.proveedor, E("div", null,
+      E("div", { style: { fontSize: 13, color: C.suave, marginBottom: 10 } }, "Total " + dinero(pago.cuenta.total) + " \xB7 pagado " + dinero(pago.cuenta.pagado) + " \xB7 falta ", E("b", { style: { color: "#b42318" } }, dinero(saldoCxP(pago.cuenta)))),
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 } },
+        E("div", null, lbl("Monto"), E("input", { type: "number", min: 0, step: "0.01", value: pago.monto, onChange: (e) => setPago({ ...pago, monto: e.target.value }), style: inp })),
+        E("div", null, lbl("Fecha del pago"), E("input", { type: "date", value: pago.fecha, onChange: (e) => setPago({ ...pago, fecha: e.target.value }), style: inp })),
+        E("div", null, lbl("M\xE9todo"), E("select", { value: pago.metodo, onChange: (e) => setPago({ ...pago, metodo: e.target.value }), style: inp },
+          CXP_METODOS.map(([v, t]) => E("option", { key: v, value: v }, t)))),
+        E("div", null, lbl("Nota"), E("input", { value: pago.nota, placeholder: "N\xBA de transferencia, cheque…", onChange: (e) => setPago({ ...pago, nota: e.target.value }), style: inp }))),
+      E("label", { style: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, marginTop: 12, cursor: "pointer" } },
+        E("input", { type: "checkbox", checked: pago.gasto, onChange: (e) => setPago({ ...pago, gasto: e.target.checked }), style: { marginTop: 2 } }),
+        E("span", null, E("b", null, "Anotar tambi\xE9n como gasto"), " (categor\xEDa Proveedores) para que salga del flujo de caja. Desm\xE1rcalo si ese pago ya lo anotaste en Gastos.")),
+      E("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
+        E("button", { disabled: ocupado, onClick: registrarPago, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer" } }, "Registrar pago"),
+        E("button", { className: "pc-btn-suave", onClick: () => setPago(null) }, "Cancelar")))),
+    importar && panel("Traer de compras ya cargadas", importar.length === 0
+      ? E("div", null, E("div", { style: { fontSize: 13, color: C.suave } }, "No hay compras pendientes de registrar (las facturas de proveedor cargadas en Inventario y las \xF3rdenes recibidas ya est\xE1n todas)."),
+          E("button", { className: "pc-btn-suave", style: { marginTop: 10 }, onClick: () => setImportar(null) }, "Cerrar"))
+      : E("div", null,
+          E("div", { style: { fontSize: 13, color: C.suave, marginBottom: 8 } }, "Marca las que se compraron a cr\xE9dito y ajusta cu\xE1ndo vencen. Las de contado no hace falta traerlas."),
+          importar.map((x, i) => E("label", { key: x.cp.id, style: { display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #eef0f2", flexWrap: "wrap", fontSize: 13.5 } },
+            E("input", { type: "checkbox", checked: x.elegir, onChange: (e) => setImportar(importar.map((y, j) => j === i ? { ...y, elegir: e.target.checked } : y)) }),
+            E("span", { style: { flex: 1, minWidth: 200 } }, E("b", null, x.cp.proveedor || "(sin proveedor)"), " \xB7 " + (x.cp.numero || "s/n") + " \xB7 " + fechaCorta(x.cp.fecha)),
+            E("b", null, dinero(x.cp.total)),
+            E("span", { style: { fontSize: 12, color: C.suave } }, "vence"),
+            E("input", { type: "date", value: x.vence, onChange: (e) => setImportar(importar.map((y, j) => j === i ? { ...y, vence: e.target.value } : y)), style: { ...inp, width: 150, padding: "5px 8px" } }))),
+          E("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
+            E("button", { disabled: ocupado, onClick: registrarImportadas, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer" } }, "Registrar seleccionadas"),
+            E("button", { className: "pc-btn-suave", onClick: () => setImportar(null) }, "Cancelar")))),
+    E(Card, { style: { marginBottom: 16, padding: 18 } },
+      E("div", { style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" } },
+        E("div", null, lbl("Periodo (fecha de la factura)"),
+          E("div", { style: { display: "flex", gap: 6, alignItems: "center" } },
+            E("input", { type: "date", value: periodo.desde, onChange: (e) => setPeriodo({ ...periodo, desde: e.target.value }), style: { ...inp, width: 150 } }), "–",
+            E("input", { type: "date", value: periodo.hasta, onChange: (e) => setPeriodo({ ...periodo, hasta: e.target.value }), style: { ...inp, width: 150 } }))),
+        [["todo", "Todo"], ["mes", "Este mes"], ["90", "\xDAltimos 90 d\xEDas"]].map(([k, t]) => E("button", { key: k, className: "pc-btn-suave", onClick: () => rango(k) }, t))),
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 16 } },
+        [["Vencidas 30 d\xEDas o menos", edad.d30, "#b45309"], ["Vencidas 31 a 60 d\xEDas", edad.d60, "#c2410c"], ["Vencidas 61 a 90 d\xEDas", edad.d90, "#b42318"],
+         ["Vencidas 91+", edad.d91, "#7f1d1d"], ["No vencidas", edad.noVencidas, "#1a6b3a"]].map(([t, v, c]) => E("div", { key: t, style: { background: "#f8f9fa", border: "1px solid " + C.borde, borderRadius: 10, padding: "10px 12px" } },
+          E("div", { style: { fontSize: 11.5, color: C.suave } }, t), E("div", { style: { fontSize: 17, fontWeight: 800, color: v > 0 ? c : "#9aa1a9" } }, dinero(v))))),
+      E("div", { style: { textAlign: "center", marginTop: 14 } },
+        E("div", { style: { fontSize: 12.5, color: C.suave } }, "Total por pagar"),
+        E("div", { style: { fontSize: 26, fontWeight: 800, color: edad.total > 0 ? "#b42318" : C.verde } }, dinero(edad.total)))),
+    E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 } },
+      [["abiertas", "Por pagar"], ["vencidas", "Vencidas"], ["pagadas", "Pagadas"], ["todas", "Todas"]].map(([k, t]) => E("button", { key: k, onClick: () => setFiltroEst(k),
+        style: { padding: "6px 12px", borderRadius: 999, border: "1px solid " + (filtroEst === k ? C.verde : "#d9dee3"), background: filtroEst === k ? C.verde : "#fff",
+                 color: filtroEst === k ? "#fff" : "#3d444d", fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 0 } }, t)),
+      E("input", { value: busca, onChange: (e) => setBusca(e.target.value), placeholder: "🔍 Proveedor, n\xFAmero o NCF",
+        style: { marginLeft: "auto", border: "1px solid #d9dee3", borderRadius: 999, padding: "7px 12px", fontSize: 13, minWidth: 200 } })),
+    E(Card, { style: { padding: 0, overflow: "hidden" } },
+      cuentas === null ? E("div", { style: { padding: 24, color: C.suave } }, "Cargando…")
+      : filas.length === 0 ? E("div", { style: { padding: 36, textAlign: "center", color: C.suave } }, "\xA1No tienes facturas pendientes por pagar!")
+      : E("div", { style: { overflowX: "auto" } }, E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 960 } },
+          E("thead", null, E("tr", { style: { background: "#f8f9fa", textAlign: "left" } },
+            ["Tipo de documento", "N\xFAmero", "Proveedor", "Creaci\xF3n", "Vencimiento", "Total", "Pagado", "Por pagar", ""].map((h, i) => E("th", { key: i,
+              style: { padding: "10px 12px", fontSize: 11.5, color: C.suave, fontWeight: 600, textAlign: i >= 5 && i <= 7 ? "right" : "left" } }, h)))),
+          E("tbody", null, filas.map((c) => { const est = estadoCxP(c, hoyISO), [et, ec] = ESTILO_EST[est], d = diasVencidaCxP(c, hoyISO);
+            return [E("tr", { key: c.id, style: { borderTop: "1px solid #f1f3f4", opacity: c.anulada ? 0.55 : 1 } },
+              E("td", { style: { padding: "10px 12px" } }, CXP_TIPOS[c.tipo] || c.tipo),
+              E("td", { style: { padding: "10px 12px", fontWeight: 600 } }, c.numero || c.origen || "—", c.ncf ? E("div", { style: { fontSize: 11, color: C.suave, fontWeight: 400 } }, c.ncf) : null),
+              E("td", { style: { padding: "10px 12px" } }, c.proveedor),
+              E("td", { style: { padding: "10px 12px" } }, fechaCorta(c.fecha)),
+              E("td", { style: { padding: "10px 12px" } }, fechaCorta(c.vence) || "—",
+                E("div", null, E(Badge, { color: ec }, est === "vencida" ? "Vencida hace " + d + " d" : et))),
+              E("td", { style: { padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap" } }, dinero(c.total)),
+              E("td", { style: { padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap" } }, dinero(c.pagado)),
+              E("td", { style: { padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap", fontWeight: 800, color: saldoCxP(c) > 0 && !c.anulada ? "#b42318" : C.verde } }, dinero(c.anulada ? 0 : saldoCxP(c))),
+              E("td", { style: { padding: "8px 12px", textAlign: "right", whiteSpace: "nowrap" } },
+                !c.anulada && saldoCxP(c) > 0 && E("button", { onClick: () => setPago({ cuenta: c, monto: String(saldoCxP(c)), fecha: hoyISO, metodo: "transferencia", nota: "", gasto: true }),
+                  style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "6px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", marginRight: 6, minHeight: 0 } }, "Pagar"),
+                E("button", { className: "pc-btn-suave", onClick: () => setAbierta(abierta === c.id ? null : c.id) }, abierta === c.id ? "Cerrar" : "Ver"))),
+              abierta === c.id && E("tr", { key: c.id + "d" }, E("td", { colSpan: 9, style: { background: "#fbfcfc", padding: "10px 16px", fontSize: 13 } },
+                E("div", { style: { display: "flex", gap: 24, flexWrap: "wrap" } },
+                  E("div", { style: { flex: 1, minWidth: 260 } },
+                    E("b", null, "Pagos"),
+                    (Array.isArray(c.pagos) && c.pagos.length ? c.pagos : []).map((p, i) => E("div", { key: i, style: { color: "#3d444d", marginTop: 3 } },
+                      fechaCorta(p.fecha) + " \xB7 " + dinero(p.monto) + " \xB7 " + ((CXP_METODOS.find(([v]) => v === p.metodo) || [, p.metodo])[1]) + (p.nota ? " \xB7 " + p.nota : "") + (p.por ? " \xB7 " + p.por : ""))),
+                    !(Array.isArray(c.pagos) && c.pagos.length) && E("div", { style: { color: C.suave, marginTop: 3 } }, "Sin pagos todav\xEDa.")),
+                  E("div", { style: { flex: 1, minWidth: 220, color: "#3d444d" } },
+                    c.identificacion && E("div", null, "RNC/c\xE9dula: " + c.identificacion), c.origen && E("div", null, "Origen: " + c.origen),
+                    c.notas && E("div", { style: { marginTop: 3 } }, c.notas)),
+                  !c.anulada && E("div", { style: { display: "flex", gap: 6, alignItems: "flex-start" } },
+                    E("button", { className: "pc-btn-suave", onClick: () => setForm({ ...c, total: String(c.total) }) }, "Editar"),
+                    !(Number(c.pagado) > 0) && E("button", { className: "pc-btn-suave", onClick: () => anular(c), style: { color: "#b42318" } }, "Anular")))))];
+          }))))));
 }
 // Cabecera del admin (diseño "moderno y limpio", oct 2026). Antes era un bloque
 // verde de ~170 px con seis renglones de estado apilados; ahora una franja de
@@ -8602,6 +8902,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
+    tab === "cuentas_pagar" && React.createElement(CuentasPorPagar, { gastos, setGastos, inventario: todoInventario, usuarioNombre: "Victor" }),
     tab === "ordenes_compra" && React.createElement(OrdenesCompra, { inventario: todoInventario, gastos, refetchInventario, usuarioNombre: "Victor" }),
     tab === "cotizaciones" && React.createElement(Cotizaciones, { clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario, setVentas, usuarioNombre: "Victor" }),
     tab === "recetarios" && React.createElement(Recetario, { clientes: todosClientes, historias, medicoPorDefecto: "", usuarioNombre: "Victor" }),

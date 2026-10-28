@@ -313,6 +313,19 @@ Pestaña "Ordenes de compra" (admin, grupo Negocio), modelada sobre Alegra. Tabl
   Una orden recibida o cancelada queda de solo lectura.
 - No hay "bodega" ni "centro de costo" (Alegra los trae; PetColinas tiene un solo local).
 
+## CUENTAS POR PAGAR (M27, 29 oct 2026)
+Pestaña "Cuentas por pagar" (admin, grupo Negocio), como el reporte de Alegra: periodo,
+antiguedad del saldo (vencidas 1-30, 31-60, 61-90, 91+ y no vencidas: `antiguedadCxP`),
+total por pagar y detalle (tipo, numero/NCF, proveedor, creacion, vencimiento, total,
+pagado, por pagar). Tabla `pc_cuentas_pagar`, SOLO-ADMIN.
+- Entradas: a mano (factura de proveedor, servicio, prestamo, otro), "Traer de compras"
+  (pc_compras: facturas cargadas en Inventario y ordenes recibidas) o "A credito" al
+  recibir una orden de compra. `origen` unico evita registrar dos veces la misma compra.
+- Pagos y abonos en `pagos` (jsonb). Opcion (marcada) de anotar el pago como GASTO categoria
+  "Proveedores" para que salga del flujo de caja. NUNCA categoria "Inventario": esa crea
+  productos fantasma (inventarioDeGastos). Si el pago ya esta en Gastos, desmarcarla.
+- Anular solo sin pagos. Exportar a Excel (XLSX si cargo SheetJS; si no, CSV).
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
