@@ -36,6 +36,12 @@ const [authChecked, setAuthChecked] = useState(() => {
   } catch { return true; }
 });
 
+Sesion vencida (28 oct 2026): si el token ya no sirve (401) aunque el reloj del equipo
+diga que no ha vencido, `supaFetch` lo renueva UNA vez (`renovarSesion`) y repite. Si no
+se puede, `avisarSesionVencida` manda a la pantalla de entrada con un aviso. Antes la app
+seguia con la llave publica y mostraba pantallas VACIAS ("sin ventas registradas",
+facturas viejas del cache) sin decir por que: paso en una Mac con Safari.
+
 ## REGLA CRITICA 2 - Filtro Aylein historico
 Todos los servicios vet hasta Mar 2026 = Aylein.
 Valentina solo ve servicios con su nombre explicito.

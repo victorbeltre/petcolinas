@@ -270,7 +270,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 15:51Z";
+const PC_BUILD = "2026-10-28 16:59Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -342,6 +342,41 @@ async function supaFetchTodo(table, params = "?order=id.asc", pagina = 1000, top
 // (si no, una llamada a funcion fallaria con la sesion vencida mientras las
 // consultas normales seguirian funcionando, que es de los errores mas dificiles
 // de entender cuando pasa).
+// Sesion vencida que no se pudo renovar (28 oct 2026). Antes la app seguia con
+// la llave publica, Supabase contestaba 401 a todo y las pantallas salian
+// VACIAS ("sin ventas registradas", facturas viejas del cache) sin decir por
+// que. Ahora se avisa una sola vez y la raiz manda a la pantalla de entrada.
+let pcSesionVencidaAvisada = false;
+function avisarSesionVencida() {
+  if (pcSesionVencidaAvisada) return;
+  pcSesionVencidaAvisada = true;
+  try { window.dispatchEvent(new CustomEvent("pc-sesion-vencida")); } catch (e) {}
+}
+// Pide un token nuevo con el refresh_token. Devuelve el token o null.
+let pcRenovando = null;
+function renovarSesion() {
+  if (pcRenovando) return pcRenovando;   // varias consultas a la vez: una sola renovacion
+  pcRenovando = (async () => {
+    try {
+      const sess = JSON.parse(sessionStorage.getItem("pc_session") || "null");
+      if (!sess || !sess.refresh_token) return null;
+      const rr = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SUPA_KEY },
+        body: JSON.stringify({ refresh_token: sess.refresh_token })
+      });
+      if (!rr.ok) { console.warn("[Auth] No se pudo renovar la sesi\xF3n (" + rr.status + ")"); return null; }
+      const newSess = await rr.json();
+      if (!newSess.expires_at && newSess.expires_in) newSess.expires_at = Math.floor(Date.now() / 1e3) + newSess.expires_in;
+      if (!newSess.user && sess.user) newSess.user = sess.user;
+      sessionStorage.setItem("pc_session", JSON.stringify(newSess));
+      console.log("[Auth] Sesi\xF3n renovada autom\xE1ticamente");
+      return newSess.access_token;
+    } catch (re) { console.warn("[Auth] Error renovando sesi\xF3n:", re.message); return null; }
+  })();
+  pcRenovando.finally(() => { setTimeout(() => { pcRenovando = null; }, 0); });
+  return pcRenovando;
+}
 async function supaAccessToken() {
   let authToken = SUPA_KEY;
   try {
@@ -351,26 +386,14 @@ async function supaAccessToken() {
       if (!expired) {
         authToken = sess.access_token;
       } else if (sess.refresh_token) {
-        try {
-          const rr = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": SUPA_KEY },
-            body: JSON.stringify({ refresh_token: sess.refresh_token })
-          });
-          if (rr.ok) {
-            const newSess = await rr.json();
-            if (!newSess.expires_at && newSess.expires_in) newSess.expires_at = Math.floor(Date.now() / 1e3) + newSess.expires_in;
-            if (!newSess.user && sess.user) newSess.user = sess.user;
-            sessionStorage.setItem("pc_session", JSON.stringify(newSess));
-            authToken = newSess.access_token;
-            console.log("[Auth] Sesi\xF3n renovada autom\xE1ticamente");
-          } else {
-            console.warn("[Auth] No se pudo renovar la sesi\xF3n (" + rr.status + ")");
-            if (typeof window.__notifSyncError === "function") window.__notifSyncError("sesi\xF3n expirada");
-          }
-        } catch (re) {
-          console.warn("[Auth] Error renovando sesi\xF3n:", re.message);
+        const nuevo = await renovarSesion();
+        if (nuevo) authToken = nuevo;
+        else {
+          if (typeof window.__notifSyncError === "function") window.__notifSyncError("sesi\xF3n expirada");
+          avisarSesionVencida();
         }
+      } else {
+        avisarSesionVencida();
       }
     }
   } catch {}
@@ -380,7 +403,7 @@ async function supaHeaders() {
   const token = await supaAccessToken();
   return { "apikey": SUPA_KEY, "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
 }
-async function supaFetch(table, method = "GET", body = null, params = "") {
+async function supaFetch(table, method = "GET", body = null, params = "", reintento = false) {
   const url = `${SUPA_URL}/rest/v1/${table}${params}`;
   const authToken = await supaAccessToken();
   const headers = {
@@ -395,6 +418,17 @@ async function supaFetch(table, method = "GET", body = null, params = "") {
     headers,
     body: body ? JSON.stringify(body) : null
   });
+  // 401 con sesion abierta: el token ya no sirve aunque el reloj del equipo
+  // diga que no ha vencido (Safari restaurando pestañas, reloj atrasado, token
+  // renovado en otra pestaña). Se renueva una vez y se repite; si no se puede,
+  // se manda a entrar de nuevo en vez de mostrar pantallas vacias.
+  if (res.status === 401 && !reintento && sessionStorage.getItem("pc_session")) {
+    const nuevo = await renovarSesion();
+    if (nuevo) return supaFetch(table, method, body, params, true);
+    avisarSesionVencida();
+  } else if (res.status === 401 && reintento) {
+    avisarSesionVencida();
+  }
   if (method === "GET") {
     try {
       const data = await res.json();
@@ -1100,7 +1134,7 @@ async function supaGetSession() {
     return null;
   }
 }
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, aviso }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1158,7 +1192,9 @@ function LoginScreen({ onLogin }) {
       E("div", { style: { width: "100%", maxWidth: 360 } },
         E("div", { className: "pc-login-logo-movil" }, E("img", { src: "logo.png", alt: "", onError: (ev) => { ev.currentTarget.style.display = "none"; } })),
         E("h1", { style: { fontSize: 26, fontWeight: 800, color: "#1f2328", letterSpacing: "-0.02em", margin: 0 } }, "Bienvenido"),
-        E("p", { style: { fontSize: 14, color: "#6b7280", margin: "6px 0 28px" } }, "Entra con tu correo de PetColinas."),
+        E("p", { style: { fontSize: 14, color: "#6b7280", margin: "6px 0 " + (aviso ? "16px" : "28px") } }, "Entra con tu correo de PetColinas."),
+        aviso && E("div", { role: "status", style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10,
+          padding: "10px 12px", fontSize: 13.5, marginBottom: 18 } }, aviso),
         E("div", { style: { marginBottom: 16 } }, etiqueta("Correo"),
           E("input", { type: "email", value: email, onChange: (ev) => setEmail(ev.target.value), onKeyDown: handleKey,
             placeholder: "nombre@petcolinas.com", autoComplete: "username", autoFocus: true, style: campo() })),
@@ -7136,6 +7172,16 @@ function PetColinas() {
     } catch { return true; }
   });
   // Hooks siempre al tope — antes de cualquier return condicional (reglas de React)
+  const [avisoEntrada, setAvisoEntrada] = useState("");
+  useEffect(() => {
+    const fn = () => {
+      sessionStorage.removeItem("pc_session");
+      setAvisoEntrada("Tu sesi\xF3n venci\xF3. Vuelve a entrar para ver los datos al d\xEDa.");
+      setSession(null);
+    };
+    window.addEventListener("pc-sesion-vencida", fn);
+    return () => window.removeEventListener("pc-sesion-vencida", fn);
+  }, []);
   const [ventasVet, setVentasVet]   = useVentasConSeed(VENTAS_SEED);
   const setVentas = setVentasVet;
   const [clientesVet, setClientesVet] = useClientesConSeed(CLIENTES_SEED);
@@ -7234,7 +7280,7 @@ function PetColinas() {
 
   if (window.location.search.includes("catalogo")) return React.createElement(CatalogoPublico, null);
   if (!authChecked) return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f5f6" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 48, marginBottom: 12 } }, "\u{1F43E}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, color: "#5a6472" } }, "Verificando sesi\xF3n...")));
-  if (!session) return /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: handleLogin });
+  if (!session) return /* @__PURE__ */ React.createElement(WAPreviewModal, null), /* @__PURE__ */ React.createElement(LoginScreen, { onLogin: (s2) => { pcSesionVencidaAvisada = false; setAvisoEntrada(""); handleLogin(s2); }, aviso: avisoEntrada });
 
   const VET_EMAILS_LIST = ["naylan@petcolinas.com"];   // Aylein y Valentina ya no tienen acceso; Naylan Perez tiene su propio usuario
   const GRM_EMAILS_LIST = ["alexander@petcolinas.com"];
