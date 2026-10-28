@@ -298,6 +298,21 @@ Pestaña "Cotizaciones" (admin, grupo Operacion), modelada sobre Alegra (captura
   convierte) y crea una venta "Pago pendiente" (se cobra en Cobros), comision 0 -> la nomina
   la calcula por area. La cotizacion queda "facturada" y de solo lectura.
 
+## ORDENES DE COMPRA (M26, 29 oct 2026)
+Pestaña "Ordenes de compra" (admin, grupo Negocio), modelada sobre Alegra. Tabla
+`pc_ordenes_compra`, SOLO-ADMIN (costos). Numero OC-0001 por secuencia de la base.
+- Proveedor con sugerencias (ordenes anteriores traen identificacion y telefono; tambien
+  los proveedores del inventario y de los gastos). Uno nuevo se escribe y queda.
+- Lineas: concepto (buscador del inventario, precio = COSTO) o libre, precio, desc %,
+  ITBIS, cantidad, observaciones. Mismos calculos que cotizaciones (`calcularCotizacion`).
+- Terminos y notas salen en el PDF; comentarios internos NO.
+- Estados: borrador, enviada, recibida, cancelada; "entrega atrasada" se calcula.
+- "Recibir mercancia" (`planRecepcionOC`): producto existente (prodId o nombre identico)
+  -> stock + cantidad (leido fresco de la base) y costo actualizado; nuevo -> se crea con
+  categoria "otro" y precio de venta 0 (hay que completarlo). Anota en `pc_compras`.
+  Una orden recibida o cancelada queda de solo lectura.
+- No hay "bodega" ni "centro de costo" (Alegra los trae; PetColinas tiene un solo local).
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

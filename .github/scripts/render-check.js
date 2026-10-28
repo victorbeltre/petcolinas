@@ -491,6 +491,26 @@ render("Recetario", sandbox.Recetario, { clientes, historias: [], medicoPorDefec
   if (!/COT-0007/.test(msg) || !/Mar\u00EDa/.test(msg) || !/Toby/.test(msg) || !/3,624/.test(msg) || !/13\/11\/2026/.test(msg) || /P\u00E9rez/.test(msg)) fallo("mensaje WhatsApp: " + msg);
 })();
 render("Cotizaciones", sandbox.Cotizaciones, { clientes, tarifasGrooming: [], tarifasVet: [], inventario: [], setVentas: () => {} }, null, "Cotizaciones");
+// Ordenes de compra (M26): recepcion al inventario, estado atrasada y mensaje al proveedor.
+(() => {
+  const fallo = (m) => errores.push("orden de compra: " + m);
+  const inv = [{ id: "1", nombre: "NexGard Spectra L", stock: 2 }, { id: "2", nombre: "Shampoo avena", stock: 0 }];
+  const plan = enVM("planRecepcionOC")([
+    { nombre: "NexGard Spectra L", prodId: "1", cantidad: 6, precio: 1000, descPct: 10 },
+    { nombre: "shampoo  AVENA", cantidad: "3", precio: 280, descPct: 0 },
+    { nombre: "Collar nuevo", cantidad: 4, precio: 150 },
+    { nombre: "", cantidad: 9, precio: 1 }], inv);
+  if (plan.length !== 3) fallo("las lineas vacias no se reciben: " + plan.length);
+  if (!plan[0].prod || plan[0].prod.id !== "1" || plan[0].cantidad !== 6 || plan[0].costo !== 900) fallo("producto elegido: suma 6 al costo con descuento (900): " + JSON.stringify(plan[0]));
+  if (!plan[1].prod || plan[1].prod.id !== "2" || plan[1].cantidad !== 3) fallo("mismo nombre escrito a mano se suma al existente: " + JSON.stringify(plan[1]));
+  if (plan[2].prod) fallo("un producto que no existe entra como nuevo");
+  const est = enVM("estadoOrdenCompra");
+  if (est({ estado: "enviada", entrega: "2026-10-20" }, "2026-10-29") !== "atrasada") fallo("enviada con entrega pasada = atrasada");
+  if (est({ estado: "recibida", entrega: "2026-10-20" }, "2026-10-29") !== "recibida") fallo("recibida no se marca atrasada");
+  const msg = enVM("mensajeOrdenCompraWA")({ numero: 3, proveedor: "Agrovet", entrega: "2026-11-02" }, enVM("calcularCotizacion")([{ nombre: "NexGard", cantidad: 6, precio: 1000, obs: "talla L" }], []));
+  if (!/OC-0003/.test(msg) || !/6 x NexGard \(talla L\)/.test(msg) || !/02\/11\/2026/.test(msg)) fallo("mensaje: " + msg);
+})();
+render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], refetchInventario: () => {} }, null, "rdenes de compra");
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la

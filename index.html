@@ -273,7 +273,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 21:18Z";
+const PC_BUILD = "2026-10-28 21:28Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2430,6 +2430,7 @@ const TABS = [
   { id: "gastos", icon: "\u{1F4B8}", label: "Gastos", grupo: "Negocio" },
   { id: "nomina", icon: "\u{1F465}", label: "N\xF3mina", grupo: "Negocio" },
   { id: "inventario", icon: "\u{1F4E6}", label: "Inventario", grupo: "Negocio" },
+  { id: "ordenes_compra", icon: "\u{1F69A}", label: "\xD3rdenes de compra", grupo: "Negocio" },
 
   { id: "servicios", icon: "\u2699\uFE0F", label: "Servicios", grupo: "Ajustes" },
   { id: "importar", icon: "\u{1F4E4}", label: "Exportar Excel", grupo: "Ajustes" },
@@ -3216,6 +3217,377 @@ function Cotizaciones({ clientes = [], tarifasGrooming = [], tarifasVet = [], in
           E("button", { disabled: ocupado || !convertir.quien, onClick: () => convertirEnVenta(convertir.quien),
             style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: convertir.quien ? "pointer" : "not-allowed", opacity: convertir.quien ? 1 : 0.6 } }, "Registrar venta"),
           E("button", { className: "pc-btn-suave", onClick: () => setConvertir(null) }, "Cancelar")))));
+}
+// ─── ORDENES DE COMPRA (M26, 29 oct 2026) ────────────────────────────────────
+// Al estilo de Alegra (captura de Victor): proveedor con identificacion y
+// telefono, fecha y fecha de entrega, lineas con concepto, precio, descuento,
+// impuesto, cantidad y observaciones; terminos y notas (salen impresos) y
+// comentarios internos (NO salen impresos). Solo-admin (costos).
+// "Recibir mercancia" suma lo pedido al inventario: un producto que ya existe
+// sube su stock y actualiza el costo; uno nuevo se crea (la base le pone
+// codigo). Queda anotado en pc_compras como las facturas de proveedor.
+const OC_ESTADOS = {
+  borrador: { t: "Borrador", c: "#6b7280" }, enviada: { t: "Enviada al proveedor", c: "#1a4fa0" },
+  recibida: { t: "Recibida", c: "#1a6b3a" }, cancelada: { t: "Cancelada", c: "#b42318" }, atrasada: { t: "Entrega atrasada", c: "#b45309" }
+};
+const numeroOC = (n) => "OC-" + String(n || 0).padStart(4, "0");
+function estadoOrdenCompra(o, hoyISO) {
+  if ((o.estado === "borrador" || o.estado === "enviada") && o.entrega && o.entrega < (hoyISO || fechaLocal())) return "atrasada";
+  return o.estado || "borrador";
+}
+function mensajeOrdenCompraWA(o, calc) {
+  const lineas = calc.lineas.filter((l) => String(l.nombre || "").trim()).map((l) =>
+    "• " + l.cantidad + " x " + l.nombre + (l.obs ? " (" + l.obs + ")" : ""));
+  return "Hola" + (o.proveedor ? " " + o.proveedor : "") + ", le enviamos la orden de compra " + (o.numero ? numeroOC(o.numero) + " " : "") + "de PetColinas:\n\n" +
+    lineas.join("\n") + "\n\n*Total estimado: " + dinero(calc.total) + "*" +
+    (o.entrega ? "\nEntrega solicitada: " + fechaCorta(o.entrega) + "." : "") +
+    "\n\nFavor confirmar disponibilidad y precios. Gracias.";
+}
+async function pdfOrdenCompra(o) {
+  if (!window.jspdf) throw new Error("No se pudo cargar el generador de PDF. Recarga la p\xE1gina.");
+  const calc = calcularCotizacion(o.items, []);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = 595.28, M = 40, verde = [26, 107, 58], tinta = [31, 35, 40], suave = [107, 114, 128], naranja = [242, 140, 40];
+  const logo = await logoComoDataURL();
+  if (logo) { try { doc.addImage(logo, "PNG", M, 30, 64, 56); } catch (e) {} }
+  doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.setTextColor(...naranja); doc.text("Pet", M + 74, 58);
+  doc.setTextColor(12, 30, 49); doc.text("Colinas", M + 74 + doc.getTextWidth("Pet"), 58);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...suave);
+  const rnc = (typeof PC_CONFIG !== "undefined" && PC_CONFIG.rnc) || window._petcolinasRNC || "";
+  ["Veterinaria \xB7 Grooming \xB7 Petshop", "Av. Prolongaci\xF3n 27 de Febrero, Plaza Las Colinas, Santo Domingo Oeste",
+   "Tel. 809-752-6806 \xB7 petcolinasrd@gmail.com" + (rnc ? " \xB7 RNC " + rnc : "")].forEach((t, i) => doc.text(t, M + 74, 72 + i * 11));
+  doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...tinta); doc.text("ORDEN DE COMPRA", W - M, 50, { align: "right" });
+  doc.setFontSize(11); doc.setTextColor(...verde); doc.text(o.numero ? numeroOC(o.numero) : "Borrador", W - M, 66, { align: "right" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...suave);
+  doc.text("Fecha: " + fechaCorta(o.fecha), W - M, 82, { align: "right" });
+  if (o.entrega) doc.text("Entrega: " + fechaCorta(o.entrega), W - M, 94, { align: "right" });
+  let y = 118;
+  doc.setDrawColor(230, 233, 236); doc.setFillColor(247, 248, 249); doc.roundedRect(M, y, W - 2 * M, 50, 6, 6, "FD");
+  doc.setFontSize(8); doc.setTextColor(...suave); doc.text("PROVEEDOR", M + 12, y + 16);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...tinta); doc.text(String(o.proveedor || "—"), M + 12, y + 32);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...suave);
+  doc.text([o.identificacion ? "RNC/C\xE9dula " + o.identificacion : "", o.telefono ? "Tel. " + o.telefono : ""].filter(Boolean).join("   \xB7   "), M + 12, y + 44);
+  y += 70;
+  const col = [M, M + 22, M + 290, M + 330, M + 400, M + 440, W - M];
+  const encabezado = () => {
+    doc.setFillColor(...verde); doc.rect(M, y, W - 2 * M, 20, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+    doc.text("#", col[0] + 7, y + 13); doc.text("Concepto", col[1], y + 13); doc.text("Cant.", col[3] - 6, y + 13, { align: "right" });
+    doc.text("Precio", col[4] - 6, y + 13, { align: "right" }); doc.text("Desc.", col[5] - 6, y + 13, { align: "right" });
+    doc.text("ITBIS", col[5] + 4, y + 13); doc.text("Total", col[6] - 6, y + 13, { align: "right" });
+    y += 20;
+  };
+  encabezado();
+  calc.lineas.filter((l) => String(l.nombre || "").trim()).forEach((l, i) => {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    const desc = doc.splitTextToSize(String(l.nombre), col[2] - col[1] + 30);
+    const obs = l.obs ? doc.splitTextToSize(String(l.obs), col[2] - col[1] + 30) : [];
+    const h = Math.max(18, desc.length * 11 + obs.length * 10 + 7);
+    if (y + h > 760) { doc.addPage(); y = 40; encabezado(); doc.setFont("helvetica", "normal"); doc.setFontSize(9); }
+    if (i % 2) { doc.setFillColor(250, 251, 251); doc.rect(M, y, W - 2 * M, h, "F"); }
+    doc.setTextColor(...suave); doc.text(String(i + 1), col[0] + 7, y + 12);
+    doc.setTextColor(...tinta); doc.text(desc, col[1], y + 12);
+    if (obs.length) { doc.setFontSize(8); doc.setTextColor(...suave); doc.text(obs, col[1], y + 12 + desc.length * 11); doc.setFontSize(9); doc.setTextColor(...tinta); }
+    doc.text(String(l.cantidad), col[3] - 6, y + 12, { align: "right" });
+    doc.text(dinero(l.precio).replace("RD$ ", ""), col[4] - 6, y + 12, { align: "right" });
+    doc.text(Number(l.descPct) ? l.descPct + "%" : "—", col[5] - 6, y + 12, { align: "right" });
+    doc.text(l.itbis ? "18%" : "—", col[5] + 4, y + 12);
+    doc.text(dinero(l.base + l.impuesto).replace("RD$ ", ""), col[6] - 6, y + 12, { align: "right" });
+    y += h; doc.setDrawColor(238, 240, 242); doc.line(M, y, W - M, y);
+  });
+  y += 14;
+  const filas = [["Subtotal", calc.subtotal], ["Descuento", -calc.descuento], ["ITBIS", calc.impuestos]];
+  if (y + filas.length * 15 + 40 > 800) { doc.addPage(); y = 40; }
+  doc.setFontSize(9.5);
+  filas.forEach(([t, v]) => { doc.setTextColor(...suave); doc.text(t, W - M - 170, y); doc.setTextColor(...tinta); doc.text(dinero(v), W - M, y, { align: "right" }); y += 15; });
+  doc.setFillColor(...verde); doc.roundedRect(W - M - 180, y - 4, 180, 26, 5, 5, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
+  doc.text("TOTAL", W - M - 170, y + 13); doc.text(dinero(calc.total), W - M - 10, y + 13, { align: "right" });
+  y += 46;
+  [["Notas", o.notas], ["T\xE9rminos y condiciones", o.terminos]].forEach(([t, v]) => {
+    if (!String(v || "").trim()) return;
+    const txt = doc.splitTextToSize(String(v), W - 2 * M);
+    if (y + 20 + txt.length * 11 > 800) { doc.addPage(); y = 40; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(...tinta); doc.text(t, M, y); y += 13;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...suave); doc.text(txt, M, y); y += txt.length * 11 + 12;
+  });
+  const pags = doc.getNumberOfPages();
+  for (let p = 1; p <= pags; p++) {
+    doc.setPage(p); doc.setFontSize(7.5); doc.setTextColor(...suave);
+    doc.text("PetColinas \xB7 " + (o.numero ? numeroOC(o.numero) : "Orden de compra") + (pags > 1 ? " \xB7 P\xE1gina " + p + " de " + pags : ""), W / 2, 822, { align: "center" });
+  }
+  return { doc, nombre: (o.numero ? numeroOC(o.numero) : "Orden de compra") + " " + String(o.proveedor || "").replace(/[^\w\s\-\xC0-\xFF]/g, "").trim() + ".pdf" };
+}
+async function guardarOrdenCompra(o) {
+  const calc = calcularCotizacion(o.items, []);
+  const fila = { fecha: o.fecha, entrega: o.entrega || null, proveedor: String(o.proveedor || "").trim(), identificacion: o.identificacion || null,
+    telefono: o.telefono || null, items: o.items.filter((l) => String(l.nombre || "").trim()),
+    subtotal: calc.subtotal, descuento: calc.descuento, impuestos: calc.impuestos, total: calc.total,
+    terminos: o.terminos || null, notas: o.notas || null, comentarios: o.comentarios || null, estado: o.estado || "borrador",
+    recibida_en: o.recibida_en || null, creado_por: o.creado_por || null, updated_at: new Date().toISOString() };
+  const token = await supaAccessToken();
+  const res = await fetch(SUPA_URL + "/rest/v1/pc_ordenes_compra" + (o.id ? "?id=eq." + encodeURIComponent(o.id) : ""), {
+    method: o.id ? "PATCH" : "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=representation" },
+    body: JSON.stringify(fila) });
+  const out = await res.json().catch(() => null);
+  if (!res.ok || !Array.isArray(out) || !out[0]) {
+    const msg = out && (out.message || out.hint) || ("HTTP " + res.status);
+    throw new Error(/pc_ordenes_compra/.test(msg) || res.status === 404 ? "Falta crear la tabla de \xF3rdenes de compra en Supabase (ver instrucciones)." : "No se pudo guardar: " + msg);
+  }
+  return out[0];
+}
+// Plan de recepcion: que pasa con cada linea al recibir la mercancia.
+function planRecepcionOC(items, inventario) {
+  return (items || []).filter((l) => String(l.nombre || "").trim() && Number(l.cantidad) > 0).map((l) => {
+    const prod = (l.prodId != null ? (inventario || []).find((p) => String(p.id) === String(l.prodId)) : null) || coincidenciaInventario(l.nombre, inventario);
+    const costo = Math.round((Number(l.precio) || 0) * (1 - Math.min(100, Math.max(0, Number(l.descPct) || 0)) / 100) * 100) / 100;
+    return { linea: l, prod: prod && !prod.autoGenerado ? prod : null, cantidad: Number(l.cantidad) || 0, costo };
+  });
+}
+
+function OrdenesCompra({ inventario = [], gastos = [], refetchInventario, usuarioNombre = "Victor" }) {
+  const E = React.createElement;
+  const [lista, setLista] = useState(null);
+  const [filtro, setFiltro] = useState("todas");
+  const [busca, setBusca] = useState("");
+  const [o, setO] = useState(null);
+  const [verProv, setVerProv] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [recibir, setRecibir] = useState(false);
+  const hoyISO = fechaLocal();
+  const cargar = async () => {
+    const filas = await supaFetch("pc_ordenes_compra", "GET", null, "?select=*&order=numero.desc&limit=500");
+    setLista(Array.isArray(filas) ? filas : false);
+  };
+  useEffect(() => { cargar(); }, []);
+
+  const catalogo = useMemo(() => (inventario || []).filter((p) => !p.autoGenerado).map((p) => ({ grupo: "Producto", nombre: p.nombre,
+    precio: Number(p.costo || p.precioCompra) || 0, area: "farmacia", prodId: p.id, stock: Number(p.stock) || 0, codigo: p.codigo || "",
+    buscar: textoBusquedaProducto(p) })), [inventario]);
+  // Proveedores ya conocidos: de ordenes anteriores (traen identificacion y telefono), del inventario y de los gastos.
+  const proveedores = useMemo(() => {
+    const m = new Map();
+    (Array.isArray(lista) ? lista : []).forEach((f) => { const k = normalizarTextoInv(f.proveedor); if (k && !m.has(k)) m.set(k, { nombre: f.proveedor, identificacion: f.identificacion || "", telefono: f.telefono || "" }); });
+    [...(inventario || []), ...(gastos || [])].forEach((x) => { const k = normalizarTextoInv(x.proveedor); if (k && !m.has(k)) m.set(k, { nombre: String(x.proveedor).trim(), identificacion: "", telefono: "" }); });
+    return [...m.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [lista, inventario, gastos]);
+
+  const terminosBase = () => { try { return localStorage.getItem("pc_oc_terminos") || ""; } catch (e) { return ""; } };
+  const nueva = () => setO({ id: null, numero: null, fecha: hoyISO, entrega: sumarDiasISO(hoyISO, 3), proveedor: "", identificacion: "", telefono: "",
+    items: [lineaCotVacia(), lineaCotVacia(), lineaCotVacia()].map((l) => ({ ...l, obs: "" })), terminos: terminosBase(), notas: "", comentarios: "", estado: "borrador", creado_por: usuarioNombre });
+  const abrir = (f, duplicar) => setO({ ...f, id: duplicar ? null : f.id, numero: duplicar ? null : f.numero, fecha: duplicar ? hoyISO : f.fecha,
+    entrega: duplicar ? sumarDiasISO(hoyISO, 3) : f.entrega, estado: duplicar ? "borrador" : f.estado, recibida_en: duplicar ? null : f.recibida_en,
+    items: (Array.isArray(f.items) && f.items.length ? f.items : [lineaCotVacia()]).map((l) => ({ obs: "", ...l, id: l.id || Date.now() + Math.random() })) });
+  const set = (k, v) => setO((x) => ({ ...x, [k]: v }));
+  const setLinea = (id, cambios) => setO((x) => ({ ...x, items: x.items.map((l) => l.id === id ? { ...l, ...cambios } : l) }));
+  const calc = o ? calcularCotizacion(o.items, []) : null;
+  const cerrada = o && (o.estado === "recibida" || o.estado === "cancelada");
+
+  const validar = () => {
+    if (!String(o.proveedor || "").trim()) { avisar("Escribe o elige el proveedor.", "error"); return false; }
+    if (!o.items.some((l) => String(l.nombre || "").trim())) { avisar("Agrega al menos un concepto.", "error"); return false; }
+    return true;
+  };
+  const guardar = async (extra) => {
+    if (!validar()) return null;
+    setOcupado(true);
+    try {
+      try { localStorage.setItem("pc_oc_terminos", o.terminos || ""); } catch (e) {}
+      const fila = await guardarOrdenCompra({ ...o, ...(extra || {}) });
+      setO((x) => ({ ...x, ...fila, items: x.items }));
+      cargar();
+      return fila;
+    } catch (e) { avisar(e.message || String(e), "error"); return null; }
+    finally { setOcupado(false); }
+  };
+  const descargar = async (fila) => {
+    try { const { doc, nombre } = await pdfOrdenCompra({ ...o, ...(fila || {}), items: o.items }); doc.save(nombre); } catch (e) { avisar(e.message || String(e), "error"); }
+  };
+  const enviarWA = async () => {
+    if (!validar()) return;
+    const fila = cerrada ? null : await guardar(o.estado === "borrador" ? { estado: "enviada" } : null);
+    const datos = { ...o, ...(fila || {}), items: o.items };
+    abrirWA(o.telefono || "", mensajeOrdenCompraWA(datos, calcularCotizacion(datos.items, [])));
+  };
+  const compartirPDF = async () => {
+    if (!validar()) return;
+    const fila = cerrada ? null : await guardar();
+    try {
+      const { doc, nombre } = await pdfOrdenCompra({ ...o, ...(fila || {}), items: o.items });
+      const archivo = new File([doc.output("blob")], nombre, { type: "application/pdf" });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) await navigator.share({ files: [archivo], title: nombre }).catch(() => {});
+      else { doc.save(nombre); avisar("Este equipo no permite compartir directo: se descarg\xF3 el PDF para adjuntarlo.", "ok"); }
+    } catch (e) { avisar(e.message || String(e), "error"); }
+  };
+  const plan = o ? planRecepcionOC(o.items, inventario) : [];
+  const recibirMercancia = async () => {
+    setOcupado(true);
+    try {
+      let base = Date.now();
+      for (const p of plan) {
+        if (p.prod) {
+          const id = encodeURIComponent(String(p.prod.id));
+          const fila = await supaFetch("pc_inventario", "GET", null, "?select=stock&id=eq." + id);
+          const antes = Array.isArray(fila) && fila[0] ? Number(fila[0].stock) || 0 : Number(p.prod.stock) || 0;
+          await supaFetch("pc_inventario", "PATCH", { stock: antes + p.cantidad, preciocompra: p.costo || undefined, proveedor: o.proveedor, fechaentrada: fechaLocal() }, "?id=eq." + id);
+          auditar("pc_inventario", "compra", { servicio: p.prod.nombre }, ["stock: " + antes + " → " + (antes + p.cantidad) + " (" + numeroOC(o.numero) + ")"]);
+        } else {
+          await upsertOne("pc_inventario", { id: String(base++), nombre: p.linea.nombre.trim(), categoria: "otro", stock: p.cantidad, stockInicial: p.cantidad, stockMin: 0,
+            costo: p.costo, precioCompra: p.costo, pventa: 0, precioVenta: 0, proveedor: o.proveedor, fechaEntrada: fechaLocal(),
+            notas: "Entr\xF3 con la orden de compra " + numeroOC(o.numero) + ". Falta precio de venta y categor\xEDa." });
+        }
+      }
+      // Registro de la compra (igual que una factura de proveedor cargada).
+      try {
+        const token = await supaAccessToken();
+        await fetch(SUPA_URL + "/rest/v1/pc_compras", { method: "POST",
+          headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ fecha: fechaLocal(), proveedor: o.proveedor, numero: numeroOC(o.numero), total: calc.total,
+            items: plan.map((p) => ({ nombre: p.linea.nombre, cantidad: p.cantidad, costo: p.costo, nuevo: !p.prod })), registrado_por: usuarioNombre }) });
+      } catch (e) { console.warn("[pc_compras]", e); }
+      await guardarOrdenCompra({ ...o, estado: "recibida", recibida_en: new Date().toISOString() });
+      setO((x) => ({ ...x, estado: "recibida", recibida_en: new Date().toISOString() }));
+      setRecibir(false); cargar();
+      if (typeof refetchInventario === "function") refetchInventario();
+      avisar("Mercanc\xEDa recibida: el inventario qued\xF3 actualizado.", "ok");
+    } catch (e) { avisar(e.message || String(e), "error"); }
+    finally { setOcupado(false); }
+  };
+
+  if (!o) {
+    const q = normalizarTextoInv(busca);
+    const filas = Array.isArray(lista) ? lista.filter((f) => (filtro === "todas" || estadoOrdenCompra(f, hoyISO) === filtro) &&
+      (!q || normalizarTextoInv([numeroOC(f.numero), f.proveedor, f.identificacion].join(" ")).includes(q))) : [];
+    const cuenta = (k) => Array.isArray(lista) ? lista.filter((f) => k === "todas" || estadoOrdenCompra(f, hoyISO) === k).length : 0;
+    return E("div", null,
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 } },
+        E("div", null,
+          E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, margin: 0 } }, "\xD3rdenes de compra"),
+          E("p", { style: { color: C.suave, fontSize: 13.5, margin: "4px 0 0" } }, "Pedidos a proveedores: se env\xEDan en PDF o por WhatsApp y, al llegar, se suman al inventario.")),
+        E("button", { onClick: nueva, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "11px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer" } }, "＋ Nueva orden de compra")),
+      lista === false && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, marginBottom: 14 } },
+        "Falta crear la tabla de \xF3rdenes de compra en Supabase. Hasta entonces se pueden preparar y descargar, pero no guardar ni recibir."),
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
+        ["todas", "borrador", "enviada", "atrasada", "recibida", "cancelada"].map((k) => E("button", { key: k, onClick: () => setFiltro(k),
+          style: { padding: "6px 12px", borderRadius: 999, border: "1px solid " + (filtro === k ? C.verde : "#d9dee3"), background: filtro === k ? C.verde : "#fff",
+                   color: filtro === k ? "#fff" : "#3d444d", fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 0 } },
+          (k === "todas" ? "Todas" : OC_ESTADOS[k].t) + " (" + cuenta(k) + ")")),
+        E("input", { value: busca, onChange: (e) => setBusca(e.target.value), placeholder: "🔍 N\xFAmero o proveedor",
+          style: { marginLeft: "auto", border: "1px solid #d9dee3", borderRadius: 999, padding: "7px 12px", fontSize: 13, minWidth: 200 } })),
+      E(Card, { style: { padding: 0, overflow: "hidden" } },
+        lista === null ? E("div", { style: { padding: 24, color: C.suave } }, "Cargando…")
+        : filas.length === 0 ? E("div", { style: { padding: 32, textAlign: "center", color: C.suave } }, Array.isArray(lista) && lista.length ? "Ninguna orden coincide." : "Todav\xEDa no hay \xF3rdenes de compra.")
+        : E("div", { style: { overflowX: "auto" } }, E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 720 } },
+            E("thead", null, E("tr", { style: { background: "#f8f9fa", textAlign: "left" } },
+              ["N\xFAmero", "Proveedor", "Fecha", "Entrega", "Total", "Estado", ""].map((h, i) => E("th", { key: i, style: { padding: "10px 14px", fontSize: 11.5, color: C.suave, fontWeight: 600, textAlign: i === 4 ? "right" : "left" } }, h)))),
+            E("tbody", null, filas.map((f) => { const est = OC_ESTADOS[estadoOrdenCompra(f, hoyISO)] || OC_ESTADOS.borrador;
+              return E("tr", { key: f.id, style: { borderTop: "1px solid #f1f3f4", cursor: "pointer" }, onClick: () => abrir(f, false) },
+                E("td", { style: { padding: "11px 14px", fontWeight: 700, color: C.verde } }, numeroOC(f.numero)),
+                E("td", { style: { padding: "11px 14px" } }, f.proveedor),
+                E("td", { style: { padding: "11px 14px" } }, fechaCorta(f.fecha)),
+                E("td", { style: { padding: "11px 14px" } }, fechaCorta(f.entrega)),
+                E("td", { style: { padding: "11px 14px", textAlign: "right", fontWeight: 700 } }, dinero(f.total)),
+                E("td", { style: { padding: "11px 14px" } }, E(Badge, { color: est.c }, est.t)),
+                E("td", { style: { padding: "8px 14px", textAlign: "right" }, onClick: (e) => e.stopPropagation() },
+                  E("button", { className: "pc-btn-suave", onClick: () => abrir(f, true), title: "Nueva orden con lo mismo (pedido repetido)" }, "Duplicar")));
+            }))))));
+  }
+
+  const est = OC_ESTADOS[estadoOrdenCompra(o, hoyISO)] || OC_ESTADOS.borrador;
+  const qp = normalizarTextoInv(o.proveedor);
+  const sugProv = verProv ? proveedores.filter((p) => !qp || normalizarTextoInv(p.nombre).includes(qp)).slice(0, 8) : [];
+  const lbl = (t) => E("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#3d444d", marginBottom: 5 } }, t);
+  const inp = { width: "100%", minWidth: 0, border: "1px solid #d9dee3", borderRadius: 9, padding: "9px 11px", fontSize: 14 };
+  const celda = { padding: "6px 6px", verticalAlign: "top" };
+  const rnc = (typeof PC_CONFIG !== "undefined" && PC_CONFIG.rnc) || window._petcolinasRNC || "";
+  return E("div", null,
+    E("button", { className: "pc-btn-suave", onClick: () => { setO(null); setRecibir(false); }, style: { marginBottom: 14 } }, "← Volver a \xF3rdenes de compra"),
+    E(Card, { style: { padding: 0, overflow: "visible" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, padding: "22px 26px", borderBottom: "1px solid " + C.borde, flexWrap: "wrap" } },
+        E("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
+          E("img", { src: "logo.png", alt: "", style: { width: 58, height: "auto" }, onError: (ev) => { ev.currentTarget.style.display = "none"; } }),
+          E("div", null,
+            E("div", { style: { fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em" } }, E("span", { style: { color: "#f28c28" } }, "Pet"), E("span", { style: { color: "#0c1e31" } }, "Colinas")),
+            E("div", { style: { fontSize: 12, color: C.suave } }, (rnc ? "RNC " + rnc + " \xB7 " : "") + "petcolinasrd@gmail.com"))),
+        E("div", { style: { textAlign: "right" } },
+          E("div", { style: { fontSize: 13, color: C.suave } }, "Orden de compra"),
+          E("div", { style: { fontSize: 22, fontWeight: 800, color: C.verde } }, o.numero ? numeroOC(o.numero) : "Nueva"),
+          E("div", { style: { marginTop: 4 } }, E(Badge, { color: est.c }, est.t)))),
+      E("div", { style: { padding: "20px 26px" } },
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 } },
+          E("div", { style: { position: "relative" } }, lbl("Proveedor *"),
+            E("input", { value: o.proveedor, disabled: cerrada, placeholder: "Elige uno conocido o escribe uno nuevo",
+              onFocus: () => setVerProv(true), onBlur: () => setTimeout(() => setVerProv(false), 150),
+              onChange: (e) => { set("proveedor", e.target.value); setVerProv(true); }, style: inp }),
+            sugProv.length > 0 && E("div", { style: { position: "absolute", top: "100%", left: 0, right: 0, zIndex: 60, background: "#fff", border: "1px solid #e6e9ec",
+              borderRadius: 10, boxShadow: "0 10px 30px rgba(16,24,40,.14)", marginTop: 4, maxHeight: 260, overflowY: "auto" } },
+              sugProv.map((p) => E("button", { key: p.nombre, onMouseDown: (e) => { e.preventDefault();
+                  setO((x) => ({ ...x, proveedor: p.nombre, identificacion: p.identificacion || x.identificacion, telefono: p.telefono || x.telefono })); setVerProv(false); },
+                style: { display: "block", width: "100%", textAlign: "left", background: "#fff", border: "none", borderBottom: "1px solid #f3f4f5", padding: "8px 11px", cursor: "pointer", fontSize: 13, minHeight: 0 } },
+                E("b", null, p.nombre), p.telefono ? E("span", { style: { color: C.suave } }, " \xB7 " + p.telefono) : null))),
+            !cerrada && E("div", { style: { fontSize: 11.5, color: C.suave, marginTop: 4 } }, "＋ Si no est\xE1 en la lista, escribe el nombre: queda guardado como proveedor nuevo.")),
+          E("div", null, lbl("Identificaci\xF3n (RNC / c\xE9dula)"), E("input", { value: o.identificacion || "", disabled: cerrada, onChange: (e) => set("identificacion", e.target.value), style: inp })),
+          E("div", null, lbl("Tel\xE9fono"), E("input", { value: o.telefono || "", disabled: cerrada, onChange: (e) => set("telefono", e.target.value), style: inp })),
+          E("div", null, lbl("Fecha *"), E("input", { type: "date", value: o.fecha, disabled: cerrada, onChange: (e) => set("fecha", e.target.value), style: inp })),
+          E("div", null, lbl("Fecha de entrega *"), E("input", { type: "date", value: o.entrega || "", disabled: cerrada, onChange: (e) => set("entrega", e.target.value), style: inp }))),
+        E("div", { style: { fontWeight: 700, fontSize: 15, margin: "26px 0 10px", paddingTop: 18, borderTop: "1px solid " + C.borde } }, "Productos a pedir"),
+        E("div", { style: { overflowX: "auto" } }, E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 900 } },
+          E("thead", null, E("tr", { style: { background: "#f8f9fa", textAlign: "left" } },
+            ["#", "Concepto", "Precio (costo)", "Desc %", "Impuesto", "Cantidad", "Observaciones", "Total", ""].map((h, i) => E("th", { key: i,
+              style: { padding: "9px 6px", fontSize: 11.5, color: C.suave, fontWeight: 600, textAlign: i === 7 ? "right" : "left", width: [28, null, 110, 76, 116, 80, 170, 110, 30][i] || undefined } }, h)))),
+          E("tbody", null, calc.lineas.map((l, i) => E("tr", { key: l.id, style: { borderTop: "1px solid #f1f3f4" } },
+            E("td", { style: { ...celda, paddingTop: 15, color: C.suave } }, i + 1),
+            E("td", { style: celda }, cerrada ? E("div", { style: { paddingTop: 9 } }, l.nombre) : E(SelectorLineaCot, { linea: l, catalogo, onCambio: (cb) => setLinea(l.id, cb) })),
+            E("td", { style: celda }, E("input", { type: "number", min: 0, step: "0.01", value: l.precio, disabled: cerrada, onChange: (e) => setLinea(l.id, { precio: e.target.value }), style: { ...inp, padding: "8px 8px", fontSize: 13.5 } })),
+            E("td", { style: celda }, E("input", { type: "number", min: 0, max: 100, value: l.descPct, disabled: cerrada, onChange: (e) => setLinea(l.id, { descPct: e.target.value }), style: { ...inp, padding: "8px 8px", fontSize: 13.5 } })),
+            E("td", { style: celda }, E("select", { value: l.itbis ? "itbis" : "no", disabled: cerrada, onChange: (e) => setLinea(l.id, { itbis: e.target.value === "itbis" }), style: { ...inp, padding: "8px 6px", fontSize: 13 } },
+              E("option", { value: "no" }, "Ninguno"), E("option", { value: "itbis" }, "ITBIS 18%"))),
+            E("td", { style: celda }, E("input", { type: "number", min: 0, step: "1", value: l.cantidad, disabled: cerrada, onChange: (e) => setLinea(l.id, { cantidad: e.target.value }), style: { ...inp, padding: "8px 8px", fontSize: 13.5 } })),
+            E("td", { style: celda }, E("input", { value: l.obs || "", disabled: cerrada, placeholder: "Observaciones", onChange: (e) => setLinea(l.id, { obs: e.target.value }), style: { ...inp, padding: "8px 8px", fontSize: 13 } })),
+            E("td", { style: { ...celda, paddingTop: 15, textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" } }, dinero(l.base + l.impuesto)),
+            E("td", { style: { ...celda, paddingTop: 10 } }, !cerrada && E("button", { onClick: () => setO((x) => ({ ...x, items: x.items.length > 1 ? x.items.filter((y) => y.id !== l.id) : [{ ...lineaCotVacia(), obs: "" }] })),
+              title: "Quitar l\xEDnea", style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", fontSize: 16, minHeight: 0 } }, "✕"))))))),
+        !cerrada && E("button", { onClick: () => setO((x) => ({ ...x, items: [...x.items, { ...lineaCotVacia(), obs: "" }] })),
+          style: { marginTop: 8, background: "none", border: "none", color: C.verde, fontWeight: 600, fontSize: 13.5, cursor: "pointer", padding: 0, minHeight: 0 } }, "＋ Agregar l\xEDnea"),
+        E("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 18 } },
+          E("div", { style: { width: "100%", maxWidth: 340, background: "#f8f9fa", border: "1px solid " + C.borde, borderRadius: 12, padding: "14px 16px" } },
+            [["Subtotal", calc.subtotal], ["Descuento", -calc.descuento], ["Impuestos (ITBIS)", calc.impuestos]]
+              .map(([t, v]) => E("div", { key: t, style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#3d444d", padding: "3px 0" } }, E("span", null, t), E("span", null, dinero(v)))),
+            E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 18, fontWeight: 800, borderTop: "1px solid " + C.borde, marginTop: 8, paddingTop: 10 } },
+              E("span", null, "Total"), E("span", { style: { color: C.verde } }, dinero(calc.total))))),
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 22 } },
+          E("div", null, lbl("T\xE9rminos y condiciones"), E("textarea", { value: o.terminos || "", disabled: cerrada, rows: 3, placeholder: "Condiciones de pago, entrega, garant\xEDa…",
+            onChange: (e) => set("terminos", e.target.value), style: { ...inp, fontFamily: "inherit", resize: "vertical" } })),
+          E("div", null, lbl("Notas (visibles en la impresi\xF3n)"), E("textarea", { value: o.notas || "", disabled: cerrada, rows: 3,
+            onChange: (e) => set("notas", e.target.value), style: { ...inp, fontFamily: "inherit", resize: "vertical" } }))),
+        E("div", { style: { marginTop: 16 } }, lbl("Comentarios internos (no salen en la impresi\xF3n)"),
+          E("textarea", { value: o.comentarios || "", rows: 2, placeholder: "Informaci\xF3n importante para el equipo",
+            onChange: (e) => set("comentarios", e.target.value), style: { ...inp, fontFamily: "inherit", resize: "vertical", background: "#fffdf5" } }))),
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", padding: "14px 26px", borderTop: "1px solid " + C.borde, background: "#fbfcfc", borderRadius: "0 0 14px 14px" } },
+        o.id && !cerrada && E("select", { value: o.estado, onChange: async (e) => { const v = e.target.value; set("estado", v); await guardar({ estado: v }); },
+          title: "Estado de la orden", style: { border: "1px solid #d9dee3", borderRadius: 9, padding: "8px 10px", fontSize: 13, marginRight: "auto" } },
+          ["borrador", "enviada", "cancelada"].map((k) => E("option", { key: k, value: k }, OC_ESTADOS[k].t))),
+        E("button", { className: "pc-btn-suave", disabled: ocupado, onClick: () => guardar().then((f) => f && avisar("Orden " + numeroOC(f.numero) + " guardada.", "ok")) }, "Guardar"),
+        E("button", { className: "pc-btn-suave", disabled: ocupado, onClick: async () => { if (!validar()) return; const f = cerrada ? null : await guardar(); descargar(f); } }, "Descargar PDF"),
+        E("button", { className: "pc-btn-suave", disabled: ocupado, onClick: compartirPDF }, "Compartir PDF"),
+        E("button", { disabled: ocupado, onClick: enviarWA, style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "Enviar al proveedor por WhatsApp"),
+        o.id && !cerrada && E("button", { disabled: ocupado, onClick: () => setRecibir(true),
+          style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "Recibir mercanc\xEDa")),
+      o.estado === "recibida" && E("div", { style: { margin: "0 26px 20px", padding: 12, border: "1px solid #b7dfc5", background: "#f0f9f3", borderRadius: 12, fontSize: 13 } },
+        "Mercanc\xEDa recibida" + (o.recibida_en ? " el " + fechaCorta(String(o.recibida_en).slice(0, 10)) : "") + ": ya est\xE1 sumada al inventario."),
+      recibir && E("div", { style: { margin: "0 26px 20px", padding: 16, border: "1px solid #b7dfc5", background: "#f0f9f3", borderRadius: 12 } },
+        E("div", { style: { fontWeight: 700, marginBottom: 6 } }, "Recibir la mercanc\xEDa de " + numeroOC(o.numero)),
+        E("div", { style: { fontSize: 13, color: "#3d444d", marginBottom: 8 } }, "Revisa que lleg\xF3 lo pedido (si lleg\xF3 otra cantidad, corr\xEDgela arriba y guarda antes). Al confirmar, esto pasa en el inventario:"),
+        E("ul", { style: { margin: "0 0 12px 18px", fontSize: 13, lineHeight: 1.6 } }, plan.map((p, i) => E("li", { key: i },
+          E("b", null, p.cantidad + " x " + p.linea.nombre), " — ",
+          p.prod ? "se suma a “" + p.prod.nombre + "” (stock " + (Number(p.prod.stock) || 0) + " → " + ((Number(p.prod.stock) || 0) + p.cantidad) + "), costo " + dinero(p.costo)
+                 : E("span", { style: { color: "#b45309" } }, "producto nuevo en inventario (despu\xE9s ponle precio de venta y categor\xEDa)")))),
+        E("div", { style: { display: "flex", gap: 8 } },
+          E("button", { disabled: ocupado || !plan.length, onClick: recibirMercancia, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" } },
+            ocupado ? "Actualizando…" : "Confirmar recepci\xF3n"),
+          E("button", { className: "pc-btn-suave", onClick: () => setRecibir(false) }, "Cancelar")))));
 }
 // Cabecera del admin (diseño "moderno y limpio", oct 2026). Antes era un bloque
 // verde de ~170 px con seis renglones de estado apilados; ahora una franja de
@@ -8230,6 +8602,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
+    tab === "ordenes_compra" && React.createElement(OrdenesCompra, { inventario: todoInventario, gastos, refetchInventario, usuarioNombre: "Victor" }),
     tab === "cotizaciones" && React.createElement(Cotizaciones, { clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario, setVentas, usuarioNombre: "Victor" }),
     tab === "recetarios" && React.createElement(Recetario, { clientes: todosClientes, historias, medicoPorDefecto: "", usuarioNombre: "Victor" }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
