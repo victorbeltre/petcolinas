@@ -237,6 +237,24 @@ portales y Mi Vitrina/Farmacia de la doctora. Todo pasa por `lineasStockVenta` +
 - Pendiente (no hecho): borrar o editar una venta YA registrada en Ventas no devuelve
   el stock.
 
+## DISEÑO "MODERNO Y LIMPIO" (etapa 1, 28 oct 2026)
+Decision de Victor: nuevo look de la app interna, estilo moderno y limpio, por etapas
+y SIN tocar como funciona nada. Etapa 1 (hecha):
+- Letra Inter (Google Fonts; si no carga, cae a la del sistema). Constante `FUENTE`.
+  Los titulos que estaban en Georgia (serif) usan `FUENTE`.
+- Tokens nuevos en `C`: `borde`, `texto`, `suave`, `fondo` (#f5f7f6). El verde de marca
+  sigue siendo `C.verde` (#1a6b3a): se reserva para lo que se toca o esta activo.
+- Card/Btn/Badge/Input/Select: borde fino en vez de sombra pesada, radio 10-14, etiquetas
+  sin MAYUSCULAS. Anillo verde al enfocar un campo (CSS global).
+- Menu lateral blanco con el activo en verde suave; logo real (`logo.png`).
+- `CabeceraAdmin`: franja blanca fija de 62 px (antes bloque verde de ~170 px con seis
+  renglones de estado). Mantiene: seccion, fecha, por cobrar, EstadoSync (prop `claro`),
+  sincronizar, usuario y Salir.
+- `LoginScreen`: panel de marca con el logo + formulario; en el telefono solo el formulario.
+- Avisos de pantalla: los bordes de 1.5-2 px se afinan a 1 px por CSS (`.pc-app`).
+Pendiente (etapa 2+): portales de la doctora (rosado) y del groomer, tarjetas del Dashboard,
+cambiar los emojis del menu por iconos SVG, tablas.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
