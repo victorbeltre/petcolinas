@@ -261,7 +261,8 @@ y SIN tocar como funciona nada. Etapa 1 (hecha):
 - `CabeceraAdmin`: franja blanca fija de 62 px (antes bloque verde de ~170 px con seis
   renglones de estado). Mantiene: seccion, fecha, por cobrar, EstadoSync (prop `claro`),
   sincronizar, usuario y Salir.
-- `LoginScreen`: panel de marca con el logo + formulario; en el telefono solo el formulario.
+- `LoginScreen`: portada de Victor (`portada-app.jpg`, de su PDF de Canva, recortada a 2480x968)
+  en el lado ancho + formulario a la derecha; en tablet/telefono la portada arriba (29 oct 2026).
 - Avisos de pantalla: los bordes de 1.5-2 px se afinan a 1 px por CSS (`.pc-app`).
 Pendiente (etapa 2+): portales de la doctora (rosado) y del groomer, tarjetas del Dashboard,
 cambiar los emojis del menu por iconos SVG, tablas.
