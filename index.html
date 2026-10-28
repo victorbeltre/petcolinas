@@ -73,6 +73,8 @@
       .pc-login-form > div { padding: 28px 22px; }
     }
 
+    /* Cotizaciones: totales debajo de las retenciones en pantallas angostas. */
+    @media (max-width: 720px) { .pc-cot-pie { grid-template-columns: minmax(0, 1fr) !important; } }
     /* Recetarios: la hoja A5 de la plantilla con los campos escritos encima. */
     .pc-receta-grid { display: grid; grid-template-columns: minmax(0, 560px) minmax(300px, 1fr); gap: 22px; align-items: start; }
     @media (max-width: 1000px) { .pc-receta-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -271,7 +273,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 21:08Z";
+const PC_BUILD = "2026-10-28 21:18Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2410,6 +2412,7 @@ const TABS = [
   { id: "agenda", icon: "\u{1F4C5}", label: "Agenda", grupo: "Operaci\xF3n" },
   { id: "ventas", icon: "\u{1F4B0}", label: "Ventas", grupo: "Operaci\xF3n" },
   { id: "facturas", icon: "\u{1F4C4}", label: "Facturas", grupo: "Operaci\xF3n" },
+  { id: "cotizaciones", icon: "\u{1F4D1}", label: "Cotizaciones", grupo: "Operaci\xF3n" },
   { id: "cobros", icon: "\u{1F4B5}", label: "Cobros", grupo: "Operaci\xF3n" },
   { id: "caja", icon: "\u{1F9FE}", label: "Caja", grupo: "Operaci\xF3n" },
 
@@ -2768,6 +2771,451 @@ function Recetario({ clientes = [], historias = [], medicoPorDefecto = "", usuar
             E("div", { style: { fontSize: 12, color: C.suave } }, String(h.fecha || "").split("-").reverse().join("/") + (h.medico ? " \xB7 " + h.medico : ""))),
           E("button", { className: "pc-btn-suave", onClick: () => abrir(h, false) }, "Abrir"),
           E("button", { className: "pc-btn-suave", onClick: () => abrir(h, true), title: "Nueva receta con lo mismo y la fecha de hoy" }, "Duplicar"))))));
+}
+// ─── COTIZACIONES (M25, 29 oct 2026) ────────────────────────────────────────
+// Al estilo de Alegra (la referencia que mando Victor): cliente, fecha de
+// creacion y de vencimiento, lineas con cantidad, precio, descuento e ITBIS,
+// retenciones, notas y terminos. Se guarda en pc_cotizaciones (el numero lo
+// pone la base), se descarga en PDF con el logo, se manda por WhatsApp y, si
+// el cliente acepta, se convierte en VENTA pendiente de cobro (con el mismo
+// control de stock que el resto de la app).
+const COT_ITBIS = 0.18;
+const COT_RETENCIONES = [
+  { id: "isr10", nombre: "ISR 10% (servicios)", pct: 0.10, sobre: "subtotal" },
+  { id: "isr2", nombre: "ISR 2% (persona jur\xEDdica)", pct: 0.02, sobre: "subtotal" },
+  { id: "itbis30", nombre: "ITBIS retenido 30%", pct: 0.30, sobre: "itbis" },
+  { id: "itbis100", nombre: "ITBIS retenido 100%", pct: 1, sobre: "itbis" }
+];
+const COT_ESTADOS = {
+  borrador: { t: "Borrador", c: "#6b7280" }, enviada: { t: "Enviada", c: "#1a4fa0" }, aceptada: { t: "Aceptada", c: "#1a6b3a" },
+  rechazada: { t: "Rechazada", c: "#b42318" }, facturada: { t: "Convertida en venta", c: "#7c3aed" }, vencida: { t: "Vencida", c: "#b45309" }
+};
+const COT_TERMINOS_BASE = "Precios en pesos dominicanos (RD$). Esta cotizaci\xF3n es v\xE1lida hasta la fecha de vencimiento indicada. " +
+  "Los productos est\xE1n sujetos a disponibilidad al momento de la compra. El diagn\xF3stico final puede modificar los servicios cotizados.";
+const numeroCot = (n) => "COT-" + String(n || 0).padStart(4, "0");
+const sumarDiasISO = (iso, d) => { const x = new Date(iso + "T12:00:00"); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+const fechaCorta = (iso) => { const p = String(iso || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : ""; };
+const dinero = (n) => "RD$ " + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function lineaCotVacia() { return { id: Date.now() + Math.random(), nombre: "", area: "", prodId: null, cantidad: 1, precio: 0, descPct: 0, itbis: false }; }
+// Totales como los presenta Alegra: subtotal bruto, descuento, subtotal neto,
+// impuestos, retenciones y total. Cada retencion se calcula sobre el subtotal
+// neto o sobre el ITBIS, segun su tipo.
+function calcularCotizacion(items, retenciones) {
+  let bruto = 0, desc = 0, imp = 0;
+  const lineas = (items || []).map((it) => {
+    const b = (Number(it.cantidad) || 0) * (Number(it.precio) || 0);
+    const d = b * Math.min(100, Math.max(0, Number(it.descPct) || 0)) / 100;
+    const base = b - d, i = it.itbis ? base * COT_ITBIS : 0;
+    bruto += b; desc += d; imp += i;
+    return { ...it, bruto: b, desc: d, base, impuesto: i };
+  });
+  const neto = bruto - desc;
+  const rets = (retenciones || []).map((rid) => COT_RETENCIONES.find((r) => r.id === rid)).filter(Boolean)
+    .map((r) => ({ ...r, monto: (r.sobre === "itbis" ? imp : neto) * r.pct }));
+  const retenido = rets.reduce((s, r) => s + r.monto, 0);
+  const r2 = (n) => Math.round(n * 100) / 100;
+  return { lineas, rets, subtotal: r2(bruto), descuento: r2(desc), neto: r2(neto), impuestos: r2(imp), retenido: r2(retenido), total: r2(neto + imp - retenido) };
+}
+function estadoCotizacion(c, hoyISO) {
+  if ((c.estado === "borrador" || c.estado === "enviada") && c.vence && c.vence < (hoyISO || fechaLocal())) return "vencida";
+  return c.estado || "borrador";
+}
+function mensajeCotizacionWA(c, calc) {
+  const nombre = String(c.cliente_nombre || "").trim().split(/\s+/)[0];
+  const lineas = calc.lineas.filter((l) => String(l.nombre || "").trim()).map((l) =>
+    "• " + (Number(l.cantidad) > 1 ? l.cantidad + " x " : "") + l.nombre + " — " + dinero(l.base + l.impuesto));
+  return "Hola" + (nombre ? " " + nombre : "") + ", le compartimos la cotizaci\xF3n " + (c.numero ? numeroCot(c.numero) + " " : "") + "de PetColinas" +
+    (c.mascota ? " para " + c.mascota : "") + ":\n\n" + lineas.join("\n") +
+    "\n\n*Total: " + dinero(calc.total) + "*" + (calc.impuestos > 0 ? " (incluye ITBIS)" : "") +
+    (c.vence ? "\nV\xE1lida hasta el " + fechaCorta(c.vence) + "." : "") +
+    "\n\nCualquier duda estamos a la orden. \xBFLe agendamos? \u{1F43E}";
+}
+let cotLogoDataURL = null;
+async function logoComoDataURL() {
+  if (cotLogoDataURL !== null) return cotLogoDataURL;
+  try {
+    const r = await fetch("logo.png"); if (!r.ok) throw new Error();
+    const b = await r.blob();
+    cotLogoDataURL = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => ok(""); fr.readAsDataURL(b); });
+  } catch (e) { cotLogoDataURL = ""; }
+  return cotLogoDataURL;
+}
+// PDF A4 con texto real (se puede copiar y busca bien), logo y colores de PetColinas.
+async function pdfCotizacion(c) {
+  if (!window.jspdf) throw new Error("No se pudo cargar el generador de PDF. Recarga la p\xE1gina.");
+  const calc = calcularCotizacion(c.items, c.retenciones);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = 595.28, M = 40, verde = [26, 107, 58], tinta = [31, 35, 40], suave = [107, 114, 128], naranja = [242, 140, 40];
+  const logo = await logoComoDataURL();
+  if (logo) { try { doc.addImage(logo, "PNG", M, 30, 64, 56); } catch (e) {} }
+  doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.setTextColor(...naranja); doc.text("Pet", M + 74, 58);
+  doc.setTextColor(12, 30, 49); doc.text("Colinas", M + 74 + doc.getTextWidth("Pet"), 58);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...suave);
+  const rnc = (typeof PC_CONFIG !== "undefined" && PC_CONFIG.rnc) || window._petcolinasRNC || "";
+  ["Veterinaria \xB7 Grooming \xB7 Petshop", "Av. Prolongaci\xF3n 27 de Febrero, Plaza Las Colinas, Santo Domingo Oeste",
+   "Tel. 809-752-6806 \xB7 petcolinasrd@gmail.com" + (rnc ? " \xB7 RNC " + rnc : "")].forEach((t, i) => doc.text(t, M + 74, 72 + i * 11));
+  doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(...tinta); doc.text("COTIZACI\xD3N", W - M, 50, { align: "right" });
+  doc.setFontSize(11); doc.setTextColor(...verde); doc.text(c.numero ? numeroCot(c.numero) : "Borrador", W - M, 66, { align: "right" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...suave);
+  doc.text("Fecha: " + fechaCorta(c.fecha), W - M, 82, { align: "right" });
+  if (c.vence) doc.text("V\xE1lida hasta: " + fechaCorta(c.vence), W - M, 94, { align: "right" });
+  let y = 118;
+  doc.setDrawColor(230, 233, 236); doc.setFillColor(247, 248, 249); doc.roundedRect(M, y, W - 2 * M, 50, 6, 6, "FD");
+  doc.setFontSize(8); doc.setTextColor(...suave); doc.text("CLIENTE", M + 12, y + 16);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...tinta); doc.text(String(c.cliente_nombre || "—"), M + 12, y + 32);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...suave);
+  doc.text([c.telefono ? "Tel. " + c.telefono : "", c.mascota ? "Mascota: " + c.mascota : ""].filter(Boolean).join("   \xB7   "), M + 12, y + 44);
+  y += 70;
+  // Tabla
+  const col = [M, M + 22, M + 290, M + 330, M + 400, M + 440, W - M];
+  const encabezado = () => {
+    doc.setFillColor(...verde); doc.rect(M, y, W - 2 * M, 20, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+    doc.text("#", col[0] + 7, y + 13); doc.text("Producto o servicio", col[1], y + 13); doc.text("Cant.", col[3] - 6, y + 13, { align: "right" });
+    doc.text("Precio", col[4] - 6, y + 13, { align: "right" }); doc.text("Desc.", col[5] - 6, y + 13, { align: "right" });
+    doc.text("ITBIS", col[5] + 4, y + 13); doc.text("Subtotal", col[6] - 6, y + 13, { align: "right" });
+    y += 20;
+  };
+  encabezado();
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+  calc.lineas.filter((l) => String(l.nombre || "").trim()).forEach((l, i) => {
+    const desc = doc.splitTextToSize(String(l.nombre), col[2] - col[1] + 30);
+    const h = Math.max(18, desc.length * 11 + 7);
+    if (y + h > 760) { doc.addPage(); y = 40; encabezado(); doc.setFont("helvetica", "normal"); doc.setFontSize(9); }
+    if (i % 2) { doc.setFillColor(250, 251, 251); doc.rect(M, y, W - 2 * M, h, "F"); }
+    doc.setTextColor(...suave); doc.text(String(i + 1), col[0] + 7, y + 12);
+    doc.setTextColor(...tinta); doc.text(desc, col[1], y + 12);
+    doc.text(String(l.cantidad), col[3] - 6, y + 12, { align: "right" });
+    doc.text(dinero(l.precio).replace("RD$ ", ""), col[4] - 6, y + 12, { align: "right" });
+    doc.text(Number(l.descPct) ? l.descPct + "%" : "—", col[5] - 6, y + 12, { align: "right" });
+    doc.text(l.itbis ? "18%" : "—", col[5] + 4, y + 12);
+    doc.text(dinero(l.base).replace("RD$ ", ""), col[6] - 6, y + 12, { align: "right" });
+    y += h;
+    doc.setDrawColor(238, 240, 242); doc.line(M, y, W - M, y);
+  });
+  // Totales
+  y += 14;
+  const filas = [["Subtotal", calc.subtotal], ["Descuento", -calc.descuento], ["Subtotal neto", calc.neto], ["ITBIS", calc.impuestos]]
+    .concat(calc.rets.map((r) => [r.nombre, -r.monto]));
+  if (y + filas.length * 15 + 40 > 800) { doc.addPage(); y = 40; }
+  doc.setFontSize(9.5);
+  filas.forEach(([t, v]) => { doc.setTextColor(...suave); doc.text(t, W - M - 170, y); doc.setTextColor(...tinta); doc.text(dinero(v), W - M, y, { align: "right" }); y += 15; });
+  doc.setFillColor(...verde); doc.roundedRect(W - M - 180, y - 4, 180, 26, 5, 5, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
+  doc.text("TOTAL", W - M - 170, y + 13); doc.text(dinero(calc.total), W - M - 10, y + 13, { align: "right" });
+  y += 46;
+  doc.setFont("helvetica", "normal");
+  [["Notas", c.notas], ["T\xE9rminos y condiciones", c.terminos]].forEach(([t, v]) => {
+    if (!String(v || "").trim()) return;
+    const txt = doc.splitTextToSize(String(v), W - 2 * M);
+    if (y + 20 + txt.length * 11 > 800) { doc.addPage(); y = 40; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(...tinta); doc.text(t, M, y); y += 13;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...suave); doc.text(txt, M, y); y += txt.length * 11 + 12;
+  });
+  const pags = doc.getNumberOfPages();
+  for (let p = 1; p <= pags; p++) {
+    doc.setPage(p); doc.setFontSize(7.5); doc.setTextColor(...suave);
+    doc.text("PetColinas \xB7 " + (c.numero ? numeroCot(c.numero) : "Cotizaci\xF3n") + (pags > 1 ? " \xB7 P\xE1gina " + p + " de " + pags : ""), W / 2, 822, { align: "center" });
+  }
+  return { doc, nombre: (c.numero ? numeroCot(c.numero) : "Cotizacion") + " " + String(c.cliente_nombre || "").replace(/[^\w\s\-\xC0-\xFF]/g, "").trim() + ".pdf" };
+}
+async function guardarCotizacion(c) {
+  const calc = calcularCotizacion(c.items, c.retenciones);
+  const fila = { fecha: c.fecha, vence: c.vence || null, cliente_id: c.cliente_id || null, cliente_nombre: String(c.cliente_nombre || "").trim(),
+    telefono: c.telefono || null, mascota: c.mascota || null, items: c.items.filter((l) => String(l.nombre || "").trim()), retenciones: c.retenciones || [],
+    subtotal: calc.subtotal, descuento: calc.descuento, impuestos: calc.impuestos, retenido: calc.retenido, total: calc.total,
+    notas: c.notas || null, terminos: c.terminos || null, estado: c.estado || "borrador", venta_id: c.venta_id || null,
+    creado_por: c.creado_por || null, updated_at: new Date().toISOString() };
+  const token = await supaAccessToken();
+  const res = await fetch(SUPA_URL + "/rest/v1/pc_cotizaciones" + (c.id ? "?id=eq." + encodeURIComponent(c.id) : ""), {
+    method: c.id ? "PATCH" : "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=representation" },
+    body: JSON.stringify(fila) });
+  const out = await res.json().catch(() => null);
+  if (!res.ok || !Array.isArray(out) || !out[0]) {
+    const msg = out && (out.message || out.hint) || ("HTTP " + res.status);
+    throw new Error(/pc_cotizaciones/.test(msg) || res.status === 404 ? "Falta crear la tabla de cotizaciones en Supabase (ver instrucciones)." : "No se pudo guardar: " + msg);
+  }
+  return out[0];
+}
+
+function SelectorLineaCot({ linea, catalogo, onCambio }) {
+  const E = React.createElement;
+  const [abierto, setAbierto] = useState(false);
+  const palabras = normalizarTextoInv(linea.nombre).split(" ").filter(Boolean);
+  const lista = abierto ? catalogo.filter((s) => palabras.every((w) => s.buscar.includes(w))).slice(0, 30) : [];
+  const colores = { Grooming: "#6b21a8", Veterinaria: "#1a6b3a", Producto: "#b45309" };
+  return E("div", { style: { position: "relative" } },
+    E("input", { value: linea.nombre, placeholder: "Buscar o escribir…", onFocus: () => setAbierto(true),
+      onBlur: () => setTimeout(() => setAbierto(false), 150),
+      onChange: (e) => { onCambio({ nombre: e.target.value, prodId: null }); setAbierto(true); },
+      style: { width: "100%", minWidth: 0, padding: "8px 10px", border: "1px solid #d9dee3", borderRadius: 8, fontSize: 13.5 } }),
+    lista.length > 0 && E("div", { style: { position: "absolute", top: "100%", left: 0, width: "max(100%, 340px)", zIndex: 60, background: "#fff",
+      border: "1px solid #e6e9ec", borderRadius: 10, boxShadow: "0 10px 30px rgba(16,24,40,.14)", maxHeight: 280, overflowY: "auto", marginTop: 4 } },
+      lista.map((s, k) => E("div", { key: s.grupo + k + s.nombre,
+        onMouseDown: (e) => { e.preventDefault(); onCambio({ nombre: s.nombre, precio: s.precio, area: s.area, prodId: s.prodId || null }); setAbierto(false); },
+        style: { display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 11px", borderBottom: "1px solid #f3f4f5", cursor: "pointer", fontSize: 13 } },
+        E("span", { style: { minWidth: 0 } },
+          E("span", { style: { fontSize: 10, fontWeight: 700, color: colores[s.grupo] || "#6b7280", marginRight: 6, textTransform: "uppercase" } }, s.grupo),
+          s.nombre,
+          s.grupo === "Producto" && E("span", { style: { display: "block", fontSize: 11, color: s.stock > 0 ? "#6b7280" : "#b42318" } },
+            [s.codigo, s.stock > 0 ? "Stock: " + s.stock : "Sin stock"].filter(Boolean).join(" \xB7 "))),
+        E("b", { style: { whiteSpace: "nowrap" } }, dinero(s.precio))))));
+}
+
+function Cotizaciones({ clientes = [], tarifasGrooming = [], tarifasVet = [], inventario = [], setVentas, usuarioNombre = "Victor" }) {
+  const E = React.createElement;
+  const [lista, setLista] = useState(null);            // null cargando, false sin tabla
+  const [filtro, setFiltro] = useState("todas");
+  const [busca, setBusca] = useState("");
+  const [c, setC] = useState(null);                    // cotizacion abierta en el editor
+  const [buscaCli, setBuscaCli] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [convertir, setConvertir] = useState(null);    // {quien}
+  const hoyISO = fechaLocal();
+
+  const cargar = async () => {
+    const filas = await supaFetch("pc_cotizaciones", "GET", null, "?select=*&order=numero.desc&limit=500");
+    setLista(Array.isArray(filas) ? filas : false);
+  };
+  useEffect(() => { cargar(); }, []);
+
+  const catalogo = useMemo(() => {
+    const out = [];
+    (tarifasGrooming || []).forEach((t) => out.push({ grupo: "Grooming", nombre: t.nombre, precio: Number(t.precio) || 0, area: "grooming", buscar: normalizarTextoInv(t.nombre + " grooming") }));
+    (tarifasVet || []).forEach((t) => out.push({ grupo: "Veterinaria", nombre: t.nombre, precio: Number(t.precio) || 0, area: "veterinaria", buscar: normalizarTextoInv(t.nombre + " veterinaria") }));
+    (inventario || []).filter((p) => !p.autoGenerado && Number(p.pventa) > 0).forEach((p) => out.push({ grupo: "Producto", nombre: p.nombre, precio: Number(p.pventa) || 0,
+      area: "farmacia", prodId: p.id, stock: Number(p.stock) || 0, codigo: p.codigo || "", buscar: textoBusquedaProducto(p) + " producto" }));
+    return out;
+  }, [tarifasGrooming, tarifasVet, inventario]);
+
+  const terminosBase = () => { try { return localStorage.getItem("pc_cot_terminos") || COT_TERMINOS_BASE; } catch (e) { return COT_TERMINOS_BASE; } };
+  const nueva = () => setC({ id: null, numero: null, fecha: hoyISO, vence: sumarDiasISO(hoyISO, 15), cliente_id: null, cliente_nombre: "", telefono: "", mascota: "",
+    items: [lineaCotVacia(), lineaCotVacia(), lineaCotVacia()], retenciones: [], notas: "", terminos: terminosBase(), estado: "borrador", creado_por: usuarioNombre });
+  const abrir = (f, duplicar) => setC({ ...f, id: duplicar ? null : f.id, numero: duplicar ? null : f.numero,
+    fecha: duplicar ? hoyISO : f.fecha, vence: duplicar ? sumarDiasISO(hoyISO, 15) : f.vence, estado: duplicar ? "borrador" : f.estado, venta_id: duplicar ? null : f.venta_id,
+    items: (Array.isArray(f.items) && f.items.length ? f.items : [lineaCotVacia()]).map((l) => ({ ...l, id: l.id || Date.now() + Math.random() })),
+    retenciones: Array.isArray(f.retenciones) ? f.retenciones : [] });
+  const set = (k, v) => setC((x) => ({ ...x, [k]: v }));
+  const setLinea = (id, cambios) => setC((x) => ({ ...x, items: x.items.map((l) => l.id === id ? { ...l, ...cambios } : l) }));
+  const calc = c ? calcularCotizacion(c.items, c.retenciones) : null;
+  const soloLectura = c && c.estado === "facturada";
+
+  const validar = () => {
+    if (!String(c.cliente_nombre || "").trim()) { avisar("Elige o escribe el cliente.", "error"); return false; }
+    if (!c.items.some((l) => String(l.nombre || "").trim())) { avisar("Agrega al menos un producto o servicio.", "error"); return false; }
+    if (c.vence && c.vence < c.fecha) { avisar("La fecha de vencimiento no puede ser antes de la de creaci\xF3n.", "error"); return false; }
+    return true;
+  };
+  const guardar = async (extra) => {
+    if (!validar()) return null;
+    setOcupado(true);
+    try {
+      try { if (c.terminos) localStorage.setItem("pc_cot_terminos", c.terminos); } catch (e) {}
+      const fila = await guardarCotizacion({ ...c, ...(extra || {}) });
+      setC((x) => ({ ...x, ...fila, items: x.items, retenciones: x.retenciones }));
+      cargar();
+      return fila;
+    } catch (e) { avisar(e.message || String(e), "error"); return null; }
+    finally { setOcupado(false); }
+  };
+  const descargar = async (fila) => {
+    const datos = fila ? { ...c, ...fila, items: c.items, retenciones: c.retenciones } : c;
+    try { const { doc, nombre } = await pdfCotizacion(datos); doc.save(nombre); } catch (e) { avisar(e.message || String(e), "error"); }
+  };
+  const enviarWA = async () => {
+    if (!validar()) return;
+    // Si no se puede guardar (p. ej. falta la tabla), el mensaje sale igual.
+    const fila = soloLectura ? null : await guardar(c.estado === "borrador" ? { estado: "enviada" } : null);
+    const datos = { ...c, ...(fila || {}), items: c.items, retenciones: c.retenciones };
+    if (!c.telefono) avisar("Sin tel\xE9fono: se abre WhatsApp para que elijas el contacto.", "ok");
+    abrirWA(c.telefono || "", mensajeCotizacionWA(datos, calcularCotizacion(datos.items, datos.retenciones)));
+  };
+  const compartirPDF = async () => {
+    if (!validar()) return;
+    const fila = soloLectura ? null : await guardar();
+    try {
+      const { doc, nombre } = await pdfCotizacion({ ...c, ...(fila || {}), items: c.items, retenciones: c.retenciones });
+      const archivo = new File([doc.output("blob")], nombre, { type: "application/pdf" });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) await navigator.share({ files: [archivo], title: nombre }).catch(() => {});
+      else { doc.save(nombre); avisar("Este equipo no permite compartir directo: se descarg\xF3 el PDF para adjuntarlo.", "ok"); }
+    } catch (e) { avisar(e.message || String(e), "error"); }
+  };
+  // Cotizacion aceptada -> venta pendiente de cobro. Pasa por el mismo control
+  // de stock que cualquier venta: sin existencia no se convierte.
+  const convertirEnVenta = async (quien) => {
+    if (!setVentas) return;
+    const its = calc.lineas.filter((l) => String(l.nombre || "").trim());
+    const lineasStock = lineasStockVenta(its.map((l) => ({ nombre: l.nombre, area: l.area || "farmacia", prodId: l.prodId, qty: Number(l.cantidad) || 1 })), inventario);
+    setOcupado(true);
+    try {
+      if (lineasStock.length) {
+        const r = await descontarStockVenta(lineasStock);
+        if (!r.ok) { avisar(r.error || mensajeSinStock(r.faltantes), "error"); return; }
+      }
+      const areas = [...new Set(its.map((l) => l.area || "farmacia"))];
+      const descripcion = its.map((l) => (Number(l.cantidad) > 1 ? l.cantidad + "x " : "") + l.nombre).join(" + ");
+      const venta = {
+        id: Date.now(), fecha: fechaLocal(), cliente: c.mascota || c.cliente_nombre, area: areas.length === 1 ? areas[0] : "mixta",
+        descripcion, servicio: descripcion, total: calc.total, descuento: calc.descuento, comision: 0,
+        recibidopor: quien, recibidoPor: quien, cobradopor: "", cobradoPor: "",
+        formapago: "Pago pendiente", formaPago: "Pago pendiente", abonos: [], abonado: 0,
+        items: its.map((l) => ({ nombre: l.nombre, precio: Math.round((l.base + l.impuesto) * 100) / 100, subtotal: Math.round((l.base + l.impuesto) * 100) / 100,
+          descPct: Number(l.descPct) || 0, area: l.area || "farmacia", ...(l.prodId != null ? { prodId: l.prodId, qty: Number(l.cantidad) || 1 } : {}) })),
+        notas: "De la cotizaci\xF3n " + numeroCot(c.numero)
+      };
+      setVentas((prev) => [...(prev || []), venta]);
+      upsertOne("pc_ventas", venta).catch(() => {});
+      await guardarCotizacion({ ...c, estado: "facturada", venta_id: String(venta.id) });
+      setC((x) => ({ ...x, estado: "facturada", venta_id: String(venta.id) }));
+      setConvertir(null); cargar();
+      avisar("Venta registrada como pendiente de cobro. Cobrarla en la pesta\xF1a Cobros.", "ok");
+    } finally { setOcupado(false); }
+  };
+
+  // ── LISTA ──
+  if (!c) {
+    const q = normalizarTextoInv(busca);
+    const filas = Array.isArray(lista) ? lista.filter((f) => {
+      const est = estadoCotizacion(f, hoyISO);
+      if (filtro !== "todas" && est !== filtro) return false;
+      return !q || normalizarTextoInv([numeroCot(f.numero), f.cliente_nombre, f.mascota, f.telefono].join(" ")).includes(q);
+    }) : [];
+    const cuenta = (k) => Array.isArray(lista) ? lista.filter((f) => k === "todas" || estadoCotizacion(f, hoyISO) === k).length : 0;
+    return E("div", null,
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 } },
+        E("div", null,
+          E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, margin: 0 } }, "Cotizaciones"),
+          E("p", { style: { color: C.suave, fontSize: 13.5, margin: "4px 0 0" } }, "Presupuestos para clientes: se env\xEDan en PDF o por WhatsApp y, si aceptan, pasan a venta.")),
+        E("button", { onClick: nueva, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "11px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer" } }, "＋ Nueva cotizaci\xF3n")),
+      lista === false && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, marginBottom: 14 } },
+        "Falta crear la tabla de cotizaciones en Supabase. Hasta entonces se pueden preparar y descargar, pero no guardar."),
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
+        ["todas", "borrador", "enviada", "aceptada", "vencida", "rechazada", "facturada"].map((k) => E("button", { key: k, onClick: () => setFiltro(k),
+          style: { padding: "6px 12px", borderRadius: 999, border: "1px solid " + (filtro === k ? C.verde : "#d9dee3"), background: filtro === k ? C.verde : "#fff",
+                   color: filtro === k ? "#fff" : "#3d444d", fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 0 } },
+          (k === "todas" ? "Todas" : COT_ESTADOS[k].t) + " (" + cuenta(k) + ")")),
+        E("input", { value: busca, onChange: (e) => setBusca(e.target.value), placeholder: "🔍 N\xFAmero, cliente o mascota",
+          style: { marginLeft: "auto", border: "1px solid #d9dee3", borderRadius: 999, padding: "7px 12px", fontSize: 13, minWidth: 200 } })),
+      E(Card, { style: { padding: 0, overflow: "hidden" } },
+        lista === null ? E("div", { style: { padding: 24, color: C.suave } }, "Cargando…")
+        : filas.length === 0 ? E("div", { style: { padding: 32, textAlign: "center", color: C.suave } }, Array.isArray(lista) && lista.length ? "Ninguna cotizaci\xF3n coincide." : "Todav\xEDa no hay cotizaciones. Crea la primera con “Nueva cotizaci\xF3n”.")
+        : E("div", { style: { overflowX: "auto" } }, E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 720 } },
+            E("thead", null, E("tr", { style: { background: "#f8f9fa", textAlign: "left" } },
+              ["N\xFAmero", "Cliente", "Creada", "Vence", "Total", "Estado", ""].map((h, i) => E("th", { key: i, style: { padding: "10px 14px", fontSize: 11.5, color: C.suave, fontWeight: 600, textAlign: i === 4 ? "right" : "left" } }, h)))),
+            E("tbody", null, filas.map((f) => { const est = COT_ESTADOS[estadoCotizacion(f, hoyISO)] || COT_ESTADOS.borrador;
+              return E("tr", { key: f.id, style: { borderTop: "1px solid #f1f3f4", cursor: "pointer" }, onClick: () => abrir(f, false) },
+                E("td", { style: { padding: "11px 14px", fontWeight: 700, color: C.verde } }, numeroCot(f.numero)),
+                E("td", { style: { padding: "11px 14px" } }, f.cliente_nombre, f.mascota ? E("span", { style: { color: C.suave } }, " \xB7 " + f.mascota) : null),
+                E("td", { style: { padding: "11px 14px" } }, fechaCorta(f.fecha)),
+                E("td", { style: { padding: "11px 14px" } }, fechaCorta(f.vence)),
+                E("td", { style: { padding: "11px 14px", textAlign: "right", fontWeight: 700 } }, dinero(f.total)),
+                E("td", { style: { padding: "11px 14px" } }, E(Badge, { color: est.c }, est.t)),
+                E("td", { style: { padding: "8px 14px", textAlign: "right", whiteSpace: "nowrap" }, onClick: (e) => e.stopPropagation() },
+                  E("button", { className: "pc-btn-suave", onClick: () => abrir(f, true), title: "Nueva cotizaci\xF3n con lo mismo" }, "Duplicar")));
+            }))))));
+  }
+
+  // ── EDITOR ──
+  const est = COT_ESTADOS[estadoCotizacion(c, hoyISO)] || COT_ESTADOS.borrador;
+  const qc = normalizarTextoInv(buscaCli);
+  const sugCli = qc.length < 2 ? [] : (clientes || []).filter((x) => normalizarTextoInv([x.nombreMascota, x.nombrePropietario, x.telefono].join(" ")).includes(qc)).slice(0, 8);
+  const lbl = (t) => E("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#3d444d", marginBottom: 5 } }, t);
+  const inp = { width: "100%", minWidth: 0, border: "1px solid #d9dee3", borderRadius: 9, padding: "9px 11px", fontSize: 14 };
+  const celda = { padding: "6px 6px", verticalAlign: "top" };
+  return E("div", null,
+    E("button", { className: "pc-btn-suave", onClick: () => { setC(null); setConvertir(null); }, style: { marginBottom: 14 } }, "← Volver a cotizaciones"),
+    E(Card, { style: { padding: 0, overflow: "visible" } },
+      // Encabezado como en Alegra: marca a la izquierda, tipo y numero a la derecha
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, padding: "22px 26px", borderBottom: "1px solid " + C.borde, flexWrap: "wrap" } },
+        E("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
+          E("img", { src: "logo.png", alt: "", style: { width: 58, height: "auto" }, onError: (ev) => { ev.currentTarget.style.display = "none"; } }),
+          E("div", null,
+            E("div", { style: { fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em" } }, E("span", { style: { color: "#f28c28" } }, "Pet"), E("span", { style: { color: "#0c1e31" } }, "Colinas")),
+            E("div", { style: { fontSize: 12, color: C.suave } }, "petcolinasrd@gmail.com \xB7 809-752-6806"))),
+        E("div", { style: { textAlign: "right" } },
+          E("div", { style: { fontSize: 13, color: C.suave } }, "Cotizaci\xF3n"),
+          E("div", { style: { fontSize: 22, fontWeight: 800, color: C.verde } }, c.numero ? numeroCot(c.numero) : "Nueva"),
+          E("div", { style: { marginTop: 4 } }, E(Badge, { color: est.c }, est.t)))),
+      E("div", { style: { padding: "20px 26px" } },
+        E("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 12 } }, "Informaci\xF3n de la cotizaci\xF3n"),
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 } },
+          E("div", { style: { position: "relative" } }, lbl("Cliente *"),
+            E("input", { value: c.cliente_nombre, disabled: soloLectura, placeholder: "Busca en el CRM o escribe el nombre",
+              onChange: (e) => { set("cliente_nombre", e.target.value); set("cliente_id", null); setBuscaCli(e.target.value); }, style: inp }),
+            sugCli.length > 0 && E("div", { style: { position: "absolute", top: "100%", left: 0, right: 0, zIndex: 60, background: "#fff", border: "1px solid #e6e9ec",
+              borderRadius: 10, boxShadow: "0 10px 30px rgba(16,24,40,.14)", marginTop: 4, overflow: "hidden" } },
+              sugCli.map((x) => E("button", { key: x.id, onMouseDown: (e) => { e.preventDefault();
+                  setC((y) => ({ ...y, cliente_id: String(x.id), cliente_nombre: x.nombrePropietario || x.nombreMascota || "", telefono: x.telefono || y.telefono, mascota: x.nombreMascota || "" }));
+                  setBuscaCli(""); },
+                style: { display: "block", width: "100%", textAlign: "left", background: "#fff", border: "none", borderBottom: "1px solid #f3f4f5", padding: "8px 11px", cursor: "pointer", fontSize: 13, minHeight: 0 } },
+                E("b", null, x.nombrePropietario || "(sin due\xF1o)"), " ", E("span", { style: { color: C.suave } }, "\xB7 " + (x.nombreMascota || "") + (x.telefono ? " \xB7 " + x.telefono : "")))))),
+          E("div", null, lbl("Tel\xE9fono"), E("input", { value: c.telefono || "", disabled: soloLectura, onChange: (e) => set("telefono", e.target.value), style: inp })),
+          E("div", null, lbl("Mascota"), E("input", { value: c.mascota || "", disabled: soloLectura, onChange: (e) => set("mascota", e.target.value), style: inp })),
+          E("div", null, lbl("Fecha de creaci\xF3n"), E("input", { type: "date", value: c.fecha, disabled: soloLectura, onChange: (e) => set("fecha", e.target.value), style: inp })),
+          E("div", null, lbl("Fecha de vencimiento"), E("input", { type: "date", value: c.vence || "", disabled: soloLectura, onChange: (e) => set("vence", e.target.value), style: inp }),
+            !soloLectura && E("div", { style: { display: "flex", gap: 6, marginTop: 6 } }, [7, 15, 30].map((d) => E("button", { key: d, onClick: () => set("vence", sumarDiasISO(c.fecha, d)),
+              style: { border: "1px solid #d9dee3", background: "#fff", borderRadius: 999, padding: "3px 9px", fontSize: 11.5, cursor: "pointer", minHeight: 0 } }, d + " d\xEDas"))))),
+        E("div", { style: { fontWeight: 700, fontSize: 15, margin: "26px 0 10px", paddingTop: 18, borderTop: "1px solid " + C.borde } }, "Productos y servicios"),
+        E("div", { style: { overflowX: "auto" } }, E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 780 } },
+          E("thead", null, E("tr", { style: { background: "#f8f9fa", textAlign: "left" } },
+            ["#", "Producto o servicio", "Cantidad", "Precio", "Descuento %", "Impuesto", "Subtotal", ""].map((h, i) => E("th", { key: i,
+              style: { padding: "9px 6px", fontSize: 11.5, color: C.suave, fontWeight: 600, textAlign: i === 6 ? "right" : "left", width: [28, null, 80, 110, 96, 120, 110, 30][i] || undefined } }, h)))),
+          E("tbody", null, calc.lineas.map((l, i) => E("tr", { key: l.id, style: { borderTop: "1px solid #f1f3f4" } },
+            E("td", { style: { ...celda, paddingTop: 15, color: C.suave } }, i + 1),
+            E("td", { style: celda }, soloLectura ? E("div", { style: { paddingTop: 9 } }, l.nombre) : E(SelectorLineaCot, { linea: l, catalogo, onCambio: (cb) => setLinea(l.id, cb) })),
+            E("td", { style: celda }, E("input", { type: "number", min: 0, step: "1", value: l.cantidad, disabled: soloLectura, onChange: (e) => setLinea(l.id, { cantidad: e.target.value }), style: { ...inp, padding: "8px 8px", fontSize: 13.5 } })),
+            E("td", { style: celda }, E("input", { type: "number", min: 0, step: "0.01", value: l.precio, disabled: soloLectura, onChange: (e) => setLinea(l.id, { precio: e.target.value }), style: { ...inp, padding: "8px 8px", fontSize: 13.5 } })),
+            E("td", { style: celda }, E("input", { type: "number", min: 0, max: 100, value: l.descPct, disabled: soloLectura, onChange: (e) => setLinea(l.id, { descPct: e.target.value }), style: { ...inp, padding: "8px 8px", fontSize: 13.5 } })),
+            E("td", { style: celda }, E("select", { value: l.itbis ? "itbis" : "no", disabled: soloLectura, onChange: (e) => setLinea(l.id, { itbis: e.target.value === "itbis" }), style: { ...inp, padding: "8px 6px", fontSize: 13 } },
+              E("option", { value: "no" }, "Ninguno"), E("option", { value: "itbis" }, "ITBIS 18%"))),
+            E("td", { style: { ...celda, paddingTop: 15, textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" } }, dinero(l.base)),
+            E("td", { style: { ...celda, paddingTop: 10 } }, !soloLectura && E("button", { onClick: () => setC((x) => ({ ...x, items: x.items.length > 1 ? x.items.filter((y) => y.id !== l.id) : [lineaCotVacia()] })),
+              title: "Quitar l\xEDnea", style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", fontSize: 16, minHeight: 0 } }, "✕"))))))),
+        !soloLectura && E("button", { onClick: () => setC((x) => ({ ...x, items: [...x.items, lineaCotVacia()] })),
+          style: { marginTop: 8, background: "none", border: "none", color: C.verde, fontWeight: 600, fontSize: 13.5, cursor: "pointer", padding: 0, minHeight: 0 } }, "＋ Agregar l\xEDnea"),
+        E("div", { style: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 340px)", gap: 24, marginTop: 22, alignItems: "start" }, className: "pc-cot-pie" },
+          E("div", null,
+            E("div", { style: { fontWeight: 700, fontSize: 14 } }, "Retenciones"),
+            E("div", { style: { fontSize: 12, color: C.suave, margin: "2px 0 8px" } }, "Elige las retenciones que el cliente (empresa) aplicar\xE1 a esta venta."),
+            (c.retenciones || []).map((rid) => { const r = COT_RETENCIONES.find((x) => x.id === rid); return r && E("div", { key: rid, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, marginBottom: 6 } },
+              E("span", { style: { flex: 1 } }, r.nombre), E("b", null, "-" + dinero((r.sobre === "itbis" ? calc.impuestos : calc.neto) * r.pct)),
+              !soloLectura && E("button", { onClick: () => set("retenciones", c.retenciones.filter((x) => x !== rid)), style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", minHeight: 0 } }, "✕")); }),
+            !soloLectura && COT_RETENCIONES.some((r) => !(c.retenciones || []).includes(r.id)) && E("select", { value: "", onChange: (e) => e.target.value && set("retenciones", [...(c.retenciones || []), e.target.value]),
+              style: { border: "1px dashed #b7c2cc", borderRadius: 9, padding: "7px 10px", fontSize: 13, color: C.verde, background: "#fff" } },
+              E("option", { value: "" }, "＋ Agregar retenci\xF3n"), COT_RETENCIONES.filter((r) => !(c.retenciones || []).includes(r.id)).map((r) => E("option", { key: r.id, value: r.id }, r.nombre)))),
+          E("div", { style: { background: "#f8f9fa", border: "1px solid " + C.borde, borderRadius: 12, padding: "14px 16px" } },
+            [["Subtotal", calc.subtotal], ["Descuento", -calc.descuento], ["Subtotal neto", calc.neto], ["Impuestos (ITBIS)", calc.impuestos]].concat(calc.retenido ? [["Retenciones", -calc.retenido]] : [])
+              .map(([t, v]) => E("div", { key: t, style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "#3d444d", padding: "3px 0" } }, E("span", null, t), E("span", null, dinero(v)))),
+            E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 18, fontWeight: 800, borderTop: "1px solid " + C.borde, marginTop: 8, paddingTop: 10 } },
+              E("span", null, "Total"), E("span", { style: { color: C.verde } }, dinero(calc.total))))),
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 22 } },
+          E("div", null, lbl("Notas"), E("textarea", { value: c.notas || "", disabled: soloLectura, rows: 3, placeholder: "Comentarios para el cliente (aparecen en la cotizaci\xF3n)",
+            onChange: (e) => set("notas", e.target.value), style: { ...inp, fontFamily: "inherit", resize: "vertical" } })),
+          E("div", null, lbl("T\xE9rminos y condiciones"), E("textarea", { value: c.terminos || "", disabled: soloLectura, rows: 3,
+            onChange: (e) => set("terminos", e.target.value), style: { ...inp, fontFamily: "inherit", resize: "vertical" } })))),
+      // Barra de acciones
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", padding: "14px 26px", borderTop: "1px solid " + C.borde, background: "#fbfcfc", borderRadius: "0 0 14px 14px" } },
+        c.id && !soloLectura && E("select", { value: c.estado, onChange: async (e) => { const v = e.target.value; set("estado", v); await guardar({ estado: v }); },
+          title: "Estado de la cotizaci\xF3n", style: { border: "1px solid #d9dee3", borderRadius: 9, padding: "8px 10px", fontSize: 13, marginRight: "auto" } },
+          ["borrador", "enviada", "aceptada", "rechazada"].map((k) => E("option", { key: k, value: k }, COT_ESTADOS[k].t))),
+        !soloLectura && E("button", { className: "pc-btn-suave", disabled: ocupado, onClick: () => guardar().then((f) => f && avisar("Cotizaci\xF3n " + numeroCot(f.numero) + " guardada.", "ok")) }, "Guardar"),
+        E("button", { className: "pc-btn-suave", disabled: ocupado, onClick: async () => { if (soloLectura) return descargar(); if (!validar()) return; const f = await guardar(); descargar(f); } }, "Descargar PDF"),
+        E("button", { className: "pc-btn-suave", disabled: ocupado, onClick: compartirPDF }, "Compartir PDF"),
+        E("button", { disabled: ocupado, onClick: enviarWA, style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "Enviar por WhatsApp"),
+        c.id && !soloLectura && setVentas && E("button", { disabled: ocupado, onClick: () => setConvertir({ quien: "" }),
+          style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "Convertir en venta")),
+      convertir && E("div", { style: { margin: "0 26px 20px", padding: 16, border: "1px solid #b7dfc5", background: "#f0f9f3", borderRadius: 12 } },
+        E("div", { style: { fontWeight: 700, marginBottom: 6 } }, "Convertir " + numeroCot(c.numero) + " en venta"),
+        E("div", { style: { fontSize: 13, color: "#3d444d", marginBottom: 10 } },
+          "Se registra una venta de " + dinero(calc.total) + " como pendiente de cobro (se cobra en Cobros), y se descuentan del inventario los productos. Si falta stock, no se convierte."),
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
+          E("select", { value: convertir.quien, onChange: (e) => setConvertir({ quien: e.target.value }), style: { border: "1px solid #d9dee3", borderRadius: 9, padding: "8px 10px", fontSize: 13 } },
+            E("option", { value: "" }, "\xBFQui\xE9n atendi\xF3?"), ["Naylan", "Alexander", "Victor", "Laura"].map((n) => E("option", { key: n, value: n }, n))),
+          E("button", { disabled: ocupado || !convertir.quien, onClick: () => convertirEnVenta(convertir.quien),
+            style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: convertir.quien ? "pointer" : "not-allowed", opacity: convertir.quien ? 1 : 0.6 } }, "Registrar venta"),
+          E("button", { className: "pc-btn-suave", onClick: () => setConvertir(null) }, "Cancelar")))));
 }
 // Cabecera del admin (diseño "moderno y limpio", oct 2026). Antes era un bloque
 // verde de ~170 px con seis renglones de estado apilados; ahora una franja de
@@ -7782,6 +8230,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
+    tab === "cotizaciones" && React.createElement(Cotizaciones, { clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario, setVentas, usuarioNombre: "Victor" }),
     tab === "recetarios" && React.createElement(Recetario, { clientes: todosClientes, historias, medicoPorDefecto: "", usuarioNombre: "Victor" }),
     tab === "notificaciones" && /* @__PURE__ */ React.createElement(TabNotificaciones, {
       clientes: todosClientes, setClientes, notifLeidas, marcarNotifLeida, marcarNotifLeidas, desmarcarNotif,

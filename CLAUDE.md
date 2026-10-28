@@ -284,6 +284,20 @@ raiz del repo = la plantilla a 216 ppp SIN la fecha "28/10/2026" que traia impre
   genera igual y solo avisa que no se guardo.
 - Distinto de "imprimir receta" del historial clinico (`imprimirReceta`), que sigue igual.
 
+## COTIZACIONES (M25, 29 oct 2026)
+Pestaña "Cotizaciones" (admin, grupo Operacion), modelada sobre Alegra (captura de Victor).
+- Tabla `pc_cotizaciones`; numero COT-0001 por secuencia de la BASE (no en el navegador).
+- Lineas: producto/servicio con buscador (tarifas grooming/vet + inventario con stock y
+  codigo; en una cotizacion SI se puede incluir algo sin stock), cantidad, precio, descuento %,
+  impuesto Ninguno/ITBIS 18%. Retenciones: ISR 10%, ISR 2% (sobre el neto), ITBIS retenido
+  30%/100% (sobre el ITBIS). Totales en `calcularCotizacion` (hay pruebas en render-check).
+- Vence a 15 dias por defecto; "vencida" se calcula (borrador/enviada con fecha pasada).
+- PDF A4 con texto real y logo (`pdfCotizacion`), WhatsApp (`mensajeCotizacionWA`), Compartir
+  PDF, Duplicar. Los terminos se recuerdan en localStorage (`pc_cot_terminos`).
+- "Convertir en venta": pide quien atendio, pasa por `descontarStockVenta` (sin stock no se
+  convierte) y crea una venta "Pago pendiente" (se cobra en Cobros), comision 0 -> la nomina
+  la calcula por area. La cotizacion queda "facturada" y de solo lectura.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

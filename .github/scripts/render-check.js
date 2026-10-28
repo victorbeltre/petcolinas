@@ -472,6 +472,25 @@ render("Recetario", sandbox.Recetario, { clientes, historias: [], medicoPorDefec
   if (b("alimento") !== "4") fallo("por categoria");
   if (b("") !== "3,1,4") fallo("sin texto: todo lo que tiene stock, en orden alfabetico: " + b(""));
 })();
+// Cotizaciones (M25): totales al estilo Alegra, retenciones y estado vencida.
+(() => {
+  const fallo = (m) => errores.push("cotizacion: " + m);
+  const calc = enVM("calcularCotizacion");
+  const items = [{ nombre: "Consulta", cantidad: 1, precio: 1500, descPct: 0, itbis: false },
+                 { nombre: "NexGard Spectra L", cantidad: 2, precio: 1000, descPct: 10, itbis: true }];
+  const r = calc(items, []);
+  // bruto 3500, desc 200, neto 3300, ITBIS 18% de 1800 = 324, total 3624
+  if (r.subtotal !== 3500 || r.descuento !== 200 || r.neto !== 3300 || r.impuestos !== 324 || r.total !== 3624) fallo("totales: " + JSON.stringify(r));
+  const rr = calc(items, ["isr10", "itbis30"]);
+  // ISR 10% de 3300 = 330; ITBIS retenido 30% de 324 = 97.2 -> total 3624 - 427.2 = 3196.8
+  if (rr.retenido !== 427.2 || rr.total !== 3196.8) fallo("retenciones: " + JSON.stringify({ ret: rr.retenido, total: rr.total }));
+  const est = enVM("estadoCotizacion");
+  if (est({ estado: "enviada", vence: "2026-10-01" }, "2026-10-29") !== "vencida") fallo("una enviada con fecha pasada esta vencida");
+  if (est({ estado: "aceptada", vence: "2026-10-01" }, "2026-10-29") !== "aceptada") fallo("una aceptada no se marca vencida");
+  const msg = enVM("mensajeCotizacionWA")({ numero: 7, cliente_nombre: "Mar\u00EDa P\u00E9rez", mascota: "Toby", vence: "2026-11-13" }, r);
+  if (!/COT-0007/.test(msg) || !/Mar\u00EDa/.test(msg) || !/Toby/.test(msg) || !/3,624/.test(msg) || !/13\/11\/2026/.test(msg) || /P\u00E9rez/.test(msg)) fallo("mensaje WhatsApp: " + msg);
+})();
+render("Cotizaciones", sandbox.Cotizaciones, { clientes, tarifasGrooming: [], tarifasVet: [], inventario: [], setVentas: () => {} }, null, "Cotizaciones");
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
 // "Mascota lista" pide la rese\u00F1a en Google con el enlace que abre DIRECTO la
