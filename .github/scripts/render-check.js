@@ -578,6 +578,9 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   if (!fa.porEmpleado[9] || fa.porEmpleado[9].total !== 24.6) fallo("5% farmacia: (1416 - 924) x 5% = 24.60: " + JSON.stringify(fa.porEmpleado[9]));
   if (!fa.porEmpleado[7] || fa.porEmpleado[7].total !== 3.5 || fa.porEmpleado[7].sinCosto.length !== 1) fallo("costo a mano (270-200)x5% = 3.50 y Rimadyl sin costo queda pendiente, no inventado: " + JSON.stringify(fa.porEmpleado[7]));
   if (fa.cortesias !== 1) fallo("la cortesia no genera comision y se cuenta aparte");
+  const pv = enVM("comisionesNominaPorTarifa")([{ fecha: "2026-10-20", area: "veterinaria", recibidopor: "Naylan Perez", items: [{ nombre: "Easotic Suspencion Otica", subtotal: 950 }] }],
+    tar, "2026-10-16", "2026-10-31", { inventario: [], vendedores: vend, costosManual: {} });
+  if (!pv.porEmpleado[9] || pv.porEmpleado[9].sinCosto.length !== 1 || pv.porEmpleado[9].total !== 0) fallo("un producto vendido en una venta de vet (sin tarifa) es producto: queda sin costo, no se paga a ciegas");
   const g = enVM("esGastoNomina");
   if (!g({ categoria: "nomina" }) || !g({ categoria: "Nómina" }) || g({ categoria: "insumo" })) fallo("esGastoNomina");
   const html = require("fs").readFileSync(require("path").join(__dirname, "..", "..", "index.html"), "utf8");

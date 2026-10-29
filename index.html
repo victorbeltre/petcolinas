@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 21:00Z";
+const PC_BUILD = "2026-10-29 21:20Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -13740,9 +13740,12 @@ function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, opts = {}) {
       }
       const area = it.area || v.area;
       const prod = (it.prodId != null && it.prodId !== "" ? inv.find((p) => String(p.id) === String(it.prodId)) : null) || coincidenciaInventario(nombre, inv);
-      if (prod || area === "farmacia" || it.categoria === "farmacia") {
+      // Lo que no esta en ningun tarifario de servicios es PRODUCTO (Victor, 29 oct:
+      // Easotic, Enzy-pro o una colonia vendidos en una venta de vet/grooming son
+      // productos): 5% para quien lo vendio. Sin costo no se paga: se pide.
+      {
         const quien = vend.find((x) => x.clave && normalizarTextoInv(v.recibidopor || v.recibidoPor || "").split(" ").includes(x.clave));
-        if (!quien) continue;
+        if (!quien) { if (!prod && (area === "veterinaria" || area === "grooming")) sinTarifa[nombre] = (sinTarifa[nombre] || 0) + cant; continue; }
         const venta = it.subtotal != null && it.subtotal !== "" ? Number(it.subtotal) : r2((Number(it.precioUnit ?? it.precio) || 0) * cant * (1 - (Number(it.descPct) || 0) / 100));
         if (!(venta > 0)) continue;
         const clave = normalizarTextoInv(nombre);
@@ -13753,9 +13756,7 @@ function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, opts = {}) {
         const ganancia = Math.max(0, r2(venta - costoU * cant)), monto = r2(ganancia * NOMINA_PCT_FARMACIA);
         e.total = r2(e.total + monto);
         e.lineas.push({ tipo: "farmacia", fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, cant, venta, costo: r2(costoU * cant), ganancia, comision: monto, costoManual: !(costoInv > 0) });
-        continue;
       }
-      if (area === "veterinaria" || area === "grooming") sinTarifa[nombre] = (sinTarifa[nombre] || 0) + cant;
     }
   }
   return { porEmpleado, sinTarifa: Object.entries(sinTarifa).sort((a, b) => b[1] - a[1]), cortesias };
@@ -14005,7 +14006,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
                 style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", minHeight: 0, padding: "0 2px" } }, "\u2715"))))))))),
     porTarifa.cortesias > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, porTarifa.cortesias + " servicio(s) de cortes\xEDa en esta quincena: no generan comisi\xF3n."),
     porTarifa.sinTarifa.length > 0 && tarifas.length > 0 && E("details", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 } },
-      E("summary", { style: { cursor: "pointer", fontWeight: 600 } }, porTarifa.sinTarifa.length + " servicio(s) vendidos en esta quincena no tienen tarifa de comisi\xF3n (no suman a nadie)"),
+      E("summary", { style: { cursor: "pointer", fontWeight: 600 } }, porTarifa.sinTarifa.length + " concepto(s) de vet/grooming registrados por alguien sin comisi\xF3n y sin tarifa (no suman a nadie)"),
       E("div", { style: { marginTop: 6 } }, porTarifa.sinTarifa.map(([n, c]) => n + (c > 1 ? " (" + c + ")" : "")).join(" \xB7 ")),
       E("div", { style: { marginTop: 6, fontSize: 12 } }, "Si alguno s\xED lleva comisi\xF3n, agr\xE9galo en \u201CTarifas de comisi\xF3n\u201D (o como \u201Cotro nombre\u201D de un servicio que ya est\xE9).")),
     E(Card, { style: { marginBottom: 16, padding: 16 } },
@@ -14049,7 +14050,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
                   + (v.tipo === "farmacia" ? " \xB7 5% de (" + dinero(v.venta) + " \u2212 " + dinero(v.costo) + (v.costoManual ? " a mano" : "") + ")" : "")),
                 E("b", { style: { color: "#1a4fa0", marginLeft: 8 } }, dinero(v.comision))))),
             r.sinCosto.length > 0 && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", borderRadius: 8, padding: "8px 10px", marginBottom: 10 } },
-              E("div", { style: { fontSize: 12, fontWeight: 700, color: "#8a5a00", marginBottom: 4 } }, "Productos vendidos sin costo en inventario: escribe el costo unitario para calcular su 5%"),
+              E("div", { style: { fontSize: 12, fontWeight: 700, color: "#8a5a00", marginBottom: 4 } }, "Productos vendidos sin costo en inventario: escribe el costo unitario para calcular su 5% (si alguno es un servicio, agr\xE9galo en Tarifas de comisi\xF3n)"),
               r.sinCosto.map((l, i) => E("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "3px 0" } },
                 E("span", { style: { flex: 1, minWidth: 0 } }, fechaCorta(l.fecha) + " \xB7 " + (l.cant > 1 ? l.cant + "\xD7 " : "") + l.servicio + " \xB7 vendido " + dinero(l.venta)),
                 E("input", { type: "number", min: 0, placeholder: "costo", value: costosManual[l.clave] || "", onChange: (e) => setCostosManual({ ...costosManual, [l.clave]: e.target.value }),

@@ -378,7 +378,8 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   (prodId o nombre identico); si no se encuentra NO se inventa: queda "sin costo" en el
   Historial con un campo para escribirlo (no se guarda; entra en esa quincena). Laura no.
   Alias que pidio Victor: "Cani V-4" = Test Ehrlichia; "Desparasitacion con Albendazol" =
-  Aplicacion Albendazol.
+  Aplicacion Albendazol. Lo que NO esta en ningun tarifario de servicios es PRODUCTO (Victor:
+  Easotic, Enzy-pro, colonia), aunque venga en una venta de vet/grooming: 5% a quien lo vendio.
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 
