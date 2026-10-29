@@ -264,6 +264,12 @@ y SIN tocar como funciona nada. Etapa 1 (hecha):
 - `LoginScreen`: portada de Victor (`portada-app.jpg`, de su PDF de Canva, recortada a 2480x968)
   en el 45% izquierdo (lo fijo Victor) + formulario a la derecha; en tablet/telefono
   la portada arriba (29 oct 2026).
+- Entrada en TELEFONO (<=640 px, 29 oct 2026, inspirada en Alegra): fondo blanco, sin la
+  portada ancha ni la tarjeta; logo.png centrado, "Ingresa a tu cuenta", "Correo
+  electronico", "¿Olvidaste tu contraseña?" (aviso: la restablece el admin), ojo para ver
+  la clave y boton redondo "Ingresar". Clases `.pc-solo-movil` / `.pc-solo-pc`. La PC y la
+  tablet NO cambian (decision de Victor). `<meta name="color-scheme" content="light">`
+  para que el modo oscuro del telefono no la pinte gris.
 - Avisos de pantalla: los bordes de 1.5-2 px se afinan a 1 px por CSS (`.pc-app`).
 Pendiente (etapa 2+): portales de la doctora (rosado) y del groomer, tarjetas del Dashboard,
 cambiar los emojis del menu por iconos SVG, tablas.

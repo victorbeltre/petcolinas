@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- La app es clara: sin esto, el modo oscuro forzado del navegador del telefono la pinta gris. -->
+  <meta name="color-scheme" content="light">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -71,6 +73,22 @@
       .pc-login-marca img { max-width: 560px; }
       .pc-login-form { width: auto; flex: 1; align-items: flex-start; border-left: none; padding: 24px 16px 40px; }
       .pc-login-form > div { padding: 28px 22px; }
+    }
+    /* Telefono (29 oct 2026, inspirado en la entrada de Alegra): fondo blanco,
+       logo y nombre centrados, sin la portada ancha ni la tarjeta. La PC y la
+       tablet NO cambian: todo lo de aqui solo aplica a 640 px o menos. */
+    .pc-solo-movil { display: none !important; }
+    @media (max-width: 640px) {
+      .pc-solo-pc { display: none !important; }
+      .pc-solo-movil { display: block !important; }
+      span.pc-solo-movil { display: inline !important; }
+      .pc-login { background: #fff; min-height: 100dvh; }
+      .pc-login-marca { display: none; }
+      .pc-login-form { background: #fff; padding: 20px 22px 32px; align-items: stretch; }
+      .pc-login-form > div { border: none; box-shadow: none; padding: 0; max-width: 420px !important; margin: 0 auto; }
+      .pc-login-form h1 { font-size: 24px !important; text-align: center; }
+      .pc-login-form .pc-login-sub { text-align: center; }
+      .pc-login-entrar { padding: 15px !important; border-radius: 999px !important; font-size: 16px !important; }
     }
 
     /* Cotizaciones: totales debajo de las retenciones en pantallas angostas. */
@@ -273,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-28 22:01Z";
+const PC_BUILD = "2026-10-29 00:13Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1176,42 +1194,66 @@ function LoginScreen({ onLogin, aviso }) {
   function handleKey(e) {
     if (e.key === "Enter") handleLogin();
   }
-  // Diseño "moderno y limpio" (oct 2026): panel de marca a la izquierda con el
-  // logo real y el formulario a la derecha. En el telefono solo el formulario.
+  // Diseño "moderno y limpio" (oct 2026): portada a la izquierda y formulario a
+  // la derecha. En el telefono (<=640 px, CSS) se oculta la portada y se ve el
+  // encabezado .pc-solo-movil: logo, nombre y "Ingresa a tu cuenta" (estilo Alegra).
   const E = React.createElement;
+  const [ayuda, setAyuda] = useState(false);
   const campo = (extra) => ({
     width: "100%", padding: "12px 14px", borderRadius: 10, fontSize: 15, outline: "none",
     border: "1px solid " + (error ? "#e5484d" : "#d9dee3"), background: "#fff", color: "#1f2328",
     transition: "border-color .15s, box-shadow .15s", ...extra
   });
-  const etiqueta = (t) => E("label", { style: { display: "block", fontSize: 13, fontWeight: 600, color: "#3d444d", marginBottom: 6 } }, t);
+  const estiloEtiqueta = { display: "block", fontSize: 13, fontWeight: 600, color: "#3d444d", marginBottom: 6 };
+  // Texto distinto en PC y telefono sin duplicar el campo: dos <span> y el CSS elige.
+  const dos = (pc, movil) => [E("span", { key: "pc", className: "pc-solo-pc" }, pc), E("span", { key: "m", className: "pc-solo-movil" }, movil)];
+  const etiqueta = (t, tMovil) => E("label", { style: estiloEtiqueta }, tMovil ? dos(t, tMovil) : t);
+  const ojo = (tachado) => E("svg", { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "#6b7280", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
+    E("path", { d: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" }), E("circle", { cx: 12, cy: 12, r: 3 }),
+    tachado && E("path", { d: "M3 3l18 18" }));
+  const enlace = { background: "none", border: "none", padding: 0, minHeight: 0, cursor: "pointer", color: "#1a6b3a", fontWeight: 600, fontSize: 13 };
   return E("div", { className: "pc-login" },
     E("aside", { className: "pc-login-marca" },
       E("img", { src: "portada-app.jpg", alt: "PetColinas \u2014 Veterinaria \xB7 Grooming \xB7 Petshop \xB7 Sistema de gesti\xF3n interna",
         onError: (ev) => { ev.currentTarget.replaceWith(Object.assign(document.createElement("div"), { textContent: "PetColinas", style: "font-size:56px;font-weight:800;color:#1a3550" })); } })),
     E("main", { className: "pc-login-form" },
       E("div", { style: { width: "100%", maxWidth: 360 } },
-        E("h1", { style: { fontSize: 26, fontWeight: 800, color: "#1f2328", letterSpacing: "-0.02em", margin: 0 } }, "Bienvenido"),
-        E("p", { style: { fontSize: 14, color: "#6b7280", margin: "6px 0 " + (aviso ? "16px" : "28px") } }, "Entra con tu correo de PetColinas."),
+        E("div", { className: "pc-solo-movil", style: { textAlign: "right", marginBottom: 8 } },
+          E("button", { type: "button", onClick: () => setAyuda((v) => !v), style: { ...enlace, fontWeight: 500, color: "#3d444d" } }, "\xBFNecesitas ayuda?")),
+        E("div", { className: "pc-solo-movil", style: { textAlign: "center", margin: "18px 0 30px" } },
+          // logo.png ya trae "PetColinas" escrito debajo del perro y el gato.
+          E("img", { src: "logo.png", alt: "PetColinas", style: { width: 150, height: "auto", display: "block", margin: "0 auto" },
+            onError: (ev) => { ev.currentTarget.replaceWith(Object.assign(document.createElement("div"), { textContent: "PetColinas", style: "font-size:30px;font-weight:800;color:#0c1e31" })); } }),
+          E("div", { style: { fontSize: 12, color: "#6b7280", marginTop: 8, letterSpacing: ".04em" } }, "Veterinaria \xB7 Grooming \xB7 Petshop")),
+        E("h1", { style: { fontSize: 26, fontWeight: 800, color: "#1f2328", letterSpacing: "-0.02em", margin: 0 } }, dos("Bienvenido", "Ingresa a tu cuenta")),
+        E("p", { className: "pc-login-sub", style: { fontSize: 14, color: "#6b7280", margin: "6px 0 " + (aviso || ayuda ? "16px" : "28px") } },
+          dos("Entra con tu correo de PetColinas.", "Sistema de gesti\xF3n interna de PetColinas")),
         aviso && E("div", { role: "status", style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10,
           padding: "10px 12px", fontSize: 13.5, marginBottom: 18 } }, aviso),
-        E("div", { style: { marginBottom: 16 } }, etiqueta("Correo"),
+        ayuda && E("div", { role: "status", style: { background: "#eef6f1", border: "1px solid #cfe5d7", color: "#1f4d33", borderRadius: 10,
+          padding: "10px 12px", fontSize: 13.5, marginBottom: 18 } },
+          "Las cuentas las crea el administrador. Si olvidaste tu contrase\xF1a o no puedes entrar, p\xEDdele que te la restablezca."),
+        E("div", { style: { marginBottom: 16 } }, etiqueta("Correo", "Correo electr\xF3nico"),
           E("input", { type: "email", value: email, onChange: (ev) => setEmail(ev.target.value), onKeyDown: handleKey,
             placeholder: "nombre@petcolinas.com", autoComplete: "username", autoFocus: true, style: campo() })),
-        E("div", { style: { marginBottom: 22 } }, etiqueta("Contrase\xF1a"),
+        E("div", { style: { marginBottom: 22 } },
+          E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } },
+            etiqueta("Contrase\xF1a"),
+            E("button", { type: "button", className: "pc-solo-movil", onClick: () => setAyuda(true), style: enlace }, "\xBFOlvidaste tu contrase\xF1a?")),
           E("div", { style: { position: "relative" } },
             E("input", { type: showPass ? "text" : "password", value: password, onChange: (ev) => setPassword(ev.target.value), onKeyDown: handleKey,
               placeholder: "••••••••", autoComplete: "current-password", style: campo({ paddingRight: 76 }) }),
-            E("button", { type: "button", onClick: () => setShowPass((v) => !v), style: {
+            E("button", { type: "button", onClick: () => setShowPass((v) => !v), "aria-label": showPass ? "Ocultar contrase\xF1a" : "Mostrar contrase\xF1a", style: {
               position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none",
-              cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#1a6b3a", padding: "6px 8px", minHeight: 0 } },
-              showPass ? "Ocultar" : "Mostrar"))),
+              cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#1a6b3a", padding: "6px 8px", minHeight: 0, lineHeight: 0 } },
+              E("span", { className: "pc-solo-pc", style: { lineHeight: "normal" } }, showPass ? "Ocultar" : "Mostrar"),
+              E("span", { className: "pc-solo-movil" }, ojo(showPass))))),
         error && E("div", { role: "alert", style: { background: "#fdecec", border: "1px solid #f5c2c4", borderRadius: 10, padding: "10px 12px",
           marginBottom: 16, fontSize: 13.5, color: "#b42318" } }, error),
-        E("button", { onClick: handleLogin, disabled: loading, style: {
+        E("button", { onClick: handleLogin, disabled: loading, className: "pc-login-entrar", style: {
           width: "100%", padding: "13px", background: loading ? "#7aa98b" : "#1a6b3a", color: "#fff", border: "none",
           borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", transition: "background .15s" } },
-          loading ? "Verificando…" : "Entrar"),
+          loading ? "Verificando…" : dos("Entrar", "Ingresar")),
         E("div", { style: { textAlign: "center", marginTop: 22, fontSize: 12, color: "#9aa1a9" } }, "Acceso solo para el personal autorizado"))));
 }
 function imprimirCarnetVacunas(mascota, cliente, ventas) {
