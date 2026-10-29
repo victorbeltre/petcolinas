@@ -590,6 +590,11 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   if (!d2 || d2.emp.id !== 4 || d2.tipo !== "incentivo") fallo("cubrir un dia = pago extra: " + JSON.stringify(d2));
   if (det({ fecha: "2025-10-07", monto: 2139, descripcion: "TARJETA LAURA" }, emps)) fallo("gastos de antes de la nomina nueva no se proponen");
   if (det({ fecha: "2026-10-02", monto: 601, proveedor: "LA SIRENA", descripcion: "PRODUCTOS DE LIMPIEZA" }, emps)) fallo("un gasto sin colaborador ni categoria nomina no es nomina");
+  // Un adelanto se descuenta de la quincena en que se dio o de una posterior, nunca de una anterior.
+  const pn = enVM("pendientesNomina");
+  const movsA = [{ id: 1, empleado_id: 2, tipo: "adelanto", fecha: "2026-10-20", periodo: "2026-10-Q2", monto: 3000, pagado_ahora: true }];
+  if (pn(movsA, 2, "adelanto", "2026-10-Q1").length !== 0) fallo("un adelanto del 20 oct NO se descuenta de la 1ra quincena de octubre");
+  if (pn(movsA, 2, "adelanto", "2026-10-Q2").length !== 1 || pn(movsA, 2, "adelanto", "2026-11-Q1").length !== 1) fallo("se descuenta en la 2da de octubre (o la siguiente si esa no se pago)");
   const g = enVM("esGastoNomina");
   if (!g({ categoria: "nomina" }) || !g({ categoria: "Nómina" }) || g({ categoria: "insumo" })) fallo("esGastoNomina");
   const html = require("fs").readFileSync(require("path").join(__dirname, "..", "..", "index.html"), "utf8");

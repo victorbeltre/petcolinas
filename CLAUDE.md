@@ -356,6 +356,8 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   migraciones (repo publico): render-check falla si EMPLEADOS_INIT lleva mensualidad. La
   columna vieja `pc_empleados.mensualidad` quedo en 0 (copia en `respaldos.pc_empleados_20261029`).
 - Movimientos (`pc_nomina_movimientos`): quincena, adelanto (se paga ya y se RESTA de la
+  quincena EN QUE se dio o una posterior, nunca de una anterior: `pendientesNomina`; Victor 29 oct:
+  adelanto despues de pagar la 1ra quincena -> se descuenta en la 2da) — antes decia: de la
   proxima quincena), incentivo (pagar ya, o sumar a la proxima quincena). Anular devuelve a
   "pendiente" lo que esa quincena habia liquidado y borra su gasto.
 - Cada pago se anota en Gastos categoria "nomina" SIN el nombre ("Pago de nomina — 2da

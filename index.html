@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 21:51Z";
+const PC_BUILD = "2026-10-29 21:53Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -13793,6 +13793,14 @@ function detectarPagoNomina(g, empleados) {
   const periodo = /\b(primera|1ra|1era|primer)\b/.test(txt) ? mes + "-Q1" : /\b(segunda|2da)\b/.test(txt) ? mes + "-Q2" : periodoQuincena(g.fecha);
   return { emp, tipo, periodo };
 }
+// Adelantos (a restar) e incentivos "para la proxima quincena" (a sumar) que
+// aun no entraron en ninguna quincena. Solo cuentan en la quincena EN QUE se
+// dieron o en una posterior (Victor, 29 oct): un adelanto del 20 de octubre no
+// se descuenta de la 1ra quincena de octubre aunque esa se registre despues.
+function pendientesNomina(movs, empId, tipo, periodo) {
+  return (movs || []).filter((m) => m.empleado_id === empId && m.tipo === tipo && !m.anulado && !m.liquidado_en
+    && (tipo === "adelanto" || !m.pagado_ahora) && (m.periodo || periodoQuincena(m.fecha)) <= periodo);
+}
 function mensajeErrorNomina(e) {
   const m = String((e && e.message) || e);
   if (/NOMINA_CLAVE_MAL/.test(m)) return "Clave incorrecta.";
@@ -13881,7 +13889,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const vendedores = (datos.empleados || []).filter((e) => NOMINA_CON_COMISION.includes(e.empleado_ref)).map((e) => ({ id: e.id, clave: normalizarTextoInv(e.nombre).split(" ")[0] }));
   const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, { inventario, vendedores, costosManual });
   const tieneTarifa = (emp) => tarifas.some((t) => t.empleado_id === emp.id);
-  const pendientes = (emp, tipo) => movs.filter((m) => m.empleado_id === emp.id && m.tipo === tipo && !m.liquidado_en && (tipo === "adelanto" || !m.pagado_ahora));
+  const pendientes = (emp, tipo) => pendientesNomina(movs, emp.id, tipo, periodo);
   const resumen = (emp) => {
     const pt = porTarifa.porEmpleado[emp.id];
     const sinCosto = pt ? pt.sinCosto : [];
