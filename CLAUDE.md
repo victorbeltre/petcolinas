@@ -369,7 +369,14 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   "Baño pequeño"). Cantidad: qty o "3x"/"(2)" en el nombre. "Otros nombres" (alias) para las
   formas raras. Lo de vet/grooming sin tarifa se lista en amarillo y NO suma a nadie.
   Sin tarifario para alguien, cae a `ventas.comision` (sistema anterior).
-  Cortesias ("(cortesia casa)") SI cuentan comision: el trabajo se hizo.
+  CORTESIAS NO generan comision (Victor, 29 oct), ni servicio ni producto; se cuentan aparte.
+- 5% FARMACIA (Victor, 29 oct): quien VENDE un producto (Naylan o Alexander, por `recibidopor`;
+  aqui SI es quien vendio) gana el 5% de la GANANCIA = (precio de venta - costo) x 5%.
+  Ej.: NexGard 2-3 kg costo 924, venta 1,416 -> 492 x 5% = 24.60. Costo del inventario
+  (prodId o nombre identico); si no se encuentra NO se inventa: queda "sin costo" en el
+  Historial con un campo para escribirlo (no se guarda; entra en esa quincena). Laura no.
+  Alias que pidio Victor: "Cani V-4" = Test Ehrlichia; "Desparasitacion con Albendazol" =
+  Aplicacion Albendazol.
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 

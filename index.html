@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 20:50Z";
+const PC_BUILD = "2026-10-29 21:00Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -9074,7 +9074,7 @@ function PetColinasApp({ session, onLogout }) {
     pendientesN: ventasPendientesCount, pendientesMonto: ventasPendientesMonto,
     syncStatus, lastSync, sincronizar: sincronizarAhora, sincronizando: pollingSync
   }), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv, refetchInventario }), tab === "nomina" && React.createElement(NominaSegura, { ventas, gastos, setGastos, pagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv, refetchInventario }), tab === "nomina" && React.createElement(NominaSegura, { ventas, gastos, setGastos, pagosNom, ventasMes, mesActual, inventario: todoInventario }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "llamadas" && React.createElement(Llamadas, null),
     tab === "whatsapp" && React.createElement(PantallaWhatsApp, null),
@@ -13707,8 +13707,19 @@ function tarifaDeServicioNomina(nombre, tarifas) {
   }
   return mejor;
 }
-function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta) {
+// Farmacia (Victor, 29 oct): quien VENDE un producto (Naylan o Alexander) gana
+// el 5% de la GANANCIA: (precio de venta - costo) x 5%. NexGard 2-3 kg que costo
+// 924 y se vendio a 1,416 -> 492 x 5% = 24.60. El costo sale del inventario
+// (producto elegido de la lista o con el nombre identico); si no se encuentra,
+// NO se inventa: la linea queda "sin costo" para escribirlo a mano en Nomina.
+// Las cortesias no generan comision (ni servicio ni producto).
+const NOMINA_PCT_FARMACIA = 0.05;
+function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, opts = {}) {
+  const inv = opts.inventario || [], vend = opts.vendedores || [], manual = opts.costosManual || {};
+  const r2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
   const porEmpleado = {}, sinTarifa = {};
+  let cortesias = 0;
+  const de = (id) => porEmpleado[id] || (porEmpleado[id] = { total: 0, lineas: [], sinCosto: [] });
   for (const v of ventas || []) {
     if (!v.fecha || v.fecha < desde || v.fecha > hasta) continue;
     const items = Array.isArray(v.items) && v.items.length ? v.items : [{ nombre: v.servicio || v.descripcion || "", area: v.area }];
@@ -13718,19 +13729,36 @@ function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta) {
       const mx = nombre.match(/^(?:\((\d+)\)|(\d+)\s*x)\s*/i);
       if (mx) { cant = Number(mx[1] || mx[2]) || cant; nombre = nombre.slice(mx[0].length); }
       if (!nombre) continue;
+      if (/cortes[ií]a/i.test(nombre + " " + (it.nota || ""))) { cortesias += cant; continue; }
       const t = tarifaDeServicioNomina(nombre, tarifas);
-      if (!t) {
-        const area = it.area || v.area;
-        if (area === "veterinaria" || area === "grooming") sinTarifa[nombre] = (sinTarifa[nombre] || 0) + cant;
+      if (t) {
+        const monto = r2(Number(t.comision) * cant);
+        const e = de(t.empleado_id);
+        e.total = r2(e.total + monto);
+        e.lineas.push({ tipo: "servicio", fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, tarifa: t.servicio, cant, comision: monto });
         continue;
       }
-      const e = porEmpleado[t.empleado_id] || (porEmpleado[t.empleado_id] = { total: 0, lineas: [] });
-      const monto = Math.round(Number(t.comision) * cant * 100) / 100;
-      e.total = Math.round((e.total + monto) * 100) / 100;
-      e.lineas.push({ fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, tarifa: t.servicio, cant, comision: monto, cortesia: /cortes[ií]a/i.test(nombre) });
+      const area = it.area || v.area;
+      const prod = (it.prodId != null && it.prodId !== "" ? inv.find((p) => String(p.id) === String(it.prodId)) : null) || coincidenciaInventario(nombre, inv);
+      if (prod || area === "farmacia" || it.categoria === "farmacia") {
+        const quien = vend.find((x) => x.clave && normalizarTextoInv(v.recibidopor || v.recibidoPor || "").split(" ").includes(x.clave));
+        if (!quien) continue;
+        const venta = it.subtotal != null && it.subtotal !== "" ? Number(it.subtotal) : r2((Number(it.precioUnit ?? it.precio) || 0) * cant * (1 - (Number(it.descPct) || 0) / 100));
+        if (!(venta > 0)) continue;
+        const clave = normalizarTextoInv(nombre);
+        const costoInv = prod ? Number(prod.costo || prod.precioCompra) || 0 : 0;
+        const costoU = costoInv > 0 ? costoInv : manual[clave] != null && manual[clave] !== "" && isFinite(Number(manual[clave])) ? Number(manual[clave]) : null;
+        const e = de(quien.id);
+        if (costoU == null) { e.sinCosto.push({ fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, cant, venta, clave }); continue; }
+        const ganancia = Math.max(0, r2(venta - costoU * cant)), monto = r2(ganancia * NOMINA_PCT_FARMACIA);
+        e.total = r2(e.total + monto);
+        e.lineas.push({ tipo: "farmacia", fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, cant, venta, costo: r2(costoU * cant), ganancia, comision: monto, costoManual: !(costoInv > 0) });
+        continue;
+      }
+      if (area === "veterinaria" || area === "grooming") sinTarifa[nombre] = (sinTarifa[nombre] || 0) + cant;
     }
   }
-  return { porEmpleado, sinTarifa: Object.entries(sinTarifa).sort((a, b) => b[1] - a[1]) };
+  return { porEmpleado, sinTarifa: Object.entries(sinTarifa).sort((a, b) => b[1] - a[1]), cortesias };
 }
 // Cuenta de la quincena. Los adelantos se RESTAN (ya se pagaron antes) y los
 // incentivos "para la proxima quincena" se SUMAN.
@@ -13748,7 +13776,7 @@ function mensajeErrorNomina(e) {
   if (/pc_nomina|function|404/i.test(m) && /not find|no existe|does not exist|404/i.test(m)) return "Falta activar la n\xF3mina con clave en Supabase (M29).";
   return m;
 }
-function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], ventasMes = [], mesActual }) {
+function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], ventasMes = [], mesActual, inventario = [] }) {
   const E = React.createElement;
   const [estado, setEstado] = useState(null);     // null | {tiene_clave} | {error}
   const [token, setToken] = useState(null);
@@ -13762,6 +13790,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const [cambio, setCambio] = useState(null);
   const [verTarifas, setVerTarifas] = useState(false);
   const [editTarifa, setEditTarifa] = useState(null);
+  const [costosManual, setCostosManual] = useState({});   // costo escrito a mano de productos sin costo en inventario
   const tokenRef = useRef(null);
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => {
@@ -13822,11 +13851,13 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const movs = (datos.movimientos || []).filter((m) => !m.anulado);
   const activos = (datos.empleados || []).filter((e) => e.activo);
   const tarifas = datos.comisiones || [];
-  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta);
+  const vendedores = (datos.empleados || []).filter((e) => NOMINA_CON_COMISION.includes(e.empleado_ref)).map((e) => ({ id: e.id, clave: normalizarTextoInv(e.nombre).split(" ")[0] }));
+  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, { inventario, vendedores, costosManual });
   const tieneTarifa = (emp) => tarifas.some((t) => t.empleado_id === emp.id);
   const pendientes = (emp, tipo) => movs.filter((m) => m.empleado_id === emp.id && m.tipo === tipo && !m.liquidado_en && (tipo === "adelanto" || !m.pagado_ahora));
   const resumen = (emp) => {
     const pt = porTarifa.porEmpleado[emp.id];
+    const sinCosto = pt ? pt.sinCosto : [];
     const vts = tieneTarifa(emp) ? (pt ? pt.lineas : [])
       : ventasComisionNomina(ventas, emp, desde, hasta).map((v) => ({ fecha: v.fecha, cliente: v.cliente, servicio: v.servicio || v.descripcion || "", cant: 1, comision: Number(v.comision) || 0 }));
     const com = Math.round(vts.reduce((s, l) => s + l.comision, 0) * 100) / 100;
@@ -13834,7 +13865,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
     const base = Math.round((Number(emp.sueldo_mensual) || 0) / 2 * 100) / 100;
     const pagada = movs.find((m) => m.empleado_id === emp.id && m.tipo === "quincena" && m.periodo === periodo);
     const c = calcularQuincenaNomina({ base, comisiones: com, incentivos: inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: ade.reduce((s, m) => s + Number(m.monto), 0) });
-    return { vts, com, inc, ade, base, pagada, ...c };
+    return { vts, com, sinCosto, inc, ade, base, pagada, ...c };
   };
   const anotarGasto = (fecha, descripcion, monto, metodo) => {
     const g = { id: Date.now() + Math.floor(Math.random() * 1000), fecha, proveedor: "N\xF3mina", descripcion, monto, categoria: "nomina", pagadoPor: "Petcolinas", metodo: metodo || "" };
@@ -13972,6 +14003,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
               E("button", { onClick: () => setEditTarifa({ ...t, precio: t.precio == null ? "" : String(t.precio), comision: String(t.comision), alias: (t.alias || []).join(", ") }), style: { background: "none", border: "none", color: C.verde, cursor: "pointer", minHeight: 0, padding: "0 2px", fontWeight: 700 } }, "Editar"),
               E("button", { title: "Quitar", onClick: async () => { if (!window.confirm("\xBFQuitar la tarifa de " + t.servicio + "?")) return; try { await llamar("pc_nomina_guardar_comision", { p_c: { id: t.id, borrar: true } }); await cargar(); } catch (e) { avisar(e.message, "error"); } },
                 style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", minHeight: 0, padding: "0 2px" } }, "\u2715"))))))))),
+    porTarifa.cortesias > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, porTarifa.cortesias + " servicio(s) de cortes\xEDa en esta quincena: no generan comisi\xF3n."),
     porTarifa.sinTarifa.length > 0 && tarifas.length > 0 && E("details", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 } },
       E("summary", { style: { cursor: "pointer", fontWeight: 600 } }, porTarifa.sinTarifa.length + " servicio(s) vendidos en esta quincena no tienen tarifa de comisi\xF3n (no suman a nadie)"),
       E("div", { style: { marginTop: 6 } }, porTarifa.sinTarifa.map(([n, c]) => n + (c > 1 ? " (" + c + ")" : "")).join(" \xB7 ")),
@@ -13992,7 +14024,13 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
             r.pagada ? E(Badge, { color: C.verde }, "Pagada") : E(Badge, { color: "#b45309" }, "Pendiente")),
           fila("Sueldo mensual", dinero(emp.sueldo_mensual)),
           fila("Quincena", dinero(r.base)),
-          (tieneTarifa(emp) || NOMINA_CON_COMISION.includes(emp.empleado_ref)) && fila("Comisiones (" + r.vts.reduce((s, l) => s + l.cant, 0) + " servicios)", dinero(r.com), "#1a4fa0"),
+          (tieneTarifa(emp) || NOMINA_CON_COMISION.includes(emp.empleado_ref)) && (() => {
+            const sv = r.vts.filter((l) => l.tipo !== "farmacia"), fa = r.vts.filter((l) => l.tipo === "farmacia");
+            return E(React.Fragment, null,
+              fila("Comisi\xF3n servicios (" + sv.reduce((s, l) => s + l.cant, 0) + ")", dinero(sv.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
+              (fa.length > 0 || r.sinCosto.length > 0) && fila("5% farmacia (" + fa.reduce((s, l) => s + l.cant, 0) + " productos)", dinero(fa.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
+              r.sinCosto.length > 0 && E("div", { style: { fontSize: 12, color: "#b45309", margin: "2px 0" } }, "\u26A0 " + r.sinCosto.length + " producto(s) sin costo: \xE1brelos en Historial"));
+          })(),
           r.inc.length > 0 && fila("Incentivos por sumar", dinero(r.inc.reduce((s, m) => s + Number(m.monto), 0)), "#7c3aed"),
           r.ade.length > 0 && fila("Adelantos por descontar", "−" + dinero(r.ade.reduce((s, m) => s + Number(m.monto), 0)), "#b45309"),
           E("div", { style: { borderTop: "1px solid " + C.borde, marginTop: 6, paddingTop: 6 } }, r.pagada ? fila("Pagado", dinero(r.pagada.monto), C.verde, true) : fila("A pagar", dinero(r.neto), C.verde, true)),
@@ -14007,8 +14045,15 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
               E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de esta quincena"),
               r.vts.map((v, i) => E("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "2px 0" } },
                 E("span", { title: v.tarifa ? "Tarifa: " + v.tarifa : "", style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
-                  fechaCorta(v.fecha) + " \xB7 " + (v.cant > 1 ? v.cant + "\xD7 " : "") + v.servicio + (v.cliente ? " \xB7 " + v.cliente : "") + (v.cortesia ? " (cortes\xEDa)" : "")),
+                  fechaCorta(v.fecha) + " \xB7 " + (v.cant > 1 ? v.cant + "\xD7 " : "") + v.servicio + (v.cliente ? " \xB7 " + v.cliente : "")
+                  + (v.tipo === "farmacia" ? " \xB7 5% de (" + dinero(v.venta) + " \u2212 " + dinero(v.costo) + (v.costoManual ? " a mano" : "") + ")" : "")),
                 E("b", { style: { color: "#1a4fa0", marginLeft: 8 } }, dinero(v.comision))))),
+            r.sinCosto.length > 0 && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", borderRadius: 8, padding: "8px 10px", marginBottom: 10 } },
+              E("div", { style: { fontSize: 12, fontWeight: 700, color: "#8a5a00", marginBottom: 4 } }, "Productos vendidos sin costo en inventario: escribe el costo unitario para calcular su 5%"),
+              r.sinCosto.map((l, i) => E("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "3px 0" } },
+                E("span", { style: { flex: 1, minWidth: 0 } }, fechaCorta(l.fecha) + " \xB7 " + (l.cant > 1 ? l.cant + "\xD7 " : "") + l.servicio + " \xB7 vendido " + dinero(l.venta)),
+                E("input", { type: "number", min: 0, placeholder: "costo", value: costosManual[l.clave] || "", onChange: (e) => setCostosManual({ ...costosManual, [l.clave]: e.target.value }),
+                  style: { width: 90, border: "1px solid #d9dee3", borderRadius: 7, padding: "4px 6px", fontSize: 12.5 } })))),
             E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Pagos registrados"),
             (datos.movimientos || []).filter((m) => m.empleado_id === emp.id).slice(0, 30).map((m) => E("div", { key: m.id, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "4px 0", borderTop: "1px solid #f4f5f6", opacity: m.anulado ? 0.5 : 1 } },
               E("span", { style: { color: C.suave, width: 74 } }, fechaCorta(m.fecha)),

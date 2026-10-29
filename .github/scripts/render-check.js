@@ -566,6 +566,18 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
     { fecha: "2026-10-05", area: "grooming", items: [{ nombre: "Baño pequeño" }] }], tar, "2026-10-16", "2026-10-31");
   if (cn.porEmpleado[7].total !== 70 || cn.porEmpleado[9].total !== 60) fallo("comisiones por tarifa (la de Alexander aunque la registre Naylan; cantidades; solo el periodo): " + JSON.stringify(cn.porEmpleado));
   if (cn.sinTarifa.length !== 1 || cn.sinTarifa[0][0] !== "Coprológico") fallo("sin tarifa: solo servicios de vet/grooming, no farmacia: " + JSON.stringify(cn.sinTarifa));
+  // Farmacia: 5% de (venta - costo) para quien VENDE (Naylan/Alexander); cortesias sin comision.
+  const inv = [{ id: 50, nombre: "Nexgard Spectra 2-3.5 kg", costo: 924 }];
+  const vend = [{ id: 9, clave: "naylan" }, { id: 7, clave: "alexander" }];
+  const fa = enVM("comisionesNominaPorTarifa")([
+    { fecha: "2026-10-20", area: "farmacia", recibidopor: "Naylan Perez", items: [{ nombre: "Nexgard Spectra 2-3.5 KG ", area: "farmacia", subtotal: 1416 }] },
+    { fecha: "2026-10-20", area: "farmacia", recibidopor: "Laura", items: [{ nombre: "Nexgard Spectra 2-3.5 kg", area: "farmacia", subtotal: 1585 }] },
+    { fecha: "2026-10-21", area: "farmacia", recibidopor: "Alexander", items: [{ nombre: "Cephalexin 250mg", area: "farmacia", subtotal: 270 }, { nombre: "Rimadyl", area: "farmacia", subtotal: 80 }] },
+    { fecha: "2026-10-22", area: "grooming", recibidopor: "Alexander", items: [{ nombre: "Baño pequeño (cortesía casa)", subtotal: 0 }] }],
+    tar, "2026-10-16", "2026-10-31", { inventario: inv, vendedores: vend, costosManual: { "cephalexin 250mg": "200" } });
+  if (!fa.porEmpleado[9] || fa.porEmpleado[9].total !== 24.6) fallo("5% farmacia: (1416 - 924) x 5% = 24.60: " + JSON.stringify(fa.porEmpleado[9]));
+  if (!fa.porEmpleado[7] || fa.porEmpleado[7].total !== 3.5 || fa.porEmpleado[7].sinCosto.length !== 1) fallo("costo a mano (270-200)x5% = 3.50 y Rimadyl sin costo queda pendiente, no inventado: " + JSON.stringify(fa.porEmpleado[7]));
+  if (fa.cortesias !== 1) fallo("la cortesia no genera comision y se cuenta aparte");
   const g = enVM("esGastoNomina");
   if (!g({ categoria: "nomina" }) || !g({ categoria: "Nómina" }) || g({ categoria: "insumo" })) fallo("esGastoNomina");
   const html = require("fs").readFileSync(require("path").join(__dirname, "..", "..", "index.html"), "utf8");
