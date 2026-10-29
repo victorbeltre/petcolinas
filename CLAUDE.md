@@ -362,7 +362,9 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   quincena de octubre de 2026", "Adelanto de nomina"). `esGastoNomina`: Dashboard y Reportes
   los cuentan como NOMINA, no como gasto operativo (si no, se sumarian dos veces).
 - Comisiones (M30, 29 oct): TARIFARIO por servicio, monto fijo (`pc_nomina_comisiones`, tras la
-  clave; 29 servicios de Naylan, 16 de Alexander, de la tabla de Victor). La comision es de quien
+  clave; 36 servicios de Naylan, 16 de Alexander, de la tabla de Victor; el 29 oct sumo
+  Hemograma, Coprologico, Mi primera vacuna, Completo esquema, Refuerzo anual, Gotas oticas y
+  Aplicacion Meloxipet; "Meloxipet" solo, sin "Aplicacion", sigue siendo producto -> 5% farmacia). La comision es de quien
   tiene ESE servicio en su tabla, NO de `recibidopor` (es quien registro la venta; Naylan
   registra muchos baños). `tarifaDeServicioNomina` compara por palabras (sin acentos, plural ->
   singular, "c/" -> "con"); gana la tarifa mas larga que encaje ("Baño pequeño con linea" a
