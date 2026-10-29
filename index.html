@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 18:48Z";
+const PC_BUILD = "2026-10-29 18:57Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3795,6 +3795,13 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
       const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = nombre + ".csv"; a.click();
     }
   };
+  // Sin la tabla en Supabase los botones antes quedaban apagados sin decir nada
+  // (Victor: "al dar clic no me hace nada"). Ahora se explica.
+  const falta = () => {
+    if (cuentas !== false) return false;
+    avisar("Cuentas por pagar todav\xEDa no est\xE1 activada en Supabase: falta correr su SQL (M27 y M28). Sin eso no se puede guardar ninguna factura.", "error");
+    return true;
+  };
   const formVacio = () => ({ tipo: "factura_proveedor", proveedor: "", identificacion: "", numero: "", ncf: "", fecha: hoyISO, vence: sumarDiasISO(hoyISO, 30), total: "", notas: "" });
   // Prepara el archivo: la foto se reduce (archivoFacturaABase64) y eso mismo se guarda.
   const prepararArchivo = async (file) => {
@@ -3917,12 +3924,12 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
         E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, margin: "2px 0 0" } }, "Cuentas por pagar"),
         E("p", { style: { color: C.suave, fontSize: 13.5, margin: "4px 0 0" } }, "Conoce las deudas que tienes registradas y lleva un control de tus pagos pendientes.")),
       E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-        E("button", { className: "pc-btn-suave", onClick: abrirImportar, disabled: cuentas === false }, "Traer de compras"),
+        E("button", { className: "pc-btn-suave", onClick: () => falta() || abrirImportar() }, "Traer de compras"),
         E("button", { className: "pc-btn-suave", onClick: exportar, disabled: !filas.length }, "⬇ Exportar Excel"),
-        E("button", { className: "pc-btn-suave", onClick: () => setForm(formVacio()), disabled: cuentas === false }, "＋ Registrar a mano"),
+        E("button", { className: "pc-btn-suave", onClick: () => falta() || setForm(formVacio()) }, "＋ Registrar a mano"),
         E("input", { ref: entradaFactura, type: "file", accept: "image/*,application/pdf", style: { display: "none" },
           onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; leerFactura(f); } }),
-        E("button", { onClick: () => entradaFactura.current && entradaFactura.current.click(), disabled: cuentas === false || leyendo,
+        E("button", { onClick: () => falta() || (entradaFactura.current && entradaFactura.current.click()), disabled: leyendo,
           style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" } },
           leyendo ? "Leyendo la factura…" : "📷 Subir factura del proveedor"))),
     leyendo && E("div", { style: { background: "#eef6f1", border: "1px solid #cfe5d7", color: "#1f4d33", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, marginBottom: 14 } },
