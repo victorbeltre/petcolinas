@@ -331,6 +331,16 @@ pagado, por pagar). Tabla `pc_cuentas_pagar`, SOLO-ADMIN.
   "Proveedores" para que salga del flujo de caja. NUNCA categoria "Inventario": esa crea
   productos fantasma (inventarioDeGastos). Si el pago ya esta en Gastos, desmarcarla.
 - Anular solo sin pagos. Exportar a Excel (XLSX si cargo SheetJS; si no, CSV).
+- SUBIR FACTURA (M28, 29 oct 2026): boton "Subir factura del proveedor" (foto o PDF) -> la
+  misma Edge Function `factura-proveedor` lee proveedor, RNC, numero, NCF, fecha,
+  VENCIMIENTO (limite de pago), plazo de credito, condicion, subtotal, ITBIS, total y
+  conceptos -> el admin revisa y guarda. El original queda en el bucket privado
+  `facturas-proveedores` (solo-admin; "Ver factura" = enlace firmado de 5 min).
+  VENCIMIENTO OBLIGATORIO: leido de la factura > fecha + plazo de credito > se pide a mano
+  (`venceDesdeFactura`; nunca se inventa). Un proveedor ya conocido se escribe igual que
+  antes; NCF o numero+proveedor repetido pide confirmacion. Si la IA falla, el archivo
+  queda adjunto y se escribe a mano. "Vence en N d" en naranja a 7 dias o menos.
+  Las columnas nuevas solo se mandan si tienen valor: el registro a mano sirve sin M28.
 
 ## FINANZAS
 PE real: RD$203,739/mes

@@ -1,6 +1,9 @@
 /**
  * factura-proveedor — lee la foto (o el PDF) de la factura de un proveedor y
  * devuelve las lineas para cargarlas al inventario (M23, 26 oct 2026).
+ * Desde el 29 oct 2026 tambien la usa "Cuentas por pagar" (M28): por eso lee
+ * los datos de PAGO de la factura (RNC, vencimiento, plazo de credito, ITBIS) y
+ * acepta facturas de servicios (luz, internet, alquiler) ademas de mercancia.
  *
  * La funcion SOLO LEE: devuelve una propuesta y no escribe nada. El admin la
  * revisa y corrige en la pestaña Inventario antes de guardar, y el codigo unico
@@ -37,15 +40,22 @@ const HERRAMIENTA = {
   input_schema: {
     type: "object",
     properties: {
-      es_factura: { type: "boolean", description: "false si el documento NO es una factura, conduce o cotizacion de compra." },
+      es_factura: { type: "boolean", description: "false si el documento NO es una factura, conduce o cotizacion de compra o de servicio." },
+      es_servicio: { type: "boolean", description: "true si es la factura de un SERVICIO (luz, agua, internet, telefono, alquiler, mantenimiento, honorarios) y no de mercancia." },
       proveedor: { ...texto, description: "Nombre comercial del proveedor que emite la factura." },
+      identificacion: { ...texto, description: "RNC o cedula del PROVEEDOR que emite la factura (no el del cliente PetColinas)." },
       numero: { ...texto, description: "Numero de factura o de pedido, tal como esta impreso." },
       ncf: { ...texto, description: "NCF (comprobante fiscal dominicano, ej. B0100000123 o E310000000001), si aparece." },
-      fecha: { ...texto, description: "Fecha de la factura en formato AAAA-MM-DD." },
+      fecha: { ...texto, description: "Fecha de emision de la factura en formato AAAA-MM-DD." },
+      vence: { ...texto, description: "Fecha de VENCIMIENTO de la factura, es decir la fecha limite para PAGARLA (AAAA-MM-DD). Suele decir 'Vence', 'Fecha de vencimiento', 'Fecha limite de pago' o 'Pagar antes de'. NO es el vencimiento de los productos ni del NCF. null si no aparece." },
+      dias_credito: { ...numero, description: "Plazo de credito en dias si lo dice ('Credito 30 dias', 'Neto 30' -> 30). 0 si dice contado. null si no lo dice." },
+      condiciones: { ...texto, description: "Condicion de pago tal como esta impresa (ej. 'Credito 30 dias', 'Contado')." },
+      subtotal: { ...numero, description: "Subtotal antes de ITBIS." },
+      itbis: { ...numero, description: "ITBIS total de la factura." },
       total: { ...numero, description: "Total a pagar de la factura." },
       items: {
         type: "array",
-        description: "TODAS las lineas de productos, en el orden del documento. No incluir subtotales, ITBIS, descuentos globales ni fletes.",
+        description: "TODAS las lineas de productos (o de servicios, si es factura de servicio), en el orden del documento. No incluir subtotales, ITBIS, descuentos globales ni fletes.",
         items: {
           type: "object",
           properties: {
@@ -58,7 +68,7 @@ const HERRAMIENTA = {
             },
             cantidad: { type: "number", description: "Unidades compradas. Si la linea dice cajas con N unidades y se venden sueltas, devolver el total de unidades e indicarlo en nota." },
             costo_unitario: { ...numero, description: "Precio unitario de compra SIN ITBIS, si se puede leer." },
-            vencimiento: { ...texto, description: "Fecha de vencimiento AAAA-MM-DD si la factura la trae." },
+            vencimiento: { ...texto, description: "Fecha de caducidad del PRODUCTO (AAAA-MM-DD) si la factura la trae. No es el vencimiento del pago." },
             lote: texto,
             nota: { ...texto, description: "Cualquier aclaracion (ej. 'caja de 3 tabletas', 'bonificado')." },
             dudoso: { type: "boolean", description: "true si el nombre, la cantidad o el costo no se leen con total certeza." },
@@ -77,7 +87,9 @@ const INSTRUCCIONES =
   "Republica Dominicana. Registra cada linea de producto con la herramienta. Copia cantidades y costos tal " +
   "como estan impresos: no inventes ni completes lo que no se lee (dejalo en null y marca dudoso=true). " +
   "El nombre debe servir para buscar el producto en la tienda; la descripcion, para que el personal sepa " +
-  "que es. Clasifica cada producto en la categoria correcta.";
+  "que es. Clasifica cada producto en la categoria correcta. Lee tambien los datos de pago: RNC del proveedor, " +
+  "fecha de vencimiento (limite de pago), plazo de credito, subtotal, ITBIS y total. Una factura de servicio " +
+  "(luz, internet, alquiler...) tambien es factura: es_servicio=true y cada concepto va como linea con categoria otro.";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });

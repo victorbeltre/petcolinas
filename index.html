@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 00:13Z";
+const PC_BUILD = "2026-10-29 18:48Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3686,7 +3686,8 @@ async function cxpFetch(metodo, cuerpo, filtro) {
   const out = await res.json().catch(() => null);
   if (!res.ok) {
     const msg = out && (out.message || out.hint) || ("HTTP " + res.status);
-    throw new Error(/pc_cuentas_pagar/.test(msg) || res.status === 404 ? "Falta crear la tabla de cuentas por pagar en Supabase (ver instrucciones)."
+    throw new Error(/column/i.test(msg) ? "Falta correr la actualizaci\xF3n M28 de cuentas por pagar en Supabase (columnas de la factura subida)."
+      : /pc_cuentas_pagar/.test(msg) || res.status === 404 ? "Falta crear la tabla de cuentas por pagar en Supabase (ver instrucciones)."
       : /duplicate|unique/i.test(msg) ? "Esa compra ya est\xE1 registrada como cuenta por pagar." : "No se pudo guardar: " + msg);
   }
   return out;
@@ -3698,6 +3699,46 @@ async function crearCuentaPorPagarDesdeOC(o, total, dias) {
     notas: "Mercanc\xEDa de la orden " + numeroOC(o.numero) + ". Anota el n\xFAmero de la factura del proveedor cuando llegue." });
 }
 
+// M28 (29 oct 2026): subir la factura del proveedor en Cuentas por pagar. La lee
+// la misma Edge Function de Inventario (factura-proveedor) y propone los datos,
+// incluida la fecha de VENCIMIENTO (limite de pago). Si la factura no la trae,
+// se calcula del plazo de credito; si tampoco, se pide: no se guarda sin ella.
+function venceDesdeFactura(x, fecha) {
+  const iso = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+  if (iso(x && x.vence) && x.vence >= fecha) return { vence: x.vence, origen: "factura" };
+  const d = x && x.dias_credito;
+  if (d != null && isFinite(Number(d)) && Number(d) >= 0) return { vence: sumarDiasISO(fecha, Number(d)), origen: Number(d) ? "plazo" : "contado", dias: Number(d) };
+  return { vence: "", origen: "falta" };
+}
+function textoVenceCxP(vence, hoy) {
+  if (!vence) return "";
+  const d = Math.round((new Date(vence + "T00:00:00") - new Date(hoy + "T00:00:00")) / 864e5);
+  return d === 0 ? "Vence hoy" : d === 1 ? "Vence ma\xF1ana" : d > 0 ? "Vence en " + d + " d\xEDas" : "Venci\xF3 hace " + (-d) + " d\xEDa" + (d === -1 ? "" : "s");
+}
+const CXP_BUCKET = "facturas-proveedores";
+async function subirFacturaCxP(blob, mime, proveedor) {
+  const ext = mime === "application/pdf" ? "pdf" : mime === "image/png" ? "png" : "jpg";
+  const ruta = fechaLocal().slice(0, 7) + "/" + Date.now() + "_" + (normalizarTextoInv(proveedor).replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "proveedor") + "." + ext;
+  const h = await supaHeaders();
+  const r = await fetch(SUPA_URL + "/storage/v1/object/" + CXP_BUCKET + "/" + ruta, {
+    method: "POST", headers: { apikey: h.apikey, Authorization: h.Authorization, "Content-Type": mime, "x-upsert": "false" }, body: blob });
+  if (!r.ok) throw new Error(r.status === 400 || r.status === 404 ? "Falta correr la actualizaci\xF3n M28 en Supabase (almac\xE9n de facturas)." : "No se pudo guardar el archivo de la factura (" + r.status + ").");
+  return ruta;
+}
+async function abrirFacturaCxP(ruta) {
+  try {
+    const h = await supaHeaders();
+    const r = await fetch(SUPA_URL + "/storage/v1/object/sign/" + CXP_BUCKET + "/" + ruta, { method: "POST", headers: h, body: JSON.stringify({ expiresIn: 300 }) });
+    const o = await r.json();
+    if (!r.ok || !o.signedURL) throw new Error(o.message || "sin enlace");
+    window.open(SUPA_URL + "/storage/v1" + o.signedURL, "_blank");
+  } catch (e) { avisar("No se pudo abrir la factura: " + e.message, "error"); }
+}
+function dataURLaBlob(u) {
+  const [cab, b64] = String(u).split(","); const bin = atob(b64); const a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  return new Blob([a], { type: (cab.match(/data:([^;]+)/) || [])[1] || "application/octet-stream" });
+}
 function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombre = "Victor" }) {
   const E = React.createElement;
   const hoyISO = fechaLocal();
@@ -3710,6 +3751,8 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
   const [importar, setImportar] = useState(null); // lista de compras candidatas
   const [abierta, setAbierta] = useState(null);
   const [ocupado, setOcupado] = useState(false);
+  const [leyendo, setLeyendo] = useState(false);
+  const entradaFactura = useRef(null), entradaAdjunto = useRef(null);
   const cargar = async () => {
     const filas = await supaFetch("pc_cuentas_pagar", "GET", null, "?select=*&order=vence.asc.nullslast&limit=1000");
     setCuentas(Array.isArray(filas) ? filas : false);
@@ -3752,17 +3795,70 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
       const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = nombre + ".csv"; a.click();
     }
   };
+  const formVacio = () => ({ tipo: "factura_proveedor", proveedor: "", identificacion: "", numero: "", ncf: "", fecha: hoyISO, vence: sumarDiasISO(hoyISO, 30), total: "", notas: "" });
+  // Prepara el archivo: la foto se reduce (archivoFacturaABase64) y eso mismo se guarda.
+  const prepararArchivo = async (file) => {
+    const a = await archivoFacturaABase64(file);
+    return { a, adjunto: { blob: a.mime === "application/pdf" ? file : dataURLaBlob(a.archivo), mime: a.mime, nombre: file.name }, vista: a.vista };
+  };
+  const leerFactura = async (file) => {
+    if (!file) return;
+    setLeyendo(true); setForm(null);
+    let prep = null;
+    try {
+      prep = await prepararArchivo(file);
+      const token = await supaAccessToken();
+      const r = await fetch(SUPA_URL + "/functions/v1/factura-proveedor", { method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SUPA_KEY, "Authorization": "Bearer " + token },
+        body: JSON.stringify({ archivo: prep.a.archivo, mime: prep.a.mime }) });
+      let d = null; try { d = await r.json(); } catch (e) {}
+      if (!r.ok || !d || !d.datos) throw new Error((d && d.error) || "No se pudo leer la factura (HTTP " + r.status + ")");
+      const x = d.datos;
+      if (x.es_factura === false) throw new Error("Eso no parece una factura. Puedes escribir los datos a mano.");
+      const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(x.fecha || "")) ? x.fecha : hoyISO;
+      const v = venceDesdeFactura(x, fecha);
+      // Si el proveedor ya existe, se usa como esta escrito (para no tener "Agrovet" y "AGROVET SRL").
+      const conocido = proveedores.find((p) => normalizarTextoInv(p.nombre) === normalizarTextoInv(x.proveedor));
+      const num = (n) => n == null || !isFinite(Number(n)) ? "" : String(n);
+      setForm({ tipo: x.es_servicio ? "servicio" : "factura_proveedor", proveedor: conocido ? conocido.nombre : (x.proveedor || ""),
+        identificacion: x.identificacion || (conocido && conocido.identificacion) || "", numero: x.numero || "", ncf: String(x.ncf || "").toUpperCase(),
+        fecha, vence: v.vence, total: num(x.total), subtotal: num(x.subtotal), itbis: num(x.itbis), condiciones: x.condiciones || (v.origen === "contado" ? "Contado" : v.dias ? "Cr\xE9dito " + v.dias + " d\xEDas" : ""),
+        items: (Array.isArray(x.items) ? x.items : []).map((l) => ({ nombre: l.nombre, cantidad: l.cantidad, costo: l.costo_unitario, dudoso: !!l.dudoso })),
+        notas: "", _adjunto: prep.adjunto, _vista: prep.vista, _venceOrigen: v.origen, _avisos: Array.isArray(x.advertencias) ? x.advertencias : [], _leida: true });
+    } catch (e) {
+      // Sin lectura (sin clave de IA, foto ilegible...) la factura igual se adjunta y se escribe a mano.
+      setForm({ ...formVacio(), vence: "", _adjunto: prep && prep.adjunto, _vista: prep && prep.vista, _venceOrigen: "falta",
+        _avisos: [(e.message || String(e)) + (prep ? " La factura queda adjunta: completa los datos a mano." : "")] });
+    } finally { setLeyendo(false); }
+  };
+  const adjuntar = async (file) => {
+    if (!file) return;
+    try { const prep = await prepararArchivo(file); setForm((f) => ({ ...f, _adjunto: prep.adjunto, _vista: prep.vista })); }
+    catch (e) { avisar(e.message, "error"); }
+  };
   const guardarForm = async () => {
     const f = form;
     if (!String(f.proveedor || "").trim()) return avisar("Escribe el proveedor.", "error");
     const total = Math.round((parseFloat(f.total) || 0) * 100) / 100;
     if (!(total > 0)) return avisar("Escribe el total de la factura.", "error");
     if (f.id && total < (Number(f.pagado) || 0)) return avisar("El total no puede ser menor que lo ya pagado (" + dinero(f.pagado) + ").", "error");
-    if (f.vence && f.vence < f.fecha) return avisar("El vencimiento no puede ser antes de la fecha de la factura.", "error");
+    if (!f.vence) return avisar("Escribe la fecha de vencimiento de la factura (si es de contado, pulsa \u201CContado\u201D).", "error");
+    if (f.vence < f.fecha) return avisar("El vencimiento no puede ser antes de la fecha de la factura.", "error");
+    const dup = (Array.isArray(cuentas) ? cuentas : []).find((c) => !c.anulada && c.id !== f.id && (
+      (f.ncf && c.ncf && c.ncf === f.ncf) || (f.numero && c.numero && normalizarTextoInv(c.numero) === normalizarTextoInv(f.numero) && normalizarTextoInv(c.proveedor) === normalizarTextoInv(f.proveedor))));
+    if (dup && !window.confirm("Ya hay una cuenta de " + dup.proveedor + " con ese " + (f.ncf && dup.ncf === f.ncf ? "NCF" : "n\xFAmero") + " (" + dinero(dup.total) + "). \xBFRegistrarla de todos modos?")) return;
     setOcupado(true);
     try {
+      // Las columnas de M28 solo se mandan si tienen algo: asi el registro a mano sigue sirviendo aunque M28 no se haya corrido.
+      const extra = {};
+      const n2 = (v) => v === "" || v == null || !isFinite(parseFloat(v)) ? null : Math.round(parseFloat(v) * 100) / 100;
+      if (n2(f.subtotal) != null) extra.subtotal = n2(f.subtotal);
+      if (n2(f.itbis) != null) extra.itbis = n2(f.itbis);
+      if (f.condiciones) extra.condiciones = f.condiciones;
+      if (Array.isArray(f.items) && f.items.length) extra.items = f.items;
+      if (f._adjunto) { extra.archivo_path = await subirFacturaCxP(f._adjunto.blob, f._adjunto.mime, f.proveedor); extra.archivo_mime = f._adjunto.mime; }
       const fila = { tipo: f.tipo, proveedor: f.proveedor.trim(), identificacion: f.identificacion || null, numero: f.numero || null, ncf: f.ncf || null,
-        fecha: f.fecha, vence: f.vence || null, total, notas: f.notas || null, updated_at: new Date().toISOString(), ...(f.id ? {} : { creado_por: usuarioNombre, origen: f.origen || null }) };
+        fecha: f.fecha, vence: f.vence || null, total, notas: f.notas || null, ...extra, updated_at: new Date().toISOString(), ...(f.id ? {} : { creado_por: usuarioNombre, origen: f.origen || null }) };
       await cxpFetch(f.id ? "PATCH" : "POST", fila, f.id ? "?id=eq." + f.id : "");
       setForm(null); cargar(); avisar("Cuenta por pagar guardada.", "ok");
     } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
@@ -3823,11 +3919,25 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
       E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
         E("button", { className: "pc-btn-suave", onClick: abrirImportar, disabled: cuentas === false }, "Traer de compras"),
         E("button", { className: "pc-btn-suave", onClick: exportar, disabled: !filas.length }, "⬇ Exportar Excel"),
-        E("button", { onClick: () => setForm({ tipo: "factura_proveedor", proveedor: "", identificacion: "", numero: "", ncf: "", fecha: hoyISO, vence: sumarDiasISO(hoyISO, 30), total: "", notas: "" }),
-          disabled: cuentas === false, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" } }, "＋ Registrar factura por pagar"))),
+        E("button", { className: "pc-btn-suave", onClick: () => setForm(formVacio()), disabled: cuentas === false }, "＋ Registrar a mano"),
+        E("input", { ref: entradaFactura, type: "file", accept: "image/*,application/pdf", style: { display: "none" },
+          onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; leerFactura(f); } }),
+        E("button", { onClick: () => entradaFactura.current && entradaFactura.current.click(), disabled: cuentas === false || leyendo,
+          style: { background: C.verde, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" } },
+          leyendo ? "Leyendo la factura…" : "📷 Subir factura del proveedor"))),
+    leyendo && E("div", { style: { background: "#eef6f1", border: "1px solid #cfe5d7", color: "#1f4d33", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, marginBottom: 14 } },
+      "Leyendo la factura: proveedor, RNC, n\xFAmero, NCF, fechas, vencimiento y montos. Tarda unos segundos…"),
     cuentas === false && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, marginBottom: 14 } },
       "Falta crear la tabla de cuentas por pagar en Supabase. Cuando se cree, aqu\xED aparecer\xE1n las deudas con proveedores."),
-    form && panel(form.id ? "Editar cuenta por pagar" : "Registrar factura por pagar", E("div", null,
+    form && panel(form.id ? "Editar cuenta por pagar" : form._leida ? "Revisa los datos le\xEDdos de la factura" : "Registrar factura por pagar", E("div", { style: { display: "flex", gap: 18, flexWrap: "wrap", alignItems: "flex-start" } },
+      (form._vista || form._adjunto) && E("div", { style: { flex: "0 1 300px", minWidth: 0 } },
+        form._vista ? E("a", { href: form._vista, target: "_blank", rel: "noopener" }, E("img", { src: form._vista, alt: "Factura", style: { width: "100%", borderRadius: 10, border: "1px solid " + C.borde, display: "block" } }))
+          : E("div", { style: { border: "1px solid " + C.borde, borderRadius: 10, padding: 16, background: "#fff", fontSize: 13 } }, "📄 ", form._adjunto.nombre || "Factura en PDF"),
+        E("div", { style: { fontSize: 11.5, color: C.suave, marginTop: 6 } }, "Se guarda con la cuenta para consultarla despu\xE9s.")),
+      E("div", { style: { flex: "1 1 420px", minWidth: 0 } },
+      (form._avisos || []).length > 0 && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 12px", fontSize: 13, marginBottom: 12 } },
+        form._avisos.map((t, i) => E("div", { key: i }, "⚠ " + t))),
+      form._leida && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, "Revisa cada dato contra la factura antes de guardar: la lectura puede equivocarse."),
       E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 } },
         E("div", null, lbl("Tipo de documento"), E("select", { value: form.tipo, onChange: (e) => setForm({ ...form, tipo: e.target.value }), style: inp },
           Object.entries(CXP_TIPOS).map(([v, t]) => E("option", { key: v, value: v }, t)))),
@@ -3838,14 +3948,31 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
         E("div", null, lbl("N\xFAmero de factura"), E("input", { value: form.numero || "", onChange: (e) => setForm({ ...form, numero: e.target.value }), style: inp })),
         E("div", null, lbl("NCF"), E("input", { value: form.ncf || "", placeholder: "B01…", onChange: (e) => setForm({ ...form, ncf: e.target.value.toUpperCase() }), style: inp })),
         E("div", null, lbl("Fecha de la factura"), E("input", { type: "date", value: form.fecha, onChange: (e) => setForm({ ...form, fecha: e.target.value }), style: inp })),
-        E("div", null, lbl("Vencimiento"), E("input", { type: "date", value: form.vence || "", onChange: (e) => setForm({ ...form, vence: e.target.value }), style: inp }),
-          E("div", { style: { display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" } }, [0, 15, 30, 45, 60].map((d) => E("button", { key: d, onClick: () => setForm({ ...form, vence: sumarDiasISO(form.fecha, d) }),
+        E("div", null, lbl("Fecha de vencimiento *"), E("input", { type: "date", value: form.vence || "", onChange: (e) => setForm({ ...form, vence: e.target.value, _venceOrigen: "manual" }),
+            style: { ...inp, ...(form.vence ? {} : { border: "1.5px solid #e5484d", background: "#fff8f8" }) } }),
+          E("div", { style: { fontSize: 11.5, marginTop: 4, fontWeight: 600, color: !form.vence ? "#b42318" : form.vence < hoyISO ? "#b42318" : "#1a6b3a" } },
+            !form.vence ? "La factura no dice cu\xE1ndo vence: escr\xEDbelo o elige un plazo."
+            : textoVenceCxP(form.vence, hoyISO) + (form._venceOrigen === "factura" ? " \xB7 le\xEDdo de la factura" : form._venceOrigen === "plazo" ? " \xB7 calculado del plazo de cr\xE9dito" : "")),
+          E("div", { style: { display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" } }, [0, 15, 30, 45, 60].map((d) => E("button", { key: d, onClick: () => setForm({ ...form, vence: sumarDiasISO(form.fecha, d), _venceOrigen: "manual" }),
             style: { border: "1px solid #d9dee3", background: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 11.5, cursor: "pointer", minHeight: 0 } }, d ? d + " d\xEDas" : "Contado")))),
-        E("div", null, lbl("Total (RD$) *"), E("input", { type: "number", min: 0, step: "0.01", value: form.total, onChange: (e) => setForm({ ...form, total: e.target.value }), style: inp }))),
+        E("div", null, lbl("Condici\xF3n de pago"), E("input", { value: form.condiciones || "", placeholder: "Cr\xE9dito 30 d\xEDas", onChange: (e) => setForm({ ...form, condiciones: e.target.value }), style: inp })),
+        E("div", null, lbl("Subtotal (RD$)"), E("input", { type: "number", min: 0, step: "0.01", value: form.subtotal == null ? "" : form.subtotal, onChange: (e) => setForm({ ...form, subtotal: e.target.value }), style: inp })),
+        E("div", null, lbl("ITBIS (RD$)"), E("input", { type: "number", min: 0, step: "0.01", value: form.itbis == null ? "" : form.itbis, onChange: (e) => setForm({ ...form, itbis: e.target.value }), style: inp })),
+        E("div", null, lbl("Total (RD$) *"), E("input", { type: "number", min: 0, step: "0.01", value: form.total, onChange: (e) => setForm({ ...form, total: e.target.value }), style: inp }),
+          (() => { const st = parseFloat(form.subtotal), it = parseFloat(form.itbis) || 0, t = parseFloat(form.total);
+            return isFinite(st) && isFinite(t) && Math.abs(st + it - t) > 1 ? E("div", { style: { fontSize: 11.5, color: "#b45309", marginTop: 4 } }, "Subtotal + ITBIS = " + dinero(st + it) + ": no cuadra con el total (puede haber descuento o retenci\xF3n).") : null; })())),
+      Array.isArray(form.items) && form.items.length > 0 && E("div", { style: { marginTop: 12 } }, lbl("Conceptos de la factura (" + form.items.length + ")"),
+        E("div", { style: { border: "1px solid " + C.borde, borderRadius: 10, overflow: "hidden", fontSize: 12.5 } },
+          form.items.map((l, i) => E("div", { key: i, style: { display: "flex", gap: 10, padding: "6px 10px", borderTop: i ? "1px solid #f1f3f4" : "none", background: l.dudoso ? "#fffaf0" : "#fff" } },
+            E("span", { style: { flex: 1, minWidth: 0 } }, (l.dudoso ? "⚠ " : "") + l.nombre), E("span", { style: { color: C.suave, whiteSpace: "nowrap" } }, (l.cantidad != null ? l.cantidad + " \xD7 " : "") + (l.costo != null ? dinero(l.costo) : "")))))),
       E("div", { style: { marginTop: 12 } }, lbl("Notas"), E("textarea", { rows: 2, value: form.notas || "", onChange: (e) => setForm({ ...form, notas: e.target.value }), style: { ...inp, fontFamily: "inherit" } })),
-      E("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
-        E("button", { disabled: ocupado, onClick: guardarForm, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer" } }, "Guardar"),
-        E("button", { className: "pc-btn-suave", onClick: () => setForm(null) }, "Cancelar")))),
+      E("div", { style: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" } },
+        E("button", { disabled: ocupado, onClick: guardarForm, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer" } }, ocupado ? "Guardando…" : "Guardar"),
+        E("button", { className: "pc-btn-suave", onClick: () => setForm(null) }, "Cancelar"),
+        E("input", { ref: entradaAdjunto, type: "file", accept: "image/*,application/pdf", style: { display: "none" },
+          onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; adjuntar(f); } }),
+        E("button", { className: "pc-btn-suave", onClick: () => entradaAdjunto.current && entradaAdjunto.current.click() },
+          form._adjunto ? "📎 Cambiar archivo" : form.archivo_path ? "📎 Reemplazar factura adjunta" : "📎 Adjuntar factura"))))),
     pago && panel("Registrar pago — " + pago.cuenta.proveedor, E("div", null,
       E("div", { style: { fontSize: 13, color: C.suave, marginBottom: 10 } }, "Total " + dinero(pago.cuenta.total) + " \xB7 pagado " + dinero(pago.cuenta.pagado) + " \xB7 falta ", E("b", { style: { color: "#b42318" } }, dinero(saldoCxP(pago.cuenta)))),
       E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 } },
@@ -3904,11 +4031,12 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
           E("tbody", null, filas.map((c) => { const est = estadoCxP(c, hoyISO), [et, ec] = ESTILO_EST[est], d = diasVencidaCxP(c, hoyISO);
             return [E("tr", { key: c.id, style: { borderTop: "1px solid #f1f3f4", opacity: c.anulada ? 0.55 : 1 } },
               E("td", { style: { padding: "10px 12px" } }, CXP_TIPOS[c.tipo] || c.tipo),
-              E("td", { style: { padding: "10px 12px", fontWeight: 600 } }, c.numero || c.origen || "—", c.ncf ? E("div", { style: { fontSize: 11, color: C.suave, fontWeight: 400 } }, c.ncf) : null),
+              E("td", { style: { padding: "10px 12px", fontWeight: 600 } }, c.numero || c.origen || "—", c.archivo_path ? E("span", { title: "Tiene la factura adjunta" }, " 📎") : null, c.ncf ? E("div", { style: { fontSize: 11, color: C.suave, fontWeight: 400 } }, c.ncf) : null),
               E("td", { style: { padding: "10px 12px" } }, c.proveedor),
               E("td", { style: { padding: "10px 12px" } }, fechaCorta(c.fecha)),
               E("td", { style: { padding: "10px 12px" } }, fechaCorta(c.vence) || "—",
-                E("div", null, E(Badge, { color: ec }, est === "vencida" ? "Vencida hace " + d + " d" : et))),
+                E("div", null, (() => { const falta = c.vence && (est === "pendiente" || est === "parcial") ? Math.round((new Date(c.vence + "T00:00:00") - new Date(hoyISO + "T00:00:00")) / 864e5) : null;
+                  return falta != null && falta <= 7 ? E(Badge, { color: "#b45309" }, falta === 0 ? "Vence hoy" : "Vence en " + falta + " d") : E(Badge, { color: ec }, est === "vencida" ? "Vencida hace " + d + " d" : et); })())),
               E("td", { style: { padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap" } }, dinero(c.total)),
               E("td", { style: { padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap" } }, dinero(c.pagado)),
               E("td", { style: { padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap", fontWeight: 800, color: saldoCxP(c) > 0 && !c.anulada ? "#b42318" : C.verde } }, dinero(c.anulada ? 0 : saldoCxP(c))),
@@ -3925,9 +4053,13 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
                     !(Array.isArray(c.pagos) && c.pagos.length) && E("div", { style: { color: C.suave, marginTop: 3 } }, "Sin pagos todav\xEDa.")),
                   E("div", { style: { flex: 1, minWidth: 220, color: "#3d444d" } },
                     c.identificacion && E("div", null, "RNC/c\xE9dula: " + c.identificacion), c.origen && E("div", null, "Origen: " + c.origen),
+                    c.condiciones && E("div", null, "Condici\xF3n: " + c.condiciones),
+                    (c.subtotal != null || c.itbis != null) && E("div", null, "Subtotal " + dinero(c.subtotal || 0) + " \xB7 ITBIS " + dinero(c.itbis || 0)),
+                    Array.isArray(c.items) && c.items.length > 0 && E("div", { style: { marginTop: 3 } }, c.items.map((l) => l.nombre + (l.cantidad != null ? " \xD7" + l.cantidad : "")).join(" \xB7 ")),
                     c.notas && E("div", { style: { marginTop: 3 } }, c.notas)),
                   !c.anulada && E("div", { style: { display: "flex", gap: 6, alignItems: "flex-start" } },
-                    E("button", { className: "pc-btn-suave", onClick: () => setForm({ ...c, total: String(c.total) }) }, "Editar"),
+                    c.archivo_path && E("button", { className: "pc-btn-suave", onClick: () => abrirFacturaCxP(c.archivo_path) }, "📄 Ver factura"),
+                    E("button", { className: "pc-btn-suave", onClick: () => setForm({ ...c, total: String(c.total), subtotal: c.subtotal == null ? "" : String(c.subtotal), itbis: c.itbis == null ? "" : String(c.itbis) }) }, "Editar"),
                     !(Number(c.pagado) > 0) && E("button", { className: "pc-btn-suave", onClick: () => anular(c), style: { color: "#b42318" } }, "Anular")))))];
           }))))));
 }

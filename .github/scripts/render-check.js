@@ -529,6 +529,16 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   if (est(cs[0], hoy) !== "pendiente" || est(cs[1], hoy) !== "vencida" || est(cs[5], hoy) !== "pagada" || est(cs[6], hoy) !== "anulada") fallo("estados");
   if (est({ total: 500, pagado: 100, vence: "2026-12-01" }, hoy) !== "parcial") fallo("abonada sin vencer = parcial");
   if (enVM("saldoCxP")({ total: 100.1, pagado: 100.2 }) !== 0) fallo("el saldo nunca es negativo");
+  // M28: vencimiento de la factura subida. Leido > plazo de credito > se pide (nunca se inventa).
+  const v = enVM("venceDesdeFactura");
+  if (v({ vence: "2026-11-28" }, "2026-10-29").vence !== "2026-11-28") fallo("el vencimiento leido de la factura manda");
+  const p = v({ vence: null, dias_credito: 30 }, "2026-10-29");
+  if (p.vence !== "2026-11-28" || p.origen !== "plazo") fallo("credito 30 dias = fecha + 30: " + JSON.stringify(p));
+  if (v({ dias_credito: 0 }, "2026-10-29").vence !== "2026-10-29") fallo("contado vence el mismo dia");
+  if (v({ vence: "2026-10-01" }, "2026-10-29").origen !== "falta") fallo("un vencimiento antes de la fecha es mala lectura: se pide");
+  if (v({}, "2026-10-29").vence !== "") fallo("sin vencimiento ni plazo NO se inventa uno");
+  const t = enVM("textoVenceCxP");
+  if (t("2026-10-29", hoy) !== "Vence hoy" || t("2026-11-03", hoy) !== "Vence en 5 días" || t("2026-10-27", hoy) !== "Venció hace 2 días") fallo("textoVenceCxP");
 })();
 render("CuentasPorPagar", sandbox.CuentasPorPagar, { gastos: [], setGastos: () => {}, inventario: [] }, null, "Cuentas por pagar");
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
