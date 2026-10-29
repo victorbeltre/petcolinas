@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 21:20Z";
+const PC_BUILD = "2026-10-29 21:51Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -13769,6 +13769,30 @@ function calcularQuincenaNomina({ base = 0, comisiones = 0, incentivos = 0, adel
   return { bruto, neto: r(bruto - r(adelantos) - r(descuentos)) };
 }
 const NOMINA_TIPOS = { quincena: ["Quincena", "#1a6b3a"], adelanto: ["Adelanto", "#b45309"], incentivo: ["Incentivo", "#7c3aed"], comision: ["Comisi\xF3n", "#1a4fa0"], descuento: ["Descuento", "#b42318"] };
+// Pagos de nomina anotados A MANO en Gastos (Victor, 29 oct: "si detectas que en
+// gastos se registro algun pago con relacion a la nomina, haz que se refleje en
+// nomina"). Un gasto desde oct 2026 que nombra a un colaborador activo, o que ya
+// esta en la categoria nomina, y que ninguna linea de nomina tiene enlazado. Se
+// PROPONE (quien, tipo, quincena); el admin confirma. No se crea un gasto nuevo:
+// la linea de nomina se enlaza al gasto que ya existe.
+const NOMINA_DETECTAR_DESDE = "2026-10-01";
+const MESES_NOMINA = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+function detectarPagoNomina(g, empleados) {
+  if (!g || !(Number(g.monto) > 0) || String(g.fecha || "") < NOMINA_DETECTAR_DESDE) return null;
+  const txt = normalizarTextoInv([g.proveedor, g.descripcion, g.notas].join(" "));
+  const palabras = new Set(txt.split(" "));
+  const emp = (empleados || []).filter((e) => e.activo).find((e) => {
+    const n = normalizarTextoInv(e.nombre);
+    return txt.includes(n) || palabras.has(n.split(" ")[0]);
+  }) || null;
+  if (!emp && !esGastoNomina(g)) return null;
+  const tipo = /adelanto|avance/.test(txt) ? "adelanto" : /quincena|sueldo|salario|nomina/.test(txt) ? "quincena" : "incentivo";
+  let mes = String(g.fecha).slice(0, 7);
+  const im = MESES_NOMINA.findIndex((m) => palabras.has(m));
+  if (im >= 0) { const an = (txt.match(/\b(20\d\d)\b/) || [])[1] || mes.slice(0, 4); mes = an + "-" + String(im + 1).padStart(2, "0"); }
+  const periodo = /\b(primera|1ra|1era|primer)\b/.test(txt) ? mes + "-Q1" : /\b(segunda|2da)\b/.test(txt) ? mes + "-Q2" : periodoQuincena(g.fecha);
+  return { emp, tipo, periodo };
+}
 function mensajeErrorNomina(e) {
   const m = String((e && e.message) || e);
   if (/NOMINA_CLAVE_MAL/.test(m)) return "Clave incorrecta.";
@@ -13791,7 +13815,9 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const [cambio, setCambio] = useState(null);
   const [verTarifas, setVerTarifas] = useState(false);
   const [editTarifa, setEditTarifa] = useState(null);
-  const [costosManual, setCostosManual] = useState({});   // costo escrito a mano de productos sin costo en inventario
+  const [costosManual, setCostosManual] = useState({});
+  const [ajusteDet, setAjusteDet] = useState({});        // cambios del admin a lo detectado en Gastos
+  const [ignorados, setIgnorados] = useState(() => { try { return JSON.parse(localStorage.getItem("pc_nomina_ignorados") || "[]"); } catch (e) { return []; } });   // costo escrito a mano de productos sin costo en inventario
   const tokenRef = useRef(null);
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => {
@@ -13914,6 +13940,26 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   };
   const salir = () => { supaRPC("pc_nomina_cerrar", { p_token: token }).catch(() => {}); bloquear(""); };
 
+  const enlazados = new Set((datos.movimientos || []).map((m) => String(m.gasto_id || "")).filter(Boolean));
+  const detectados = (gastos || []).filter((g) => !enlazados.has(String(g.id)) && !ignorados.includes(String(g.id)))
+    .map((g) => { const d = detectarPagoNomina(g, datos.empleados); return d ? { g, ...d, ...(ajusteDet[g.id] || {}) } : null; }).filter(Boolean);
+  const ignorar = (id) => { const n = [...ignorados, String(id)]; setIgnorados(n); try { localStorage.setItem("pc_nomina_ignorados", JSON.stringify(n)); } catch (e) {} };
+  const pasarANomina = async (d) => {
+    const emp = d.emp || (datos.empleados || []).find((e) => String(e.id) === String(d.empId));
+    if (!emp) return avisar("Elige a qui\xE9n se le pag\xF3.", "error");
+    try {
+      const monto = Math.round(Number(d.g.monto) * 100) / 100;
+      await llamar("pc_nomina_registrar", { p_m: { empleado_id: emp.id, tipo: d.tipo, fecha: d.g.fecha, periodo: d.periodo, monto, metodo: d.g.metodo || d.g.formaPago || "",
+        nota: (d.g.descripcion || "") + " \xB7 tra\xEDdo de Gastos", pagado_ahora: true, gasto_id: String(d.g.id),
+        detalle: d.tipo === "quincena" ? { base: monto, comisiones: 0, incentivos: 0, adelantos: 0, descuentos: 0 } : {} } });
+      // En Gastos queda como nomina y sin el nombre (decision de Victor, 29 oct).
+      const g2 = { ...d.g, categoria: "nomina", proveedor: "N\xF3mina",
+        descripcion: d.tipo === "quincena" ? "Pago de n\xF3mina \u2014 " + nombrePeriodoNomina(d.periodo) : d.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Pago extra de n\xF3mina" };
+      if (typeof setGastos === "function") setGastos((prev) => (prev || []).map((x) => String(x.id) === String(d.g.id) ? g2 : x));
+      upsertOne("pc_gastos", g2).catch((e) => console.error("[nomina detectado]", e));
+      await cargar(); avisar("Pasado a n\xF3mina: " + emp.nombre + ", " + dinero(monto) + ".", "ok");
+    } catch (e) { avisar(e.message, "error"); }
+  };
   const totalPeriodo = movs.filter((m) => m.fecha >= desde && m.fecha <= hasta && m.pagado_ahora).reduce((s, m) => s + Number(m.monto), 0);
   const panel = (titulo, hijos) => E(Card, { style: { marginBottom: 16, border: "1px solid #b7dfc5", background: "#fbfefc" } }, E("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 12 } }, titulo), hijos);
   const fila = (t, v, color, negrita) => E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "3px 0" } }, E("span", { style: { color: C.suave } }, t), E("span", { style: { color: color || C.texto, fontWeight: negrita ? 800 : 600 } }, v));
@@ -14004,6 +14050,18 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
               E("button", { onClick: () => setEditTarifa({ ...t, precio: t.precio == null ? "" : String(t.precio), comision: String(t.comision), alias: (t.alias || []).join(", ") }), style: { background: "none", border: "none", color: C.verde, cursor: "pointer", minHeight: 0, padding: "0 2px", fontWeight: 700 } }, "Editar"),
               E("button", { title: "Quitar", onClick: async () => { if (!window.confirm("\xBFQuitar la tarifa de " + t.servicio + "?")) return; try { await llamar("pc_nomina_guardar_comision", { p_c: { id: t.id, borrar: true } }); await cargar(); } catch (e) { avisar(e.message, "error"); } },
                 style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", minHeight: 0, padding: "0 2px" } }, "\u2715"))))))))),
+    detectados.length > 0 && panel("Pagos de n\xF3mina encontrados en Gastos (" + detectados.length + ")", E("div", null,
+      E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 8 } }, "Se anotaron en Gastos pero no est\xE1n en n\xF3mina. Revisa qui\xE9n, qu\xE9 tipo y qu\xE9 quincena, y p\xE1salos: no se crea otro gasto, se enlaza el mismo (y en Gastos queda como \u201CN\xF3mina\u201D, sin el nombre)."),
+      detectados.map((d) => E("div", { key: d.g.id, style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid #eef0f2", fontSize: 13 } },
+        E("span", { style: { flex: "1 1 240px", minWidth: 0 } }, E("b", null, fechaCorta(d.g.fecha) + " \xB7 " + dinero(d.g.monto)), " \xB7 " + [d.g.proveedor, d.g.descripcion].filter(Boolean).join(" \u2014 ")),
+        E("select", { value: d.emp ? d.emp.id : d.empId || "", onChange: (e) => setAjusteDet({ ...ajusteDet, [d.g.id]: { ...(ajusteDet[d.g.id] || {}), emp: (datos.empleados || []).find((x) => String(x.id) === e.target.value) || null } }), style: { ...inp, width: 170, padding: "6px 8px" } },
+          E("option", { value: "" }, "\xBFA qui\xE9n?"), activos.map((e) => E("option", { key: e.id, value: e.id }, e.nombre))),
+        E("select", { value: d.tipo, onChange: (e) => setAjusteDet({ ...ajusteDet, [d.g.id]: { ...(ajusteDet[d.g.id] || {}), tipo: e.target.value } }), style: { ...inp, width: 130, padding: "6px 8px" } },
+          [["quincena", "Quincena"], ["adelanto", "Adelanto"], ["incentivo", "Pago extra / incentivo"]].map(([v, t]) => E("option", { key: v, value: v }, t))),
+        d.tipo === "quincena" && E("select", { value: d.periodo, onChange: (e) => setAjusteDet({ ...ajusteDet, [d.g.id]: { ...(ajusteDet[d.g.id] || {}), periodo: e.target.value } }), style: { ...inp, width: 200, padding: "6px 8px" } },
+          [-2, -1, 0, 1].map((k) => moverPeriodoNomina(periodoQuincena(d.g.fecha), k)).concat(d.periodo).filter((x, i, a) => a.indexOf(x) === i).map((p) => E("option", { key: p, value: p }, nombrePeriodoNomina(p)))),
+        E("button", { onClick: () => pasarANomina(d), style: { ...btnV, padding: "6px 12px", fontSize: 13 } }, "Pasar a n\xF3mina"),
+        E("button", { className: "pc-btn-suave", onClick: () => ignorar(d.g.id) }, "No es n\xF3mina"))))),
     porTarifa.cortesias > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, porTarifa.cortesias + " servicio(s) de cortes\xEDa en esta quincena: no generan comisi\xF3n."),
     porTarifa.sinTarifa.length > 0 && tarifas.length > 0 && E("details", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 } },
       E("summary", { style: { cursor: "pointer", fontWeight: 600 } }, porTarifa.sinTarifa.length + " concepto(s) de vet/grooming registrados por alguien sin comisi\xF3n y sin tarifa (no suman a nadie)"),

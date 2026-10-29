@@ -581,6 +581,15 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   const pv = enVM("comisionesNominaPorTarifa")([{ fecha: "2026-10-20", area: "veterinaria", recibidopor: "Naylan Perez", items: [{ nombre: "Easotic Suspencion Otica", subtotal: 950 }] }],
     tar, "2026-10-16", "2026-10-31", { inventario: [], vendedores: vend, costosManual: {} });
   if (!pv.porEmpleado[9] || pv.porEmpleado[9].sinCosto.length !== 1 || pv.porEmpleado[9].total !== 0) fallo("un producto vendido en una venta de vet (sin tarifa) es producto: queda sin costo, no se paga a ciegas");
+  // Pagos de nomina anotados a mano en Gastos: se proponen para pasarlos a nomina.
+  const emps = [{ id: 1, nombre: "Laura De Los Santos", activo: true }, { id: 4, nombre: "Rissy", activo: true }];
+  const det = enVM("detectarPagoNomina");
+  const d1 = det({ fecha: "2026-10-16", monto: 15000, proveedor: "LAURA DE LOS SANTOS", descripcion: "PRIMERA QUINCENA OCTUBRE 2026", categoria: "varios" }, emps);
+  if (!d1 || d1.emp.id !== 1 || d1.tipo !== "quincena" || d1.periodo !== "2026-10-Q1") fallo("quincena pagada el 16 se lee del texto (1ra de octubre), no de la fecha: " + JSON.stringify(d1));
+  const d2 = det({ fecha: "2026-10-10", monto: 800, proveedor: "RISSY ACEVEDO", descripcion: "CUBRIR SABADO 10 DE OCTUBRE" }, emps);
+  if (!d2 || d2.emp.id !== 4 || d2.tipo !== "incentivo") fallo("cubrir un dia = pago extra: " + JSON.stringify(d2));
+  if (det({ fecha: "2025-10-07", monto: 2139, descripcion: "TARJETA LAURA" }, emps)) fallo("gastos de antes de la nomina nueva no se proponen");
+  if (det({ fecha: "2026-10-02", monto: 601, proveedor: "LA SIRENA", descripcion: "PRODUCTOS DE LIMPIEZA" }, emps)) fallo("un gasto sin colaborador ni categoria nomina no es nomina");
   const g = enVM("esGastoNomina");
   if (!g({ categoria: "nomina" }) || !g({ categoria: "Nómina" }) || g({ categoria: "insumo" })) fallo("esGastoNomina");
   const html = require("fs").readFileSync(require("path").join(__dirname, "..", "..", "index.html"), "utf8");

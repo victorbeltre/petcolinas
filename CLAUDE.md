@@ -380,6 +380,14 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   Alias que pidio Victor: "Cani V-4" = Test Ehrlichia; "Desparasitacion con Albendazol" =
   Aplicacion Albendazol. Lo que NO esta en ningun tarifario de servicios es PRODUCTO (Victor:
   Easotic, Enzy-pro, colonia), aunque venga en una venta de vet/grooming: 5% a quien lo vendio.
+- PAGOS ANOTADOS EN GASTOS (Victor, 29 oct): `detectarPagoNomina` propone en Nomina los gastos
+  desde oct 2026 que nombran a un colaborador activo (o ya en categoria nomina) y que ninguna
+  linea de nomina tiene enlazados (gasto_id). Tipo por el texto (adelanto / quincena|sueldo /
+  si no, pago extra) y quincena por el texto ("primera quincena octubre" pagada el 16 = Q1).
+  "Pasar a nomina" enlaza el MISMO gasto (no crea otro) y lo deja como "Nomina" sin nombre;
+  "No es nomina" lo oculta en ese equipo (localStorage `pc_nomina_ignorados`).
+  El 29 oct se pasaron los 6 de octubre (1ra quincena de Laura, Alexander, Naylan y Rissy +
+  2 coberturas de Rissy); copia previa en `respaldos.pc_gastos_nomina_20261029`.
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 
