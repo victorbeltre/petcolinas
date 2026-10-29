@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 18:57Z";
+const PC_BUILD = "2026-10-29 20:25Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1919,11 +1919,11 @@ const TARIFAS_VET = [
   { id: "v28", nombre: "Hemograma", precio: 800, comision: 0.3 }
 ];
 const EMPLEADOS_INIT = [
-  { id: "e1", nombre: "Alexander Ram\xEDrez", cargo: "Groomer", mensualidad: 25e3, comPct: 0, comTipo: "fija" },
-  { id: "e2", nombre: "Aylein Santiago", cargo: "M\xE9dico Veterinaria", mensualidad: 25e3, comPct: 0.30, comTipo: "pct" },
-  { id: "e3", nombre: "Leydeli Aybar", cargo: "Apoyo Operativo", mensualidad: 0, comPct: 0, comTipo: "fija" },
-  { id: "e4", nombre: "Laura De Los Santos", cargo: "Administradora", mensualidad: 30e3, comPct: 0, comTipo: "fija" },
-  { id: "e5", nombre: "Dra. Valentina", cargo: "M\xE9dico Veterinaria (por llamado)", mensualidad: 0, comPct: 0.40, comTipo: "pct" },
+  // Sin sueldos (29 oct 2026): el repo es publico y los sueldos viven en la
+  // nomina con clave (pc_nomina_empleados). Aylein, Leydeli y Valentina se
+  // quitaron de la lista (decision de Victor); sus ventas viejas no cambian.
+  { id: "e1", nombre: "Alexander Ram\xEDrez", cargo: "Groomer", mensualidad: 0, comPct: 0, comTipo: "fija" },
+  { id: "e4", nombre: "Laura De Los Santos", cargo: "Administradora", mensualidad: 0, comPct: 0, comTipo: "fija" },
   { id: "e6", nombre: "Naylan Perez", cargo: "M\xE9dico Veterinaria (por llamado)", mensualidad: 0, comPct: 0.30, comTipo: "pct" }
 ];
 const RD = (n) => "RD$ " + (Math.round(Number(n) || 0) || 0).toLocaleString("es-DO");
@@ -9043,8 +9043,8 @@ function PetColinasApp({ session, onLogout }) {
   const gastosMes = gastos.filter((g) => g.fecha?.slice(0, 7) === mesActual);
   const pagosMes = pagosNom.filter((p) => p.mes === mesActual);
   const totalVentas = ventasMes.reduce((s, v) => s + v.total, 0);
-  const totalGastos = gastosMes.reduce((s, g) => s + g.monto, 0);
-  const totalNomina = pagosMes.reduce((s, p) => s + (p.mensualidad + p.comisiones - p.descuentos), 0);
+  const totalGastos = gastosMes.filter((g) => !esGastoNomina(g)).reduce((s, g) => s + g.monto, 0);
+  const totalNomina = pagosMes.reduce((s, p) => s + (p.mensualidad + p.comisiones - p.descuentos), 0) + gastosMes.filter(esGastoNomina).reduce((s, g) => s + g.monto, 0);
   const totalEgresos = totalGastos + totalNomina;
   const utilidad = totalVentas - totalEgresos;
   // Para grooming: si comision === 0, calcular ~12% del total (promedio real de la tarifa de Alexander)
@@ -9074,7 +9074,7 @@ function PetColinasApp({ session, onLogout }) {
     pendientesN: ventasPendientesCount, pendientesMonto: ventasPendientesMonto,
     syncStatus, lastSync, sincronizar: sincronizarAhora, sincronizando: pollingSync
   }), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv, refetchInventario }), tab === "nomina" && /* @__PURE__ */ React.createElement(Nomina, { empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv, refetchInventario }), tab === "nomina" && React.createElement(NominaSegura, { ventas, gastos, setGastos, pagosNom, ventasMes, mesActual }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "llamadas" && React.createElement(Llamadas, null),
     tab === "whatsapp" && React.createElement(PantallaWhatsApp, null),
@@ -10856,8 +10856,8 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
   const gastosMesSel = gastos.filter((g) => g.fecha?.slice(0,7) === mesSel);
   const pagosMesSel = pagosNom.filter((p) => p.mes === mesSel);
   const totalVentas = ventasMes.reduce((s,v) => s+v.total, 0);
-  const totalGastos = gastosMesSel.reduce((s,g) => s+g.monto, 0);
-  const totalNomina = pagosMesSel.reduce((s,p) => s+(p.mensualidad+p.comisiones-p.descuentos), 0);
+  const totalGastos = gastosMesSel.filter((g) => !esGastoNomina(g)).reduce((s,g) => s+g.monto, 0);
+  const totalNomina = pagosMesSel.reduce((s,p) => s+(p.mensualidad+p.comisiones-p.descuentos), 0) + gastosMesSel.filter(esGastoNomina).reduce((s,g) => s+g.monto, 0);
   const totalEgresos = totalGastos + totalNomina;
   // Meta mensual / punto de equilibrio: monto fijo del PE real (RD$203,739/mes).
   // Antes era dinamico (max de egresos del mes), pero meses con gastos puntuales
@@ -13641,6 +13641,305 @@ function Inventario({ inventario, setInventario, ventas, deleteInv, refetchInven
     boxShadow: "0 6px 20px rgba(26,107,58,0.35)"
   } }, "\u{1F4BE} Guardar ", nPendientes, " cambio(s)")));
 }
+// ─────────────────────────────────────────────────────────
+// NOMINA CON CLAVE (M29, 29 oct 2026). Victor: "siempre se abra con una
+// contraseña, aunque se haya iniciado sesion en el usuario de administrador".
+// La clave la revisa SUPABASE (pc_nomina_abrir), no la pantalla: las tablas de
+// nomina no tienen politicas y solo se leen por funciones que piden el pase.
+// El pase vive en la memoria de este componente: al salir de la pestaña se
+// cierra y al volver se pide otra vez. En el servidor dura 20 min sin uso.
+// Cada pago se anota en Gastos (categoria "nomina") SIN el nombre de la persona.
+// ─────────────────────────────────────────────────────────
+const NOMINA_CON_COMISION = ["e1", "e6"];   // Alexander y Naylan (empleado_ref)
+// Los pagos de la nomina nueva van a Gastos con categoria "nomina": los totales
+// los cuentan como nomina (no como gasto operativo) para no sumarlos dos veces.
+const esGastoNomina = (g) => /^n[oó]mina$/i.test(String((g && g.categoria) || "").trim());
+function periodoQuincena(fecha) {
+  const f = String(fecha || fechaLocal());
+  return f.slice(0, 7) + (Number(f.slice(8, 10)) <= 15 ? "-Q1" : "-Q2");
+}
+function rangoPeriodoNomina(p) {
+  const [y, m] = p.slice(0, 7).split("-").map(Number);
+  const fin = new Date(y, m, 0).getDate();
+  return p.endsWith("Q1") ? { desde: p.slice(0, 7) + "-01", hasta: p.slice(0, 7) + "-15" } : { desde: p.slice(0, 7) + "-16", hasta: p.slice(0, 7) + "-" + String(fin).padStart(2, "0") };
+}
+function nombrePeriodoNomina(p) {
+  const mes = new Date(p.slice(0, 7) + "-15T12:00:00").toLocaleDateString("es-DO", { month: "long", year: "numeric" });
+  return (p.endsWith("Q1") ? "1ra" : "2da") + " quincena de " + mes;
+}
+function moverPeriodoNomina(p, paso) {
+  let [y, m] = p.slice(0, 7).split("-").map(Number), q = p.endsWith("Q1") ? 1 : 2;
+  q += paso;
+  while (q > 2) { q -= 2; m += 1; } while (q < 1) { q += 2; m -= 1; }
+  while (m > 12) { m -= 12; y += 1; } while (m < 1) { m += 12; y -= 1; }
+  return y + "-" + String(m).padStart(2, "0") + "-Q" + q;
+}
+// Comisiones del periodo tomadas de las ventas (provisional hasta cargar el
+// tarifario por servicio): Alexander = comisiones de grooming; Naylan = ventas
+// donde ella atendio (recibidopor).
+function ventasComisionNomina(ventas, emp, desde, hasta) {
+  if (!NOMINA_CON_COMISION.includes(emp.empleado_ref)) return [];
+  const nombre = normalizarTextoInv(emp.nombre).split(" ")[0];
+  return (ventas || []).filter((v) => v.fecha >= desde && v.fecha <= hasta && (Number(v.comision) || 0) > 0 &&
+    (emp.empleado_ref === "e1" ? v.area === "grooming" : normalizarTextoInv(v.recibidopor || v.recibidoPor || "").includes(nombre)));
+}
+// Cuenta de la quincena. Los adelantos se RESTAN (ya se pagaron antes) y los
+// incentivos "para la proxima quincena" se SUMAN.
+function calcularQuincenaNomina({ base = 0, comisiones = 0, incentivos = 0, adelantos = 0, descuentos = 0 }) {
+  const r = (x) => Math.round((Number(x) || 0) * 100) / 100;
+  const bruto = r(r(base) + r(comisiones) + r(incentivos));
+  return { bruto, neto: r(bruto - r(adelantos) - r(descuentos)) };
+}
+const NOMINA_TIPOS = { quincena: ["Quincena", "#1a6b3a"], adelanto: ["Adelanto", "#b45309"], incentivo: ["Incentivo", "#7c3aed"], comision: ["Comisi\xF3n", "#1a4fa0"], descuento: ["Descuento", "#b42318"] };
+function mensajeErrorNomina(e) {
+  const m = String((e && e.message) || e);
+  if (/NOMINA_CLAVE_MAL/.test(m)) return "Clave incorrecta.";
+  if (/NOMINA_BLOQUEADA/.test(m)) return "Demasiados intentos fallidos. Espera 15 minutos.";
+  if (/NOMINA_CERRADA/.test(m)) return "La n\xF3mina se cerr\xF3 por inactividad. Vuelve a escribir la clave.";
+  if (/pc_nomina|function|404/i.test(m) && /not find|no existe|does not exist|404/i.test(m)) return "Falta activar la n\xF3mina con clave en Supabase (M29).";
+  return m;
+}
+function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], ventasMes = [], mesActual }) {
+  const E = React.createElement;
+  const [estado, setEstado] = useState(null);     // null | {tiene_clave} | {error}
+  const [token, setToken] = useState(null);
+  const [clave, setClave] = useState(""), [clave2, setClave2] = useState("");
+  const [err, setErr] = useState(""), [ocupado, setOcupado] = useState(false);
+  const [datos, setDatos] = useState(null);
+  const [periodo, setPeriodo] = useState(periodoQuincena());
+  const [modal, setModal] = useState(null);       // { tipo, emp, ... }
+  const [verEmp, setVerEmp] = useState(null);
+  const [editEmp, setEditEmp] = useState(null);
+  const [cambio, setCambio] = useState(null);
+  const tokenRef = useRef(null);
+  useEffect(() => { tokenRef.current = token; }, [token]);
+  useEffect(() => {
+    supaRPC("pc_nomina_estado").then(setEstado).catch((e) => setEstado({ error: mensajeErrorNomina(e) }));
+    // Al salir de la pestaña se cierra el pase en el servidor.
+    return () => { if (tokenRef.current) supaRPC("pc_nomina_cerrar", { p_token: tokenRef.current }).catch(() => {}); };
+  }, []);
+  const bloquear = (msg) => { setToken(null); setDatos(null); setModal(null); setClave(""); setErr(msg || ""); };
+  const llamar = async (fn, args) => {
+    try { return await supaRPC(fn, { p_token: tokenRef.current, ...args }); }
+    catch (e) { const m = mensajeErrorNomina(e); if (/NOMINA_CERRADA/.test(String(e.message))) bloquear(m); throw new Error(m); }
+  };
+  const cargar = async (t) => { const d = await supaRPC("pc_nomina_datos", { p_token: t || tokenRef.current }); setDatos(d); };
+  const entrar = async () => {
+    setErr("");
+    if (!estado.tiene_clave) {
+      if (clave.length < 6) return setErr("La clave debe tener al menos 6 caracteres.");
+      if (clave !== clave2) return setErr("Las dos claves no son iguales.");
+    }
+    setOcupado(true);
+    try {
+      const t = estado.tiene_clave ? await supaRPC("pc_nomina_abrir", { p_clave: clave }) : await supaRPC("pc_nomina_crear_clave", { p_clave: clave });
+      tokenRef.current = t; setToken(t); setClave(""); setClave2(""); setEstado({ tiene_clave: true });
+      await cargar(t);
+    } catch (e) { setErr(mensajeErrorNomina(e)); } finally { setOcupado(false); }
+  };
+
+  const inp = { width: "100%", minWidth: 0, border: "1px solid #d9dee3", borderRadius: 9, padding: "9px 11px", fontSize: 14 };
+  const lbl = (t) => E("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#3d444d", marginBottom: 5 } }, t);
+  const btnV = { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 14 };
+
+  // ── Pantalla de la clave ─────────────────────────────────
+  if (!token) {
+    return E("div", { style: { display: "flex", justifyContent: "center", padding: "40px 0" } },
+      E(Card, { style: { width: "100%", maxWidth: 400, padding: 28 } },
+        E("div", { style: { fontSize: 34, textAlign: "center" } }, "🔒"),
+        E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 22, margin: "6px 0 4px", textAlign: "center" } }, "N\xF3mina"),
+        estado === null ? E("div", { style: { textAlign: "center", color: C.suave, fontSize: 13.5 } }, "Cargando…")
+        : estado.error ? E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 12px", fontSize: 13.5 } }, estado.error)
+        : E("div", null,
+          E("p", { style: { fontSize: 13.5, color: C.suave, textAlign: "center", margin: "0 0 18px" } }, estado.tiene_clave
+            ? "Informaci\xF3n confidencial. Escribe la clave de n\xF3mina."
+            : "Primera vez: crea la clave de n\xF3mina. Es distinta a la del administrador y se pedir\xE1 cada vez que entres."),
+          lbl(estado.tiene_clave ? "Clave de n\xF3mina" : "Nueva clave (m\xEDnimo 6 caracteres)"),
+          E("input", { type: "password", value: clave, autoFocus: true, autoComplete: estado.tiene_clave ? "current-password" : "new-password",
+            onChange: (e) => setClave(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") entrar(); }, style: inp }),
+          !estado.tiene_clave && E("div", { style: { marginTop: 12 } }, lbl("Rep\xEDtela"),
+            E("input", { type: "password", value: clave2, autoComplete: "new-password", onChange: (e) => setClave2(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") entrar(); }, style: inp })),
+          err && E("div", { role: "alert", style: { background: "#fdecec", border: "1px solid #f5c2c4", borderRadius: 10, padding: "9px 12px", marginTop: 12, fontSize: 13.5, color: "#b42318" } }, err),
+          E("button", { onClick: entrar, disabled: ocupado || !clave, style: { ...btnV, width: "100%", marginTop: 16, padding: 12 } },
+            ocupado ? "Verificando…" : estado.tiene_clave ? "Abrir n\xF3mina" : "Crear clave y abrir"),
+          E("div", { style: { fontSize: 11.5, color: "#9aa1a9", textAlign: "center", marginTop: 14 } }, "Se cierra sola al salir de esta secci\xF3n o tras 20 minutos sin uso."))));
+  }
+
+  // ── Nomina abierta ───────────────────────────────────────
+  if (!datos) return E("div", { style: { padding: 24, color: C.suave } }, "Cargando n\xF3mina…");
+  const { desde, hasta } = rangoPeriodoNomina(periodo);
+  const movs = (datos.movimientos || []).filter((m) => !m.anulado);
+  const activos = (datos.empleados || []).filter((e) => e.activo);
+  const pendientes = (emp, tipo) => movs.filter((m) => m.empleado_id === emp.id && m.tipo === tipo && !m.liquidado_en && (tipo === "adelanto" || !m.pagado_ahora));
+  const resumen = (emp) => {
+    const vts = ventasComisionNomina(ventas, emp, desde, hasta);
+    const com = vts.reduce((s, v) => s + (Number(v.comision) || 0), 0);
+    const inc = pendientes(emp, "incentivo"), ade = pendientes(emp, "adelanto");
+    const base = Math.round((Number(emp.sueldo_mensual) || 0) / 2 * 100) / 100;
+    const pagada = movs.find((m) => m.empleado_id === emp.id && m.tipo === "quincena" && m.periodo === periodo);
+    const c = calcularQuincenaNomina({ base, comisiones: com, incentivos: inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: ade.reduce((s, m) => s + Number(m.monto), 0) });
+    return { vts, com, inc, ade, base, pagada, ...c };
+  };
+  const anotarGasto = (fecha, descripcion, monto, metodo) => {
+    const g = { id: Date.now() + Math.floor(Math.random() * 1000), fecha, proveedor: "N\xF3mina", descripcion, monto, categoria: "nomina", pagadoPor: "Petcolinas", metodo: metodo || "" };
+    if (typeof setGastos === "function") setGastos((prev) => [...(prev || []), g]);
+    upsertOne("pc_gastos", g).catch((e) => console.error("[nomina gasto]", e));
+    return String(g.id);
+  };
+  const guardarModal = async (m = modal) => {
+    const monto = Math.round((parseFloat(m.monto) || 0) * 100) / 100;
+    if (!(monto > 0)) return avisar("Escribe el monto.", "error");
+    setOcupado(true);
+    try {
+      let gastoId = null;
+      const pagaAhora = m.tipo !== "incentivo" || m.ahora;
+      if (pagaAhora && m.gasto) gastoId = anotarGasto(m.fecha, m.tipo === "quincena" ? "Pago de n\xF3mina — " + nombrePeriodoNomina(periodo) : m.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Incentivo de n\xF3mina", monto, m.metodo);
+      await llamar("pc_nomina_registrar", { p_m: { empleado_id: m.emp.id, tipo: m.tipo, fecha: m.fecha, periodo: m.tipo === "quincena" ? periodo : periodoQuincena(m.fecha), monto, metodo: m.metodo,
+        nota: m.nota || null, pagado_ahora: pagaAhora, gasto_id: gastoId, detalle: m.detalle || {}, liquida: m.liquida || [] } });
+      setModal(null); await cargar();
+      avisar(m.tipo === "quincena" ? "Quincena registrada" + (gastoId ? " y anotada en Gastos." : ".") : m.tipo === "adelanto" ? "Adelanto registrado: se descontar\xE1 de la pr\xF3xima quincena." : pagaAhora ? "Incentivo pagado." : "Incentivo anotado: se sumar\xE1 a la pr\xF3xima quincena.", "ok");
+    } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
+  };
+  const abrirQuincena = (emp) => {
+    const r = resumen(emp);
+    setModal({ tipo: "quincena", emp, fecha: fechaLocal(), metodo: "transferencia", nota: "", gasto: true,
+      base: String(r.base), comisiones: String(r.com), incentivos: r.inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: r.ade.reduce((s, m) => s + Number(m.monto), 0),
+      descuentos: "", liquida: [...r.inc, ...r.ade].map((m) => m.id) });
+  };
+  const anular = async (m) => {
+    if (!window.confirm("\xBFAnular este " + NOMINA_TIPOS[m.tipo][0].toLowerCase() + " de " + dinero(m.monto) + "?" + (m.gasto_id ? " Tambi\xE9n se borrar\xE1 su gasto." : ""))) return;
+    try {
+      await llamar("pc_nomina_anular", { p_id: m.id });
+      if (m.gasto_id) { if (typeof setGastos === "function") setGastos((prev) => (prev || []).filter((g) => String(g.id) !== String(m.gasto_id))); deleteOne("pc_gastos", m.gasto_id).catch(() => {}); }
+      await cargar(); avisar("Anulado.", "ok");
+    } catch (e) { avisar(e.message, "error"); }
+  };
+  const guardarEmp = async () => {
+    try { await llamar("pc_nomina_guardar_empleado", { p_e: { ...editEmp, sueldo_mensual: parseFloat(editEmp.sueldo_mensual) || 0 } }); setEditEmp(null); await cargar(); avisar("Colaborador guardado.", "ok"); }
+    catch (e) { avisar(e.message, "error"); }
+  };
+  const cambiarClave = async () => {
+    if ((cambio.nueva || "").length < 6) return avisar("La nueva clave debe tener al menos 6 caracteres.", "error");
+    if (cambio.nueva !== cambio.nueva2) return avisar("Las dos claves nuevas no son iguales.", "error");
+    try { await llamar("pc_nomina_cambiar_clave", { p_actual: cambio.actual, p_nueva: cambio.nueva }); setCambio(null); avisar("Clave de n\xF3mina cambiada.", "ok"); }
+    catch (e) { avisar(e.message, "error"); }
+  };
+  const salir = () => { supaRPC("pc_nomina_cerrar", { p_token: token }).catch(() => {}); bloquear(""); };
+
+  const totalPeriodo = movs.filter((m) => m.fecha >= desde && m.fecha <= hasta && m.pagado_ahora).reduce((s, m) => s + Number(m.monto), 0);
+  const panel = (titulo, hijos) => E(Card, { style: { marginBottom: 16, border: "1px solid #b7dfc5", background: "#fbfefc" } }, E("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 12 } }, titulo), hijos);
+  const fila = (t, v, color, negrita) => E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "3px 0" } }, E("span", { style: { color: C.suave } }, t), E("span", { style: { color: color || C.texto, fontWeight: negrita ? 800 : 600 } }, v));
+  const q = modal && modal.tipo === "quincena" ? calcularQuincenaNomina({ base: modal.base, comisiones: modal.comisiones, incentivos: modal.incentivos, adelantos: modal.adelantos, descuentos: modal.descuentos }) : null;
+
+  return E("div", null,
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 } },
+      E("div", null,
+        E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, margin: 0 } }, "🔓 N\xF3mina"),
+        E("p", { style: { color: C.suave, fontSize: 13.5, margin: "4px 0 0" } }, "Sueldos, quincenas, adelantos, incentivos y comisiones. Confidencial.")),
+      E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+        E("button", { className: "pc-btn-suave", onClick: () => setEditEmp({ nombre: "", cargo: "", sueldo_mensual: "", activo: true }) }, "＋ Colaborador"),
+        E("button", { className: "pc-btn-suave", onClick: () => setCambio({ actual: "", nueva: "", nueva2: "" }) }, "Cambiar clave"),
+        E("button", { onClick: salir, style: { ...btnV, background: "#1f2328" } }, "🔒 Cerrar n\xF3mina"))),
+    cambio && panel("Cambiar la clave de n\xF3mina", E("div", null,
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 } },
+        [["actual", "Clave actual"], ["nueva", "Nueva clave"], ["nueva2", "Rep\xEDtela"]].map(([k, t]) => E("div", { key: k }, lbl(t),
+          E("input", { type: "password", value: cambio[k], autoComplete: k === "actual" ? "current-password" : "new-password", onChange: (e) => setCambio({ ...cambio, [k]: e.target.value }), style: inp })))),
+      E("div", { style: { display: "flex", gap: 8, marginTop: 12 } }, E("button", { onClick: cambiarClave, style: btnV }, "Guardar clave"), E("button", { className: "pc-btn-suave", onClick: () => setCambio(null) }, "Cancelar")))),
+    editEmp && panel(editEmp.id ? "Editar colaborador" : "Nuevo colaborador", E("div", null,
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 } },
+        E("div", null, lbl("Nombre *"), E("input", { value: editEmp.nombre, onChange: (e) => setEditEmp({ ...editEmp, nombre: e.target.value }), style: inp })),
+        E("div", null, lbl("Cargo"), E("input", { value: editEmp.cargo || "", onChange: (e) => setEditEmp({ ...editEmp, cargo: e.target.value }), style: inp })),
+        E("div", null, lbl("Sueldo mensual (RD$)"), E("input", { type: "number", min: 0, value: editEmp.sueldo_mensual, onChange: (e) => setEditEmp({ ...editEmp, sueldo_mensual: e.target.value }), style: inp }),
+          E("div", { style: { fontSize: 11.5, color: C.suave, marginTop: 4 } }, "Por quincena: " + dinero((parseFloat(editEmp.sueldo_mensual) || 0) / 2))),
+        editEmp.id && E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, marginTop: 22 } },
+          E("input", { type: "checkbox", checked: !!editEmp.activo, onChange: (e) => setEditEmp({ ...editEmp, activo: e.target.checked }) }), "Activo (sale en la n\xF3mina)")),
+      E("div", { style: { display: "flex", gap: 8, marginTop: 12 } }, E("button", { onClick: guardarEmp, style: btnV }, "Guardar"), E("button", { className: "pc-btn-suave", onClick: () => setEditEmp(null) }, "Cancelar")))),
+    modal && panel((modal.tipo === "quincena" ? "Pagar " + nombrePeriodoNomina(periodo) : modal.tipo === "adelanto" ? "Adelanto de sueldo" : "Incentivo extra") + " — " + modal.emp.nombre, E("div", null,
+      modal.tipo === "quincena" && E("div", null,
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 } },
+          E("div", null, lbl("Sueldo de la quincena"), E("input", { type: "number", value: modal.base, onChange: (e) => setModal({ ...modal, base: e.target.value }), style: inp })),
+          E("div", null, lbl("Comisiones"), E("input", { type: "number", value: modal.comisiones, onChange: (e) => setModal({ ...modal, comisiones: e.target.value }), style: inp })),
+          E("div", null, lbl("Otros descuentos"), E("input", { type: "number", value: modal.descuentos, placeholder: "0", onChange: (e) => setModal({ ...modal, descuentos: e.target.value }), style: inp }))),
+        E("div", { style: { background: "#fff", border: "1px solid " + C.borde, borderRadius: 10, padding: "10px 14px", marginTop: 12, maxWidth: 420 } },
+          fila("Sueldo", dinero(modal.base)), fila("+ Comisiones", dinero(modal.comisiones)),
+          modal.incentivos > 0 && fila("+ Incentivos pendientes", dinero(modal.incentivos), "#7c3aed"),
+          modal.adelantos > 0 && fila("− Adelantos ya pagados", dinero(modal.adelantos), "#b45309"),
+          parseFloat(modal.descuentos) > 0 && fila("− Otros descuentos", dinero(modal.descuentos), "#b42318"),
+          E("div", { style: { borderTop: "1px solid " + C.borde, marginTop: 6, paddingTop: 6 } }, fila("A pagar", dinero(q.neto), q.neto < 0 ? "#b42318" : C.verde, true)))),
+      modal.tipo !== "quincena" && E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 } },
+        E("div", null, lbl("Monto (RD$)"), E("input", { type: "number", min: 0, value: modal.monto, autoFocus: true, onChange: (e) => setModal({ ...modal, monto: e.target.value }), style: inp })),
+        E("div", null, lbl(modal.tipo === "incentivo" ? "Motivo" : "Nota"), E("input", { value: modal.nota, placeholder: modal.tipo === "incentivo" ? "Meta cumplida, horas extra…" : "", onChange: (e) => setModal({ ...modal, nota: e.target.value }), style: inp }))),
+      modal.tipo === "incentivo" && E("div", { style: { display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12, fontSize: 13.5 } },
+        [[true, "Pagarlo ahora"], [false, "Sumarlo a la pr\xF3xima quincena"]].map(([v, t]) => E("label", { key: t, style: { display: "flex", gap: 6, alignItems: "center", cursor: "pointer" } },
+          E("input", { type: "radio", checked: modal.ahora === v, onChange: () => setModal({ ...modal, ahora: v }) }), t))),
+      modal.tipo === "adelanto" && E("div", { style: { fontSize: 12.5, color: C.suave, marginTop: 8 } }, "Se descontar\xE1 solo de la pr\xF3xima quincena que le pagues."),
+      (modal.tipo !== "incentivo" || modal.ahora) && E("div", null,
+        E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginTop: 12 } },
+          E("div", null, lbl("Fecha del pago"), E("input", { type: "date", value: modal.fecha, onChange: (e) => setModal({ ...modal, fecha: e.target.value }), style: inp })),
+          E("div", null, lbl("M\xE9todo"), E("select", { value: modal.metodo, onChange: (e) => setModal({ ...modal, metodo: e.target.value }), style: inp },
+            [["transferencia", "Transferencia"], ["efectivo", "Efectivo"], ["cheque", "Cheque"]].map(([v, t]) => E("option", { key: v, value: v }, t)))),
+          modal.tipo === "quincena" && E("div", null, lbl("Nota"), E("input", { value: modal.nota, onChange: (e) => setModal({ ...modal, nota: e.target.value }), style: inp }))),
+        E("label", { style: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, marginTop: 12, cursor: "pointer" } },
+          E("input", { type: "checkbox", checked: modal.gasto, onChange: (e) => setModal({ ...modal, gasto: e.target.checked }), style: { marginTop: 2 } }),
+          E("span", null, E("b", null, "Anotar en Gastos"), " como “N\xF3mina”, sin el nombre de la persona, para que salga del flujo de caja."))),
+      E("div", { style: { display: "flex", gap: 8, marginTop: 14 } },
+        E("button", { disabled: ocupado, onClick: () => modal.tipo === "quincena" ? (q.neto < 0 ? avisar("El total a pagar sale negativo: revisa los adelantos.", "error")
+          : guardarModal({ ...modal, monto: String(q.neto), detalle: { base: +modal.base || 0, comisiones: +modal.comisiones || 0, incentivos: modal.incentivos, adelantos: modal.adelantos, descuentos: +modal.descuentos || 0 } })) : guardarModal(), style: btnV },
+          ocupado ? "Guardando…" : modal.tipo === "quincena" ? "Registrar pago de " + dinero(q.neto) : "Registrar"),
+        E("button", { className: "pc-btn-suave", onClick: () => setModal(null) }, "Cancelar")))),
+    E(Card, { style: { marginBottom: 16, padding: 16 } },
+      E("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "space-between" } },
+        E("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          E("button", { className: "pc-btn-suave", onClick: () => setPeriodo(moverPeriodoNomina(periodo, -1)) }, "‹"),
+          E("div", { style: { fontWeight: 800, fontSize: 16, minWidth: 230, textAlign: "center" } }, nombrePeriodoNomina(periodo).replace(/^./, (c) => c.toUpperCase())),
+          E("button", { className: "pc-btn-suave", onClick: () => setPeriodo(moverPeriodoNomina(periodo, 1)) }, "›"),
+          periodo !== periodoQuincena() && E("button", { className: "pc-btn-suave", onClick: () => setPeriodo(periodoQuincena()) }, "Hoy")),
+        E("div", { style: { fontSize: 13, color: C.suave } }, fechaCorta(desde) + " al " + fechaCorta(hasta) + " \xB7 pagado en el periodo: ", E("b", { style: { color: C.texto } }, dinero(totalPeriodo))))),
+    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14, marginBottom: 18 } },
+      activos.map((emp) => { const r = resumen(emp);
+        return E(Card, { key: emp.id, style: { padding: 18 } },
+          E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 } },
+            E("div", null, E("div", { style: { fontWeight: 800, fontSize: 16 } }, emp.nombre), E("div", { style: { fontSize: 12.5, color: C.suave } }, emp.cargo || "—")),
+            r.pagada ? E(Badge, { color: C.verde }, "Pagada") : E(Badge, { color: "#b45309" }, "Pendiente")),
+          fila("Sueldo mensual", dinero(emp.sueldo_mensual)),
+          fila("Quincena", dinero(r.base)),
+          NOMINA_CON_COMISION.includes(emp.empleado_ref) && fila("Comisiones del periodo (" + r.vts.length + ")", dinero(r.com), "#1a4fa0"),
+          r.inc.length > 0 && fila("Incentivos por sumar", dinero(r.inc.reduce((s, m) => s + Number(m.monto), 0)), "#7c3aed"),
+          r.ade.length > 0 && fila("Adelantos por descontar", "−" + dinero(r.ade.reduce((s, m) => s + Number(m.monto), 0)), "#b45309"),
+          E("div", { style: { borderTop: "1px solid " + C.borde, marginTop: 6, paddingTop: 6 } }, r.pagada ? fila("Pagado", dinero(r.pagada.monto), C.verde, true) : fila("A pagar", dinero(r.neto), C.verde, true)),
+          E("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 } },
+            !r.pagada && E("button", { onClick: () => abrirQuincena(emp), style: { ...btnV, padding: "7px 12px", fontSize: 13 } }, "Pagar quincena"),
+            E("button", { className: "pc-btn-suave", onClick: () => setModal({ tipo: "adelanto", emp, monto: "", fecha: fechaLocal(), metodo: "efectivo", nota: "", gasto: true }) }, "Adelanto"),
+            E("button", { className: "pc-btn-suave", onClick: () => setModal({ tipo: "incentivo", emp, monto: "", fecha: fechaLocal(), metodo: "efectivo", nota: "", gasto: true, ahora: false }) }, "Incentivo"),
+            E("button", { className: "pc-btn-suave", onClick: () => setVerEmp(verEmp === emp.id ? null : emp.id) }, verEmp === emp.id ? "Cerrar" : "Historial"),
+            E("button", { className: "pc-btn-suave", onClick: () => setEditEmp({ ...emp, sueldo_mensual: String(emp.sueldo_mensual) }) }, "Editar")),
+          verEmp === emp.id && E("div", { style: { marginTop: 12, borderTop: "1px solid " + C.borde, paddingTop: 10 } },
+            r.vts.length > 0 && E("div", { style: { marginBottom: 10 } },
+              E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de esta quincena"),
+              r.vts.map((v, i) => E("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "2px 0" } },
+                E("span", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, fechaCorta(v.fecha) + " \xB7 " + (v.servicio || v.descripcion || "") + (v.cliente ? " \xB7 " + v.cliente : "")),
+                E("b", { style: { color: "#1a4fa0", marginLeft: 8 } }, dinero(v.comision))))),
+            E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Pagos registrados"),
+            (datos.movimientos || []).filter((m) => m.empleado_id === emp.id).slice(0, 30).map((m) => E("div", { key: m.id, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "4px 0", borderTop: "1px solid #f4f5f6", opacity: m.anulado ? 0.5 : 1 } },
+              E("span", { style: { color: C.suave, width: 74 } }, fechaCorta(m.fecha)),
+              E(Badge, { color: NOMINA_TIPOS[m.tipo][1] }, NOMINA_TIPOS[m.tipo][0]),
+              E("span", { style: { flex: 1, minWidth: 0, color: C.suave, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                m.anulado ? "Anulado" : m.tipo === "quincena" ? nombrePeriodoNomina(m.periodo) : (m.nota || "") + (m.liquidado_en ? " \xB7 ya en quincena" : m.tipo === "adelanto" ? " \xB7 por descontar" : !m.pagado_ahora ? " \xB7 por sumar" : "")),
+              E("b", null, dinero(m.monto)),
+              !m.anulado && E("button", { onClick: () => anular(m), title: "Anular", style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", minHeight: 0, padding: "0 4px" } }, "✕"))),
+            !(datos.movimientos || []).some((m) => m.empleado_id === emp.id) && E("div", { style: { fontSize: 12.5, color: C.suave } }, "Sin pagos registrados todav\xEDa."))); })),
+    (datos.empleados || []).some((e) => !e.activo) && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 16 } }, "Inactivos: ",
+      (datos.empleados || []).filter((e) => !e.activo).map((e) => E("button", { key: e.id, className: "pc-btn-suave", style: { marginLeft: 6 }, onClick: () => setEditEmp({ ...e, sueldo_mensual: String(e.sueldo_mensual) }) }, e.nombre))),
+    E("details", { style: { marginTop: 8 } },
+      E("summary", { style: { cursor: "pointer", fontWeight: 700, fontSize: 14, color: C.suave, marginBottom: 12 } }, "Ranking de farmacia e historial anterior"),
+      E(Card, { style: { marginBottom: 14 } }, E(RankingVentasFarmacia, { ventas: ventasMes, mes: mesActual })),
+      (pagosNom || []).length > 0 && E(Card, null,
+        E("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 8 } }, "Pagos registrados con el sistema anterior"),
+        E("div", { style: { overflowX: "auto" } }, E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } },
+          E("tbody", null, [...pagosNom].reverse().map((p) => E("tr", { key: p.id, style: { borderTop: "1px solid #f4f5f6" } },
+            E("td", { style: { padding: "6px 8px" } }, p.mes), E("td", { style: { padding: "6px 8px" } }, p.empleadoNombre || p.empleadoId || "—"),
+            E("td", { style: { padding: "6px 8px", textAlign: "right" } }, dinero(p.totalPagado != null ? p.totalPagado : (p.mensualidad || 0) + (p.comisiones || 0) - (p.descuentos || 0)))))))))));
+}
 function Nomina({ empleados, setEmpleados, pagosNom, setPagosNom, ventasMes, mesActual }) {
   const [mes, setMes] = useState(mesActual);
   const [modal, setModal] = useState(null);
@@ -14001,8 +14300,8 @@ function Reportes({ ventas, gastos, pagosNom, empleados }) {
   const gastosMes = gastos.filter((g) => g.fecha?.slice(0, 7) === mes);
   const pagosMes = pagosNom.filter((p) => p.mes === mes);
   const totalVentas = ventasMes.reduce((s, v) => s + v.total, 0);
-  const totalGastos = gastosMes.reduce((s, g) => s + g.monto, 0);
-  const totalNomina = pagosMes.reduce((s, p) => s + p.totalPagado, 0);
+  const totalGastos = gastosMes.filter((g) => !esGastoNomina(g)).reduce((s, g) => s + g.monto, 0);
+  const totalNomina = pagosMes.reduce((s, p) => s + p.totalPagado, 0) + gastosMes.filter(esGastoNomina).reduce((s, g) => s + g.monto, 0);
   const totalCom = pagosMes.reduce((s, p) => s + p.comisiones, 0);
   const totalEgr = totalGastos + totalNomina;
   const utilidad = totalVentas - totalEgr;

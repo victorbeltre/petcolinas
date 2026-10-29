@@ -342,6 +342,30 @@ pagado, por pagar). Tabla `pc_cuentas_pagar`, SOLO-ADMIN.
   queda adjunto y se escribe a mano. "Vence en N d" en naranja a 7 dias o menos.
   Las columnas nuevas solo se mandan si tienen valor: el registro a mano sirve sin M28.
 
+## NOMINA CON CLAVE (M29, 29 oct 2026)
+Decision de Victor: Nomina se abre SIEMPRE con una clave propia (distinta a la del admin),
+aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
+- La clave la revisa SUPABASE, no la pantalla: `pc_nomina_*` tienen RLS y NINGUNA politica
+  (ni el admin las lee por la API). Solo entran funciones SECURITY DEFINER que exigen admin +
+  un pase de `pc_nomina_abrir(clave)` (hash bcrypt, pase de 20 min que se renueva con el uso;
+  5 fallos en 15 min = bloqueo de 15 min). El pase vive en la memoria de `NominaSegura`: al
+  salir de la pestaña se cierra y al volver se pide la clave otra vez.
+- Clave olvidada: SQL Editor -> `delete from public.pc_nomina_clave;` y la app pide crear otra.
+  No se pierde nada.
+- Sueldos en `pc_nomina_empleados` (mensual; quincena = la mitad). NUNCA en index.html ni en
+  migraciones (repo publico): render-check falla si EMPLEADOS_INIT lleva mensualidad. La
+  columna vieja `pc_empleados.mensualidad` quedo en 0 (copia en `respaldos.pc_empleados_20261029`).
+- Movimientos (`pc_nomina_movimientos`): quincena, adelanto (se paga ya y se RESTA de la
+  proxima quincena), incentivo (pagar ya, o sumar a la proxima quincena). Anular devuelve a
+  "pendiente" lo que esa quincena habia liquidado y borra su gasto.
+- Cada pago se anota en Gastos categoria "nomina" SIN el nombre ("Pago de nomina — 2da
+  quincena de octubre de 2026", "Adelanto de nomina"). `esGastoNomina`: Dashboard y Reportes
+  los cuentan como NOMINA, no como gasto operativo (si no, se sumarian dos veces).
+- Comisiones: hoy salen de `ventas.comision` del periodo (Alexander = grooming; Naylan = donde
+  ella atendio). PENDIENTE: Victor enviara el tarifario por servicio de Naylan y Alexander.
+- Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
+- Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)

@@ -540,6 +540,24 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   const t = enVM("textoVenceCxP");
   if (t("2026-10-29", hoy) !== "Vence hoy" || t("2026-11-03", hoy) !== "Vence en 5 días" || t("2026-10-27", hoy) !== "Venció hace 2 días") fallo("textoVenceCxP");
 })();
+// M29: nomina con clave. Quincenas, cuentas y que los sueldos NO esten en el codigo publico.
+(() => {
+  const fallo = (m) => errores.push("nomina: " + m);
+  const pq = enVM("periodoQuincena");
+  if (pq("2026-10-15") !== "2026-10-Q1" || pq("2026-10-16") !== "2026-10-Q2") fallo("1-15 = Q1, 16-fin = Q2");
+  const rg = enVM("rangoPeriodoNomina");
+  if (rg("2026-02-Q2").hasta !== "2026-02-28" || rg("2026-10-Q1").desde !== "2026-10-01") fallo("rango de la quincena");
+  const mv = enVM("moverPeriodoNomina");
+  if (mv("2026-12-Q2", 1) !== "2027-01-Q1" || mv("2026-01-Q1", -1) !== "2025-12-Q2") fallo("mover de quincena cruza meses y anos");
+  const q = enVM("calcularQuincenaNomina")({ base: 15000, comisiones: 2500, incentivos: 1000, adelantos: 3000, descuentos: 500 });
+  if (q.bruto !== 18500 || q.neto !== 15000) fallo("adelantos y descuentos restan, incentivos suman: " + JSON.stringify(q));
+  const g = enVM("esGastoNomina");
+  if (!g({ categoria: "nomina" }) || !g({ categoria: "Nómina" }) || g({ categoria: "insumo" })) fallo("esGastoNomina");
+  const html = require("fs").readFileSync(require("path").join(__dirname, "..", "..", "index.html"), "utf8");
+  const ini = html.slice(html.indexOf("const EMPLEADOS_INIT"), html.indexOf("];", html.indexOf("const EMPLEADOS_INIT")));
+  if (/mensualidad:\s*[1-9]/.test(ini)) fallo("EMPLEADOS_INIT no puede llevar sueldos: el repo es publico");
+})();
+render("NominaSegura", sandbox.NominaSegura, { ventas: [], gastos: [], setGastos: () => {}, pagosNom: [], ventasMes: [], mesActual: "2026-10" }, null, "Nómina");
 render("CuentasPorPagar", sandbox.CuentasPorPagar, { gastos: [], setGastos: () => {}, inventario: [] }, null, "Cuentas por pagar");
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");
 render("Inventario", sandbox.Inventario, { inventario: [{ id: "1", nombre: "Royal Canin Mini", categoria: "alimento", stock: 3, codigo: "ALI-00001", descripcion: "Alimento seco" }], setInventario: () => {}, ventas: [], deleteInv: () => {}, refetchInventario: () => {} }, null, "ALI-00001");
