@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 20:25Z";
+const PC_BUILD = "2026-10-29 20:50Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -13683,6 +13683,55 @@ function ventasComisionNomina(ventas, emp, desde, hasta) {
   return (ventas || []).filter((v) => v.fecha >= desde && v.fecha <= hasta && (Number(v.comision) || 0) > 0 &&
     (emp.empleado_ref === "e1" ? v.area === "grooming" : normalizarTextoInv(v.recibidopor || v.recibidoPor || "").includes(nombre)));
 }
+// Tarifario por servicio (M30, 29 oct 2026): lo que gana Naylan o Alexander
+// por cada servicio, monto fijo. La comision es de quien tiene ESE servicio en
+// su tabla, no de `recibidopor` (eso es quien registro la venta: Naylan
+// registra muchos baños). Las ventas escriben el mismo servicio de varias
+// formas ("Baño pequeño" / "Baños pequeños", "c/línea" / "con línea"), asi que
+// se compara por palabras: la tarifa cuyas palabras esten TODAS en el nombre
+// vendido, y entre varias, la mas larga ("Baño pequeño con línea" gana a "Baño
+// pequeño"). Lo que no encaja se lista aparte; nunca se inventa una comision.
+const PALABRAS_VACIAS_NOMINA = new Set(["de", "del", "la", "el", "los", "las", "y", "al", "a", "para"]);
+function palabrasServicioNomina(t) {
+  return normalizarTextoInv(t).split(" ").filter(Boolean).map((w) => w === "c" ? "con" : w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w)
+    .filter((w) => !PALABRAS_VACIAS_NOMINA.has(w));
+}
+function tarifaDeServicioNomina(nombre, tarifas) {
+  const vendido = new Set(palabrasServicioNomina(nombre));
+  let mejor = null, largo = 0;
+  for (const t of tarifas || []) {
+    for (const forma of [t.servicio, ...(t.alias || [])]) {
+      const ps = palabrasServicioNomina(forma);
+      if (ps.length && ps.length > largo && ps.every((w) => vendido.has(w))) { mejor = t; largo = ps.length; }
+    }
+  }
+  return mejor;
+}
+function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta) {
+  const porEmpleado = {}, sinTarifa = {};
+  for (const v of ventas || []) {
+    if (!v.fecha || v.fecha < desde || v.fecha > hasta) continue;
+    const items = Array.isArray(v.items) && v.items.length ? v.items : [{ nombre: v.servicio || v.descripcion || "", area: v.area }];
+    for (const it of items) {
+      let nombre = String(it.nombre || it.servicio || it.descripcion || "").trim(), cant = Number(it.qty || it.cantidad) || 1;
+      // "3x Baño pequeño" o "(2) Baño pequeño": la cantidad va en el nombre.
+      const mx = nombre.match(/^(?:\((\d+)\)|(\d+)\s*x)\s*/i);
+      if (mx) { cant = Number(mx[1] || mx[2]) || cant; nombre = nombre.slice(mx[0].length); }
+      if (!nombre) continue;
+      const t = tarifaDeServicioNomina(nombre, tarifas);
+      if (!t) {
+        const area = it.area || v.area;
+        if (area === "veterinaria" || area === "grooming") sinTarifa[nombre] = (sinTarifa[nombre] || 0) + cant;
+        continue;
+      }
+      const e = porEmpleado[t.empleado_id] || (porEmpleado[t.empleado_id] = { total: 0, lineas: [] });
+      const monto = Math.round(Number(t.comision) * cant * 100) / 100;
+      e.total = Math.round((e.total + monto) * 100) / 100;
+      e.lineas.push({ fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, tarifa: t.servicio, cant, comision: monto, cortesia: /cortes[ií]a/i.test(nombre) });
+    }
+  }
+  return { porEmpleado, sinTarifa: Object.entries(sinTarifa).sort((a, b) => b[1] - a[1]) };
+}
 // Cuenta de la quincena. Los adelantos se RESTAN (ya se pagaron antes) y los
 // incentivos "para la proxima quincena" se SUMAN.
 function calcularQuincenaNomina({ base = 0, comisiones = 0, incentivos = 0, adelantos = 0, descuentos = 0 }) {
@@ -13711,6 +13760,8 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const [verEmp, setVerEmp] = useState(null);
   const [editEmp, setEditEmp] = useState(null);
   const [cambio, setCambio] = useState(null);
+  const [verTarifas, setVerTarifas] = useState(false);
+  const [editTarifa, setEditTarifa] = useState(null);
   const tokenRef = useRef(null);
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => {
@@ -13770,10 +13821,15 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const { desde, hasta } = rangoPeriodoNomina(periodo);
   const movs = (datos.movimientos || []).filter((m) => !m.anulado);
   const activos = (datos.empleados || []).filter((e) => e.activo);
+  const tarifas = datos.comisiones || [];
+  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta);
+  const tieneTarifa = (emp) => tarifas.some((t) => t.empleado_id === emp.id);
   const pendientes = (emp, tipo) => movs.filter((m) => m.empleado_id === emp.id && m.tipo === tipo && !m.liquidado_en && (tipo === "adelanto" || !m.pagado_ahora));
   const resumen = (emp) => {
-    const vts = ventasComisionNomina(ventas, emp, desde, hasta);
-    const com = vts.reduce((s, v) => s + (Number(v.comision) || 0), 0);
+    const pt = porTarifa.porEmpleado[emp.id];
+    const vts = tieneTarifa(emp) ? (pt ? pt.lineas : [])
+      : ventasComisionNomina(ventas, emp, desde, hasta).map((v) => ({ fecha: v.fecha, cliente: v.cliente, servicio: v.servicio || v.descripcion || "", cant: 1, comision: Number(v.comision) || 0 }));
+    const com = Math.round(vts.reduce((s, l) => s + l.comision, 0) * 100) / 100;
     const inc = pendientes(emp, "incentivo"), ade = pendientes(emp, "adelanto");
     const base = Math.round((Number(emp.sueldo_mensual) || 0) / 2 * 100) / 100;
     const pagada = movs.find((m) => m.empleado_id === emp.id && m.tipo === "quincena" && m.periodo === periodo);
@@ -13838,6 +13894,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
         E("p", { style: { color: C.suave, fontSize: 13.5, margin: "4px 0 0" } }, "Sueldos, quincenas, adelantos, incentivos y comisiones. Confidencial.")),
       E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
         E("button", { className: "pc-btn-suave", onClick: () => setEditEmp({ nombre: "", cargo: "", sueldo_mensual: "", activo: true }) }, "＋ Colaborador"),
+        E("button", { className: "pc-btn-suave", onClick: () => setVerTarifas(!verTarifas) }, verTarifas ? "Cerrar tarifas" : "Tarifas de comisi\xF3n"),
         E("button", { className: "pc-btn-suave", onClick: () => setCambio({ actual: "", nueva: "", nueva2: "" }) }, "Cambiar clave"),
         E("button", { onClick: salir, style: { ...btnV, background: "#1f2328" } }, "🔒 Cerrar n\xF3mina"))),
     cambio && panel("Cambiar la clave de n\xF3mina", E("div", null,
@@ -13887,6 +13944,38 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
           : guardarModal({ ...modal, monto: String(q.neto), detalle: { base: +modal.base || 0, comisiones: +modal.comisiones || 0, incentivos: modal.incentivos, adelantos: modal.adelantos, descuentos: +modal.descuentos || 0 } })) : guardarModal(), style: btnV },
           ocupado ? "Guardando…" : modal.tipo === "quincena" ? "Registrar pago de " + dinero(q.neto) : "Registrar"),
         E("button", { className: "pc-btn-suave", onClick: () => setModal(null) }, "Cancelar")))),
+    verTarifas && panel("Tarifas de comisi\xF3n por servicio", E("div", null,
+      E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, "Lo que gana cada colaborador por servicio realizado. \u201COtros nombres\u201D: c\xF3mo aparece escrito ese servicio en las ventas, separado por comas."),
+      editTarifa && E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, background: "#fff", border: "1px solid " + C.borde, borderRadius: 10, padding: 12, marginBottom: 12 } },
+        E("div", null, lbl("Colaborador"), E("select", { value: editTarifa.empleado_id, onChange: (e) => setEditTarifa({ ...editTarifa, empleado_id: Number(e.target.value) }), style: inp },
+          activos.map((e) => E("option", { key: e.id, value: e.id }, e.nombre)))),
+        E("div", { style: { gridColumn: "span 2", minWidth: 0 } }, lbl("Servicio"), E("input", { value: editTarifa.servicio, onChange: (e) => setEditTarifa({ ...editTarifa, servicio: e.target.value }), style: inp })),
+        E("div", null, lbl("Precio de venta"), E("input", { type: "number", value: editTarifa.precio, onChange: (e) => setEditTarifa({ ...editTarifa, precio: e.target.value }), style: inp })),
+        E("div", null, lbl("Comisi\xF3n (RD$)"), E("input", { type: "number", value: editTarifa.comision, onChange: (e) => setEditTarifa({ ...editTarifa, comision: e.target.value }), style: inp })),
+        E("div", { style: { gridColumn: "1 / -1" } }, lbl("Otros nombres"), E("input", { value: editTarifa.alias, placeholder: "Ba\xF1o peque\xF1o, Ba\xF1o pq", onChange: (e) => setEditTarifa({ ...editTarifa, alias: e.target.value }), style: inp })),
+        E("div", { style: { gridColumn: "1 / -1", display: "flex", gap: 8 } },
+          E("button", { style: btnV, onClick: async () => {
+            if (!String(editTarifa.servicio).trim() || !(parseFloat(editTarifa.comision) >= 0)) return avisar("Escribe el servicio y la comisi\xF3n.", "error");
+            try { await llamar("pc_nomina_guardar_comision", { p_c: { ...editTarifa, comision: parseFloat(editTarifa.comision), precio: editTarifa.precio === "" ? "" : String(editTarifa.precio),
+              alias: String(editTarifa.alias || "").split(",").map((x) => x.trim()).filter(Boolean) } }); setEditTarifa(null); await cargar(); avisar("Tarifa guardada.", "ok"); }
+            catch (e) { avisar(e.message, "error"); } } }, "Guardar tarifa"),
+          E("button", { className: "pc-btn-suave", onClick: () => setEditTarifa(null) }, "Cancelar"))),
+      !editTarifa && E("button", { className: "pc-btn-suave", style: { marginBottom: 10 }, onClick: () => setEditTarifa({ empleado_id: (activos.find((e) => NOMINA_CON_COMISION.includes(e.empleado_ref)) || activos[0] || {}).id, servicio: "", precio: "", comision: "", alias: "" }) }, "＋ Agregar servicio"),
+      E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 } },
+        activos.filter(tieneTarifa).map((emp) => E("div", { key: emp.id, style: { minWidth: 0 } },
+          E("div", { style: { fontWeight: 700, marginBottom: 6 } }, emp.nombre),
+          E("div", { style: { border: "1px solid " + C.borde, borderRadius: 10, overflow: "hidden", background: "#fff" } },
+            tarifas.filter((t) => t.empleado_id === emp.id).map((t, i) => E("div", { key: t.id, style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", fontSize: 12.5, borderTop: i ? "1px solid #f1f3f4" : "none" } },
+              E("span", { style: { flex: 1, minWidth: 0 } }, t.servicio, (t.alias || []).length ? E("span", { style: { color: "#9aa1a9" } }, " \xB7 " + t.alias.join(", ")) : null),
+              t.precio != null && E("span", { style: { color: C.suave, whiteSpace: "nowrap" } }, dinero(t.precio)),
+              E("b", { style: { color: "#1a4fa0", whiteSpace: "nowrap" } }, dinero(t.comision)),
+              E("button", { onClick: () => setEditTarifa({ ...t, precio: t.precio == null ? "" : String(t.precio), comision: String(t.comision), alias: (t.alias || []).join(", ") }), style: { background: "none", border: "none", color: C.verde, cursor: "pointer", minHeight: 0, padding: "0 2px", fontWeight: 700 } }, "Editar"),
+              E("button", { title: "Quitar", onClick: async () => { if (!window.confirm("\xBFQuitar la tarifa de " + t.servicio + "?")) return; try { await llamar("pc_nomina_guardar_comision", { p_c: { id: t.id, borrar: true } }); await cargar(); } catch (e) { avisar(e.message, "error"); } },
+                style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", minHeight: 0, padding: "0 2px" } }, "\u2715"))))))))),
+    porTarifa.sinTarifa.length > 0 && tarifas.length > 0 && E("details", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 } },
+      E("summary", { style: { cursor: "pointer", fontWeight: 600 } }, porTarifa.sinTarifa.length + " servicio(s) vendidos en esta quincena no tienen tarifa de comisi\xF3n (no suman a nadie)"),
+      E("div", { style: { marginTop: 6 } }, porTarifa.sinTarifa.map(([n, c]) => n + (c > 1 ? " (" + c + ")" : "")).join(" \xB7 ")),
+      E("div", { style: { marginTop: 6, fontSize: 12 } }, "Si alguno s\xED lleva comisi\xF3n, agr\xE9galo en \u201CTarifas de comisi\xF3n\u201D (o como \u201Cotro nombre\u201D de un servicio que ya est\xE9).")),
     E(Card, { style: { marginBottom: 16, padding: 16 } },
       E("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "space-between" } },
         E("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
@@ -13903,7 +13992,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
             r.pagada ? E(Badge, { color: C.verde }, "Pagada") : E(Badge, { color: "#b45309" }, "Pendiente")),
           fila("Sueldo mensual", dinero(emp.sueldo_mensual)),
           fila("Quincena", dinero(r.base)),
-          NOMINA_CON_COMISION.includes(emp.empleado_ref) && fila("Comisiones del periodo (" + r.vts.length + ")", dinero(r.com), "#1a4fa0"),
+          (tieneTarifa(emp) || NOMINA_CON_COMISION.includes(emp.empleado_ref)) && fila("Comisiones (" + r.vts.reduce((s, l) => s + l.cant, 0) + " servicios)", dinero(r.com), "#1a4fa0"),
           r.inc.length > 0 && fila("Incentivos por sumar", dinero(r.inc.reduce((s, m) => s + Number(m.monto), 0)), "#7c3aed"),
           r.ade.length > 0 && fila("Adelantos por descontar", "−" + dinero(r.ade.reduce((s, m) => s + Number(m.monto), 0)), "#b45309"),
           E("div", { style: { borderTop: "1px solid " + C.borde, marginTop: 6, paddingTop: 6 } }, r.pagada ? fila("Pagado", dinero(r.pagada.monto), C.verde, true) : fila("A pagar", dinero(r.neto), C.verde, true)),
@@ -13917,7 +14006,8 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
             r.vts.length > 0 && E("div", { style: { marginBottom: 10 } },
               E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de esta quincena"),
               r.vts.map((v, i) => E("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "2px 0" } },
-                E("span", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, fechaCorta(v.fecha) + " \xB7 " + (v.servicio || v.descripcion || "") + (v.cliente ? " \xB7 " + v.cliente : "")),
+                E("span", { title: v.tarifa ? "Tarifa: " + v.tarifa : "", style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                  fechaCorta(v.fecha) + " \xB7 " + (v.cant > 1 ? v.cant + "\xD7 " : "") + v.servicio + (v.cliente ? " \xB7 " + v.cliente : "") + (v.cortesia ? " (cortes\xEDa)" : "")),
                 E("b", { style: { color: "#1a4fa0", marginLeft: 8 } }, dinero(v.comision))))),
             E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Pagos registrados"),
             (datos.movimientos || []).filter((m) => m.empleado_id === emp.id).slice(0, 30).map((m) => E("div", { key: m.id, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "4px 0", borderTop: "1px solid #f4f5f6", opacity: m.anulado ? 0.5 : 1 } },

@@ -361,8 +361,15 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
 - Cada pago se anota en Gastos categoria "nomina" SIN el nombre ("Pago de nomina — 2da
   quincena de octubre de 2026", "Adelanto de nomina"). `esGastoNomina`: Dashboard y Reportes
   los cuentan como NOMINA, no como gasto operativo (si no, se sumarian dos veces).
-- Comisiones: hoy salen de `ventas.comision` del periodo (Alexander = grooming; Naylan = donde
-  ella atendio). PENDIENTE: Victor enviara el tarifario por servicio de Naylan y Alexander.
+- Comisiones (M30, 29 oct): TARIFARIO por servicio, monto fijo (`pc_nomina_comisiones`, tras la
+  clave; 29 servicios de Naylan, 16 de Alexander, de la tabla de Victor). La comision es de quien
+  tiene ESE servicio en su tabla, NO de `recibidopor` (es quien registro la venta; Naylan
+  registra muchos baños). `tarifaDeServicioNomina` compara por palabras (sin acentos, plural ->
+  singular, "c/" -> "con"); gana la tarifa mas larga que encaje ("Baño pequeño con linea" a
+  "Baño pequeño"). Cantidad: qty o "3x"/"(2)" en el nombre. "Otros nombres" (alias) para las
+  formas raras. Lo de vet/grooming sin tarifa se lista en amarillo y NO suma a nadie.
+  Sin tarifario para alguien, cae a `ventas.comision` (sistema anterior).
+  Cortesias ("(cortesia casa)") SI cuentan comision: el trabajo se hizo.
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 

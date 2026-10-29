@@ -551,6 +551,21 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   if (mv("2026-12-Q2", 1) !== "2027-01-Q1" || mv("2026-01-Q1", -1) !== "2025-12-Q2") fallo("mover de quincena cruza meses y anos");
   const q = enVM("calcularQuincenaNomina")({ base: 15000, comisiones: 2500, incentivos: 1000, adelantos: 3000, descuentos: 500 });
   if (q.bruto !== 18500 || q.neto !== 15000) fallo("adelantos y descuentos restan, incentivos suman: " + JSON.stringify(q));
+  // M30: tarifario por servicio (montos de mentira: el repo es publico).
+  const tar = [{ id: 1, empleado_id: 7, servicio: "Baños pequeños", alias: ["Baño raza pequeña"], comision: 10 },
+    { id: 2, empleado_id: 7, servicio: "Baño pequeño con línea", alias: [], comision: 20 },
+    { id: 3, empleado_id: 7, servicio: "Corte de uñas + pulido canino", alias: ["Corte de uñas"], comision: 4 },
+    { id: 4, empleado_id: 7, servicio: "Corte de uñas + pulido felino", alias: ["Corte de uñas felino"], comision: 5 },
+    { id: 5, empleado_id: 9, servicio: "Muestra / Diagnóstico", alias: [], comision: 30 }];
+  const td = (n) => (enVM("tarifaDeServicioNomina")(n, tar) || {}).id;
+  if (td("baño pequeño") !== 1 || td("Baño pequeño c/línea") !== 2 || td("Corte de uñas felino") !== 4 || td("Corte de uñas") !== 3
+      || td("Muestra/diagnóstico") !== 5 || td("Coprológico") !== undefined) fallo("tarifaDeServicioNomina: plurales, c/línea, la tarifa más larga gana, sin inventar");
+  const cn = enVM("comisionesNominaPorTarifa")([
+    { fecha: "2026-10-20", area: "grooming", recibidopor: "Naylan Perez", items: [{ nombre: "3x Baño pequeño" }, { nombre: "(2) Baño pequeño" }, { nombre: "Baño pequeño c/línea", qty: 1 }] },
+    { fecha: "2026-10-21", area: "veterinaria", items: [{ nombre: "Muestra/diagnóstico", qty: 2 }, { nombre: "Coprológico" }, { nombre: "NexGard", area: "farmacia" }] },
+    { fecha: "2026-10-05", area: "grooming", items: [{ nombre: "Baño pequeño" }] }], tar, "2026-10-16", "2026-10-31");
+  if (cn.porEmpleado[7].total !== 70 || cn.porEmpleado[9].total !== 60) fallo("comisiones por tarifa (la de Alexander aunque la registre Naylan; cantidades; solo el periodo): " + JSON.stringify(cn.porEmpleado));
+  if (cn.sinTarifa.length !== 1 || cn.sinTarifa[0][0] !== "Coprológico") fallo("sin tarifa: solo servicios de vet/grooming, no farmacia: " + JSON.stringify(cn.sinTarifa));
   const g = enVM("esGastoNomina");
   if (!g({ categoria: "nomina" }) || !g({ categoria: "Nómina" }) || g({ categoria: "insumo" })) fallo("esGastoNomina");
   const html = require("fs").readFileSync(require("path").join(__dirname, "..", "..", "index.html"), "utf8");
