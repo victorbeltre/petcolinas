@@ -406,6 +406,40 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 
+## FACTURACION ELECTRONICA e-CF (M31-M33, 30 oct 2026)
+Decision de Victor: sin contable ni Alegra. PetColinas (micro/pequeña) emite e-CF desde el
+15 nov 2026 por la API de eCF MSeller (plan gratis 250 e-CF/mes). Respaldo: Facturador Gratuito.
+- El e-NCF lo asigna SOLO el servidor: `pc_ecf_asignar_factura` (factura ya guardada; la app
+  primero hace upsertOne). Triggers: un e-CF no rechazado no cambia lineas/montos/fecha; el
+  e-NCF y los campos `ecf_*` solo los toca el servidor (GUC `pc.ecf_servidor`). M33: el upsert
+  de la app (INSERT..ON CONFLICT) ya no choca con facturas que tienen e-NCF. Factura con
+  comprobante NO se borra ni se edita: nota de credito `pc_emitir_nota_credito` (E34/B04, admin).
+- Precios con ITBIS incluido (itbis=false): `pc_ecf_documento` manda IndicadorMontoGravado 1,
+  base = monto/1.18. Exentos: palabras en `pc_config.ecf_exentos` (JSON). M32.
+- Edge Function `pc-ecf` (verify_jwt): probar / emitir / consultar. Credenciales MSeller en
+  Supabase Vault via `pc_ecf_guardar_config`; la app nunca las vuelve a leer.
+- UI: Facturas -> "Asignar NCF" con pestañas (Electronico / Facturador Gratuito / tipo B),
+  estado DGII, "Nota de credito"; QR + codigo de seguridad en PDF, impresion y WhatsApp.
+  Configuracion e-CF y rangos E31/E32/E34 al final del Dashboard ("Datos del negocio"; antes
+  ConfigFiscal estaba DENTRO del modal de ventas por area y no se veia).
+- Pendiente de Victor: certificado .p12 (Camara de Comercio), cuenta MSeller, certificacion DGII,
+  rangos e-NCF, desplegar `pc-ecf`.
+
+## IMPUESTOS DGII (M34, 30 oct 2026)
+Pestaña "Impuestos DGII" (`ImpuestosDGII`, admin). `pc_impuestos_mes('AAAA-MM')` arma:
+- 606: gastos con NCF (menos categoria "Proveedores", que son pagos de CxP) + CxP con NCF; un
+  NCF que esta en CxP no se cuenta otra vez desde Gastos. B02/E32 (consumo) NO van al 606: salen
+  en "sin comprobante". TXT Norma 07-2018 (`txt606`): `606|RNC|AAAAMM|n` + 23 campos.
+  Emisor electronico: NO hay 607 ni 608.
+- IT-1: ventas de `pc_ventas` (ITBIS incluido, base /1.18), ITBIS de notas de credito, ITBIS de
+  compras del 606, saldo a favor (lo escribe Victor), Anexo A por forma de cobro y por comprobante.
+- IR-17: ISR retenido por fecha de pago. Alquiler a persona fisica 15% (`pc_config
+  ir17_pct_alquiler_pf`, Ley 30-26), honorarios 15%, ITBIS a persona fisica 100%.
+- Datos fiscales de gastos/CxP (rnc, ncf, tipo_bienes 1-11, itbis, retenciones, fiscal_excluir)
+  se editan SOLO con `pc_gasto_fiscal` / `pc_cxp_fiscal`; el upsert de Gastos no los manda.
+- Pagos a la DGII/TSS anotados como gasto no se piden con NCF. Vencimientos 10/15/20 (fin de
+  semana -> lunes; feriados no). TSS e IR-3: pendiente (PetColinas no esta en la TSS).
+
 ## FINANZAS
 PE real: RD$203,739/mes
 Publicidad: $600 USD/mes (Google Ads + Instagram desde Mar 2026)
