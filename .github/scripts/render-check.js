@@ -601,6 +601,15 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   const ini = html.slice(html.indexOf("const EMPLEADOS_INIT"), html.indexOf("];", html.indexOf("const EMPLEADOS_INIT")));
   if (/mensualidad:\s*[1-9]/.test(ini)) fallo("EMPLEADOS_INIT no puede llevar sueldos: el repo es publico");
 })();
+// Gastos fijos (30 oct 2026): un mes esta anotado si hay gasto de ese mes con la marca o la palabra clave.
+(() => {
+  const fallo = (m) => errores.push("gastos fijos: " + m);
+  const gf = enVM("gastoFijoAnotado");
+  const fijo = { id: "m", nombre: "Claro Multiplan (internet y teléfono)", buscar: "multiplan" };
+  const gs = [{ fecha: "2026-01-10", descripcion: "Servicio multiplan", monto: 1499 }, { fecha: "2026-03-10", descripcion: "otra cosa", notas: "Gasto fijo: Claro Multiplan (internet y teléfono)", monto: 1542.98 }];
+  if (!gf(fijo, gs, "2026-01") || !gf(fijo, gs, "2026-03") || gf(fijo, gs, "2026-02")) fallo("anotado por palabra clave (registros viejos) o por la marca; febrero sin registro = pendiente");
+})();
+render("GastosFijos", sandbox.GastosFijos, { gastos: [], setGastos: () => {}, mes: "2026-10" }, null, "Gastos fijos");
 render("NominaSegura", sandbox.NominaSegura, { ventas: [], gastos: [], setGastos: () => {}, pagosNom: [], ventasMes: [], mesActual: "2026-10" }, null, "Nómina");
 render("CuentasPorPagar", sandbox.CuentasPorPagar, { gastos: [], setGastos: () => {}, inventario: [] }, null, "Cuentas por pagar");
 render("ModalFacturaProveedor", sandbox.ModalFacturaProveedor, { inventario: [], onCerrar: () => {}, onGuardado: () => {} }, null, "Cargar factura de proveedor");

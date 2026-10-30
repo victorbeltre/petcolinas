@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-29 21:53Z";
+const PC_BUILD = "2026-10-30 00:27Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -14330,6 +14330,93 @@ function RankingVentasFarmacia({ ventas, mes }) {
   );
 }
 
+// Gastos fijos (Victor, 30 oct 2026): lo que se paga TODOS los meses (Claro
+// Flota, Claro Multiplan...). La lista vive en pc_config ("gastos_fijos", JSON)
+// y cada mes sale "Pendiente de anotar" hasta que se registra con un clic. Un
+// mes cuenta como anotado si ya hay un gasto de ese mes marcado "Gasto fijo:
+// <nombre>" o que menciona su palabra clave (los de antes no tenian la marca).
+// El monto propuesto es el de siempre, pero se ajusta si la factura cambio.
+function gastoFijoAnotado(fijo, gastos, mes) {
+  const clave = normalizarTextoInv(fijo.buscar || fijo.nombre);
+  return (gastos || []).find((g) => String(g.fecha || "").slice(0, 7) === mes && (
+    String(g.notas || "").includes("Gasto fijo: " + fijo.nombre) || (clave && normalizarTextoInv([g.descripcion, g.proveedor].join(" ")).includes(clave)))) || null;
+}
+function leerGastosFijos() {
+  try { const l = JSON.parse(PC_CONFIG.gastos_fijos || "[]"); return Array.isArray(l) ? l : []; } catch (e) { return []; }
+}
+function GastosFijos({ gastos, setGastos, mes }) {
+  const E = React.createElement;
+  const [fijos, setFijos] = useState(leerGastosFijos);
+  const [montos, setMontos] = useState({});
+  const [editando, setEditando] = useState(null);
+  const [abierto, setAbierto] = useState(true);
+  useEffect(() => { if (!fijos.length) { const t = setTimeout(() => setFijos(leerGastosFijos()), 1500); return () => clearTimeout(t); } }, []);
+  const hoyMes = fechaLocal().slice(0, 7);
+  if (mes > hoyMes) return null;
+  const nombreMes = new Date(mes + "-15T12:00:00").toLocaleDateString("es-DO", { month: "long", year: "numeric" });
+  const guardarLista = async (lista) => {
+    const r = await supaFetch("pc_config", "POST", [{ clave: "gastos_fijos", valor: JSON.stringify(lista), actualizado: new Date().toISOString() }]);
+    if (r && r.error) return avisar("No se pudo guardar la lista de gastos fijos.", "error");
+    PC_CONFIG.gastos_fijos = JSON.stringify(lista); setFijos(lista);
+  };
+  const anotar = (f) => {
+    const monto = Math.round((parseFloat(montos[f.id] ?? f.monto) || 0) * 100) / 100;
+    if (!(monto > 0)) return avisar("Escribe el monto de " + f.nombre + ".", "error");
+    const ultimo = new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0).getDate();
+    const dia = String(Math.min(Math.max(1, Number(f.dia) || 1), ultimo)).padStart(2, "0");
+    const g = { id: Date.now() + Math.floor(Math.random() * 1000), fecha: mes + "-" + dia, proveedor: f.proveedor || "", categoria: f.categoria || "servicios",
+      descripcion: f.nombre + " \u2014 factura " + nombreMes, monto, pagadoPor: "Petcolinas", metodo: "", notas: "Gasto fijo: " + f.nombre };
+    setGastos((prev) => [...(prev || []), g]);
+    upsertOne("pc_gastos", g).catch((e) => console.error("[gasto fijo]", e));
+    avisar(f.nombre + " de " + nombreMes + " anotado: " + RD(monto) + ".", "ok");
+  };
+  const estados = fijos.map((f) => ({ f, g: gastoFijoAnotado(f, gastos, mes) }));
+  const pendientes = estados.filter((x) => !x.g);
+  const inp = { border: "1px solid #d9dee3", borderRadius: 8, padding: "6px 8px", fontSize: 13, minWidth: 0 };
+  return E(Card, { style: { marginBottom: 24 } },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+      E("div", { style: { fontWeight: 700, fontSize: 15, cursor: "pointer" }, onClick: () => setAbierto(!abierto) }, "\u{1F501} Gastos fijos de " + nombreMes + " ",
+        pendientes.length ? E(Badge, { color: "#b45309" }, pendientes.length + " pendiente" + (pendientes.length > 1 ? "s" : "")) : fijos.length ? E(Badge, { color: C.verde }, "Todos anotados") : null),
+      E("div", { style: { display: "flex", gap: 6 } },
+        abierto && pendientes.length > 1 && E("button", { className: "pc-btn-suave", onClick: () => pendientes.forEach((x) => anotar(x.f)) }, "Anotar todos"),
+        E("button", { className: "pc-btn-suave", onClick: () => { setAbierto(true); setEditando({ id: "f" + Date.now(), nombre: "", proveedor: "", categoria: "servicios", monto: "", dia: 10, buscar: "", nuevo: true }); } }, "\uFF0B Gasto fijo"))),
+    abierto && E("div", { style: { marginTop: 10 } },
+      !fijos.length && E("div", { style: { fontSize: 13, color: C.grisd } }, "Sin gastos fijos. Agrega los que se pagan todos los meses (alquiler, luz, internet...)."),
+      estados.map(({ f, g }) => E("div", { key: f.id, style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 0", borderTop: "1px solid #f1f3f4", fontSize: 13.5 } },
+        E("span", { style: { flex: "1 1 220px", minWidth: 0 } }, E("b", null, f.nombre), E("span", { style: { color: C.grisd } }, " \xB7 d\xEDa " + (f.dia || 1) + (f.proveedor ? " \xB7 " + f.proveedor : ""))),
+        g ? E("span", { style: { color: C.verde, fontWeight: 700 } }, "\u2713 Anotado " + RD(g.monto) + " (" + g.fecha + ")")
+          : E(React.Fragment, null,
+              E("span", { style: { color: "#b45309", fontWeight: 600, fontSize: 12.5 } }, "Pendiente"),
+              E("input", { type: "number", min: 0, step: "0.01", value: montos[f.id] ?? f.monto, onChange: (e) => setMontos({ ...montos, [f.id]: e.target.value }), style: { ...inp, width: 110 }, title: "Monto de la factura de este mes" }),
+              E("button", { onClick: () => anotar(f), style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontWeight: 700, fontSize: 13, cursor: "pointer", minHeight: 0 } }, "Anotar")),
+        E("button", { onClick: () => setEditando({ ...f }), style: { background: "none", border: "none", color: C.azul, cursor: "pointer", fontSize: 12.5, minHeight: 0 } }, "Editar"))),
+      editando && E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, background: "#f8f9fa", borderRadius: 10, padding: 12, marginTop: 10 } },
+        [["nombre", "Nombre", "Claro Flota"], ["proveedor", "Proveedor", "CLARO"], ["monto", "Monto usual", "0"], ["dia", "D\xEDa del mes", "10"], ["buscar", "Palabra clave", "flota"]].map(([k, t, ph]) =>
+          E("label", { key: k, style: { fontSize: 12, color: C.grisd, display: "flex", flexDirection: "column", gap: 3 } }, t,
+            E("input", { type: k === "monto" || k === "dia" ? "number" : "text", value: editando[k] ?? "", placeholder: ph, onChange: (e) => setEditando({ ...editando, [k]: e.target.value }), style: inp }))),
+        E("label", { style: { fontSize: 12, color: C.grisd, display: "flex", flexDirection: "column", gap: 3 } }, "Categor\xEDa",
+          E("select", { value: editando.categoria || "servicios", onChange: (e) => setEditando({ ...editando, categoria: e.target.value }), style: inp },
+            CATEGORIAS_GASTO.map((c) => E("option", { key: c.value, value: c.value }, c.label)))),
+        E("div", { style: { gridColumn: "1 / -1", display: "flex", gap: 8, flexWrap: "wrap" } },
+          E(Btn, { onClick: async () => {
+            if (!String(editando.nombre || "").trim()) return avisar("Escribe el nombre del gasto fijo.", "error");
+            const limpio = { id: editando.id, nombre: editando.nombre.trim(), proveedor: editando.proveedor || "", categoria: editando.categoria || "servicios",
+              monto: parseFloat(editando.monto) || 0, dia: Math.min(31, Math.max(1, parseInt(editando.dia) || 1)), buscar: String(editando.buscar || "").trim() };
+            await guardarLista(editando.nuevo ? [...fijos, limpio] : fijos.map((x) => x.id === limpio.id ? limpio : x)); setEditando(null);
+          } }, "Guardar"),
+          !editando.nuevo && E("button", { onClick: async () => { if (!window.confirm("\xBFQuitar " + editando.nombre + " de los gastos fijos? Los gastos ya anotados no se borran.")) return; await guardarLista(fijos.filter((x) => x.id !== editando.id)); setEditando(null); },
+            style: { background: "none", border: "1px solid #f5c2c4", color: "#b42318", borderRadius: 8, padding: "8px 14px", cursor: "pointer" } }, "Quitar de la lista"),
+          E("button", { onClick: () => setEditando(null), style: { background: "none", border: "1px solid #ddd", borderRadius: 8, padding: "8px 14px", cursor: "pointer" } }, "Cancelar")))));
+}
+const CATEGORIAS_GASTO = [
+  { value: "alquiler", label: "\u{1F3E0} Alquiler" },
+  { value: "servicios", label: "\u{1F4E1} Servicios (luz, agua, internet, tel\xE9fono)" },
+  { value: "insumo", label: "\u{1F9F4} Insumos/Compras" },
+  { value: "nomina", label: "\u{1F465} N\xF3mina" },
+  { value: "equipo", label: "\u{1F527} Equipo/Herramienta" },
+  { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" },
+  { value: "varios", label: "\u{1F4CB} Gastos varios" }
+];
 function Gastos({ gastos, setGastos }) {
   const [fecha, setFecha] = useState(hoy());
   const [proveedor, setProv] = useState("");
@@ -14399,21 +14486,14 @@ function Gastos({ gastos, setGastos }) {
     acc[g.categoria] = (acc[g.categoria] || 0) + g.monto;
     return acc;
   }, {});
-  const catColors = { alquiler: C.rojo, insumo: C.azul, nomina: C.verde, equipo: C.gold, varios: C.grisd, inversion: C.naranja };
+  const catColors = { alquiler: C.rojo, servicios: "#0e7490", insumo: C.azul, nomina: C.verde, equipo: C.gold, varios: C.grisd, inversion: C.naranja };
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, marginBottom: 4 } }, "Gastos e Inversiones"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13, marginBottom: 24 } }, "Facturas, alquiler, compras, inversiones y gastos varios"), /* @__PURE__ */ React.createElement(Card, { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15, marginBottom: 14 } }, "\u2795 Registrar gasto o inversi\xF3n"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: fecha, onChange: setFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: proveedor, onChange: setProv, placeholder: "MEDIVET, ESPAVET, Propietario..." }), /* @__PURE__ */ React.createElement(
     Select,
     {
       label: "Categor\xEDa",
       value: categoria,
       onChange: setCat,
-      options: [
-        { value: "alquiler", label: "\u{1F3E0} Alquiler" },
-        { value: "insumo", label: "\u{1F9F4} Insumos/Compras" },
-        { value: "nomina", label: "\u{1F465} N\xF3mina" },
-        { value: "equipo", label: "\u{1F527} Equipo/Herramienta" },
-        { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" },
-        { value: "varios", label: "\u{1F4CB} Gastos varios" }
-      ]
+      options: CATEGORIAS_GASTO
     }
   )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: descripcion, onChange: setDesc, placeholder: "Botell\xF3n de agua, Nexgard, maquinilla..." }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: monto, onChange: setMonto, placeholder: "0" }), /* @__PURE__ */ React.createElement(
     Select,
@@ -14447,9 +14527,9 @@ function Gastos({ gastos, setGastos }) {
     borderLeft: `4px solid ${C.negro}`,
     boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
     minWidth: 160
-  } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 } }, "TOTAL MES"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 20, color: C.negro, fontWeight: 700 } }, RD(totalFiltrado)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CB} Historial de gastos"), /* @__PURE__ */ React.createElement(Input, { label: "", type: "month", value: filtromes, onChange: setFiltroMes })), gastosFiltrados.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "Sin gastos registrados en este per\xEDodo.") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Proveedor", "Descripci\xF3n", "Categor\xEDa", "Pagado por", "M\xE9todo", "Monto", ""].map(
+  } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 } }, "TOTAL MES"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 20, color: C.negro, fontWeight: 700 } }, RD(totalFiltrado)))), React.createElement(GastosFijos, { gastos, setGastos, mes: filtromes }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, "\u{1F4CB} Historial de gastos"), /* @__PURE__ */ React.createElement(Input, { label: "", type: "month", value: filtromes, onChange: setFiltroMes })), gastosFiltrados.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.grisd } }, "Sin gastos registrados en este per\xEDodo.") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { background: "#f8f9fa" } }, ["Fecha", "Proveedor", "Descripci\xF3n", "Categor\xEDa", "Pagado por", "M\xE9todo", "Monto", ""].map(
     (h) => /* @__PURE__ */ React.createElement("th", { key: h, style: { padding: "10px 12px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)
-  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, /pendiente/i.test(g.metodo || g.formaPago || "") ? /* @__PURE__ */ React.createElement("span", { style: { color: "#b45309", fontWeight: 700 } }, "Pendiente de pago") : (g.metodo || g.formaPago || "\u2014")), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: [{ value: "alquiler", label: "\u{1F3E0} Alquiler" }, { value: "insumo", label: "\u{1F9F4} Insumos/Compras" }, { value: "nomina", label: "\u{1F465} N\xF3mina" }, { value: "equipo", label: "\u{1F527} Equipo/Herramienta" }, { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" }, { value: "varios", label: "\u{1F4CB} Gastos varios" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Petcolinas", label: "Petcolinas (la empresa)" }, { value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "", label: "(sin anotar)" }, { value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }, { value: "tarjeta empresarial Banreservas", label: "Tarjeta empresarial Banreservas" }, { value: "pendiente de pago", label: "Pendiente de pago" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
+  ))), /* @__PURE__ */ React.createElement("tbody", null, [...gastosFiltrados].reverse().map((g) => /* @__PURE__ */ React.createElement("tr", { key: g.id, style: { borderBottom: "1px solid #f4f5f6" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.fecha), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.proveedor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 600 } }, g.descripcion), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(Badge, { color: catColors[g.categoria] || C.grisd }, g.categoria)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, g.pagadoPor || "\u2014"), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", textTransform: "capitalize" } }, /pendiente/i.test(g.metodo || g.formaPago || "") ? /* @__PURE__ */ React.createElement("span", { style: { color: "#b45309", fontWeight: 700 } }, "Pendiente de pago") : (g.metodo || g.formaPago || "\u2014")), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px", fontWeight: 700, color: C.rojo } }, RD(g.monto)), /* @__PURE__ */ React.createElement("td", { style: { padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => deleteGasto(g.id), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 16 } }, "\u{1F5D1}"), /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(g), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginLeft: 6 } }, "Editar")))))))), editingId && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { background: "#fff", borderRadius: 16, padding: 28, maxWidth: 600, width: "90%", maxHeight: "90vh", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16 } }, "\u270F\uFE0F Editar gasto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Input, { label: "Fecha", type: "date", value: editFecha, onChange: setEditFecha }), /* @__PURE__ */ React.createElement(Input, { label: "Proveedor / origen", value: editProv, onChange: setEditProv, placeholder: "MEDIVET, ESPAVET..." }), /* @__PURE__ */ React.createElement(Select, { label: "Categor\xEDa", value: editCat, onChange: setEditCat, options: CATEGORIAS_GASTO })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Input, { label: "Descripci\xF3n", value: editDesc, onChange: setEditDesc }), /* @__PURE__ */ React.createElement(Input, { label: "Monto (RD$)", type: "number", value: editMonto, onChange: setEditMonto }), /* @__PURE__ */ React.createElement(Select, { label: "Pagado por", value: editPagPor, onChange: setEditPagPor, options: [{ value: "Petcolinas", label: "Petcolinas (la empresa)" }, { value: "Victor Ballas", label: "Victor Ballas" }, { value: "Victor Iv\xE1n", label: "Victor Iv\xE1n" }, { value: "Laura", label: "Laura" }, { value: "Leydeli", label: "Leydeli" }] }), /* @__PURE__ */ React.createElement(Select, { label: "M\xE9todo", value: editMetodo, onChange: setEditMetodo, options: [{ value: "", label: "(sin anotar)" }, { value: "efectivo", label: "Efectivo" }, { value: "tarjeta", label: "Tarjeta" }, { value: "transferencia", label: "Transferencia" }, { value: "reservas", label: "Reservas" }, { value: "tarjeta empresarial Banreservas", label: "Tarjeta empresarial Banreservas" }, { value: "pendiente de pago", label: "Pendiente de pago" }] })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: saveEdit }, "\u{1F4BE} Guardar cambios"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditingId(null), style: { padding: "8px 18px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", background: "#f8f9fa" } }, "Cancelar")))));
 }
 // Cabecera de Reportes: donde va el mes contra el punto de equilibrio y contra
 // los dos meses con los que tiene sentido compararse (el anterior y el mismo

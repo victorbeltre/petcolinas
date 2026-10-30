@@ -342,6 +342,19 @@ pagado, por pagar). Tabla `pc_cuentas_pagar`, SOLO-ADMIN.
   queda adjunto y se escribe a mano. "Vence en N d" en naranja a 7 dias o menos.
   Las columnas nuevas solo se mandan si tienen valor: el registro a mano sirve sin M28.
 
+## GASTOS FIJOS (30 oct 2026)
+Gastos -> "Gastos fijos de <mes>": lo que se paga TODOS los meses. Lista en `pc_config`
+clave `gastos_fijos` (JSON: id, nombre, proveedor, categoria, monto usual, dia, palabra clave),
+editable desde la app (+ Gasto fijo / Editar / Quitar). Cada mes sale "Pendiente" hasta
+anotarlo; "Anotar" crea el gasto con notas "Gasto fijo: <nombre>" y el monto (ajustable si la
+factura cambio). `gastoFijoAnotado`: anotado si hay gasto del mes con esa marca o con la
+palabra clave (los registros viejos no tienen la marca).
+Categoria nueva `servicios` (luz, agua, internet, telefono); lista unica `CATEGORIAS_GASTO`.
+Claro (Victor, 30 oct): Flota (~1,760.01) y Multiplan internet+telefono (~1,499), dia 10.
+Se cargaron con el monto EXACTO de cada factura: Flota ene-oct 2026 (abr 3,571.65, may 1,811.64,
+jul 1,744.39) y Multiplan mar-oct (mar/abr 1,542.98). Ene y feb de Multiplan ya estaban (1,499
+cada uno; las facturas dicen 1,536.78 y 3,079.76) y NO se tocaron.
+
 ## NOMINA CON CLAVE (M29, 29 oct 2026)
 Decision de Victor: Nomina se abre SIEMPRE con una clave propia (distinta a la del admin),
 aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
