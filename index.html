@@ -28,6 +28,7 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     /* ── DISEÑO "MODERNO Y LIMPIO" (oct 2026) ──────────────────────────────
@@ -291,7 +292,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-30 00:27Z";
+const PC_BUILD = "2026-10-30 01:01Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -1530,7 +1531,14 @@ function normalizeRow(table, r) {
     autoGenerada: r.autogenerada === true || r.autogenerada === "true" || false,
     ncf: r.ncf || "",
     ncfTipo: r.ncftipo || r.ncfTipo || "",
-    rncCliente: r.rnccliente || r.rncCliente || ""
+    rncCliente: r.rnccliente || r.rncCliente || "",
+    // e-CF: los escribe solo el servidor (pc_ecf_*). No se suben desde aqui.
+    ecfEstado: r.ecf_estado || r.ecfEstado || "",
+    ecfOrigen: r.ecf_origen || r.ecfOrigen || "",
+    ecfCodigoSeguridad: r.ecf_codigo_seguridad || r.ecfCodigoSeguridad || "",
+    ecfQrUrl: r.ecf_qr_url || r.ecfQrUrl || "",
+    ecfFechaFirma: r.ecf_fecha_firma || r.ecfFechaFirma || "",
+    ecfMensaje: r.ecf_mensaje || r.ecfMensaje || ""
   };
   if (table === "pc_depositos") return {
     id: r.id,
@@ -1797,7 +1805,10 @@ const NCF_NOMBRE = {
   B02: "Consumo",                // consumidor final: la mayor\xEDa de los due\xF1os
   B04: "Nota de Cr\xE9dito",      // devoluciones y anulaciones
   B14: "R\xE9gimen Especial",
-  B15: "Gubernamental"
+  B15: "Gubernamental",
+  E31: "Cr\xE9dito Fiscal electr\xF3nico",
+  E32: "Consumo electr\xF3nico",
+  E34: "Nota de Cr\xE9dito electr\xF3nica"
 };
 // Punto de equilibrio: lo que hay que vender en el mes para no perder dinero.
 // Estaba escrito a mano en tres sitios y con DOS valores distintos: el
@@ -5003,7 +5014,7 @@ function generarFacturaPDFDoc(f) {
   doc.text(f.estado==="pendiente" ? "PENDIENTE" : "EMITIDA", W-M, 27, {align:"right"});
   if (f.ncf) {
     doc.setFont("helvetica","bold"); doc.setFontSize(9);
-    doc.text("NCF: " + f.ncf, W-M, 34, {align:"right"});
+    doc.text((esECF(f.ncf) ? "e-NCF: " : "NCF: ") + f.ncf, W-M, 34, {align:"right"});
     doc.setFont("helvetica","normal"); doc.setFontSize(7);
     doc.text((NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"), W-M, 38.5, {align:"right"});
   }
@@ -5050,6 +5061,7 @@ function generarFacturaPDFDoc(f) {
   const itbisAmt=f.itbis?Math.round(subtotal*0.18):0, total=subtotal+itbisAmt;
   y+=4; doc.setDrawColor(...verde); doc.setLineWidth(0.3); doc.line(130,y,W-M,y); y+=5;
   doc.setTextColor(...ng); doc.setFont("helvetica","normal"); doc.setFontSize(9);
+  const yTotPDF = y;
   doc.text("Subtotal:", 141, y); doc.text("RD$ "+subtotal.toLocaleString("es-DO"), W-M-2, y, {align:"right"});
   if(f.itbis){y+=6;doc.text("ITBIS (18%):", 141, y);doc.text("RD$ "+itbisAmt.toLocaleString("es-DO"), W-M-2, y, {align:"right"});}
   y+=6; doc.setFillColor(...verde); doc.rect(130,y-4,W-M-130,9,"F");
@@ -5087,6 +5099,26 @@ function generarFacturaPDFDoc(f) {
       doc.setTextColor(6,95,70); doc.setFont("helvetica","bold"); doc.setFontSize(10);
       doc.text("PAGADA EN SU TOTALIDAD", 134, y+1.5);
     }
+  }
+  // e-CF: datos que la DGII exige en la representacion impresa.
+  if (esECF(f.ncf)) {
+    const ti = itbisECF(f);
+    let yq = yTotPDF - 4;
+    if (f.ecfQrUrl && qrEnPDF(doc, f.ecfQrUrl, M, yq, 24)) {
+      doc.setTextColor(...ng); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+      doc.text("C\xF3digo de seguridad: " + (f.ecfCodigoSeguridad || "-"), M+27, yq+4);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+      if (f.ecfFechaFirma) doc.text("Fecha de firma: " + f.ecfFechaFirma, M+27, yq+9);
+    } else {
+      doc.setTextColor(...ng); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+      doc.text(f.ecfCodigoSeguridad ? "C\xF3digo de seguridad: " + f.ecfCodigoSeguridad : "e-CF " + ((ECF_ESTADOS[f.ecfEstado] || {}).t || "").toLowerCase(), M, yq+4);
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+      if (f.ecfFechaFirma) doc.text("Fecha de firma: " + f.ecfFechaFirma, M, yq+9);
+    }
+    const xt = f.ecfQrUrl && qrModulos(f.ecfQrUrl) ? M+27 : M;
+    doc.setTextColor(...gr); doc.setFontSize(7.5);
+    if (ti.incluido) doc.text("Precios con ITBIS incluido \xB7 base RD$ " + ti.base.toLocaleString("es-DO") + " \xB7 ITBIS 18% RD$ " + ti.itbis.toLocaleString("es-DO") + (ti.exento ? " \xB7 exento RD$ " + ti.exento.toLocaleString("es-DO") : ""), xt, yq+14, { maxWidth: 125 - xt });
+    y = Math.max(y, yTotPDF + 14);
   }
   // Lealtad grooming
   const grm=Number(f.groomingCount)||0;
@@ -5222,7 +5254,9 @@ function enviarPDFWhatsApp(f, clientes) {
   }
   // El NCF va en el texto del chat, no solo dentro del PDF adjunto: al cliente
   // que lo necesita para su contabilidad le sirve poder copiarlo del mensaje.
-  const lineaNCF = f.ncf ? "\nNCF: " + f.ncf + " (" + (NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal") + ")" : "";
+  const lineaNCF = f.ncf ? "\n" + (esECF(f.ncf) ? "e-NCF: " : "NCF: ") + f.ncf + " (" + (NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal") + ")" +
+    (f.ecfCodigoSeguridad ? "\nC\xF3digo de seguridad: " + f.ecfCodigoSeguridad : "") +
+    (f.ecfQrUrl ? "\nVerif\xEDquela en la DGII: " + f.ecfQrUrl : "") : "";
   const msgText = saludo + "le anexamos su factura de PetColinas 🐾\n\n*Factura #" + f.numero + "* \xB7 " + f.fecha + lineaNCF +
     (f.mascota ? "\n🐾 " + f.mascota : "") +
     "\n*Total: RD$ " + (f.total || 0).toLocaleString("es-DO") + "*" + lineasPago +
@@ -5387,47 +5421,365 @@ function ModalHistoriaDesdeFactura({ factura, cliente, historias, onCerrar }) {
                 h.proximacita && E("div", { style: { fontSize: 12, color: "#1a6b3a", fontWeight: 600 } }, "\u{1F4C5} Pr\xF3x. cita: " + h.proximacita),
                 h.notas && E("div", { style: { fontSize: 12, color: "#5a6472", fontStyle: "italic", marginTop: 2 } }, h.notas))))));
 }
-function ModalNCF({ factura, ocupado, onAsignar, onCerrar }) {
+// ── Facturación electrónica (e-CF) ─────────────────────────────────────────
+// Desde el 15 nov 2026 PetColinas emite e-CF. La app pide el e-NCF al servidor
+// (pc_ecf_asignar_factura) y lo manda por la Edge Function pc-ecf a eCF MSeller,
+// que lo firma con el certificado de PetColinas y lo envía a la DGII. Respaldo:
+// emitirlo en el Facturador Gratuito de la DGII y anotar aquí el e-NCF.
+const ECF_ESTADOS = {
+  por_enviar: { t: "Por enviar a la DGII", c: "#92400e", f: "#fff7e6" },
+  en_proceso: { t: "En proceso en la DGII", c: "#1a4fa0", f: "#e8effd" },
+  aceptado: { t: "Aceptado por la DGII", c: "#166534", f: "#e6f4ec" },
+  aceptado_condicional: { t: "Aceptado condicional", c: "#166534", f: "#e6f4ec" },
+  rechazado: { t: "Rechazado por la DGII", c: "#b8232a", f: "#fdeaea" },
+  manual: { t: "Emitido en el Facturador Gratuito", c: "#5b21b6", f: "#f3effd" }
+};
+function esECF(ncf) { return /^E\d{2}/.test(String(ncf || "")); }
+const escHTML = (t) => String(t == null ? "" : t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+async function llamarECF(cuerpo) {
+  let r;
+  try {
+    r = await fetch(SUPA_URL + "/functions/v1/pc-ecf", { method: "POST", headers: await supaHeaders(), body: JSON.stringify(cuerpo) });
+  } catch (e) { throw new Error("No se pudo conectar con la facturaci\xF3n electr\xF3nica (\xBFsin internet?)."); }
+  const datos = await r.json().catch(() => ({}));
+  if (r.status === 404) throw new Error("La funci\xF3n pc-ecf todav\xEDa no est\xE1 instalada en Supabase.");
+  if (!r.ok) throw new Error(datos.error || "No se pudo conectar con la facturaci\xF3n electr\xF3nica.");
+  return datos;
+}
+// ITBIS de la factura tal como va en el e-CF (misma cuenta que pc_ecf_documento):
+// con itbis=false los precios del tarifario YA traen el 18%.
+function itbisECF(f) {
+  const subtotal = Number(f.subtotal) || 0, total = Number(f.total) || 0;
+  if (f.itbis) return { base: subtotal, itbis: Number(f.itbisAmt) || 0, exento: 0, incluido: false };
+  let exentos = [];
+  try { exentos = JSON.parse(PC_CONFIG.ecf_exentos || "[]"); } catch (e) {}
+  if (String(PC_CONFIG.ecf_precios_incluyen_itbis || "si").toLowerCase() !== "si") return { base: 0, itbis: 0, exento: total, incluido: false };
+  let grav = 0, exe = 0;
+  (f.items || []).forEach((it) => {
+    const m = Math.round((Number(it.precio) || 0) * (Number(it.cantidad) || 1) * (1 - (Number(it.descuento) || 0) / 100) * 100) / 100;
+    const d = String(it.descripcion || "").toLowerCase();
+    if (exentos.some((x) => d.includes(String(x).toLowerCase()))) exe += m; else grav += m;
+  });
+  const base = Math.round(grav / 1.18 * 100) / 100;
+  return { base, itbis: Math.round((grav - base) * 100) / 100, exento: exe, incluido: true };
+}
+// QR de la representación impresa (qrcode-generator, cdnjs). Si la librería
+// no cargó, la factura sale igual con el código de seguridad.
+function qrModulos(texto) {
+  try {
+    if (typeof qrcode !== "function" || !texto) return null;
+    const q = qrcode(0, "M"); q.addData(String(texto)); q.make();
+    return q;
+  } catch (e) { return null; }
+}
+function qrSVG(texto, px = 120) {
+  const q = qrModulos(texto);
+  if (!q) return "";
+  const n = q.getModuleCount(), s = px / n;
+  let r = "";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) r += `<rect x="${(x * s).toFixed(2)}" y="${(y * s).toFixed(2)}" width="${s.toFixed(2)}" height="${s.toFixed(2)}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${px} ${px}"><rect width="${px}" height="${px}" fill="#fff"/><g fill="#000">${r}</g></svg>`;
+}
+function qrEnPDF(doc, texto, x, y, mm) {
+  const q = qrModulos(texto);
+  if (!q) return false;
+  const n = q.getModuleCount(), s = mm / n;
+  doc.setFillColor(0, 0, 0);
+  for (let f = 0; f < n; f++) for (let c = 0; c < n; c++) if (q.isDark(f, c)) doc.rect(x + c * s, y + f * s, s, s, "F");
+  return true;
+}
+// Texto para pasar la factura al Facturador Gratuito de la DGII.
+function textoParaFacturadorGratuito(f) {
+  const t = itbisECF(f);
+  const lineas = (f.items || []).map((it, i) => (i + 1) + ". " + (it.descripcion || "") + " \xB7 cant. " + (it.cantidad || 1) +
+    " \xB7 precio RD$" + (Number(it.precio) || 0).toLocaleString("es-DO") + (Number(it.descuento) ? " \xB7 desc. " + it.descuento + "%" : ""));
+  return [
+    "Cliente: " + (f.propietario || f.mascota || "Consumidor final") + (f.rncCliente ? " \xB7 RNC/C\xE9dula " + f.rncCliente : ""),
+    "Fecha: " + (f.fecha || ""),
+    "Forma de pago: " + (f.estado === "pendiente" ? "Cr\xE9dito" : (f.metodoPago || "Efectivo")),
+    "ITBIS: " + (t.incluido ? "18% incluido en los precios" : f.itbis ? "18% sobre el precio" : "Exento"),
+    "L\xEDneas:", ...lineas,
+    "Base: " + RDc(t.base) + " \xB7 ITBIS: " + RDc(t.itbis) + (t.exento ? " \xB7 Exento: " + RDc(t.exento) : "") + " \xB7 Total: " + RDc(f.total)
+  ].join("\n");
+}
+
+function EstadoECF({ registro, onEnviar, onConsultar, ocupado }) {
   const E = React.createElement;
-  const [tipo, setTipo] = React.useState("B02");
+  const estado = registro.ecfEstado || registro.ecf_estado;
+  const est = ECF_ESTADOS[estado] || null;
+  if (!est) return null;
+  const mensaje = registro.ecfMensaje || registro.ecf_mensaje;
+  return E("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+    E("span", { title: mensaje || "", style: { background: est.f, color: est.c, borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 800 } }, est.t),
+    (estado === "por_enviar" || estado === "rechazado") && onEnviar && E("button", { disabled: ocupado, onClick: onEnviar, style: { background: "#1a6b3a", color: "#fff", border: "none", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 800, cursor: ocupado ? "default" : "pointer" } }, ocupado ? "Enviando…" : estado === "rechazado" ? "Reenviar corregida" : "Enviar a la DGII"),
+    estado === "en_proceso" && onConsultar && E("button", { disabled: ocupado, onClick: onConsultar, style: { background: "#e8effd", color: "#1a4fa0", border: "none", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 800, cursor: ocupado ? "default" : "pointer" } }, ocupado ? "Consultando…" : "Actualizar estado"),
+    mensaje && estado !== "aceptado" && E("span", { style: { fontSize: 11, color: est.c } }, mensaje));
+}
+
+// Configuración → Datos del negocio → Facturación electrónica.
+function ConfigECF() {
+  const E = React.createElement;
+  const [cfg, setCfg] = React.useState(null);
+  const [error, setError] = React.useState("");
+  const [form, setForm] = React.useState({ email: "", password: "", api_key: "", ambiente: "TesteCF" });
+  const [ocupado, setOcupado] = React.useState("");
+  const cargar = React.useCallback(async () => {
+    try {
+      const c = await supaRPC("pc_ecf_config");
+      setCfg(c); setError("");
+      setForm((f) => ({ ...f, email: c.email || "", ambiente: c.ambiente || "TesteCF", password: "", api_key: "" }));
+    } catch (e) { setError(e.message || "No se pudo leer la configuraci\xF3n."); }
+  }, []);
+  React.useEffect(() => { cargar(); }, [cargar]);
+  async function guardar(extra = {}) {
+    setOcupado("guardar");
+    try {
+      const c = await supaRPC("pc_ecf_guardar_config", { p_config: { ...form, ...extra } });
+      setCfg(c); setForm((f) => ({ ...f, password: "", api_key: "" }));
+      avisar(extra.activo === true ? "Facturaci\xF3n electr\xF3nica activada." : extra.activo === false ? "Facturaci\xF3n electr\xF3nica desactivada." : "Configuraci\xF3n guardada.", "ok");
+    } catch (e) { avisar(e.message, "error"); }
+    setOcupado("");
+  }
+  async function probar() {
+    setOcupado("probar");
+    try { const r = await llamarECF({ action: "probar" }); avisar(r.mensaje || "Conexi\xF3n correcta.", "ok"); }
+    catch (e) { avisar(e.message, "error"); }
+    await cargar();
+    setOcupado("");
+  }
+  async function consultarPendientes() {
+    setOcupado("consultar");
+    try { const r = await llamarECF({ action: "consultar" }); avisar((r.actualizados || 0) + " comprobante(s) actualizados.", "ok"); }
+    catch (e) { avisar(e.message, "error"); }
+    setOcupado("");
+  }
+  const caja = { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 12, padding: 20, marginTop: 16 };
+  const inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, boxSizing: "border-box" };
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const boton = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: ocupado ? "default" : "pointer", opacity: ocupado ? 0.7 : 1 });
+  if (error) return E("div", { style: caja }, E("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 6 } }, "⚡ Facturaci\xF3n electr\xF3nica (e-CF)"), E("div", { style: { fontSize: 12.5, color: "#b8232a" } }, error));
+  if (!cfg) return E("div", { style: caja }, "Cargando…");
+  const secE = (t) => (cfg.secuencias || []).find((s) => s.tipo === t);
+  const pasos = [
+    ["RNC y raz\xF3n social de PetColinas (arriba, en Datos del negocio)", !!cfg.rnc && cfg.rnc.length >= 9],
+    ["Certificado digital (.p12) comprado en la C\xE1mara de Comercio y subido a la cuenta MSeller", !!cfg.email && cfg.tiene_password && cfg.tiene_api_key],
+    ["Conexi\xF3n probada", cfg.ultima_prueba_ok === true],
+    ["Certificaci\xF3n ante la DGII y rangos E32, E31 y E34 cargados (arriba, en N\xFAmeros de comprobante)", !!secE("E32") && !!secE("E31") && !!secE("E34")],
+    ["Ambiente en Producci\xF3n y activada", cfg.activo && cfg.ambiente === "eCF"]
+  ];
+  return E("div", { style: caja },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" } },
+      E("div", null,
+        E("div", { style: { fontWeight: 800, fontSize: 15 } }, "⚡ Facturaci\xF3n electr\xF3nica (e-CF)"),
+        E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 4, lineHeight: 1.5, maxWidth: 640 } },
+          "Desde el 15 de noviembre de 2026 PetColinas emite comprobantes electr\xF3nicos. La app manda cada factura a eCF MSeller (plan gratis: 250 e-CF al mes), que la firma con el certificado de PetColinas y la entrega a la DGII. Mientras no est\xE9 activa, emite en el Facturador Gratuito de la DGII y anota el e-NCF en la factura.")),
+      E("span", { style: { background: cfg.activo ? "#e6f4ec" : "#f4f5f6", color: cfg.activo ? "#166534" : "#5a6472", borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 800 } },
+        cfg.activo ? "Activa \xB7 " + ({ TesteCF: "Pruebas", CerteCF: "Certificaci\xF3n", eCF: "Producci\xF3n" }[cfg.ambiente] || cfg.ambiente) : "No activa")),
+    E("div", { style: { display: "grid", gap: 6, marginTop: 14, marginBottom: 16 } },
+      pasos.map(([t, ok], i) => E("div", { key: i, style: { fontSize: 13, color: ok ? "#166534" : "#5a6472" } }, (ok ? "✅ " : "○ ") + (i + 1) + ". " + t))),
+    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 } },
+      E("div", null, E("label", { style: lbl }, "Ambiente"), E("select", { value: form.ambiente, onChange: (e) => setForm({ ...form, ambiente: e.target.value }), style: inp },
+        E("option", { value: "TesteCF" }, "Pruebas (TesteCF)"), E("option", { value: "CerteCF" }, "Certificaci\xF3n DGII (CerteCF)"), E("option", { value: "eCF" }, "Producci\xF3n (eCF)"))),
+      E("div", null, E("label", { style: lbl }, "Correo de la cuenta MSeller"), E("input", { type: "email", value: form.email, onChange: (e) => setForm({ ...form, email: e.target.value }), style: inp })),
+      E("div", null, E("label", { style: lbl }, "Contrase\xF1a MSeller"), E("input", { type: "password", autoComplete: "new-password", value: form.password, placeholder: cfg.tiene_password ? "Guardada \xB7 escribe solo para cambiarla" : "", onChange: (e) => setForm({ ...form, password: e.target.value }), style: inp })),
+      E("div", null, E("label", { style: lbl }, "API key MSeller"), E("input", { type: "password", autoComplete: "off", value: form.api_key, placeholder: cfg.tiene_api_key ? "Guardada \xB7 escribe solo para cambiarla" : "", onChange: (e) => setForm({ ...form, api_key: e.target.value }), style: inp }))),
+    E("div", { style: { fontSize: 11.5, color: "#5a6472", margin: "10px 0 12px" } }, "La contrase\xF1a y la API key se guardan cifradas en Supabase y la app nunca las vuelve a mostrar. Solo la administraci\xF3n cambia esta secci\xF3n."),
+    E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+      E("button", { disabled: !!ocupado, onClick: () => guardar(), style: boton("#1a6b3a", "#fff") }, ocupado === "guardar" ? "Guardando…" : "Guardar"),
+      E("button", { disabled: !!ocupado, onClick: probar, style: boton("#e8effd", "#1a4fa0") }, ocupado === "probar" ? "Probando…" : "Probar conexi\xF3n"),
+      cfg.activo
+        ? E("button", { disabled: !!ocupado, onClick: () => guardar({ activo: false }), style: boton("#fdeaea", "#b8232a") }, "Desactivar")
+        : E("button", { disabled: !!ocupado || cfg.ultima_prueba_ok !== true, title: cfg.ultima_prueba_ok !== true ? "Primero prueba la conexi\xF3n" : "", onClick: () => guardar({ activo: true }), style: { ...boton("#166534", "#fff"), opacity: cfg.ultima_prueba_ok !== true ? 0.45 : 1 } }, "Activar e-CF"),
+      cfg.activo && E("button", { disabled: !!ocupado, onClick: consultarPendientes, style: boton("#f1f5f3", "#1a1d23") }, ocupado === "consultar" ? "Consultando…" : "Actualizar estados pendientes")));
+}
+
+// Anotar un e-CF emitido en el Facturador Gratuito de la DGII.
+function FormECFManual({ factura, ocupado, onGuardar }) {
+  const E = React.createElement;
+  const [encf, setEncf] = React.useState("");
+  const [codigo, setCodigo] = React.useState("");
+  const [fechaFirma, setFechaFirma] = React.useState("");
   const [rnc, setRnc] = React.useState(factura.rncCliente || "");
   const inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 14, boxSizing: "border-box" };
   const lbl = { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 5 };
-  const TIPOS = [
-    ["B02", "Consumo", "Para el due\xF1o de la mascota. No hace falta su RNC."],
-    ["B01", "Cr\xE9dito Fiscal", "Para una empresa que va a deducir el gasto. Exige su RNC."]
-  ];
+  async function copiar() {
+    const t = textoParaFacturadorGratuito(factura);
+    try { await navigator.clipboard.writeText(t); avisar("Datos copiados: p\xE9galos en el Facturador Gratuito.", "ok"); }
+    catch (e) { window.prompt("Copia estos datos:", t); }
+  }
+  return E("div", null,
+    E("div", { style: { background: "#f3effd", borderRadius: 9, padding: "10px 12px", fontSize: 12, color: "#4c1d95", marginBottom: 12, lineHeight: 1.5 } },
+      "1) Emite la factura en el Facturador Gratuito (Oficina Virtual de la DGII). 2) Copia aqu\xED el e-NCF y el c\xF3digo de seguridad que salen en su PDF. La representaci\xF3n impresa v\xE1lida es la del Facturador."),
+    E("button", { onClick: copiar, style: { width: "100%", marginBottom: 12, padding: "9px", borderRadius: 9, border: "1.5px solid #c4b5fd", background: "#fff", color: "#5b21b6", fontWeight: 800, fontSize: 13, cursor: "pointer" } }, "\u{1F4CB} Copiar datos de esta factura"),
+    E("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
+      E("div", null, E("label", { style: lbl }, "e-NCF"), E("input", { value: encf, placeholder: "E320000000001", maxLength: 13, onChange: (e) => setEncf(e.target.value.toUpperCase().replace(/\s/g, "")), style: inp })),
+      E("div", null, E("label", { style: lbl }, "C\xF3digo de seguridad"), E("input", { value: codigo, placeholder: "6 caracteres", maxLength: 6, onChange: (e) => setCodigo(e.target.value.trim()), style: inp })),
+      E("div", null, E("label", { style: lbl }, "Fecha y hora de firma"), E("input", { value: fechaFirma, placeholder: "29-10-2026 10:42:07", onChange: (e) => setFechaFirma(e.target.value), style: inp })),
+      E("div", null, E("label", { style: lbl }, "RNC/c\xE9dula del cliente (E31)"), E("input", { value: rnc, placeholder: "Opcional en E32", onChange: (e) => setRnc(e.target.value), style: inp }))),
+    E("button", { disabled: ocupado, onClick: () => onGuardar({ encf, codigo, fechaFirma, rnc }), style: { width: "100%", padding: "10px", borderRadius: 9, border: "none", background: ocupado ? "#c9ced4" : "#5b21b6", color: "#fff", fontSize: 13, fontWeight: 800, cursor: ocupado ? "default" : "pointer" } }, ocupado ? "Guardando…" : "Guardar e-NCF en la factura"));
+}
+
+function ModalNCF({ factura, ocupado, onAsignar, onManual, onCerrar }) {
+  const E = React.createElement;
+  const [cfg, setCfg] = React.useState(null);
+  React.useEffect(() => { supaRPC("pc_ecf_config").then(setCfg).catch(() => setCfg({ activo: false })); }, []);
+  const [modoElegido, setModo] = React.useState(null);
+  const modo = modoElegido || (cfg ? (cfg.activo ? "e" : "manual") : null);
+  const [tipoElegido, setTipo] = React.useState(null);
+  const [rnc, setRnc] = React.useState(factura.rncCliente || "");
+  const inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 14, boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 5 };
+  const TIPOS = modo === "e"
+    ? [["E32", "Consumo electr\xF3nico", "Para el due\xF1o de la mascota. RNC solo si la factura pasa de RD$250,000."],
+       ["E31", "Cr\xE9dito Fiscal electr\xF3nico", "Para una empresa que va a deducir el gasto. Exige su RNC."]]
+    : [["B02", "Consumo", "Solo antes del 15 nov 2026 o en contingencia declarada por la DGII."],
+       ["B01", "Cr\xE9dito Fiscal", "Para una empresa que va a deducir el gasto. Exige su RNC."]];
+  const tipo = tipoElegido && TIPOS.some(([t]) => t === tipoElegido) ? tipoElegido : (TIPOS[0] && TIPOS[0][0]);
+  const pideRnc = tipo === "B01" || tipo === "E31" || (tipo === "E32" && Number(factura.total) >= 250000);
+  const pestana = (id, txt, deshabilitada, ayuda) => E("button", { key: id, title: ayuda || "", disabled: deshabilitada, onClick: () => setModo(id), style: {
+    flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12, fontWeight: 800, cursor: deshabilitada ? "not-allowed" : "pointer", opacity: deshabilitada ? 0.5 : 1,
+    border: "1.5px solid " + (modo === id ? "#92400e" : "#e0e4e8"), background: modo === id ? "#fff7e6" : "#fff", color: "#334155" } }, txt);
   return E("div", { onClick: ocupado ? null : onCerrar, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: 20 } },
-    E("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", textAlign: "left" } },
-      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 } },
+    E("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", textAlign: "left" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 } },
         E("div", null,
           E("div", { style: { fontWeight: 800, fontSize: 18, color: "#92400e" } }, "\u{1F9FE} Comprobante fiscal"),
           E("div", { style: { fontSize: 12.5, color: "#6b7280", marginTop: 3 } },
             "Factura #" + (factura.numero || "") + " \xB7 " + (factura.propietario || factura.mascota || ""))),
         E("button", { onClick: onCerrar, disabled: ocupado, style: { background: "none", border: "none", fontSize: 22, cursor: ocupado ? "default" : "pointer", color: "#9ca3af" } }, "✕")),
+      !cfg ? E("div", { style: { padding: 20, textAlign: "center", color: "#5a6472" } }, "Cargando…") : E(React.Fragment, null,
+        E("div", { style: { display: "flex", gap: 6, marginBottom: 14 } },
+          pestana("e", "⚡ Electr\xF3nico", !cfg.activo, cfg.activo ? "" : "Act\xEDvalo en Configuraci\xF3n → Facturaci\xF3n electr\xF3nica"),
+          pestana("manual", "\u{1F4DD} Facturador Gratuito"),
+          pestana("b", "Tradicional (B)")),
+        modo === "manual"
+          ? E(FormECFManual, { factura, ocupado, onGuardar: onManual })
+          : E(React.Fragment, null,
+              E("div", { style: { display: "grid", gap: 8, marginBottom: 14 } },
+                TIPOS.map(([id, nombre, ayuda]) =>
+                  E("button", { key: id, onClick: () => setTipo(id), style: {
+                    textAlign: "left", padding: "10px 12px", borderRadius: 9, cursor: "pointer",
+                    border: "1.5px solid " + (tipo === id ? "#92400e" : "#e0e4e8"),
+                    background: tipo === id ? "#fff7e6" : "#fff"
+                  } },
+                    E("div", { style: { fontSize: 13.5, fontWeight: 800, color: "#334155" } }, id + " \xB7 " + nombre),
+                    E("div", { style: { fontSize: 11.5, color: "#6b7280", marginTop: 2 } }, ayuda)))),
+              pideRnc && E("div", { style: { marginBottom: 12 } },
+                E("label", { style: lbl }, "RNC o c\xE9dula del cliente"),
+                E("input", { value: rnc, autoFocus: true, placeholder: "000-00000-0",
+                  onChange: (e) => setRnc(e.target.value), style: inp })),
+              E("div", { style: { background: modo === "b" ? "#fdeaea" : "#f8f9fa", borderRadius: 9, padding: "10px 12px", fontSize: 12, color: modo === "b" ? "#b8232a" : "#5a6472", marginBottom: 16, lineHeight: 1.5 } },
+                modo === "e"
+                  ? "Se toma el siguiente e-NCF del rango autorizado y se env\xEDa a la DGII. Una vez aceptado no se cambia: para corregirlo se emite una nota de cr\xE9dito (E34)."
+                  : "Desde el 15 de noviembre de 2026 PetColinas emite e-CF. El NCF tipo B queda solo para contingencias declaradas por la DGII."),
+              E("div", { style: { display: "flex", gap: 8 } },
+                E("button", { onClick: onCerrar, disabled: ocupado, style: { flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#fff", fontSize: 13, fontWeight: 700, cursor: ocupado ? "default" : "pointer" } }, "Cancelar"),
+                E("button", { onClick: () => onAsignar(tipo, rnc), disabled: ocupado, style: { flex: 2, padding: "10px", borderRadius: 9, border: "none", background: ocupado ? "#c9ced4" : "#92400e", color: "#fff", fontSize: 13, fontWeight: 800, cursor: ocupado ? "default" : "pointer" } },
+                  ocupado ? "Procesando…" : modo === "e" ? "Emitir " + tipo : "Asignar " + tipo))))));
+}
 
-      E("div", { style: { display: "grid", gap: 8, marginBottom: 14 } },
-        TIPOS.map(([id, nombre, ayuda]) =>
-          E("button", { key: id, onClick: () => setTipo(id), style: {
-            textAlign: "left", padding: "10px 12px", borderRadius: 9, cursor: "pointer",
-            border: "1.5px solid " + (tipo === id ? "#92400e" : "#e0e4e8"),
-            background: tipo === id ? "#fff7e6" : "#fff"
-          } },
-            E("div", { style: { fontSize: 13.5, fontWeight: 800, color: "#334155" } }, id + " \xB7 " + nombre),
-            E("div", { style: { fontSize: 11.5, color: "#6b7280", marginTop: 2 } }, ayuda)))),
+function imprimirNotaCredito(n, factura) {
+  const rnc = PC_CONFIG.rnc || "";
+  const html = "<!doctype html><html><head><meta charset='utf-8'><title>Nota de cr\xE9dito " + escHTML(n.ncf) + "</title>" +
+    "<style>body{font-family:Arial,sans-serif;max-width:720px;margin:24px auto;color:#1a1d23}h1{font-size:20px;margin:0}" +
+    ".cab{display:flex;justify-content:space-between;border-bottom:3px solid #92400e;padding-bottom:12px;margin-bottom:16px}" +
+    ".d{font-size:13px;color:#5a6472;margin:3px 0}table{width:100%;border-collapse:collapse;margin-top:14px}td{padding:7px 4px;border-bottom:1px solid #eee;font-size:14px}" +
+    ".t{font-weight:800;font-size:16px}</style></head><body>" +
+    "<div class='cab'><div><h1>" + escHTML(PC_CONFIG.razon_social || "PetColinas SRL") + "</h1>" + (rnc ? "<p class='d'>RNC: " + escHTML(rnc) + "</p>" : "") +
+    "<p class='d'>" + escHTML(PC_CONFIG.direccion || "Plaza Las Colinas, Santo Domingo Oeste") + " \xB7 Tel: " + escHTML(PC_CONFIG.telefono || "809-752-6806") + "</p></div>" +
+    "<div style='text-align:right'><h1>NOTA DE CR\xC9DITO</h1><p class='d'><b>" + (esECF(n.ncf) ? "e-NCF: " : "NCF: ") + escHTML(n.ncf) + "</b></p>" +
+    (n.ecf_codigo_seguridad ? "<p class='d'>C\xF3digo de seguridad: " + escHTML(n.ecf_codigo_seguridad) + "</p>" : "") +
+    (n.ecf_fecha_firma ? "<p class='d'>Fecha de firma: " + escHTML(n.ecf_fecha_firma) + "</p>" : "") +
+    (n.ecf_qr_url ? "<div>" + qrSVG(n.ecf_qr_url, 90) + "</div>" : "") +
+    "<p class='d'>Fecha: " + escHTML(n.fecha) + "</p><p class='d'>Modifica el NCF: " + escHTML(n.ncf_modificado) + "</p></div></div>" +
+    "<p class='d'>Cliente: <b>" + escHTML(n.propietario || (factura && factura.propietario) || "") + "</b>" +
+    (n.rnccliente ? " \xB7 RNC/C\xE9dula: " + escHTML(n.rnccliente) : "") + "</p>" +
+    (factura && factura.numero ? "<p class='d'>Factura #" + escHTML(factura.numero) + "</p>" : "") +
+    "<p class='d'>Motivo: " + escHTML(n.motivo) + "</p>" +
+    "<table><tr><td>Monto</td><td style='text-align:right'>" + RDc(n.subtotal) + "</td></tr>" +
+    "<tr><td>ITBIS</td><td style='text-align:right'>" + RDc(n.itbis) + "</td></tr>" +
+    "<tr><td class='t'>Total acreditado</td><td class='t' style='text-align:right'>" + RDc(n.total) + "</td></tr></table>" +
+    "</body></html>";
+  const w = window.open("", "_blank");
+  if (!w) { avisar("Activa las ventanas emergentes para imprimir la nota de cr\xE9dito.", "error"); return; }
+  w.document.write(html); w.document.close();
+  setTimeout(() => { try { w.print(); } catch (e) {} }, 400);
+}
 
-      tipo === "B01" && E("div", { style: { marginBottom: 12 } },
-        E("label", { style: lbl }, "RNC o c\xE9dula del cliente"),
-        E("input", { value: rnc, autoFocus: true, placeholder: "000-00000-0",
-          onChange: (e) => setRnc(e.target.value), style: inp })),
-
-      E("div", { style: { background: "#f8f9fa", borderRadius: 9, padding: "10px 12px", fontSize: 12, color: "#5a6472", marginBottom: 16, lineHeight: 1.5 } },
-        "El n\xFAmero sale de la secuencia autorizada por la DGII y se consume al confirmar. Una vez asignado no se puede cambiar ni reusar: para anular la factura hay que emitir una nota de cr\xE9dito."),
-
-      E("div", { style: { display: "flex", gap: 8 } },
-        E("button", { onClick: onCerrar, disabled: ocupado, style: { flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#fff", fontSize: 13, fontWeight: 700, cursor: ocupado ? "default" : "pointer" } }, "Cancelar"),
-        E("button", { onClick: () => onAsignar(tipo, rnc), disabled: ocupado, style: { flex: 2, padding: "10px", borderRadius: 9, border: "none", background: ocupado ? "#c9ced4" : "#92400e", color: "#fff", fontSize: 13, fontWeight: 800, cursor: ocupado ? "default" : "pointer" } },
-          ocupado ? "Asignando…" : "Asignar " + tipo))));
+// Nota de crédito: corrige o anula una factura con comprobante (E34 si es e-CF,
+// B04 si es NCF tradicional). La factura no se borra: la nota la modifica.
+function ModalNotaCredito({ factura, onCerrar }) {
+  const E = React.createElement;
+  const [notas, setNotas] = React.useState([]);
+  const [modo, setModo] = React.useState("total");
+  const [monto, setMonto] = React.useState("");
+  const [motivo, setMotivo] = React.useState("");
+  const [ocupado, setOcupado] = React.useState(false);
+  const nuevaOperacion = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (Math.random() * 16) >> c / 4).toString(16));
+  const operacion = React.useRef(nuevaOperacion());
+  const cargar = React.useCallback(async () => {
+    const r = await supaFetch("pc_notas_credito", "GET", null, "?factura_id=eq." + encodeURIComponent(String(factura.id)) + "&order=created_at.asc");
+    setNotas(Array.isArray(r) ? r : []);
+  }, [factura.id]);
+  React.useEffect(() => { cargar(); }, [cargar]);
+  const total = Number(factura.total) || 0;
+  const acreditado = notas.reduce((a, n) => a + (Number(n.total) || 0), 0);
+  const resta = Math.max(0, Math.round((total - acreditado) * 100) / 100);
+  async function emitir() {
+    const m = modo === "total" ? null : Math.round((parseFloat(monto) || 0) * 100) / 100;
+    if (modo === "parcial" && (!m || m <= 0 || m > resta + 0.004)) { avisar("El monto debe ser mayor que cero y no pasar de " + RDc(resta) + ".", "error"); return; }
+    if (motivo.trim().length < 5) { avisar("Escribe el motivo de la nota de cr\xE9dito.", "error"); return; }
+    setOcupado(true);
+    try {
+      let n = await supaRPC("pc_emitir_nota_credito", { p_factura_id: String(factura.id), p_total: m, p_motivo: motivo.trim(), p_operacion_id: operacion.current });
+      operacion.current = nuevaOperacion();
+      avisar("Nota de cr\xE9dito " + n.ncf + " por " + RDc(n.total) + " emitida.", "ok");
+      setMonto(""); setMotivo(""); setModo("total");
+      if (esECF(n.ncf)) {
+        try { const r = await llamarECF({ action: "emitir", clase: "nota", id: String(n.id) }); if (r.fila) n = r.fila; }
+        catch (e) { avisar("La nota " + n.ncf + " qued\xF3 por enviar a la DGII: " + e.message, "error"); }
+      }
+      await cargar();
+      imprimirNotaCredito(n, factura);
+    } catch (e) { avisar(e.message || "No se pudo emitir la nota de cr\xE9dito.", "error"); }
+    setOcupado(false);
+  }
+  async function enviarNota(n) {
+    try { await llamarECF({ action: "emitir", clase: "nota", id: String(n.id) }); avisar("Nota " + n.ncf + " enviada.", "ok"); }
+    catch (e) { avisar(e.message, "error"); }
+    cargar();
+  }
+  const inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 14, boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", margin: "6px 0 5px" };
+  const opcion = (id, txt) => E("button", { onClick: () => setModo(id), style: { flex: 1, padding: "9px", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700,
+    border: "1.5px solid " + (modo === id ? "#92400e" : "#e0e4e8"), background: modo === id ? "#fff7e6" : "#fff", color: "#334155" } }, txt);
+  return E("div", { onClick: ocupado ? null : onCerrar, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: 20 } },
+    E("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", textAlign: "left" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 } },
+        E("div", { style: { fontWeight: 800, fontSize: 18, color: "#92400e" } }, "↩️ Nota de cr\xE9dito (" + (esECF(factura.ncf) ? "E34" : "B04") + ")"),
+        E("button", { onClick: onCerrar, disabled: ocupado, style: { background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9ca3af" } }, "✕")),
+      E("div", { style: { fontSize: 12.5, color: "#5a6472", marginBottom: 12, lineHeight: 1.5 } },
+        "Factura #" + (factura.numero || "") + " \xB7 NCF " + factura.ncf + " \xB7 total " + RDc(total) + ". La nota no borra la factura: la modifica ante la DGII. Solo la administraci\xF3n la emite."),
+      notas.length > 0 && E("div", { style: { background: "#f8f9fa", borderRadius: 9, padding: 10, marginBottom: 12 } },
+        notas.map((n) => E("div", { key: n.ncf, style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12.5, padding: "3px 0" } },
+          E("span", null, E("b", null, n.ncf), " \xB7 " + n.fecha + " \xB7 " + n.motivo,
+            esECF(n.ncf) && E("div", { style: { marginTop: 3 } }, E(EstadoECF, { registro: n, onEnviar: () => enviarNota(n), onConsultar: () => llamarECF({ action: "consultar", clase: "nota", id: String(n.id) }).then(cargar).catch((e) => avisar(e.message, "error")) }))),
+          E("span", { style: { display: "flex", gap: 8, alignItems: "center" } }, E("b", null, RDc(n.total)),
+            E("button", { onClick: () => imprimirNotaCredito(n, factura), style: { background: "none", border: "none", color: "#1a4fa0", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "Imprimir")))),
+        E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 6 } }, "Acreditado " + RDc(acreditado) + " \xB7 queda " + RDc(resta))),
+      resta <= 0
+        ? E("div", { style: { fontSize: 13, color: "#1a6b3a", fontWeight: 700 } }, "La factura ya est\xE1 acreditada completa.")
+        : E(React.Fragment, null,
+            E("div", { style: { display: "flex", gap: 8, marginBottom: 10 } }, opcion("total", "Todo lo que queda (" + RDc(resta) + ")"), opcion("parcial", "Una parte")),
+            modo === "parcial" && E("div", null,
+              E("label", { style: lbl }, "Monto a acreditar, con ITBIS (RD$)"),
+              E("input", { type: "number", step: "0.01", min: "0", value: monto, onChange: (e) => setMonto(e.target.value), style: inp })),
+            E("label", { style: lbl }, "Motivo"),
+            E("input", { value: motivo, placeholder: "Ej: devoluci\xF3n del producto", onChange: (e) => setMotivo(e.target.value), style: inp }),
+            E("div", { style: { display: "flex", gap: 8, marginTop: 14 } },
+              E("button", { onClick: onCerrar, disabled: ocupado, style: { flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" } }, "Cerrar"),
+              E("button", { onClick: emitir, disabled: ocupado, style: { flex: 2, padding: "10px", borderRadius: 9, border: "none", background: ocupado ? "#c9ced4" : "#92400e", color: "#fff", fontSize: 13, fontWeight: 800, cursor: ocupado ? "default" : "pointer" } }, ocupado ? "Emitiendo…" : "Emitir nota de cr\xE9dito")))));
 }
 function ModalAjusteFondo({ datos, saldo, onGuardar, onCerrar }) {
   const E = React.createElement;
@@ -5540,7 +5892,7 @@ function PanelFondo({ saldo, mascota, total, dejar, setDejar, usar, setUsar }) {
 }
 
 function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCitas, historias = [], tarifasGrooming, tarifasVet, inventario }) {
-  const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
+  const [facturas, setFacturas, , , , refetchFacturas] = useSupabase("pc_facturas", (() => {
     try {
       const stored = JSON.parse(localStorage.getItem("pc_facturas") || "null");
       if (Array.isArray(stored) && stored.length > 0) return stored;
@@ -5610,6 +5962,13 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     notas: ""
   });
   function abrirEditar(factura) {
+    // Un e-CF enviado no cambia montos, lineas ni fecha (la base tambien lo
+    // impide). Si la DGII lo rechazo si se corrige y se reenvia.
+    if (esECF(factura.ncf) && factura.ecfEstado !== "rechazado") {
+      setFacturaActual(factura); setVista("ver");
+      avisar("Esta factura ya tiene comprobante electr\xF3nico " + factura.ncf + ": no se edita. Para corregirla emite una nota de cr\xE9dito (E34).", "aviso");
+      return;
+    }
     setEditandoId(factura.id);
     setEditandoNum(factura.numero || "");
     setEditandoOrig(factura);
@@ -5777,6 +6136,10 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
   // Borra una factura. Si viene del registro de ventas, borra tambien esas ventas
   // (si no, se volveria a generar sola en el siguiente refresco).
   function borrarFactura(f, alTerminar) {
+    if (f && f.ncf) {
+      avisar("La factura #" + f.numero + " tiene el comprobante " + f.ncf + ": no se borra. Para anularla emite una nota de cr\xE9dito.", "error");
+      return;
+    }
     const grupo = ventasDeFactura(f);
     const aviso = grupo.length > 0
       ? "\xBFBorrar la factura #" + f.numero + "?\n\n\u26A0\uFE0F Esta factura viene del registro de ventas, as\xED que tambi\xE9n se eliminar\xE1n " +
@@ -5832,10 +6195,91 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
   const clienteDeFactura = (f) => (clientes || []).find(
     (c) => String(c.nombreMascota || c.nombre || "").toLowerCase().trim()
         === String((f && f.mascota) || "").toLowerCase().trim()) || null;
+  // e-CF: la fila que devuelve el servidor (e-NCF, estado DGII, código de
+  // seguridad) se pinta en pantalla y luego se relee la tabla. No se usa
+  // setFacturas para no volver a subir la factura desde el navegador.
+  function aplicarFiscal(idPantalla, filaRaw) {
+    const fila = filaRaw && filaRaw.ncf ? normalizeRow("pc_facturas", filaRaw) : null;
+    if (!fila) return null;
+    const fiscal = { ncf: fila.ncf, ncfTipo: fila.ncfTipo, rncCliente: fila.rncCliente, autoGenerada: false,
+      ecfEstado: fila.ecfEstado, ecfOrigen: fila.ecfOrigen, ecfCodigoSeguridad: fila.ecfCodigoSeguridad,
+      ecfQrUrl: fila.ecfQrUrl, ecfFechaFirma: fila.ecfFechaFirma, ecfMensaje: fila.ecfMensaje };
+    setFacturaActual((actual) => actual && String(actual.id) === String(idPantalla) ? { ...actual, ...fiscal } : actual);
+    if (typeof refetchFacturas === "function") refetchFacturas();
+    return fila;
+  }
+  // Las facturas que salen del registro de ventas no tienen fila en
+  // pc_facturas: el servidor solo asigna e-NCF a facturas ya guardadas.
+  async function materializarFactura(f) {
+    const ok = await upsertOne("pc_facturas", { ...f, ncf: "", ncfTipo: "", autoGenerada: false });
+    if (!ok) throw new Error("No se pudo guardar la factura en la nube" + (window.__lastSyncError ? ": " + window.__lastSyncError : ".") + " Revisa la conexi\xF3n e int\xE9ntalo otra vez.");
+  }
+  const [ecfOcupado, setEcfOcupado] = useState(false);
+  async function enviarECF(f) {
+    setEcfOcupado(true);
+    try {
+      const r = await llamarECF({ action: "emitir", clase: "factura", id: String(f.id) });
+      const fila = aplicarFiscal(f.id, r.fila);
+      const est = fila && ECF_ESTADOS[fila.ecfEstado];
+      avisar("e-CF " + f.ncf + ": " + (est ? est.t : "enviado") + ".", fila && fila.ecfEstado === "rechazado" ? "error" : "ok");
+    } catch (e) {
+      avisar(e.message + " La factura queda \xABpor enviar\xBB: puedes reintentar o emitirla en el Facturador Gratuito.", "error");
+      if (typeof refetchFacturas === "function") refetchFacturas();
+    }
+    setEcfOcupado(false);
+  }
+  async function consultarECF(f) {
+    setEcfOcupado(true);
+    try {
+      const r = await llamarECF({ action: "consultar", clase: "factura", id: String(f.id) });
+      const fila = aplicarFiscal(f.id, r.fila);
+      avisar(fila ? "Estado: " + ((ECF_ESTADOS[fila.ecfEstado] || {}).t || fila.ecfEstado) : "La DGII todav\xEDa no responde. Intenta en unos minutos.", "ok");
+    } catch (e) { avisar(e.message, "error"); }
+    setEcfOcupado(false);
+  }
+  async function registrarECFManual(f, d) {
+    setNcfOcupado(true);
+    try {
+      await materializarFactura(f);
+      const r = await supaRPC("pc_ecf_registrar_manual", { p_factura_id: String(f.id), p_encf: d.encf, p_codigo_seguridad: d.codigo, p_fecha_firma: d.fechaFirma || null, p_rnc_cliente: d.rnc || null });
+      const fila = aplicarFiscal(f.id, r);
+      if (!fila) throw new Error("El servidor no devolvi\xF3 el comprobante.");
+      try { auditar("pc_facturas", "ncf", fila, ["e-NCF " + fila.ncf + " (Facturador Gratuito) anotado en la factura #" + f.numero]); } catch (e) {}
+      avisar("e-NCF " + fila.ncf + " anotado en la factura #" + f.numero + ".", "ok");
+      setNcfPara(null);
+    } catch (e) { avisar(e.message || "No se pudo guardar el e-NCF.", "error"); }
+    setNcfOcupado(false);
+  }
+  async function asignarECF(f, tipo, rnc) {
+    setNcfOcupado(true);
+    try {
+      await materializarFactura(f);
+      const confirmada = await supaRPC("pc_ecf_asignar_factura", { p_factura_id: String(f.id), p_tipo: tipo, p_rnc_cliente: rnc || null });
+      const fila = aplicarFiscal(f.id, confirmada);
+      if (!fila) throw new Error("El servidor no devolvi\xF3 el comprobante.");
+      try { auditar("pc_facturas", "ncf", fila, ["e-NCF " + fila.ncf + " (" + (NCF_NOMBRE[tipo] || tipo) + ") asignado a la factura #" + f.numero]); } catch (e) {}
+      setNcfPara(null);
+      avisar("e-NCF " + fila.ncf + " asignado. Enviando a la DGII…", "ok");
+      setNcfOcupado(false);
+      await enviarECF({ ...f, ncf: fila.ncf });
+    } catch (e) {
+      avisar(e.message || "No se pudo asignar el comprobante.", "error");
+      setNcfOcupado(false);
+    }
+  }
+  const [notaPara, setNotaPara] = useState(null);
   async function asignarNCF(f, tipo, rncCliente) {
     if (f.ncf) {
-      avisar("Esta factura ya tiene el NCF " + f.ncf + ". Un comprobante emitido no se reemplaza: si hay que anularlo se emite una nota de cr\xE9dito (B04).", "error");
+      avisar("Esta factura ya tiene el comprobante " + f.ncf + ". Un comprobante emitido no se reemplaza: si hay que anularlo se emite una nota de cr\xE9dito.", "error");
       return;
+    }
+    if (tipo === "E31" || tipo === "E32") {
+      const d = String(rncCliente || "").replace(/\D/g, "");
+      if (tipo === "E31" && d.length !== 9 && d.length !== 11) {
+        avisar("El Cr\xE9dito Fiscal electr\xF3nico (E31) exige el RNC (9 d\xEDgitos) o la c\xE9dula (11) del cliente. Si no lo tienes a mano, emite un Consumo (E32).", "error");
+        return;
+      }
+      return asignarECF(f, tipo, d);
     }
     const rnc = String(rncCliente || "").trim();
     // El credito fiscal existe para que el cliente deduzca; sin su RNC la linea
@@ -6064,7 +6508,11 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
           <p style="font-size:12px;color:#5a6472;">Plaza Las Colinas, SDO</p>
           <p style="font-size:12px;color:#5a6472;">Tel: 809-752-6806</p>
           ${(PC_CONFIG.rnc || window._petcolinasRNC || PETCOLINAS_RNC) ? `<p style="font-size:12px;color:#5a6472;">RNC: ${PC_CONFIG.rnc || window._petcolinasRNC || PETCOLINAS_RNC}</p>` : ""}
-          ${f.ncf ? `<p style="font-size:13px;color:#12324a;font-weight:800;margin-top:6px;border-top:1px dashed #c9ced4;padding-top:6px;">NCF: ${f.ncf}</p><p style="font-size:11px;color:#5a6472;">${NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"}</p>` : ""}
+          ${f.ncf ? `<p style="font-size:13px;color:#12324a;font-weight:800;margin-top:6px;border-top:1px dashed #c9ced4;padding-top:6px;">${esECF(f.ncf) ? "e-NCF" : "NCF"}: ${f.ncf}</p><p style="font-size:11px;color:#5a6472;">${NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"}</p>` : ""}
+          ${esECF(f.ncf) && f.ecfCodigoSeguridad ? `<p style="font-size:11px;color:#12324a;font-weight:700;">C\xF3digo de seguridad: ${escHTML(f.ecfCodigoSeguridad)}</p>` : ""}
+          ${esECF(f.ncf) && f.ecfFechaFirma ? `<p style="font-size:11px;color:#5a6472;">Fecha de firma: ${escHTML(f.ecfFechaFirma)}</p>` : ""}
+          ${esECF(f.ncf) && f.ecfQrUrl ? `<div style="margin-top:4px;">${qrSVG(f.ecfQrUrl, 96)}</div>` : ""}
+          ${esECF(f.ncf) && itbisECF(f).incluido ? `<p style="font-size:10.5px;color:#5a6472;">Precios con ITBIS incluido: base ${RDc(itbisECF(f).base)} \xB7 ITBIS 18% ${RDc(itbisECF(f).itbis)}</p>` : ""}
           ${f.rncCliente ? `<p style="font-size:12px;color:#5a6472;">RNC del cliente: ${f.rncCliente}</p>` : ""}
           <p style="margin-top:8px;font-weight:700;">\uD83D\uDC3E ${f.mascota || "\u2014"}</p>
         </div>
@@ -6698,7 +7146,12 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     const movsFondo = (depositos || []).filter((d) => String(d.facturaId || "") === String(f.id));
     const saldoActualFondo = saldoFondo(f.mascota);
     return /* @__PURE__ */ React.createElement("div", { style: { padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVista("lista"), style: { background: "none", border: `1px solid #e0e4e8`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13 } }, "\u2190 Volver"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 800, fontSize: 20, color: C.negro, flex: 1 } }, "Factura #", f.numero), /* @__PURE__ */ React.createElement("button", { onClick: () => imprimirFactura(f), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F5A8}\uFE0F Imprimir / PDF"), (() => { const t = resolverTelFactura(f, clientes); const t10 = t.slice(-10); return React.createElement("button", { onClick: () => compartirWhatsApp(f), title: t ? "Abrir la conversaci\xF3n de " + (f.propietario || f.mascota || "este cliente") : "No hay tel\xE9fono registrado para este cliente", style: { background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, t ? "\u{1F4F1} WhatsApp \xB7 " + t10.slice(0,3) + "-" + t10.slice(3,6) + "-" + t10.slice(6) : "\u{1F4F1} WhatsApp"); })(), (f.ncf
-      ? React.createElement("div", { title: "Comprobante ya emitido: no se puede cambiar", style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 800 } }, "\u{1F9FE} " + f.ncf, React.createElement("div", { style: { fontSize: 10, fontWeight: 600, opacity: 0.8 } }, NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"))
+      ? React.createElement(React.Fragment, null,
+          React.createElement("div", { title: "Comprobante ya emitido: no se puede cambiar", style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 800 } }, "\u{1F9FE} " + f.ncf,
+            React.createElement("div", { style: { fontSize: 10, fontWeight: 600, opacity: 0.8 } }, NCF_NOMBRE[f.ncfTipo] || "Comprobante fiscal"),
+            esECF(f.ncf) && React.createElement("div", { style: { marginTop: 4 } }, React.createElement(EstadoECF, { registro: f, ocupado: ecfOcupado, onEnviar: () => enviarECF(f), onConsultar: () => consultarECF(f) }))),
+          React.createElement("button", { onClick: () => setNotaPara(f), title: "Anular o corregir la factura ante la DGII", style: { background: "#fff7e6", color: "#92400e", border: "1.5px solid #d9a441", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u21A9\uFE0F Nota de cr\xE9dito"),
+          notaPara && String(notaPara.id) === String(f.id) && React.createElement(ModalNotaCredito, { factura: notaPara, onCerrar: () => setNotaPara(null) }))
       : React.createElement("button", { onClick: () => setNcfPara(f), title: "Asignar el n\xFAmero de comprobante fiscal de la DGII", style: { background: "#fff7e6", color: "#92400e", border: "1.5px solid #d9a441", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1F9FE} Asignar NCF")
     ), React.createElement("button", { onClick: () => setHistoriaPara(f), title: "Ver la historia cl\xEDnica de " + (f.mascota || "la mascota") + " sin salir de la factura",
       style: { background: "#e6f4ec", color: "#1a6b3a", border: "1.5px solid #1a6b3a", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u{1FA7A} Historia"),
@@ -6708,7 +7161,8 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
     }), ncfPara && String(ncfPara.id) === String(f.id) && React.createElement(ModalNCF, {
       factura: ncfPara, ocupado: ncfOcupado,
       onCerrar: () => { if (!ncfOcupado) setNcfPara(null); },
-      onAsignar: (tipo, rnc) => asignarNCF(ncfPara, tipo, rnc)
+      onAsignar: (tipo, rnc) => asignarNCF(ncfPara, tipo, rnc),
+      onManual: (d) => registrarECFManual(ncfPara, d)
     }), React.createElement("button", { onClick: () => { abrirEditar(f); }, style: { background: "#dbeafe", color: "#1d4ed8", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700 } }, "\u270F\uFE0F Editar"), React.createElement("button", {
       onClick: () => setAjusteFondo({ mascota: f.mascota, propietario: f.propietario, telefono: f.telefono, facturaId: String(f.id), facturaNumero: f.numero, fecha: f.fecha }),
       title: "Abonar al fondo del cliente un cobro de más o una devolución",
@@ -11336,8 +11790,12 @@ function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNom
         } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, v.cliente || "\u2014"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.grisd } }, v.fecha, " \xB7 ", v.servicio || v.descripcion || v.area)), /* @__PURE__ */ React.createElement("strong", { style: { color } }, RD(v.total))))));
       })()
     )
-  , React.createElement(ConfigFiscal, null)
-  ));
+  ),
+  // Datos fiscales, rangos NCF/e-NCF y conexion e-CF. Antes ConfigFiscal
+  // quedaba DENTRO del modal de ventas por area y solo se veia al abrirlo.
+  React.createElement(ConfigFiscal, null),
+  React.createElement(ConfigECF, null)
+  );
 }
 // Datos fiscales del negocio y secuencias de NCF. Antes el RNC vivia en
 // window._petcolinasRNC: se escribia aqui y se perdia al recargar la pagina, asi
@@ -11477,7 +11935,7 @@ function ConfigFiscal() {
               E("div", null,
                 E("div", { style: { fontWeight: 800 } }, s.tipo + " \xB7 " + (NCF_NOMBRE[s.tipo] || s.descripcion || "")),
                 E("div", { style: { fontSize: 11, color: "#5a6472" } },
-                  "Rango " + s.desde + "–" + s.hasta + " \xB7 pr\xF3ximo: " + s.tipo + String(s.siguiente).padStart(8, "0") +
+                  "Rango " + s.desde + "–" + s.hasta + " \xB7 pr\xF3ximo: " + s.tipo + String(s.siguiente).padStart(String(s.tipo).startsWith("E") ? 10 : 8, "0") +
                   (s.vence ? " \xB7 vence " + s.vence : ""))),
               E("div", { style: { fontWeight: 800, color: alerta ? "#b8232a" : pocos ? "#92400e" : "#1a6b3a" } },
                 !s.activa ? "desactivada" : vencida ? "autorizaci\xF3n vencida" : restan <= 0 ? "agotada" : restan + " disponibles"));
@@ -11488,7 +11946,7 @@ function ConfigFiscal() {
       E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 10 } },
         E("div", null, E("label", { style: lbl }, "Tipo"),
           E("select", { value: nueva.tipo, onChange: (e) => setNueva((n) => ({ ...n, tipo: e.target.value })), style: inp },
-            ["B02", "B01", "B04", "B14", "B15"].map((t) => E("option", { key: t, value: t }, t + " \xB7 " + (NCF_NOMBRE[t] || t))))),
+            ["E32", "E31", "E34", "B02", "B01", "B04", "B14", "B15"].map((t) => E("option", { key: t, value: t }, t + " \xB7 " + (NCF_NOMBRE[t] || t))))),
         E("div", null, E("label", { style: lbl }, "Desde"),
           E("input", { type: "number", min: "1", value: nueva.desde, placeholder: "1",
             onChange: (e) => setNueva((n) => ({ ...n, desde: e.target.value })), style: inp })),
