@@ -292,7 +292,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-30 01:01Z";
+const PC_BUILD = "2026-10-30 01:13Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -2482,6 +2482,7 @@ const TABS = [
   { id: "reportes", icon: "\u{1F4C8}", label: "Reportes", grupo: "Negocio" },
   { id: "gastos", icon: "\u{1F4B8}", label: "Gastos", grupo: "Negocio" },
   { id: "cuentas_pagar", icon: "\u23F3", label: "Cuentas por pagar", grupo: "Negocio" },
+  { id: "impuestos", icon: "\u{1F3DB}\uFE0F", label: "Impuestos DGII", grupo: "Negocio" },
   { id: "nomina", icon: "\u{1F465}", label: "N\xF3mina", grupo: "Negocio" },
   { id: "inventario", icon: "\u{1F4E6}", label: "Inventario", grupo: "Negocio" },
   { id: "ordenes_compra", icon: "\u{1F69A}", label: "\xD3rdenes de compra", grupo: "Negocio" },
@@ -9538,6 +9539,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
     tab === "cuentas_pagar" && React.createElement(CuentasPorPagar, { gastos, setGastos, inventario: todoInventario, usuarioNombre: "Victor" }),
+    tab === "impuestos" && React.createElement(ImpuestosDGII, null),
     tab === "ordenes_compra" && React.createElement(OrdenesCompra, { inventario: todoInventario, gastos, refetchInventario, usuarioNombre: "Victor" }),
     tab === "cotizaciones" && React.createElement(Cotizaciones, { clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario, setVentas, usuarioNombre: "Victor" }),
     tab === "recetarios" && React.createElement(Recetario, { clientes: todosClientes, historias, medicoPorDefecto: "", usuarioNombre: "Victor" }),
@@ -14865,6 +14867,280 @@ function GastosFijos({ gastos, setGastos, mes }) {
           !editando.nuevo && E("button", { onClick: async () => { if (!window.confirm("\xBFQuitar " + editando.nombre + " de los gastos fijos? Los gastos ya anotados no se borran.")) return; await guardarLista(fijos.filter((x) => x.id !== editando.id)); setEditando(null); },
             style: { background: "none", border: "1px solid #f5c2c4", color: "#b42318", borderRadius: 8, padding: "8px 14px", cursor: "pointer" } }, "Quitar de la lista"),
           E("button", { onClick: () => setEditando(null), style: { background: "none", border: "1px solid #ddd", borderRadius: 8, padding: "8px 14px", cursor: "pointer" } }, "Cancelar")))));
+}
+// ── Impuestos DGII (sin contable) ──────────────────────────────────────────
+// Cada mes: IR-17 (día 10), 606 (día 15) e IT-1 con su Anexo A (día 20).
+// Todo sale de pc_impuestos_mes (servidor, solo admin). La DGII no tiene API
+// para declarar: el 606 se descarga en TXT y se sube en la Oficina Virtual;
+// el IT-1 y el IR-17 se llenan copiando las casillas que muestra esta pantalla.
+const TIPOS_BIENES_606 = {
+  1: "Gastos de personal", 2: "Trabajos, suministros y servicios", 3: "Arrendamientos (alquiler)",
+  4: "Gastos de activos fijos", 5: "Gastos de representaci\xF3n", 6: "Otras deducciones admitidas",
+  7: "Gastos financieros", 8: "Gastos extraordinarios", 9: "Compras para la venta (costo de venta)",
+  10: "Adquisici\xF3n de activos", 11: "Gastos de seguros"
+};
+const TIPOS_RETENCION_ISR = {
+  1: "Alquileres", 2: "Honorarios por servicios independientes", 3: "Otras rentas", 4: "Otras rentas (presuntas)",
+  5: "Intereses a personas jur\xEDdicas", 6: "Intereses a personas f\xEDsicas", 7: "Retenci\xF3n a proveedores del Estado",
+  8: "Juegos telef\xF3nicos", 9: "Otras retenciones"
+};
+const FORMAS_PAGO_606 = { 1: "Efectivo", 2: "Cheque/transferencia", 3: "Tarjeta", 4: "A cr\xE9dito", 5: "Permuta", 6: "Nota de cr\xE9dito", 7: "Mixto" };
+// Formato TXT de la Norma 07-2018: encabezado 606|RNC|AAAAMM|cantidad y una
+// línea por comprobante con 23 campos separados por "|".
+function txt606(datos) {
+  const m2 = (n, obligatorio) => { const v = Math.round((Number(n) || 0) * 100) / 100; return v || obligatorio ? v.toFixed(2) : ""; };
+  const lineas = (datos.lineas_606 || []).map((l) => [
+    l.rnc, l.tipo_id, l.tipo_bienes, l.ncf, l.ncf_modificado || "", l.fecha, l.fecha_pago || "",
+    m2(l.monto_servicios), m2(l.monto_bienes), m2(l.monto_total, true), m2(l.itbis), m2(l.itbis_retenido),
+    m2(l.itbis_proporcionalidad), m2(l.itbis_costo), m2(l.itbis_adelantar), m2(l.itbis_percibido),
+    l.isr_retenido > 0 ? (l.tipo_retencion || "") : "", m2(l.isr_retenido), m2(l.isr_percibido), m2(l.isc), m2(l.otros_impuestos), m2(l.propina),
+    l.forma_pago || 1
+  ].join("|"));
+  return ["606|" + datos.rnc + "|" + String(datos.mes).replace("-", "") + "|" + lineas.length, ...lineas].join("\r\n") + "\r\n";
+}
+function descargarTexto(nombre, texto) {
+  const url = URL.createObjectURL(new Blob([texto], { type: "text/plain;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = nombre; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+}
+function fechaLarga(iso) {
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  return isNaN(d) ? String(iso || "") : d.toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" });
+}
+
+// Editor de los datos fiscales de un gasto o de una factura de proveedor.
+function ModalDatoFiscal({ item, pcts, onCerrar, onGuardado }) {
+  const E = React.createElement;
+  const esCxp = item.origen === "cxp";
+  const total = Number(item.total ?? item.monto) || 0;
+  const [f, setF] = React.useState({
+    rnc: item.rnc || "", ncf: item.ncf && item.ncf !== "-" ? item.ncf : "", tipo_bienes: String(item.tipo_bienes || ""),
+    itbis: String(Number(item.itbis) || ""), itbis_retenido: String(Number(item.itbis_retenido) || ""),
+    tipo_retencion: String(item.tipo_retencion || ""), isr_retenido: String(Number(item.isr_retenido) || ""), fiscal_excluir: false
+  });
+  const [ocupado, setOcupado] = React.useState(false);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
+  const base = Math.max(0, total - (parseFloat(f.itbis) || 0));
+  function alquilerPersonaFisica() {
+    const pct = parseFloat(pcts.ir17_pct_alquiler_pf) || 15;
+    setF({ ...f, tipo_bienes: "3", tipo_retencion: "1", isr_retenido: (Math.round(base * pct) / 100).toFixed(2),
+      itbis_retenido: (parseFloat(f.itbis) || 0) > 0 ? (Math.round((parseFloat(f.itbis) || 0) * (parseFloat(pcts.itbis_pct_retencion_pf) || 100)) / 100).toFixed(2) : "" });
+  }
+  function honorariosPersonaFisica() {
+    const pct = parseFloat(pcts.ir17_pct_honorarios_pf) || 15;
+    setF({ ...f, tipo_bienes: "2", tipo_retencion: "2", isr_retenido: (Math.round(base * pct) / 100).toFixed(2),
+      itbis_retenido: (parseFloat(f.itbis) || 0) > 0 ? (Math.round((parseFloat(f.itbis) || 0) * (parseFloat(pcts.itbis_pct_retencion_pf) || 100)) / 100).toFixed(2) : "" });
+  }
+  async function guardar() {
+    setOcupado(true);
+    try {
+      const datos = { ...f };
+      if (esCxp) delete datos.fiscal_excluir;
+      if (esCxp) await supaRPC("pc_cxp_fiscal", { p_id: Number(item.id), p: datos });
+      else await supaRPC("pc_gasto_fiscal", { p_id: String(item.id), p: datos });
+      avisar("Datos fiscales guardados.", "ok");
+      onGuardado();
+    } catch (e) { avisar(e.message, "error"); }
+    setOcupado(false);
+  }
+  const inp = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 14, boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", display: "block", marginBottom: 5 };
+  const chip = { padding: "7px 10px", borderRadius: 8, border: "1.5px solid #c4b5fd", background: "#f5f3ff", color: "#5b21b6", fontSize: 12, fontWeight: 700, cursor: "pointer" };
+  return E("div", { onClick: ocupado ? null : onCerrar, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: 20 } },
+    E("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto" } },
+      E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 } },
+        E("div", { style: { fontWeight: 800, fontSize: 17 } }, "\u{1F9FE} Datos fiscales"),
+        E("button", { onClick: onCerrar, style: { background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9ca3af" } }, "✕")),
+      E("div", { style: { fontSize: 12.5, color: "#5a6472", marginBottom: 14 } },
+        (item.proveedor || "Sin proveedor") + " \xB7 " + (item.descripcion || "") + " \xB7 " + RDc(total) + (esCxp ? " (cuenta por pagar)" : "")),
+      E("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+        E("div", null, E("label", { style: lbl }, "RNC o c\xE9dula del proveedor"), E("input", { value: f.rnc, onChange: set("rnc"), placeholder: "101000000", style: inp })),
+        E("div", null, E("label", { style: lbl }, "NCF de su factura"), E("input", { value: f.ncf, onChange: (e) => setF({ ...f, ncf: e.target.value.toUpperCase().replace(/\s/g, "") }), placeholder: "B0100000123 / E310000000123", maxLength: 13, style: inp })),
+        E("div", { style: { gridColumn: "1 / -1" } }, E("label", { style: lbl }, "Tipo de gasto (606)"),
+          E("select", { value: f.tipo_bienes, onChange: set("tipo_bienes"), style: inp },
+            E("option", { value: "" }, "Seg\xFAn la categor\xEDa"),
+            Object.entries(TIPOS_BIENES_606).map(([k, t]) => E("option", { key: k, value: k }, k + " \xB7 " + t)))),
+        E("div", null, E("label", { style: lbl }, "ITBIS que trae la factura"), E("input", { type: "number", step: "0.01", value: f.itbis, onChange: set("itbis"), placeholder: "0.00", style: inp })),
+        E("div", null, E("label", { style: lbl }, "ITBIS retenido"), E("input", { type: "number", step: "0.01", value: f.itbis_retenido, onChange: set("itbis_retenido"), placeholder: "0.00", style: inp }))),
+      E("div", { style: { background: "#f8f9fa", borderRadius: 10, padding: 12, marginTop: 12 } },
+        E("div", { style: { fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 8 } }, "Retenci\xF3n de ISR (va en el IR-17)"),
+        E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 } },
+          E("button", { onClick: alquilerPersonaFisica, style: chip }, "\u{1F3E0} Alquiler a persona f\xEDsica (" + (pcts.ir17_pct_alquiler_pf || 15) + "%)"),
+          E("button", { onClick: honorariosPersonaFisica, style: chip }, "\u{1F9D1}‍⚕️ Honorarios a persona f\xEDsica (" + (pcts.ir17_pct_honorarios_pf || 15) + "%)"),
+          E("button", { onClick: () => setF({ ...f, tipo_retencion: "", isr_retenido: "", itbis_retenido: "" }), style: { ...chip, borderColor: "#e0e4e8", background: "#fff", color: "#5a6472" } }, "Sin retenci\xF3n")),
+        E("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+          E("div", null, E("label", { style: lbl }, "Tipo de retenci\xF3n"),
+            E("select", { value: f.tipo_retencion, onChange: set("tipo_retencion"), style: inp },
+              E("option", { value: "" }, "Ninguna"),
+              Object.entries(TIPOS_RETENCION_ISR).map(([k, t]) => E("option", { key: k, value: k }, k + " \xB7 " + t)))),
+          E("div", null, E("label", { style: lbl }, "ISR retenido (RD$)"), E("input", { type: "number", step: "0.01", value: f.isr_retenido, onChange: set("isr_retenido"), placeholder: "0.00", style: inp }))),
+        (parseFloat(f.isr_retenido) || 0) > 0 && E("div", { style: { fontSize: 12, color: "#5b21b6", marginTop: 8, lineHeight: 1.5 } },
+          "Al arrendador se le paga " + RDc(total - (parseFloat(f.isr_retenido) || 0) - (parseFloat(f.itbis_retenido) || 0)) + " y PetColinas entrega " + RDc((parseFloat(f.isr_retenido) || 0)) +
+          " a la DGII con el IR-17. Si la persona f\xEDsica no emite NCF, PetColinas emite un Comprobante de Compras (E41) y ese es el NCF que va aqu\xED.")),
+      !esCxp && E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, color: "#5a6472", marginTop: 12 } },
+        E("input", { type: "checkbox", checked: f.fiscal_excluir, onChange: set("fiscal_excluir") }),
+        "No es un gasto del negocio (no se declara)"),
+      E("div", { style: { display: "flex", gap: 8, marginTop: 16 } },
+        E("button", { onClick: onCerrar, disabled: ocupado, style: { flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e0e4e8", background: "#fff", fontWeight: 700, cursor: "pointer" } }, "Cancelar"),
+        E("button", { onClick: guardar, disabled: ocupado, style: { flex: 2, padding: "10px", borderRadius: 9, border: "none", background: ocupado ? "#c9ced4" : "#1a6b3a", color: "#fff", fontWeight: 800, cursor: ocupado ? "default" : "pointer" } }, ocupado ? "Guardando…" : "Guardar"))));
+}
+
+function ImpuestosDGII() {
+  const E = React.createElement;
+  const mesAnterior = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); };
+  const [mes, setMes] = React.useState(mesAnterior());
+  const [datos, setDatos] = React.useState(null);
+  const [error, setError] = React.useState("");
+  const [editar, setEditar] = React.useState(null);
+  const [saldoFavor, setSaldoFavor] = React.useState("");
+  const [verSin, setVerSin] = React.useState(false);
+  const cargar = React.useCallback(async () => {
+    setError("");
+    try { setDatos(await supaRPC("pc_impuestos_mes", { p_mes: mes })); }
+    catch (e) { setDatos(null); setError(e.message || "No se pudieron calcular los impuestos."); }
+  }, [mes]);
+  React.useEffect(() => { setDatos(null); cargar(); }, [cargar]);
+
+  const caja = { background: "#fff", border: "1px solid #e0e4e8", borderRadius: 12, padding: 18, marginBottom: 16 };
+  const th = { padding: "8px 10px", textAlign: "left", fontSize: 10.5, color: "#5a6472", textTransform: "uppercase", borderBottom: "2px solid #e0e4e8", whiteSpace: "nowrap" };
+  const td = { padding: "8px 10px", fontSize: 12.5, borderBottom: "1px solid #f0f2f4", verticalAlign: "top" };
+  const btn = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: "pointer" });
+  const fila = (t, v, fuerte, color) => E("div", { style: { display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #eef0f2", fontSize: fuerte ? 14 : 13, fontWeight: fuerte ? 800 : 500, color: color || "#1a1d23" } }, E("span", null, t), E("span", null, v));
+  const nombreMes = (m) => { const d = new Date(m + "-15T12:00:00"); return d.toLocaleDateString("es-DO", { month: "long", year: "numeric" }); };
+
+  if (error) return E("div", null, E("h2", { style: { fontFamily: FUENTE, fontSize: 26, marginBottom: 12 } }, "Impuestos DGII"), E("div", { style: { ...caja, color: "#b8232a" } }, error));
+  const it = datos && datos.it1;
+  const lineas = (datos && datos.lineas_606) || [];
+  const sin = (datos && datos.sin_comprobante) || [];
+  const ir17 = (datos && datos.ir17) || [];
+  const totalIR17 = ir17.reduce((a, r) => a + (Number(r.monto) || 0), 0);
+  const conAviso = lineas.filter((l) => (l.avisos || []).length);
+  const sf = parseFloat(saldoFavor) || 0;
+  const itbisNeto = it ? Number(it.itbis_cobrado) - Number(it.itbis_notas_credito) - Number(it.itbis_compras) - sf : 0;
+  const pcts = (datos && datos.config) || {};
+
+  function exportarExcel() {
+    if (!window.XLSX || !datos) return avisar("No se pudo cargar el generador de Excel.", "error");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lineas.map((l) => ({
+      "RNC/C\xE9dula": l.rnc, "Tipo Id": l.tipo_id, "Tipo bienes/servicios": l.tipo_bienes, NCF: l.ncf, "Fecha comprobante": l.fecha, "Fecha pago": l.fecha_pago,
+      "Monto servicios": l.monto_servicios, "Monto bienes": l.monto_bienes, "Total facturado": l.monto_total, "ITBIS facturado": l.itbis,
+      "ITBIS retenido": l.itbis_retenido, "ITBIS por adelantar": l.itbis_adelantar, "Tipo retenci\xF3n ISR": l.tipo_retencion || "", "ISR retenido": l.isr_retenido,
+      "Forma de pago": l.forma_pago, Proveedor: l.proveedor, Detalle: l.descripcion, Avisos: (l.avisos || []).join(" ") }))), "606");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+      { Concepto: "Ventas del mes (con ITBIS incluido)", Monto: it.ventas_total },
+      { Concepto: "Ventas exentas", Monto: it.ventas_exentas },
+      { Concepto: "Ventas gravadas sin ITBIS (base)", Monto: it.base_gravada },
+      { Concepto: "ITBIS cobrado (18%)", Monto: it.itbis_cobrado },
+      { Concepto: "ITBIS de notas de cr\xE9dito", Monto: it.itbis_notas_credito },
+      { Concepto: "ITBIS pagado en compras (606)", Monto: it.itbis_compras },
+      { Concepto: "Saldo a favor del mes anterior", Monto: sf },
+      { Concepto: itbisNeto >= 0 ? "ITBIS a pagar" : "Saldo a favor", Monto: Math.abs(itbisNeto) },
+      { Concepto: "ITBIS retenido a proveedores (a pagar)", Monto: it.itbis_retenido_a_proveedores },
+      ...Object.entries(it.por_forma_pago || {}).map(([k, v]) => ({ Concepto: "Anexo A \xB7 cobrado por " + k, Monto: v })),
+      ...Object.entries(it.por_comprobante || {}).map(([k, v]) => ({ Concepto: "Anexo A \xB7 comprobante " + k, Monto: v }))
+    ]), "IT-1");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ir17.map((r) => ({ "Tipo": TIPOS_RETENCION_ISR[r.tipo_retencion] || "Sin tipo", "Pagos": r.cantidad, "Base": r.base, "ISR retenido": r.monto }))), "IR-17");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sin.map((s) => ({ Fecha: s.fecha, Proveedor: s.proveedor, Detalle: s.descripcion, "Categor\u00EDa": s.categoria, Monto: s.monto, Motivo: s.motivo === "consumo" ? "NCF de consumo" : "Sin NCF" }))), "No deducibles");
+    XLSX.writeFile(wb, "Impuestos PetColinas " + mes + ".xlsx");
+  }
+  function bajar606() {
+    if (!datos.rnc || datos.rnc.length < 9) return avisar("Falta el RNC de PetColinas en Datos del negocio (Dashboard).", "error");
+    if (conAviso.length && !confirm(conAviso.length + " l\xEDnea(s) tienen avisos (RNC o NCF). La DGII puede rechazar el archivo. \xBFDescargar de todos modos?")) return;
+    descargarTexto("DGII_F_606_" + datos.rnc + "_" + String(datos.mes).replace("-", "") + ".TXT", txt606(datos));
+  }
+  const tarjeta = (titulo, fecha, valor, detalle, color) => E("div", { style: { flex: "1 1 210px", background: "#fff", border: "1px solid #e0e4e8", borderTop: "4px solid " + color, borderRadius: 12, padding: 14 } },
+    E("div", { style: { fontSize: 11, fontWeight: 800, color: "#5a6472", textTransform: "uppercase" } }, titulo),
+    E("div", { style: { fontSize: 22, fontWeight: 900, color, margin: "4px 0" } }, valor),
+    E("div", { style: { fontSize: 12, color: "#334155", fontWeight: 700 } }, "Vence el " + fechaLarga(fecha)),
+    E("div", { style: { fontSize: 11.5, color: "#5a6472", marginTop: 3 } }, detalle));
+
+  return E("div", null,
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12, marginBottom: 14 } },
+      E("div", null,
+        E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, marginBottom: 4 } }, "Impuestos DGII"),
+        E("div", { style: { fontSize: 13, color: "#5a6472", maxWidth: 680 } }, "Lo que PetColinas declara cada mes, armado con las ventas, gastos y cuentas por pagar de la app. Como emisor electr\xF3nico, ya no se env\xEDan el 607 ni el 608.")),
+      E("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+        E("label", { style: { fontSize: 12, fontWeight: 700, color: "#5a6472" } }, "Mes que se declara"),
+        E("input", { type: "month", value: mes, onChange: (e) => setMes(e.target.value), style: { padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13 } }))),
+    !datos ? E("div", { style: caja }, "Calculando…") : E(React.Fragment, null,
+      E("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 } },
+        tarjeta("IR-17 \xB7 retenciones", datos.vencimientos.ir17, RDc(totalIR17), totalIR17 > 0 ? "ISR retenido en " + nombreMes(mes) : "Sin retenciones registradas", "#5b21b6"),
+        tarjeta("606 \xB7 compras y gastos", datos.vencimientos.f606, lineas.length + " comprobante(s)", "ITBIS en compras " + RDc(it.itbis_compras) + (conAviso.length ? " \xB7 ⚠️ " + conAviso.length + " con avisos" : ""), "#1a4fa0"),
+        tarjeta("IT-1 \xB7 ITBIS", datos.vencimientos.it1, itbisNeto >= 0 ? RDc(itbisNeto + Number(it.itbis_retenido_a_proveedores)) : "A favor " + RDc(-itbisNeto), "Ventas " + RDc(it.ventas_total) + " \xB7 ITBIS cobrado " + RDc(it.itbis_cobrado), "#1a6b3a")),
+
+      sin.length > 0 && E("div", { style: { ...caja, background: "#fff7e6", borderColor: "#f3d38a" } },
+        E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+          E("div", null,
+            E("div", { style: { fontWeight: 800, color: "#92400e" } }, "⚠️ " + sin.length + " gasto(s) sin comprobante fiscal v\xE1lido: " + RDc(sin.reduce((a, s) => a + (Number(s.monto) || 0), 0))),
+            E("div", { style: { fontSize: 12, color: "#92400e", marginTop: 3 } }, "No se pueden deducir ni recuperar su ITBIS. Si tienes la factura con NCF de cr\xE9dito fiscal (B01/E31), an\xF3talo. El alquiler a persona f\xEDsica lleva retenci\xF3n.")),
+          E("button", { onClick: () => setVerSin(!verSin), style: btn("#fff", "#92400e") }, verSin ? "Ocultar" : "Revisar")),
+        verSin && E("div", { style: { overflowX: "auto", marginTop: 12 } }, E("table", { style: { width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 8 } },
+          E("thead", null, E("tr", null, ["Fecha", "Proveedor", "Detalle", "Categor\xEDa", "Monto", "Motivo", ""].map((h) => E("th", { key: h, style: th }, h)))),
+          E("tbody", null, sin.map((s) => E("tr", { key: s.origen + s.id },
+            E("td", { style: td }, s.fecha), E("td", { style: td }, s.proveedor || "—"), E("td", { style: td }, s.descripcion), E("td", { style: td }, s.categoria),
+            E("td", { style: { ...td, fontWeight: 700 } }, RDc(s.monto)),
+            E("td", { style: { ...td, color: "#92400e" } }, s.motivo === "consumo" ? "NCF de consumo " + s.ncf : "Sin NCF"),
+            E("td", { style: td }, E("button", { onClick: () => setEditar(s), style: { ...btn("#1a6b3a", "#fff"), padding: "5px 10px", fontSize: 12 } }, "Anotar NCF")))))))),
+
+      E("div", { style: caja },
+        E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 } },
+          E("div", null,
+            E("div", { style: { fontWeight: 800, fontSize: 15 } }, "606 \xB7 Compras y gastos de " + nombreMes(mes)),
+            E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 3 } }, "Desc\xE1rgalo y s\xFAbelo en la Oficina Virtual (Declaraciones → Env\xEDo de formatos → 606). Si la DGII avisa un error, corr\xEDgelo aqu\xED y vuelve a descargarlo.")),
+          E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+            E("button", { onClick: bajar606, disabled: !lineas.length, style: { ...btn("#1a4fa0", "#fff"), opacity: lineas.length ? 1 : 0.5 } }, "⬇️ Descargar TXT 606"),
+            E("button", { onClick: exportarExcel, style: btn("#e6f4ec", "#1a6b3a") }, "\u{1F4CA} Excel del mes"))),
+        lineas.length === 0
+          ? E("div", { style: { fontSize: 13, color: "#5a6472" } }, "No hay gastos con NCF en este mes. Si no hubo compras con comprobante, igual se env\xEDa el 606 “en cero” desde la Oficina Virtual.")
+          : E("div", { style: { overflowX: "auto" } }, E("table", { style: { width: "100%", borderCollapse: "collapse" } },
+              E("thead", null, E("tr", null, ["Fecha", "Proveedor", "RNC", "NCF", "Tipo", "Sin ITBIS", "ITBIS", "Retenciones", "Pago", ""].map((h) => E("th", { key: h, style: th }, h)))),
+              E("tbody", null, lineas.map((l) => E("tr", { key: l.origen + l.id, style: { background: (l.avisos || []).length ? "#fffaf0" : "transparent" } },
+                E("td", { style: td }, l.fecha.replace(/(\d{4})(\d{2})(\d{2})/, "$3/$2")),
+                E("td", { style: td }, E("div", { style: { fontWeight: 700 } }, l.proveedor || "—"), E("div", { style: { fontSize: 11, color: "#5a6472" } }, l.descripcion),
+                  (l.avisos || []).map((a, i) => E("div", { key: i, style: { fontSize: 11, color: "#b45309", fontWeight: 700 } }, "⚠️ " + a))),
+                E("td", { style: td }, l.rnc || "—"), E("td", { style: { ...td, fontFamily: "monospace" } }, l.ncf),
+                E("td", { style: td, title: TIPOS_BIENES_606[l.tipo_bienes] }, l.tipo_bienes + " \xB7 " + (TIPOS_BIENES_606[l.tipo_bienes] || "").split(" ")[0]),
+                E("td", { style: td }, RDc(l.monto_total)), E("td", { style: td }, RDc(l.itbis)),
+                E("td", { style: td }, l.isr_retenido > 0 ? "ISR " + RDc(l.isr_retenido) : "", l.itbis_retenido > 0 ? E("div", null, "ITBIS " + RDc(l.itbis_retenido)) : ""),
+                E("td", { style: td }, FORMAS_PAGO_606[l.forma_pago] || l.forma_pago),
+                E("td", { style: td }, E("button", { onClick: () => setEditar({ ...l, total: Number(l.monto_total) + Number(l.itbis) }), style: { background: "none", border: "none", color: "#1a4fa0", fontWeight: 800, cursor: "pointer" } }, "Editar")))))))),
+
+      E("div", { style: { display: "flex", gap: 16, flexWrap: "wrap" } },
+        E("div", { style: { ...caja, flex: "1 1 360px" } },
+          E("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, "IT-1 \xB7 ITBIS de " + nombreMes(mes)),
+          E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 10 } }, "Los precios de PetColinas ya traen el ITBIS: la base es la venta entre 1.18. Copia estas cifras en el IT-1 de la Oficina Virtual."),
+          fila("Ventas del mes (con ITBIS)", RDc(it.ventas_total)),
+          Number(it.ventas_exentas) > 0 && fila("Ventas exentas", RDc(it.ventas_exentas)),
+          fila("Ventas gravadas sin ITBIS (base 18%)", RDc(it.base_gravada)),
+          fila("ITBIS cobrado", RDc(it.itbis_cobrado), true),
+          Number(it.itbis_notas_credito) > 0 && fila("− ITBIS de notas de cr\xE9dito (" + it.notas_credito.cantidad + ")", RDc(it.itbis_notas_credito)),
+          fila("− ITBIS pagado en compras (606)", RDc(it.itbis_compras)),
+          E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", fontSize: 13 } },
+            E("span", null, "− Saldo a favor del mes anterior"),
+            E("input", { type: "number", step: "0.01", value: saldoFavor, onChange: (e) => setSaldoFavor(e.target.value), placeholder: "0.00", style: { width: 120, padding: "5px 8px", borderRadius: 7, border: "1.5px solid #e0e4e8", textAlign: "right" } })),
+          fila(itbisNeto >= 0 ? "ITBIS a pagar" : "Saldo a favor para el pr\xF3ximo mes", RDc(Math.abs(itbisNeto)), true, itbisNeto >= 0 ? "#b8232a" : "#1a6b3a"),
+          Number(it.itbis_retenido_a_proveedores) > 0 && fila("+ ITBIS retenido a proveedores (se paga aparte)", RDc(it.itbis_retenido_a_proveedores), true, "#b8232a"),
+          E("div", { style: { fontWeight: 800, fontSize: 13, marginTop: 14, marginBottom: 4 } }, "Anexo A \xB7 ingresos por forma de cobro"),
+          Object.entries(it.por_forma_pago || {}).filter(([, v]) => Number(v)).map(([k, v]) => E("div", { key: k }, fila({ efectivo: "Efectivo", transferencia: "Transferencia/dep\xF3sito", tarjeta: "Tarjeta d\xE9bito/cr\xE9dito", credito: "Venta a cr\xE9dito", sin_cobro: "Sin cobro" }[k] || k, RDc(v)))),
+          E("div", { style: { fontWeight: 800, fontSize: 13, marginTop: 14, marginBottom: 4 } }, "Anexo A \xB7 ingresos por tipo de comprobante"),
+          Object.entries(it.por_comprobante || {}).map(([k, v]) => E("div", { key: k }, fila(k + " \xB7 " + (NCF_NOMBRE[k] || ""), RDc(v)))),
+          fila("Sin comprobante (consumidor final)", RDc(Math.max(0, Number(it.ventas_total) - Number(it.ventas_con_comprobante)))),
+          E("div", { style: { fontSize: 11.5, color: "#5a6472", marginTop: 8 } }, "Si en el mes hubo ventas de productos exentos, an\xF3talos en pc_config.ecf_exentos para que no se les calcule ITBIS.")),
+
+        E("div", { style: { ...caja, flex: "1 1 300px" } },
+          E("div", { style: { fontWeight: 800, fontSize: 15, marginBottom: 4 } }, "IR-17 \xB7 retenciones de " + nombreMes(mes)),
+          E("div", { style: { fontSize: 12, color: "#5a6472", marginBottom: 10, lineHeight: 1.5 } }, "El ISR que PetColinas retuvo al pagar a personas f\xEDsicas (alquiler del local, honorarios). Se paga a la DGII aunque ya se le haya descontado al arrendador. Alquiler a persona f\xEDsica: " + (pcts.ir17_pct_alquiler_pf || 15) + "%."),
+          ir17.length === 0
+            ? E("div", { style: { fontSize: 13, color: "#5a6472" } }, "No hay retenciones este mes. Si pagaste el alquiler a una persona f\xEDsica, abre ese gasto (arriba, en los gastos sin comprobante o en el 606) y usa “Alquiler a persona f\xEDsica”.")
+            : E(React.Fragment, null,
+                ir17.map((r) => E("div", { key: r.tipo_retencion }, fila((TIPOS_RETENCION_ISR[r.tipo_retencion] || "Sin tipo") + " (" + r.cantidad + ") \xB7 base " + RDc(r.base), RDc(r.monto)))),
+                fila("Total a pagar en el IR-17", RDc(totalIR17), true, "#b8232a")),
+          E("div", { style: { fontSize: 11.5, color: "#5a6472", marginTop: 12, lineHeight: 1.5 } }, "N\xF3mina (TSS e IR-3) todav\xEDa no se calcula aqu\xED: PetColinas no est\xE1 inscrita en la TSS."))),
+
+      E("div", { style: { fontSize: 11.5, color: "#5a6472", lineHeight: 1.5 } },
+        "Fechas: si el d\xEDa cae s\xE1bado o domingo pasa al lunes; los feriados no se cuentan, rev\xEDsalos en el calendario de la DGII. Estas cifras salen de lo que est\xE1 registrado en la app: si falta un gasto o una venta, la declaraci\xF3n sale incompleta.")),
+    editar && E(ModalDatoFiscal, { item: editar, pcts, onCerrar: () => setEditar(null), onGuardado: () => { setEditar(null); cargar(); } }));
 }
 const CATEGORIAS_GASTO = [
   { value: "alquiler", label: "\u{1F3E0} Alquiler" },
