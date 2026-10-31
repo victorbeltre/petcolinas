@@ -306,7 +306,7 @@ function diagnostico() {
     var b = bytes[j] < 0 ? bytes[j] + 256 : bytes[j];
     hex += (b < 16 ? "0" : "") + b.toString(16);
   }
-  Logger.log("3. Huella del secreto: " + hex.substring(0, 16) + "   (debe ser f4c7a48b2654afa2)");
+  Logger.log("3. Huella del secreto: " + hex.substring(0, 16) + "   (debe ser 2ddd720cca9ac3e4)");
 
   // Prueba real contra la funcion, con un secreto a proposito equivocado:
   // debe contestar 401. Si contesta otra cosa, algo esta mal configurado.
