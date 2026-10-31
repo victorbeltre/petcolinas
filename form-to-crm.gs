@@ -42,7 +42,10 @@ var FUNCION_URL = SUPA_URL + "/functions/v1/form-intake";
 // El MISMO texto que está guardado en Supabase, en la tabla pc_secretos
 // (fila FORM_INTAKE_SECRET). Si los dos no coinciden, la función responde 401
 // y no se guarda nada. Para rotarlo: cambiarlo en los dos sitios.
-var FORM_SECRET = "1H5Evyq7fabCDJY90GVrmjaoZmTnUie_";
+// NUNCA escribir aqui el secreto real: este repo es PUBLICO. El 31 oct 2026 se
+// encontro escrito y se roto. Victor tiene la copia con el valor real para
+// pegarla en Apps Script; en el repo queda solo este marcador.
+var FORM_SECRET = "PEGAR_AQUI_EL_SECRETO_DE_pc_secretos";
 
 // ID de "Ficha de Ingreso — PetColinas (respuestas)". Se saca de su URL:
 // https://docs.google.com/spreadsheets/d/ESTE_PEDAZO/edit

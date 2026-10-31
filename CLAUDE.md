@@ -431,7 +431,17 @@ Victor activa boosts manuales desde Nomina (hasta 5X)
    Lo que SI se puede hoy en free, en esa misma pantalla: subir la longitud
    minima de contrasena y exigir mayusculas, digitos y simbolos.
    El advisor lo seguira reportando mientras este apagado.
-1b. (M4) Pegar el nuevo `form-to-crm.gs` en Apps Script (Extensiones → Apps
+1b. (M4) URGENTE (31 oct 2026): el Apps Script VIEJO sigue corriendo y guarda la respuesta
+   "¿Autorizas fotos de tu mascota?" como NOMBRE de la mascota ("✅ Sí, autorizo") y el
+   telefono del contacto de emergencia como telefono del dueño. El 31 oct se repararon 40
+   fichas (9 sep - 29 oct) desde la hoja "Ficha de Ingreso — PetColinas (respuestas)",
+   emparejando dueño + hora de envio; copia previa en `respaldos.pc_clientes_autorizo_20261031`.
+   Quedaron repetidas: Dionis Molina (2 fichas de mas, ya existia "Kiara molina") y Jisell De
+   Jesus ("Blue y Tacha" + "Blue Jesús"): fusionar en el CRM.
+   El FORM_SECRET estaba escrito en `form-to-crm.gs` (repo PUBLICO): se roto el 31 oct en
+   pc_secretos; en el repo queda un marcador (render-check lo exige) y Victor recibio la copia
+   con el valor real. Hasta que la pegue, las fichas nuevas seguiran entrando mal.
+   Pegar el nuevo `form-to-crm.gs` en Apps Script (Extensiones → Apps
    Script del formulario) y correr `diagnostico()`. Solo DESPUES de eso se
    puede quitar la politica `"pc_clientes insert formulario web"`, que hoy
    deja a `anon` insertar en pc_clientes con la llave publica. Es lo unico

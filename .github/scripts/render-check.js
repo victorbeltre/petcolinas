@@ -601,6 +601,14 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   const ini = html.slice(html.indexOf("const EMPLEADOS_INIT"), html.indexOf("];", html.indexOf("const EMPLEADOS_INIT")));
   if (/mensualidad:\s*[1-9]/.test(ini)) fallo("EMPLEADOS_INIT no puede llevar sueldos: el repo es publico");
 })();
+// El secreto del formulario NUNCA va en el repo (es publico). Se encontro escrito
+// en form-to-crm.gs el 31 oct 2026 y hubo que rotarlo.
+(() => {
+  const fs = require("fs"), path = require("path");
+  const gs = fs.readFileSync(path.join(__dirname, "..", "..", "form-to-crm.gs"), "utf8");
+  const m = gs.match(/var FORM_SECRET = "([^"]*)"/);
+  if (!m || m[1] !== "PEGAR_AQUI_EL_SECRETO_DE_pc_secretos") errores.push("form-to-crm.gs: FORM_SECRET debe quedar como marcador, no el secreto real (repo publico)");
+})();
 // Gastos fijos (30 oct 2026): un mes esta anotado si hay gasto de ese mes con la marca o la palabra clave.
 (() => {
   const fallo = (m) => errores.push("gastos fijos: " + m);
