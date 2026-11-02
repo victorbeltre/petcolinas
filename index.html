@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-10-30 00:27Z";
+const PC_BUILD = "2026-11-02 23:25Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -13823,6 +13823,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const [cambio, setCambio] = useState(null);
   const [verTarifas, setVerTarifas] = useState(false);
   const [editTarifa, setEditTarifa] = useState(null);
+  const [editCosto, setEditCosto] = useState(null);
   const [costosManual, setCostosManual] = useState({});
   const [ajusteDet, setAjusteDet] = useState({});        // cambios del admin a lo detectado en Gastos
   const [ignorados, setIgnorados] = useState(() => { try { return JSON.parse(localStorage.getItem("pc_nomina_ignorados") || "[]"); } catch (e) { return []; } });   // costo escrito a mano de productos sin costo en inventario
@@ -13887,7 +13888,11 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const activos = (datos.empleados || []).filter((e) => e.activo);
   const tarifas = datos.comisiones || [];
   const vendedores = (datos.empleados || []).filter((e) => NOMINA_CON_COMISION.includes(e.empleado_ref)).map((e) => ({ id: e.id, clave: normalizarTextoInv(e.nombre).split(" ")[0] }));
-  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, { inventario, vendedores, costosManual });
+  // Tarifario fijo de costos (M31): el costo de cada producto para el 5% de farmacia.
+  // Orden: inventario > tarifario fijo > costo escrito a mano en el historial.
+  const costosFijos = {};
+  (datos.costos || []).forEach((k) => (k.alias || [k.nombre]).forEach((a) => { costosFijos[normalizarTextoInv(a)] = Number(k.costo_unitario); }));
+  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, { inventario, vendedores, costosManual: { ...costosFijos, ...costosManual } });
   const tieneTarifa = (emp) => tarifas.some((t) => t.empleado_id === emp.id);
   const pendientes = (emp, tipo) => pendientesNomina(movs, emp.id, tipo, periodo);
   const resumen = (emp) => {
@@ -14046,6 +14051,29 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
               alias: String(editTarifa.alias || "").split(",").map((x) => x.trim()).filter(Boolean) } }); setEditTarifa(null); await cargar(); avisar("Tarifa guardada.", "ok"); }
             catch (e) { avisar(e.message, "error"); } } }, "Guardar tarifa"),
           E("button", { className: "pc-btn-suave", onClick: () => setEditTarifa(null) }, "Cancelar"))),
+      E("div", { style: { borderTop: "1px solid " + C.borde, marginTop: 14, paddingTop: 12 } },
+        E("div", { style: { fontWeight: 700, marginBottom: 4 } }, "Costos de productos (para el 5% de farmacia)"),
+        E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 8 } }, "Tarifario fijo: el costo unitario de cada producto que no est\xE1 en el inventario. No cambia el inventario."),
+        editCosto && E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, background: "#fff", border: "1px solid " + C.borde, borderRadius: 10, padding: 12, marginBottom: 10 } },
+          E("div", { style: { gridColumn: "span 2", minWidth: 0 } }, lbl("Producto"), E("input", { value: editCosto.nombre, onChange: (e) => setEditCosto({ ...editCosto, nombre: e.target.value }), style: inp })),
+          E("div", null, lbl("Costo unitario (RD$)"), E("input", { type: "number", min: 0, step: "0.01", value: editCosto.costo_unitario, onChange: (e) => setEditCosto({ ...editCosto, costo_unitario: e.target.value }), style: inp })),
+          E("div", { style: { gridColumn: "1 / -1" } }, lbl("Otros nombres con que se vende (separados por coma)"), E("input", { value: editCosto.alias, placeholder: "Nexgard spectra 3.6-7.5 kg, NexGard Spectra S 3.6-7.5 kg", onChange: (e) => setEditCosto({ ...editCosto, alias: e.target.value }), style: inp })),
+          E("div", { style: { gridColumn: "1 / -1", display: "flex", gap: 8 } },
+            E("button", { style: btnV, onClick: async () => {
+              if (!String(editCosto.nombre).trim() || !(parseFloat(editCosto.costo_unitario) >= 0)) return avisar("Escribe el producto y su costo.", "error");
+              try { await llamar("pc_nomina_guardar_costo", { p_c: { ...editCosto, costo_unitario: String(parseFloat(editCosto.costo_unitario)),
+                alias: String(editCosto.alias || "").split(",").map((x) => x.trim()).filter(Boolean) } }); setEditCosto(null); await cargar(); avisar("Costo guardado.", "ok"); }
+              catch (e) { avisar(e.message, "error"); } } }, "Guardar costo"),
+            E("button", { className: "pc-btn-suave", onClick: () => setEditCosto(null) }, "Cancelar"))),
+        E("div", { style: { border: "1px solid " + C.borde, borderRadius: 10, overflow: "hidden", background: "#fff", maxHeight: 260, overflowY: "auto" } },
+          (datos.costos || []).length === 0 && E("div", { style: { padding: 10, fontSize: 12.5, color: C.suave } }, "Sin costos guardados."),
+          (datos.costos || []).map((k, i) => E("div", { key: k.id, style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", fontSize: 12.5, borderTop: i ? "1px solid #f1f3f4" : "none" } },
+            E("span", { style: { flex: 1, minWidth: 0 } }, k.nombre),
+            E("b", { style: { whiteSpace: "nowrap" } }, dinero(k.costo_unitario)),
+            E("button", { onClick: () => setEditCosto({ ...k, costo_unitario: String(k.costo_unitario), alias: (k.alias || []).join(", ") }), style: { background: "none", border: "none", color: C.verde, cursor: "pointer", minHeight: 0, padding: "0 2px", fontWeight: 700 } }, "Editar"),
+            E("button", { title: "Quitar", onClick: async () => { if (!window.confirm("\xBFQuitar el costo de " + k.nombre + "?")) return; try { await llamar("pc_nomina_guardar_costo", { p_c: { id: k.id, borrar: true } }); await cargar(); } catch (e) { avisar(e.message, "error"); } },
+              style: { background: "none", border: "none", color: "#b42318", cursor: "pointer", minHeight: 0, padding: "0 2px" } }, "\u2715")))),
+        E("button", { className: "pc-btn-suave", style: { marginTop: 8 }, onClick: () => setEditCosto({ nombre: "", costo_unitario: "", alias: "" }) }, "\uFF0B Agregar costo")),
       !editTarifa && E("button", { className: "pc-btn-suave", style: { marginBottom: 10 }, onClick: () => setEditTarifa({ empleado_id: (activos.find((e) => NOMINA_CON_COMISION.includes(e.empleado_ref)) || activos[0] || {}).id, servicio: "", precio: "", comision: "", alias: "" }) }, "＋ Agregar servicio"),
       E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 } },
         activos.filter(tieneTarifa).map((emp) => E("div", { key: emp.id, style: { minWidth: 0 } },

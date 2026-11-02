@@ -403,6 +403,11 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   "No es nomina" lo oculta en ese equipo (localStorage `pc_nomina_ignorados`).
   El 29 oct se pasaron los 6 de octubre (1ra quincena de Laura, Alexander, Naylan y Rissy +
   2 coberturas de Rissy); copia previa en `respaldos.pc_gastos_nomina_20261029`.
+- TARIFARIO FIJO DE COSTOS (M31, 31 oct): `pc_nomina_costos` guarda el costo unitario de los
+  productos que no tienen costo en el inventario (Tropiclean, Epiotic, NexGard, Easotic...). Orden
+  del 5%: inventario > tarifario fijo > costo escrito a mano en el historial. No toca el inventario.
+  Los montos solo estan en la base (repo publico): se editan en Nomina -> Tarifas de comision.
+  Test Parvovirus/Coronavirus/Giardia (canino) = servicio de 295 (alias agregado el 31 oct).
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 
