@@ -13681,7 +13681,7 @@ function moverPeriodoNomina(p, paso) {
 function ventasComisionNomina(ventas, emp, desde, hasta) {
   if (!NOMINA_CON_COMISION.includes(emp.empleado_ref)) return [];
   const nombre = normalizarTextoInv(emp.nombre).split(" ")[0];
-  return (ventas || []).filter((v) => v.fecha >= desde && v.fecha <= hasta && (Number(v.comision) || 0) > 0 &&
+  return (ventas || []).filter((v) => v.fecha >= desde && v.fecha <= hasta && (Number(v.comision) || 0) > 0 && !esPagoPendiente(v) &&
     (emp.empleado_ref === "e1" ? v.area === "grooming" : normalizarTextoInv(v.recibidopor || v.recibidoPor || "").includes(nombre)));
 }
 // Tarifario por servicio (M30, 29 oct 2026): lo que gana Naylan o Alexander
@@ -13719,10 +13719,13 @@ function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, opts = {}) {
   const inv = opts.inventario || [], vend = opts.vendedores || [], manual = opts.costosManual || {};
   const r2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
   const porEmpleado = {}, sinTarifa = {};
-  let cortesias = 0;
+  let cortesias = 0, sinCobrar = 0;
   const de = (id) => porEmpleado[id] || (porEmpleado[id] = { total: 0, lineas: [], sinCosto: [] });
   for (const v of ventas || []) {
     if (!v.fecha || v.fecha < desde || v.fecha > hasta) continue;
+    // Victor: un servicio que NO se ha cobrado no genera comision, aunque la venta
+    // ya aparezca en la lista. Se cuenta aparte y no suma a nadie.
+    if (esPagoPendiente(v)) { sinCobrar += 1; continue; }
     const items = Array.isArray(v.items) && v.items.length ? v.items : [{ nombre: v.servicio || v.descripcion || "", area: v.area }];
     for (const it of items) {
       let nombre = String(it.nombre || it.servicio || it.descripcion || "").trim(), cant = Number(it.qty || it.cantidad) || 1;
@@ -13760,7 +13763,7 @@ function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, opts = {}) {
       }
     }
   }
-  return { porEmpleado, sinTarifa: Object.entries(sinTarifa).sort((a, b) => b[1] - a[1]), cortesias };
+  return { porEmpleado, sinTarifa: Object.entries(sinTarifa).sort((a, b) => b[1] - a[1]), cortesias, sinCobrar };
 }
 // Cuenta de la quincena. Los adelantos se RESTAN (ya se pagaron antes) y los
 // incentivos "para la proxima quincena" se SUMAN.
@@ -13809,6 +13812,68 @@ function mensajeErrorNomina(e) {
   if (/NOMINA_CERRADA/.test(m)) return "La n\xF3mina se cerr\xF3 por inactividad. Vuelve a escribir la clave.";
   if (/pc_nomina|function|404/i.test(m) && /not find|no existe|does not exist|404/i.test(m)) return "Falta activar la n\xF3mina con clave en Supabase (M29).";
   return m;
+}
+// Reporte para entregarle al colaborador y que le hagan su pago de comision
+// (Victor). Una linea por servicio cobrado: fecha, cliente, servicio y comision.
+// Las ventas con pago pendiente ya vienen fuera de `lineas`, y no se incluyen.
+async function generarReporteComisionesPDF({ nombre, cargo, periodoTxt, desde, hasta, lineas, total, sinCosto = 0, sinCobrar = 0 }) {
+  if (!window.jspdf) throw new Error("No se pudo cargar el generador de PDF. Recarga la p\xE1gina.");
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const W = 612, M = 40, verde = [26, 107, 58], tinta = [31, 35, 40], suave = [107, 114, 128];
+  const fit = (t, max) => { let s = String(t || ""); while (s.length > 3 && doc.getTextWidth(s) > max) s = s.slice(0, -2); return s !== String(t || "") ? s.slice(0, -1) + "…" : s; };
+  doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(...verde); doc.text("PetColinas", M, 52);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...suave); doc.text("Reporte de comisiones", M, 66);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(...tinta); doc.text(String(nombre || ""), W - M, 52, { align: "right" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...suave);
+  if (cargo) doc.text(cargo, W - M, 66, { align: "right" });
+  doc.text("Periodo: " + periodoTxt + " (del " + fechaCorta(desde) + " al " + fechaCorta(hasta) + ")", W - M, 80, { align: "right" });
+  doc.setDrawColor(...verde); doc.setLineWidth(1); doc.line(M, 92, W - M, 92);
+
+  const col = { fecha: M, cliente: M + 70, servicio: M + 215, cant: M + 438, comision: W - M };
+  const anchoServ = col.cant - col.servicio - 12, anchoCli = col.servicio - col.cliente - 10;
+  let y = 116;
+  const cabecera = () => {
+    doc.setFillColor(...verde); doc.rect(M, y, W - 2 * M, 20, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
+    doc.text("Fecha", col.fecha + 6, y + 13); doc.text("Cliente", col.cliente, y + 13); doc.text("Servicio", col.servicio, y + 13);
+    doc.text("Cant.", col.cant, y + 13, { align: "right" }); doc.text("Comisi\xF3n", col.comision - 6, y + 13, { align: "right" });
+    y += 24;
+  };
+  cabecera();
+  const orden = [...(lineas || [])].sort((a, b) => String(a.fecha || "").localeCompare(String(b.fecha || "")));
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+  orden.forEach((l, i) => {
+    if (y > 700) { doc.addPage(); y = 50; cabecera(); doc.setFont("helvetica", "normal"); doc.setFontSize(9); }
+    if (i % 2 === 1) { doc.setFillColor(247, 248, 249); doc.rect(M, y - 11, W - 2 * M, 16, "F"); }
+    const servicio = (l.servicio || "") + (l.tipo === "farmacia" ? " (5% de la ganancia)" : "");
+    doc.setTextColor(...tinta);
+    doc.text(fechaCorta(l.fecha), col.fecha + 6, y);
+    doc.text(fit(l.cliente, anchoCli), col.cliente, y);
+    doc.text(fit(servicio, anchoServ), col.servicio, y);
+    doc.text(String(l.cant || 1), col.cant, y, { align: "right" });
+    doc.text(RDc(l.comision), col.comision - 6, y, { align: "right" });
+    y += 16;
+  });
+  if (orden.length === 0) { doc.setTextColor(...suave); doc.text("No hay servicios cobrados en este periodo.", M + 6, y); y += 16; }
+
+  y += 8; doc.setDrawColor(...verde); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 20;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(...verde);
+  doc.text("Total de comisiones a pagar", col.servicio, y); doc.text(RDc(total), col.comision - 6, y, { align: "right" });
+  y += 26;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...suave);
+  doc.text("Incluye solo servicios cobrados. Los servicios con pago pendiente no generan comisi\xF3n hasta que se cobren.", M, y); y += 12;
+  if (sinCobrar > 0) { doc.text(sinCobrar + " servicio(s) con pago pendiente quedaron fuera de este reporte.", M, y); y += 12; }
+  if (sinCosto > 0) { doc.text(sinCosto + " producto(s) sin costo en inventario quedaron fuera (pendientes de costo).", M, y); y += 12; }
+
+  y = Math.max(y + 50, 640);
+  doc.setDrawColor(...tinta); doc.setLineWidth(0.5);
+  doc.line(M, y, M + 230, y); doc.line(W - M - 230, y, W - M, y);
+  doc.setFontSize(9); doc.setTextColor(...tinta);
+  doc.text("Recibido por: " + String(nombre || ""), M, y + 13);
+  doc.text("Fecha de pago: ____________________", W - M - 230, y + 13);
+
+  doc.save("Comisiones_" + String(nombre || "colaborador").split(" ")[0] + "_" + String(periodoTxt).replace(/[^A-Za-z0-9]+/g, "_") + ".pdf");
 }
 function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], ventasMes = [], mesActual, inventario = [] }) {
   const E = React.createElement;
@@ -13908,6 +13973,12 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
     if (typeof setGastos === "function") setGastos((prev) => [...(prev || []), g]);
     upsertOne("pc_gastos", g).catch((e) => console.error("[nomina gasto]", e));
     return String(g.id);
+  };
+  const reporteComisiones = async (emp, r) => {
+    try {
+      await generarReporteComisionesPDF({ nombre: emp.nombre, cargo: emp.cargo, periodoTxt: nombrePeriodoNomina(periodo).replace(/^./, (c) => c.toUpperCase()),
+        desde, hasta, lineas: r.vts, total: r.com, sinCosto: r.sinCosto.length, sinCobrar: porTarifa.sinCobrar || 0 });
+    } catch (e) { avisar(e.message, "error"); }
   };
   const guardarModal = async (m = modal) => {
     const monto = Math.round((parseFloat(m.monto) || 0) * 100) / 100;
@@ -14071,6 +14142,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
           [-2, -1, 0, 1].map((k) => moverPeriodoNomina(periodoQuincena(d.g.fecha), k)).concat(d.periodo).filter((x, i, a) => a.indexOf(x) === i).map((p) => E("option", { key: p, value: p }, nombrePeriodoNomina(p)))),
         E("button", { onClick: () => pasarANomina(d), style: { ...btnV, padding: "6px 12px", fontSize: 13 } }, "Pasar a n\xF3mina"),
         E("button", { className: "pc-btn-suave", onClick: () => ignorar(d.g.id) }, "No es n\xF3mina"))))),
+    porTarifa.sinCobrar > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, porTarifa.sinCobrar + " venta(s) con pago pendiente de cobro: no generan comisi\xF3n hasta que se cobren."),
     porTarifa.cortesias > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, porTarifa.cortesias + " servicio(s) de cortes\xEDa en esta quincena: no generan comisi\xF3n."),
     porTarifa.sinTarifa.length > 0 && tarifas.length > 0 && E("details", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 } },
       E("summary", { style: { cursor: "pointer", fontWeight: 600 } }, porTarifa.sinTarifa.length + " concepto(s) de vet/grooming registrados por alguien sin comisi\xF3n y sin tarifa (no suman a nadie)"),
@@ -14109,6 +14181,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
             E("button", { className: "pc-btn-suave", onClick: () => setVerEmp(verEmp === emp.id ? null : emp.id) }, verEmp === emp.id ? "Cerrar" : "Historial"),
             E("button", { className: "pc-btn-suave", onClick: () => setEditEmp({ ...emp, sueldo_mensual: String(emp.sueldo_mensual) }) }, "Editar")),
           verEmp === emp.id && E("div", { style: { marginTop: 12, borderTop: "1px solid " + C.borde, paddingTop: 10 } },
+            E("button", { className: "pc-btn-suave", disabled: r.vts.length === 0, onClick: () => reporteComisiones(emp, r), style: { marginBottom: 10 } }, "\u{1F9FE} Generar reporte de comisiones (PDF)"),
             r.vts.length > 0 && E("div", { style: { marginBottom: 10 } },
               E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de esta quincena"),
               r.vts.map((v, i) => E("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "2px 0" } },
