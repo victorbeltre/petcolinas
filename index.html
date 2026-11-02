@@ -13664,6 +13664,16 @@ function rangoPeriodoNomina(p) {
   const fin = new Date(y, m, 0).getDate();
   return p.endsWith("Q1") ? { desde: p.slice(0, 7) + "-01", hasta: p.slice(0, 7) + "-15" } : { desde: p.slice(0, 7) + "-16", hasta: p.slice(0, 7) + "-" + String(fin).padStart(2, "0") };
 }
+// Comisiones: se pagan a FIN DE MES (Victor, 2 nov 2026), no por quincena. El
+// periodo de comision es el mes calendario del periodo que se esta viendo.
+function rangoMesNomina(p) {
+  const ym = String(p).slice(0, 7), [y, m] = ym.split("-").map(Number);
+  return { desde: ym + "-01", hasta: ym + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0") };
+}
+function nombreMesNomina(p) {
+  const t = new Date(String(p).slice(0, 7) + "-15T12:00:00").toLocaleDateString("es-DO", { month: "long", year: "numeric" });
+  return t.replace(/^./, (c) => c.toUpperCase());
+}
 function nombrePeriodoNomina(p) {
   const mes = new Date(p.slice(0, 7) + "-15T12:00:00").toLocaleDateString("es-DO", { month: "long", year: "numeric" });
   return (p.endsWith("Q1") ? "1ra" : "2da") + " quincena de " + mes;
@@ -13949,23 +13959,24 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   // ── Nomina abierta ───────────────────────────────────────
   if (!datos) return E("div", { style: { padding: 24, color: C.suave } }, "Cargando n\xF3mina…");
   const { desde, hasta } = rangoPeriodoNomina(periodo);
+  const mesCom = rangoMesNomina(periodo);
   const movs = (datos.movimientos || []).filter((m) => !m.anulado);
   const activos = (datos.empleados || []).filter((e) => e.activo);
   const tarifas = datos.comisiones || [];
   const vendedores = (datos.empleados || []).filter((e) => NOMINA_CON_COMISION.includes(e.empleado_ref)).map((e) => ({ id: e.id, clave: normalizarTextoInv(e.nombre).split(" ")[0] }));
-  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, { inventario, vendedores, costosManual });
+  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, mesCom.desde, mesCom.hasta, { inventario, vendedores, costosManual });
   const tieneTarifa = (emp) => tarifas.some((t) => t.empleado_id === emp.id);
   const pendientes = (emp, tipo) => pendientesNomina(movs, emp.id, tipo, periodo);
   const resumen = (emp) => {
     const pt = porTarifa.porEmpleado[emp.id];
     const sinCosto = pt ? pt.sinCosto : [];
     const vts = tieneTarifa(emp) ? (pt ? pt.lineas : [])
-      : ventasComisionNomina(ventas, emp, desde, hasta).map((v) => ({ fecha: v.fecha, cliente: v.cliente, servicio: v.servicio || v.descripcion || "", cant: 1, comision: Number(v.comision) || 0 }));
+      : ventasComisionNomina(ventas, emp, mesCom.desde, mesCom.hasta).map((v) => ({ fecha: v.fecha, cliente: v.cliente, servicio: v.servicio || v.descripcion || "", cant: 1, comision: Number(v.comision) || 0 }));
     const com = Math.round(vts.reduce((s, l) => s + l.comision, 0) * 100) / 100;
     const inc = pendientes(emp, "incentivo"), ade = pendientes(emp, "adelanto");
     const base = Math.round((Number(emp.sueldo_mensual) || 0) / 2 * 100) / 100;
     const pagada = movs.find((m) => m.empleado_id === emp.id && m.tipo === "quincena" && m.periodo === periodo);
-    const c = calcularQuincenaNomina({ base, comisiones: com, incentivos: inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: ade.reduce((s, m) => s + Number(m.monto), 0) });
+    const c = calcularQuincenaNomina({ base, comisiones: 0, incentivos: inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: ade.reduce((s, m) => s + Number(m.monto), 0) });
     return { vts, com, sinCosto, inc, ade, base, pagada, ...c };
   };
   const anotarGasto = (fecha, descripcion, monto, metodo) => {
@@ -13976,8 +13987,8 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   };
   const reporteComisiones = async (emp, r) => {
     try {
-      await generarReporteComisionesPDF({ nombre: emp.nombre, cargo: emp.cargo, periodoTxt: nombrePeriodoNomina(periodo).replace(/^./, (c) => c.toUpperCase()),
-        desde, hasta, lineas: r.vts, total: r.com, sinCosto: r.sinCosto.length, sinCobrar: porTarifa.sinCobrar || 0 });
+      await generarReporteComisionesPDF({ nombre: emp.nombre, cargo: emp.cargo, periodoTxt: nombreMesNomina(periodo),
+        desde: mesCom.desde, hasta: mesCom.hasta, lineas: r.vts, total: r.com, sinCosto: r.sinCosto.length, sinCobrar: porTarifa.sinCobrar || 0 });
     } catch (e) { avisar(e.message, "error"); }
   };
   const guardarModal = async (m = modal) => {
@@ -13997,7 +14008,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const abrirQuincena = (emp) => {
     const r = resumen(emp);
     setModal({ tipo: "quincena", emp, fecha: fechaLocal(), metodo: "transferencia", nota: "", gasto: true,
-      base: String(r.base), comisiones: String(r.com), incentivos: r.inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: r.ade.reduce((s, m) => s + Number(m.monto), 0),
+      base: String(r.base), comisiones: "0", incentivos: r.inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: r.ade.reduce((s, m) => s + Number(m.monto), 0),
       descuentos: "", liquida: [...r.inc, ...r.ade].map((m) => m.id) });
   };
   const anular = async (m) => {
@@ -14167,7 +14178,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
           (tieneTarifa(emp) || NOMINA_CON_COMISION.includes(emp.empleado_ref)) && (() => {
             const sv = r.vts.filter((l) => l.tipo !== "farmacia"), fa = r.vts.filter((l) => l.tipo === "farmacia");
             return E(React.Fragment, null,
-              fila("Comisi\xF3n servicios (" + sv.reduce((s, l) => s + l.cant, 0) + ")", dinero(sv.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
+              fila("Comisi\xF3n del mes, se paga a fin de mes (" + sv.reduce((s, l) => s + l.cant, 0) + ")", dinero(sv.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
               (fa.length > 0 || r.sinCosto.length > 0) && fila("5% farmacia (" + fa.reduce((s, l) => s + l.cant, 0) + " productos)", dinero(fa.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
               r.sinCosto.length > 0 && E("div", { style: { fontSize: 12, color: "#b45309", margin: "2px 0" } }, "\u26A0 " + r.sinCosto.length + " producto(s) sin costo: \xE1brelos en Historial"));
           })(),
@@ -14183,7 +14194,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
           verEmp === emp.id && E("div", { style: { marginTop: 12, borderTop: "1px solid " + C.borde, paddingTop: 10 } },
             E("button", { className: "pc-btn-suave", disabled: r.vts.length === 0, onClick: () => reporteComisiones(emp, r), style: { marginBottom: 10 } }, "\u{1F9FE} Generar reporte de comisiones (PDF)"),
             r.vts.length > 0 && E("div", { style: { marginBottom: 10 } },
-              E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de esta quincena"),
+              E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de " + nombreMesNomina(periodo) + " (se pagan a fin de mes)"),
               r.vts.map((v, i) => E("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "2px 0" } },
                 E("span", { title: v.tarifa ? "Tarifa: " + v.tarifa : "", style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
                   fechaCorta(v.fecha) + " \xB7 " + (v.cant > 1 ? v.cant + "\xD7 " : "") + v.servicio + (v.cliente ? " \xB7 " + v.cliente : "")
