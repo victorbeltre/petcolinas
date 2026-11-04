@@ -291,7 +291,7 @@ function guardarLocal(clave, valor) {
 
 // Marca de compilación. La escribe .github/scripts/sellar-version.js y debe
 // coincidir con version.txt (el validador lo comprueba).
-const PC_BUILD = "2026-11-02 23:25Z";
+const PC_BUILD = "2026-11-04 20:02Z";
 
 // GitHub Pages cachea el index.html en el navegador, así que a veces la app
 // sigue mostrando una versión vieja aunque el despliegue haya terminado bien.
@@ -3734,12 +3734,49 @@ async function abrirFacturaCxP(ruta) {
     window.open(SUPA_URL + "/storage/v1" + o.signedURL, "_blank");
   } catch (e) { avisar("No se pudo abrir la factura: " + e.message, "error"); }
 }
+// Factura de proveedor subida en Cuentas por pagar (M32, 1 nov 2026): cada linea
+// suma su cantidad al producto existente (misma regla que Inventario: se deja el
+// costo y el vencimiento que ya tiene, y se corrigen a mano) o crea el producto
+// nuevo con su vencimiento. Registra la compra en pc_compras y devuelve su id, que
+// sirve de origen a la cuenta por pagar para que no se vuelva a traer.
+async function aplicarFacturaAlInventario(f, inventario) {
+  const cab = { fecha: f.fecha, proveedor: String(f.proveedor || "").trim(), numero: f.numero || "", ncf: f.ncf || "" };
+  const lineas = (f.items || []).filter((l) => String(l.nombre || "").trim() && Number(l.cantidad) > 0);
+  const base = Date.now();
+  const filas = lineas.map((l, i) => {
+    const cant = Math.max(0, Number(l.cantidad) || 0);
+    const ex = coincidenciaInventario(l.nombre, inventario);
+    const fila = ex
+      ? { ...ex, stock: (Number(ex.stock) || 0) + cant, fechaEntrada: cab.fecha,
+          notas: (ex.notas ? ex.notas + " | " : "") + "+" + cant + " Factura " + (cab.numero || "s/n") + (cab.proveedor ? " de " + cab.proveedor : "") + " (" + cab.fecha + ")" }
+      : filaInventarioDesdeLinea({ nombre: l.nombre, descripcion: l.descripcion || "", categoria: l.categoria || "otro", cantidad: cant,
+          costo: l.costo == null ? "" : l.costo, pventa: "", vencimiento: l.vencimiento || "", lote: l.lote || "", nota: l.nota || "" }, cab, null, String(base + i));
+    return { l, fila, nuevo: !ex, cant };
+  });
+  const token = await supaAccessToken();
+  const rc = await fetch(SUPA_URL + "/rest/v1/pc_compras", {
+    method: "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=representation" },
+    body: JSON.stringify({
+      fecha: cab.fecha, proveedor: cab.proveedor || null, numero: cab.numero || null, ncf: cab.ncf || null,
+      total: Number(f.total) || null,
+      items: filas.map((x) => ({ id: x.fila.id, nombre: x.l.nombre, categoria: x.fila.categoria, cantidad: x.cant, costo: x.l.costo == null ? null : Number(x.l.costo), nuevo: x.nuevo })),
+      registrado_por: (() => { try { const ss = JSON.parse(sessionStorage.getItem("pc_session") || "null"); return (ss && ss.user && ss.user.email) || "admin"; } catch (e) { return "admin"; } })()
+    })
+  });
+  const rows = await rc.json().catch(() => null);
+  const compraId = Array.isArray(rows) && rows[0] ? rows[0].id : null;
+  if (!compraId) throw new Error("No se pudo registrar la compra en Compras. No se cambió el inventario.");
+  const fallos = [];
+  for (const x of filas) { const ok = await upsertOne("pc_inventario", x.fila); if (!ok) fallos.push(x.l.nombre); }
+  return { compraId, fallos, lineas: filas.length };
+}
 function dataURLaBlob(u) {
   const [cab, b64] = String(u).split(","); const bin = atob(b64); const a = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
   return new Blob([a], { type: (cab.match(/data:([^;]+)/) || [])[1] || "application/octet-stream" });
 }
-function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombre = "Victor" }) {
+function CuentasPorPagar({ gastos = [], setGastos, inventario = [], refetchInventario, usuarioNombre = "Victor" }) {
   const E = React.createElement;
   const hoyISO = fechaLocal();
   const [cuentas, setCuentas] = useState(null);
@@ -3830,7 +3867,7 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
       setForm({ tipo: x.es_servicio ? "servicio" : "factura_proveedor", proveedor: conocido ? conocido.nombre : (x.proveedor || ""),
         identificacion: x.identificacion || (conocido && conocido.identificacion) || "", numero: x.numero || "", ncf: String(x.ncf || "").toUpperCase(),
         fecha, vence: v.vence, total: num(x.total), subtotal: num(x.subtotal), itbis: num(x.itbis), condiciones: x.condiciones || (v.origen === "contado" ? "Contado" : v.dias ? "Cr\xE9dito " + v.dias + " d\xEDas" : ""),
-        items: (Array.isArray(x.items) ? x.items : []).map((l) => ({ nombre: l.nombre, cantidad: l.cantidad, costo: l.costo_unitario, dudoso: !!l.dudoso })),
+        items: (Array.isArray(x.items) ? x.items : []).map((l) => ({ nombre: l.nombre, descripcion: l.descripcion || "", categoria: l.categoria || "otro", cantidad: l.cantidad, costo: l.costo_unitario, vencimiento: l.vencimiento || "", lote: l.lote || "", nota: l.nota || "", dudoso: !!l.dudoso })),
         notas: "", _adjunto: prep.adjunto, _vista: prep.vista, _venceOrigen: v.origen, _avisos: Array.isArray(x.advertencias) ? x.advertencias : [], _leida: true });
     } catch (e) {
       // Sin lectura (sin clave de IA, foto ilegible...) la factura igual se adjunta y se escribe a mano.
@@ -3864,10 +3901,18 @@ function CuentasPorPagar({ gastos = [], setGastos, inventario = [], usuarioNombr
       if (f.condiciones) extra.condiciones = f.condiciones;
       if (Array.isArray(f.items) && f.items.length) extra.items = f.items;
       if (f._adjunto) { extra.archivo_path = await subirFacturaCxP(f._adjunto.blob, f._adjunto.mime, f.proveedor); extra.archivo_mime = f._adjunto.mime; }
+      let origenNuevo = f.origen || null, aplicada = null;
+      if (!f.id && f.tipo === "factura_proveedor" && Array.isArray(f.items) && f.items.some((l) => String(l.nombre || "").trim())) {
+        aplicada = await aplicarFacturaAlInventario({ ...f, total }, inventario);
+        origenNuevo = "compra:" + aplicada.compraId;
+      }
       const fila = { tipo: f.tipo, proveedor: f.proveedor.trim(), identificacion: f.identificacion || null, numero: f.numero || null, ncf: f.ncf || null,
-        fecha: f.fecha, vence: f.vence || null, total, notas: f.notas || null, ...extra, updated_at: new Date().toISOString(), ...(f.id ? {} : { creado_por: usuarioNombre, origen: f.origen || null }) };
+        fecha: f.fecha, vence: f.vence || null, total, notas: f.notas || null, ...extra, updated_at: new Date().toISOString(), ...(f.id ? {} : { creado_por: usuarioNombre, origen: origenNuevo }) };
       await cxpFetch(f.id ? "PATCH" : "POST", fila, f.id ? "?id=eq." + f.id : "");
-      setForm(null); cargar(); avisar("Cuenta por pagar guardada.", "ok");
+      if (typeof refetchInventario === "function") refetchInventario();
+      setForm(null); cargar();
+      if (aplicada) avisar(aplicada.lineas + " l\u00EDnea(s) pasaron al inventario y a Compras." + (aplicada.fallos.length ? " No se pudieron guardar: " + aplicada.fallos.join(", ") + "." : ""), aplicada.fallos.length ? "error" : "ok");
+      else avisar("Cuenta por pagar guardada.", "ok");
     } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
   };
   const registrarPago = async () => {
@@ -9083,7 +9128,7 @@ function PetColinasApp({ session, onLogout }) {
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
-    tab === "cuentas_pagar" && React.createElement(CuentasPorPagar, { gastos, setGastos, inventario: todoInventario, usuarioNombre: "Victor" }),
+    tab === "cuentas_pagar" && React.createElement(CuentasPorPagar, { gastos, setGastos, inventario: todoInventario, refetchInventario, usuarioNombre: "Victor" }),
     tab === "ordenes_compra" && React.createElement(OrdenesCompra, { inventario: todoInventario, gastos, refetchInventario, usuarioNombre: "Victor" }),
     tab === "cotizaciones" && React.createElement(Cotizaciones, { clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario, setVentas, usuarioNombre: "Victor" }),
     tab === "recetarios" && React.createElement(Recetario, { clientes: todosClientes, historias, medicoPorDefecto: "", usuarioNombre: "Victor" }),
