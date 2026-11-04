@@ -364,6 +364,13 @@ privado `facturas-proveedores` y el gasto guarda `archivo_path`/`archivo_mime` (
 Cuentas por pagar. Posible doble gasto: pide confirmacion si ya hay uno del mismo proveedor,
 fecha y monto.
 
+CORRESPONDE A (M34, 4 nov 2026): un gasto tiene fecha de PAGO y mes al que CORRESPONDE
+(`pc_gastos.mes_correspondiente`, YYYY-MM; vacio = mes de la fecha). El alquiler de octubre
+pagado el 1 de nov va a OCTUBRE; la nomina de la 2da quincena de octubre (pagada el 1 de nov)
+tambien (`anotarGasto` toma el mes del periodo). Todos los reportes de resultado, Dashboard,
+PE, gastos fijos y el historial filtran con `mesDeGasto(g)`. CAJA (flujo de efectivo, vista
+pc_caja_libro) sigue por fecha de pago: el dinero sale cuando sale, no cuando corresponde.
+
 ## NOMINA CON CLAVE (M29, 29 oct 2026)
 Decision de Victor: Nomina se abre SIEMPRE con una clave propia (distinta a la del admin),
 aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
