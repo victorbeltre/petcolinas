@@ -355,6 +355,15 @@ Se cargaron con el monto EXACTO de cada factura: Flota ene-oct 2026 (abr 3,571.6
 jul 1,744.39) y Multiplan mar-oct (mar/abr 1,542.98). Ene y feb de Multiplan ya estaban (1,499
 cada uno; las facturas dicen 1,536.78 y 3,079.76) y NO se tocaron.
 
+FACTURA DE COMPRA AL CONTADO (M33, 4 nov 2026): Gastos -> "Subir factura de compra al contado"
+(desechables, servilletas, papel, limpieza). Lee la factura con la misma Edge Function
+`factura-proveedor`, se revisa en un modal y se guarda como gasto (`FacturaGasto`). NO toca el
+inventario (son compras de la empresa, no productos que se venden). El archivo va al bucket
+privado `facturas-proveedores` y el gasto guarda `archivo_path`/`archivo_mime` (se abre con
+"📎 Factura" en el historial). Aviso si la factura dice credito: sugiere Pendiente de pago o
+Cuentas por pagar. Posible doble gasto: pide confirmacion si ya hay uno del mismo proveedor,
+fecha y monto.
+
 ## NOMINA CON CLAVE (M29, 29 oct 2026)
 Decision de Victor: Nomina se abre SIEMPRE con una clave propia (distinta a la del admin),
 aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
