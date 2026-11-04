@@ -371,6 +371,14 @@ tambien (`anotarGasto` toma el mes del periodo). Todos los reportes de resultado
 PE, gastos fijos y el historial filtran con `mesDeGasto(g)`. CAJA (flujo de efectivo, vista
 pc_caja_libro) sigue por fecha de pago: el dinero sale cuando sale, no cuando corresponde.
 
+PRECIOS DE VENTA CON CLAVE PROPIA (M35, 4 nov 2026): pestaña "Precios" (admin, grupo Negocio),
+con clave propia como Nomina (tablas pc_precios_* con RLS y sin politicas; funciones SECURITY DEFINER
+con pase de pc_precios_abrir). Costo de tarjeta = comision Cardnet 4.00% + retencion de ITBIS 1.69%
+(NO reembolsable hasta que el contador confirme; pc_precios_config.retencion_recuperable). Precio sin
+ITBIS = neto / (1 - costo); total = sin ITBIS x 1.18 si lleva ITBIS. Un solo precio para efectivo y
+tarjeta. Los centavos se muestran siempre. PENDIENTE: que la factura del cliente use estos precios y
+desglose el ITBIS por linea (hoy Facturas aplica ITBIS a todo el documento).
+
 ## NOMINA CON CLAVE (M29, 29 oct 2026)
 Decision de Victor: Nomina se abre SIEMPRE con una clave propia (distinta a la del admin),
 aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".

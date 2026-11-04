@@ -2482,6 +2482,7 @@ const TABS = [
   { id: "gastos", icon: "\u{1F4B8}", label: "Gastos", grupo: "Negocio" },
   { id: "cuentas_pagar", icon: "\u23F3", label: "Cuentas por pagar", grupo: "Negocio" },
   { id: "nomina", icon: "\u{1F465}", label: "N\xF3mina", grupo: "Negocio" },
+  { id: "precios", icon: "\u{1F3F7}️", label: "Precios", grupo: "Negocio" },
   { id: "inventario", icon: "\u{1F4E6}", label: "Inventario", grupo: "Negocio" },
   { id: "ordenes_compra", icon: "\u{1F69A}", label: "\xD3rdenes de compra", grupo: "Negocio" },
 
@@ -9129,7 +9130,7 @@ function PetColinasApp({ session, onLogout }) {
     pendientesN: ventasPendientesCount, pendientesMonto: ventasPendientesMonto,
     syncStatus, lastSync, sincronizar: sincronizarAhora, sincronizando: pollingSync
   }), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 1200, margin: "0 auto", padding: "28px 24px" } }, tab === "dashboard" && React.createElement(AvisoAntiparasitarios, { seguimientos, clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoAbonosPorCobrar, { ventas, clientes: todosClientes, setTab }), tab === "dashboard" && React.createElement(AvisoLlamadasSofia, { setTab }), tab === "dashboard" && React.createElement(AvisoCitasProximas, { citas, setCitas, clientes: todosClientes }), tab === "dashboard" && React.createElement(AvisoReactivacion, { clientes: todosClientes, ventas, setTab }), tab === "dashboard" && React.createElement(AvisoCambiosFacturas, { session }), tab === "dashboard" && React.createElement(AvisoFechasFuturas, { ventas, setVentas }), tab === "dashboard" && React.createElement(AvisoRespaldo, null), tab === "dashboard" && React.createElement(AvisoClientesNuevos, { clientes: todosClientes, notifLeidas, setTab }), tab === "dashboard" && React.createElement(AvisoCandidatosNuevos, { setTab }), tab === "dashboard" && (ventasLoaded ? /* @__PURE__ */ React.createElement(Dashboard, { totalVentas, totalEgresos, utilidad, totalNomina, totalGastos, ventasMes, comisionesGrm, comisionesVet, comisionesValen, comGrmSistema, comVetSistema, comAyleinSistema, comValenSistema, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos, clientes, ventas, inventario: todoInventario, setVentas, setTab, citas, gastos, pagosNom }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "70px 24px", color: "#5a6472" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 12 } }, "⏳"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "Sincronizando con Supabase…"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12 } }, "Los n\xFAmeros ser\xE1n los mismos que en el Google Sheets"))),
-        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv, refetchInventario }), tab === "nomina" && React.createElement(NominaSegura, { ventas, gastos, setGastos, pagosNom, ventasMes, mesActual, inventario: todoInventario }), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
+        tab === "agenda" && /* @__PURE__ */ React.createElement(Agenda, { citas, setCitas, deleteCita: deleteCitaRow, clientes: todosClientes, ventas, setVentas, tarifasGrooming, tarifasVet, setTab, refetchCitasAgenda: refetchCitas }), /* @__PURE__ */ React.createElement("div", { key: "t-ventas", style: { display: tab === "ventas" ? "" : "none" } }, /* @__PURE__ */ React.createElement(Ventas, { ventas, setVentas, deleteVenta, inventario, setInventario, clientes: todosClientes, setClientes, citas, setCitas, paquetes, setPaquetes, setTab, setCrmClienteInicial, clienteVentaInicial: crmClienteInicial, clearClienteVentaInicial: clearCrmClienteInicial, tarifasGrooming, tarifasVet, setSeguimientos })), /* @__PURE__ */ React.createElement("div", { key: "t-clientes", style: { display: tab === "clientes" ? "" : "none" } }, /* @__PURE__ */ React.createElement(CRM, { clientes: todosClientes, setClientes, deleteCliente, onVirtualFusion: () => setVirtualFusionVer(v => v+1), ventas, setVentas, clienteInicial: crmClienteInicial, onClearClienteInicial: clearCrmClienteInicial, setTab, setCrmClienteInicial, historias, setHistorias: setHistoriasRaw, deleteHistoria, citas, setCitas })), tab === "seguimientos" && /* @__PURE__ */ React.createElement(Seguimientos, { seguimientos, setSeguimientos, clientes, ventas, pushHistorial, snapSeguimientos: seguimientos }), tab === "inventario" && /* @__PURE__ */ React.createElement(Inventario, { inventario: todoInventario, setInventario, ventas, deleteInv, refetchInventario }), tab === "nomina" && React.createElement(NominaSegura, { ventas, gastos, setGastos, pagosNom, ventasMes, mesActual, inventario: todoInventario }), tab === "precios" && React.createElement(PreciosSegura, null), tab === "gastos" && /* @__PURE__ */ React.createElement(Gastos, { gastos, setGastos }), tab === "facturas" && /* @__PURE__ */ React.createElement(Facturas, { ventas, setVentas, deleteVenta, clientes: todosClientes, citas, setCitas, historias, tarifasGrooming, tarifasVet, inventario: todoInventario }), tab === "importar" && React.createElement(ExportarExcel, { ventas, gastos, clientes: todosClientes, pagosNom, empleados, inventario: todoInventario, citas, seguimientos, tarifasGrooming, tarifasVet }), tab === "reportes" && /* @__PURE__ */ React.createElement(Reportes, { ventas, gastos, pagosNom, empleados }),
     tab === "servicios" && React.createElement(TabServicios, { tarifasGrooming, setTarifasGrooming, tarifasVet, setTarifasVet }),
     tab === "llamadas" && React.createElement(Llamadas, null),
     tab === "whatsapp" && React.createElement(PantallaWhatsApp, null),
@@ -13855,6 +13856,193 @@ function detectarPagoNomina(g, empleados) {
 function pendientesNomina(movs, empId, tipo, periodo) {
   return (movs || []).filter((m) => m.empleado_id === empId && m.tipo === tipo && !m.anulado && !m.liquidado_en
     && (tipo === "adelanto" || !m.pagado_ahora) && (m.periodo || periodoQuincena(m.fecha)) <= periodo);
+}
+// Precios de venta con clave propia (M35, 4 nov 2026). Igual que Nomina: la clave la
+// revisa Supabase (pc_precios_abrir), no esta pantalla. Aqui el admin fija lo que
+// quiere RECIBIR neto por cada servicio o producto; la app calcula el precio sin
+// ITBIS (neto / (1 - costo de tarjeta)) y el total que paga el cliente (+18% si lleva
+// ITBIS). El costo de tarjeta = comision (4.00% Cardnet) + retencion de ITBIS (1.69%),
+// tratada como NO reembolsable hasta que el contador confirme.
+function mensajePrecios(e) {
+  const m = String((e && e.message) || e);
+  if (/PRECIOS_CLAVE_MAL/.test(m)) return "Clave incorrecta.";
+  if (/PRECIOS_BLOQUEADOS/.test(m)) return "Demasiados intentos fallidos. Espera 15 minutos.";
+  if (/PRECIOS_CERRADOS/.test(m)) return "La sección de precios se cerró por inactividad. Vuelve a escribir la clave.";
+  if (/pc_precios|function|404/i.test(m) && /not find|no existe|does not exist|404/i.test(m)) return "Falta activar Precios en Supabase (M35).";
+  return m;
+}
+function PreciosSegura() {
+  const E = React.createElement;
+  const [estado, setEstado] = useState(null);
+  const [token, setToken] = useState(null);
+  const [clave, setClave] = useState(""), [clave2, setClave2] = useState("");
+  const [err, setErr] = useState(""), [ocupado, setOcupado] = useState(false);
+  const [datos, setDatos] = useState(null);
+  const [cfg, setCfg] = useState({ comision_tarjeta: "", retencion_itbis: "", retencion_recuperable: false });
+  const FORM_VACIO = { id: null, nombre: "", area: "grooming", neto: "", costo: "", itbis: true, notas: "" };
+  const [form, setForm] = useState(FORM_VACIO);
+  const tokenRef = useRef(null);
+  useEffect(() => { tokenRef.current = token; }, [token]);
+  useEffect(() => {
+    supaRPC("pc_precios_estado").then(setEstado).catch((e) => setEstado({ error: mensajePrecios(e) }));
+    return () => { if (tokenRef.current) supaRPC("pc_precios_cerrar", { p_token: tokenRef.current }).catch(() => {}); };
+  }, []);
+  const bloquear = (msg) => { tokenRef.current = null; setToken(null); setDatos(null); setClave(""); setErr(msg || ""); };
+  const llamar = async (fn, args) => {
+    try { return await supaRPC(fn, { p_token: tokenRef.current, ...args }); }
+    catch (e) { const m = mensajePrecios(e); if (/PRECIOS_CERRADOS/.test(String(e.message))) bloquear(m); throw new Error(m); }
+  };
+  const aplicarConfig = (c) => setCfg({ comision_tarjeta: String(c.comision_tarjeta), retencion_itbis: String(c.retencion_itbis), retencion_recuperable: !!c.retencion_recuperable });
+  const cargar = async (t) => {
+    const d = await supaRPC("pc_precios_datos", { p_token: t || tokenRef.current });
+    setDatos(d); aplicarConfig(d.config);
+  };
+  const entrar = async () => {
+    setErr("");
+    if (!estado.tiene_clave) {
+      if (clave.length < 6) return setErr("La clave debe tener al menos 6 caracteres.");
+      if (clave !== clave2) return setErr("Las dos claves no son iguales.");
+    }
+    setOcupado(true);
+    try {
+      const t = estado.tiene_clave ? await supaRPC("pc_precios_abrir", { p_clave: clave }) : await supaRPC("pc_precios_crear_clave", { p_clave: clave });
+      tokenRef.current = t; setToken(t); setClave(""); setClave2(""); setEstado({ tiene_clave: true });
+      await cargar(t);
+    } catch (e) { setErr(mensajePrecios(e)); } finally { setOcupado(false); }
+  };
+  const salir = () => { supaRPC("pc_precios_cerrar", { p_token: tokenRef.current }).catch(() => {}); bloquear(""); };
+
+  const guardarTasas = async () => {
+    const com = parseFloat(cfg.comision_tarjeta), ret = parseFloat(cfg.retencion_itbis);
+    if (!isFinite(com) || !isFinite(ret) || com < 0 || ret < 0) return avisar("Escribe las tasas como números (ej. 4.00).", "error");
+    setOcupado(true);
+    try {
+      const c = await llamar("pc_precios_parametros", { p_com: com, p_ret: ret, p_recup: !!cfg.retencion_recuperable });
+      aplicarConfig(c); await cargar();
+      avisar("Tasas guardadas. Todos los precios se recalcularon.", "ok");
+    } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
+  };
+  const guardarItem = async () => {
+    if (!String(form.nombre || "").trim()) return avisar("Escribe el nombre del servicio o producto.", "error");
+    const neto = parseFloat(form.neto);
+    if (!isFinite(neto) || neto < 0) return avisar("Escribe cuánto quieres recibir neto por este precio.", "error");
+    setOcupado(true);
+    try {
+      await llamar("pc_precios_guardar", { p_i: { id: form.id, nombre: form.nombre, area: form.area, neto, costo: form.costo === "" ? null : parseFloat(form.costo), itbis: !!form.itbis, notas: form.notas || null, activo: true } });
+      await cargar(); setForm(FORM_VACIO);
+      avisar("Precio guardado.", "ok");
+    } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
+  };
+  const quitarItem = async (it) => {
+    if (!window.confirm("¿Quitar " + it.nombre + " de la lista de precios?")) return;
+    try { await llamar("pc_precios_borrar", { p_id: it.id }); await cargar(); avisar("Quitado.", "ok"); }
+    catch (e) { avisar(e.message, "error"); }
+  };
+  const editarItem = (it) => setForm({ id: it.id, nombre: it.nombre, area: it.area || "otro", neto: String(it.neto), costo: it.costo == null ? "" : String(it.costo), itbis: !!it.itbis, notas: it.notas || "" });
+
+  const inp = { width: "100%", minWidth: 0, border: "1px solid #d9dee3", borderRadius: 9, padding: "9px 11px", fontSize: 14, boxSizing: "border-box" };
+  const lbl = (t) => E("div", { style: { fontSize: 12.5, fontWeight: 600, color: "#3d444d", marginBottom: 5 } }, t);
+  const btnV = { background: C.verde, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 14 };
+  const btnG = { background: "#f8f9fa", color: "#3d444d", border: "1px solid #d9dee3", borderRadius: 9, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
+
+  // ── Pantalla de la clave ─────────────────────────────────
+  if (!token) {
+    return E("div", { style: { display: "flex", justifyContent: "center", padding: "40px 0" } },
+      E(Card, { style: { width: "100%", maxWidth: 400, padding: 28 } },
+        E("div", { style: { fontSize: 34, textAlign: "center" } }, "🔒"),
+        E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 22, margin: "6px 0 4px", textAlign: "center" } }, "Precios de venta"),
+        estado === null ? E("div", { style: { textAlign: "center", color: C.suave, fontSize: 13.5 } }, "Cargando…")
+        : estado.error ? E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 12px", fontSize: 13.5 } }, estado.error)
+        : E("div", null,
+          E("p", { style: { fontSize: 13.5, color: C.suave, textAlign: "center", margin: "0 0 18px" } }, estado.tiene_clave
+            ? "Información confidencial. Escribe la clave de precios."
+            : "Primera vez: crea la clave de precios. Es distinta a la de Nómina y se pedirá cada vez que entres."),
+          lbl(estado.tiene_clave ? "Clave de precios" : "Nueva clave (mínimo 6 caracteres)"),
+          E("input", { type: "password", value: clave, autoFocus: true, autoComplete: estado.tiene_clave ? "current-password" : "new-password",
+            onChange: (e) => setClave(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") entrar(); }, style: inp }),
+          !estado.tiene_clave && E("div", { style: { marginTop: 12 } }, lbl("Repítela"),
+            E("input", { type: "password", value: clave2, autoComplete: "new-password", onChange: (e) => setClave2(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") entrar(); }, style: inp })),
+          err && E("div", { role: "alert", style: { background: "#fdecec", border: "1px solid #f5c2c4", borderRadius: 10, padding: "9px 12px", marginTop: 12, fontSize: 13.5, color: "#b42318" } }, err),
+          E("button", { onClick: entrar, disabled: ocupado || !clave, style: { ...btnV, width: "100%", marginTop: 16, padding: 12 } },
+            ocupado ? "Verificando…" : estado.tiene_clave ? "Abrir precios" : "Crear clave y abrir"))));
+  }
+
+  // ── Sección abierta ──────────────────────────────────────
+  const com = parseFloat(datos && datos.config ? datos.config.comision_tarjeta : 0) || 0;
+  const ret = parseFloat(datos && datos.config ? datos.config.retencion_itbis : 0) || 0;
+  const recup = !!(datos && datos.config && datos.config.retencion_recuperable);
+  const costoTarjeta = com + (recup ? 0 : ret);
+  const items = (datos && datos.items) || [];
+  // Con centavos a proposito: un precio de RD$ 1,251.19 no puede mostrarse como RD$ 1,251.
+  const vista = (n) => "RD$ " + (Number(n) || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formCalc = (() => {
+    const n = parseFloat(form.neto);
+    if (!isFinite(n) || n < 0 || !(costoTarjeta < 100)) return null;
+    const sinItbis = Math.round(n / (1 - costoTarjeta / 100) * 100) / 100;
+    return { sinItbis, total: Math.round(sinItbis * (form.itbis ? 1.18 : 1) * 100) / 100 };
+  })();
+
+  return E("div", null,
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 } },
+      E("div", null, E("div", { style: { fontWeight: 700, fontSize: 15 } }, "🏷️ Precios de venta"),
+        E("div", { style: { fontSize: 12.5, color: C.grisd, marginTop: 2 } }, "Confidencial: el costo de tarjeta ya va dentro de cada precio. Efectivo y tarjeta pagan lo mismo.")),
+      E("button", { onClick: salir, style: btnG }, "🔒 Cerrar precios")),
+
+    E(Card, { style: { marginBottom: 20 } },
+      E("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12 } }, "Costo de tarjeta (lo que se incluye en cada precio)"),
+      E("div", { style: { display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" } },
+        E("div", { style: { width: 170 } }, lbl("Comisión de tarjeta %"),
+          E("input", { type: "number", step: "0.01", value: cfg.comision_tarjeta, onChange: (e) => setCfg({ ...cfg, comision_tarjeta: e.target.value }), style: inp })),
+        E("div", { style: { width: 170 } }, lbl("Retención de ITBIS %"),
+          E("input", { type: "number", step: "0.01", value: cfg.retencion_itbis, onChange: (e) => setCfg({ ...cfg, retencion_itbis: e.target.value }), style: inp })),
+        E("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, paddingBottom: 9 } },
+          E("input", { type: "checkbox", checked: !!cfg.retencion_recuperable, onChange: (e) => setCfg({ ...cfg, retencion_recuperable: e.target.checked }) }),
+          "La retención sí se recupera (confirmado por el contador)"),
+        E("button", { onClick: guardarTasas, disabled: ocupado, style: btnV }, "Guardar tasas")),
+      E("div", { style: { fontSize: 12.5, color: C.grisd, marginTop: 10 } },
+        "Costo total de tarjeta aplicado: " + costoTarjeta.toFixed(2) + "%" +
+        (recup ? "" : " (comisión " + com.toFixed(2) + "% + retención " + ret.toFixed(2) + "%, tratada como no reembolsable)") +
+        ". Fuente: estado de cuenta de Cardnet, octubre 2026.")),
+
+    E(Card, { style: { marginBottom: 20 } },
+      E("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12 } }, form.id ? "Editar precio" : "Nuevo precio"),
+      E("div", { style: { display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 } },
+        E("div", { style: { flex: "2 1 220px" } }, lbl("Servicio o producto"),
+          E("input", { value: form.nombre, onChange: (e) => setForm({ ...form, nombre: e.target.value }), style: inp })),
+        E("div", { style: { flex: "1 1 140px" } }, lbl("Área"),
+          E("select", { value: form.area, onChange: (e) => setForm({ ...form, area: e.target.value }), style: inp },
+            [["grooming", "Grooming"], ["veterinaria", "Veterinaria"], ["farmacia", "Farmacia"], ["otro", "Otro"]].map(([v, t]) => E("option", { key: v, value: v }, t)))),
+        E("div", { style: { flex: "1 1 130px" } }, lbl("Quiero recibir neto (RD$)"),
+          E("input", { type: "number", step: "0.01", value: form.neto, onChange: (e) => setForm({ ...form, neto: e.target.value }), style: inp })),
+        E("div", { style: { flex: "1 1 120px" } }, lbl("Costo (opcional)"),
+          E("input", { type: "number", step: "0.01", value: form.costo, onChange: (e) => setForm({ ...form, costo: e.target.value }), style: inp })),
+        E("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, paddingBottom: 9 } },
+          E("input", { type: "checkbox", checked: !!form.itbis, onChange: (e) => setForm({ ...form, itbis: e.target.checked }) }), "Lleva ITBIS")),
+      formCalc && E("div", { style: { background: "#f8f9fa", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, marginBottom: 12 } },
+        "Precio sin ITBIS: ", E("b", null, vista(formCalc.sinItbis)), "   ·   Total que paga el cliente: ", E("b", null, vista(formCalc.total)),
+        form.itbis ? " (incluye ITBIS 18%)" : " (sin ITBIS)"),
+      E("div", { style: { display: "flex", gap: 10 } },
+        E("button", { onClick: guardarItem, disabled: ocupado, style: btnV }, form.id ? "Guardar cambios" : "Agregar precio"),
+        form.id && E("button", { onClick: () => setForm(FORM_VACIO), style: btnG }, "Cancelar"))),
+
+    E(Card, null,
+      E("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12 } }, "Precios (" + items.length + ")"),
+      items.length === 0 ? E("div", { style: { color: C.grisd, fontSize: 13.5 } }, "Aún no hay precios. Agrega el primero arriba.")
+      : E("div", { style: { overflowX: "auto" } },
+        E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } },
+          E("thead", null, E("tr", { style: { background: "#f8f9fa" } },
+            ["Servicio o producto", "Área", "Neto", "ITBIS", "Sin ITBIS", "Total al cliente", ""].map((h) =>
+              E("th", { key: h, style: { padding: "9px 10px", textAlign: "left", color: C.grisd, fontWeight: 700, fontSize: 11, textTransform: "uppercase" } }, h)))),
+          E("tbody", null, items.map((it) => E("tr", { key: it.id, style: { borderBottom: "1px solid #f4f5f6" } },
+            E("td", { style: { padding: "9px 10px", fontWeight: 600 } }, it.nombre),
+            E("td", { style: { padding: "9px 10px", textTransform: "capitalize" } }, it.area),
+            E("td", { style: { padding: "9px 10px" } }, vista(it.neto)),
+            E("td", { style: { padding: "9px 10px" } }, it.itbis ? "Sí" : "No"),
+            E("td", { style: { padding: "9px 10px" } }, vista(it.precio_sin_itbis)),
+            E("td", { style: { padding: "9px 10px", fontWeight: 800, color: C.verde } }, vista(it.precio_total)),
+            E("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } },
+              E("button", { onClick: () => editarItem(it), style: { background: "#e8f0fe", border: "1px solid #c5d3f0", borderRadius: 6, cursor: "pointer", color: C.azul, fontSize: 11, padding: "2px 7px", marginRight: 6 } }, "Editar"),
+              E("button", { onClick: () => quitarItem(it), style: { background: "none", border: "none", cursor: "pointer", color: C.grisd, fontSize: 15 } }, "🗑")))))))))  ;
 }
 function mensajeErrorNomina(e) {
   const m = String((e && e.message) || e);
