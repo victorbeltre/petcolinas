@@ -71,6 +71,7 @@ const HERRAMIENTA = {
             vencimiento: { ...texto, description: "Fecha de caducidad del PRODUCTO (AAAA-MM-DD) si la factura la trae. No es el vencimiento del pago." },
             lote: texto,
             nota: { ...texto, description: "Cualquier aclaracion (ej. 'caja de 3 tabletas', 'bonificado')." },
+            itbis_linea: { type: ["boolean", "null"], description: "true si ESTA linea lleva ITBIS (gravada), false si viene exenta (medicamentos, alimentos y otros exentos segun la factura). Mirar la columna ITBIS, la marca de la linea (E = exento, G/I = gravado) o el monto de ITBIS de la linea. null si la factura no lo muestra por linea: no adivinar." },
             dudoso: { type: "boolean", description: "true si el nombre, la cantidad o el costo no se leen con total certeza." },
           },
           required: ["nombre", "descripcion", "categoria", "cantidad", "dudoso"],
@@ -87,7 +88,9 @@ const INSTRUCCIONES =
   "Republica Dominicana. Registra cada linea de producto con la herramienta. Copia cantidades y costos tal " +
   "como estan impresos: no inventes ni completes lo que no se lee (dejalo en null y marca dudoso=true). " +
   "El nombre debe servir para buscar el producto en la tienda; la descripcion, para que el personal sepa " +
-  "que es. Clasifica cada producto en la categoria correcta. Lee tambien los datos de pago: RNC del proveedor, " +
+  "que es. Clasifica cada producto en la categoria correcta. Indica en itbis_linea si cada linea lleva ITBIS o " +
+  "viene exenta: en veterinaria casi todo lleva ITBIS, pero hay medicamentos y productos exentos; no adivines, " +
+  "si la factura no lo muestra por linea deja null. Lee tambien los datos de pago: RNC del proveedor, " +
   "fecha de vencimiento (limite de pago), plazo de credito, subtotal, ITBIS y total. Una factura de servicio " +
   "(luz, internet, alquiler...) tambien es factura: es_servicio=true y cada concepto va como linea con categoria otro.";
 
