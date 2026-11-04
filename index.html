@@ -13881,6 +13881,8 @@ function PreciosSegura() {
   const [cfg, setCfg] = useState({ comision_tarjeta: "", retencion_itbis: "", retencion_recuperable: false });
   const FORM_VACIO = { id: null, nombre: "", area: "grooming", neto: "", costo: "", itbis: true, notas: "" };
   const [form, setForm] = useState(FORM_VACIO);
+  // Vista previa de la factura del cliente (solo visual: no registra ninguna venta).
+  const [vp, setVp] = useState(null);
   const tokenRef = useRef(null);
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => {
@@ -13982,11 +13984,64 @@ function PreciosSegura() {
     return { sinItbis, total: Math.round(sinItbis * (form.itbis ? 1.18 : 1) * 100) / 100 };
   })();
 
-  return E("div", null,
+  // Factura que vería el cliente: precio sin ITBIS, ITBIS solo en lo gravado, y total a pagar.
+  const cent = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const lineaVP = (l) => {
+    const it = items.find((x) => String(x.id) === String(l.id));
+    if (!it) return null;
+    const q = Math.max(1, parseInt(l.cant, 10) || 1);
+    const sin = cent(it.precio_sin_itbis * q), tot = cent(it.precio_total * q);
+    return { nombre: it.nombre, cant: q, sin, itbis: cent(tot - sin), tot, gravado: !!it.itbis };
+  };
+  const vistaFactura = () => {
+    const filas = (vp.lineas || []).map(lineaVP).filter(Boolean);
+    const sub = cent(filas.reduce((s, f) => s + f.sin, 0));
+    const itb = cent(filas.reduce((s, f) => s + f.itbis, 0));
+    const tot = cent(filas.reduce((s, f) => s + f.tot, 0));
+    const ordenados = [...items].sort((a, b) => (String(a.area) + a.nombre).localeCompare(String(b.area) + b.nombre));
+    const celda = (extra) => Object.assign({ padding: "8px 10px", fontSize: 13.5 }, extra || {});
+    return E("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
+      E("div", { style: { background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 760, maxHeight: "92vh", overflowY: "auto" } },
+        E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 } },
+          E("div", { style: { fontWeight: 800, fontSize: 16 } }, "👁 Vista previa de la factura del cliente"),
+          E("button", { onClick: () => setVp(null), style: btnG }, "Cerrar")),
+        E("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 16 } },
+          E("div", { style: { flex: "3 1 260px" } }, lbl("Servicio o producto"),
+            E("select", { value: vp.sel, onChange: (e) => setVp({ ...vp, sel: e.target.value }), style: inp },
+              E("option", { value: "" }, "— elige —"),
+              ordenados.map((i) => E("option", { key: i.id, value: i.id }, i.nombre + " (" + i.area + ")")))),
+          E("div", { style: { width: 90 } }, lbl("Cantidad"),
+            E("input", { type: "number", min: 1, value: vp.cant, onChange: (e) => setVp({ ...vp, cant: e.target.value }), style: inp })),
+          E("button", { onClick: () => { if (vp.sel) setVp({ ...vp, lineas: [...vp.lineas, { id: vp.sel, cant: vp.cant }], sel: "", cant: 1 }); }, style: btnV }, "Agregar")),
+        filas.length === 0 ? E("div", { style: { color: C.grisd, fontSize: 13.5, padding: "20px 0" } }, "Agrega servicios o productos para ver cómo queda la factura.")
+        : E("div", { style: { border: "1px solid #e6e9ec", borderRadius: 12, padding: 18 } },
+          E("div", { style: { display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 } },
+            E("div", null, E("div", { style: { fontWeight: 900, fontSize: 18, color: C.verde } }, "PetColinas"),
+              E("div", { style: { fontSize: 12.5, color: C.grisd } }, "Plaza Las Colinas, Santo Domingo Oeste")),
+            E("div", { style: { textAlign: "right", fontSize: 12.5, color: C.grisd } }, "Fecha: " + fechaLocal(), E("br"), "Cliente: [nombre del cliente]")),
+          E("table", { style: { width: "100%", borderCollapse: "collapse" } },
+            E("thead", null, E("tr", { style: { background: "#f8f9fa" } }, ["Descripción", "Cant.", "Precio", "ITBIS", "Total"].map((h, k) =>
+              E("th", { key: h, style: celda({ textAlign: k === 0 ? "left" : "right", fontSize: 11, color: C.grisd, textTransform: "uppercase" }) }, h)))),
+            E("tbody", null, filas.map((f, k) => E("tr", { key: k, style: { borderBottom: "1px solid #f1f3f5" } },
+              E("td", { style: celda() }, f.nombre, !f.gravado && E("span", { style: { fontSize: 11, color: C.grisd, marginLeft: 6 } }, "(exento)")),
+              E("td", { style: celda({ textAlign: "right" }) }, f.cant),
+              E("td", { style: celda({ textAlign: "right" }) }, vista(f.sin)),
+              E("td", { style: celda({ textAlign: "right" }) }, vista(f.itbis)),
+              E("td", { style: celda({ textAlign: "right", fontWeight: 700 }) }, vista(f.tot)))))),
+          E("div", { style: { marginLeft: "auto", width: 300, marginTop: 14 } },
+            E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "4px 0" } }, E("span", null, "Subtotal (sin ITBIS)"), E("span", null, vista(sub))),
+            E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "4px 0" } }, E("span", null, "ITBIS 18% (solo gravados)"), E("span", null, vista(itb))),
+            E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 18, fontWeight: 900, padding: "10px 0 0", borderTop: "2px solid #1a1a1a", marginTop: 6 } }, E("span", null, "TOTAL A PAGAR"), E("span", null, vista(tot)))),
+          E("div", { style: { fontSize: 12, color: C.grisd, marginTop: 14 } }, "El precio es el mismo en efectivo o con tarjeta. Vista previa: no es factura fiscal ni registra ninguna venta.")),
+        filas.length > 0 && E("div", { style: { marginTop: 14 } }, E("button", { onClick: () => setVp({ ...vp, lineas: [] }), style: btnG }, "Vaciar factura"))));
+  };
+  return E("div", null, vp && vistaFactura(),
     E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 } },
       E("div", null, E("div", { style: { fontWeight: 700, fontSize: 15 } }, "🏷️ Precios de venta"),
         E("div", { style: { fontSize: 12.5, color: C.grisd, marginTop: 2 } }, "Confidencial: el costo de tarjeta ya va dentro de cada precio. Efectivo y tarjeta pagan lo mismo.")),
-      E("button", { onClick: salir, style: btnG }, "🔒 Cerrar precios")),
+      E("div", { style: { display: "flex", gap: 8 } },
+        E("button", { onClick: () => setVp({ lineas: [], sel: "", cant: 1 }), style: btnV }, "👁 Vista previa de factura"),
+        E("button", { onClick: salir, style: btnG }, "🔒 Cerrar precios"))),
 
     E(Card, { style: { marginBottom: 20 } },
       E("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12 } }, "Costo de tarjeta (lo que se incluye en cada precio)"),
