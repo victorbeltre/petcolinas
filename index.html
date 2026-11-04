@@ -13980,7 +13980,7 @@ function PreciosSegura() {
   const formCalc = (() => {
     const n = parseFloat(form.neto);
     if (!isFinite(n) || n < 0 || !(costoTarjeta < 100)) return null;
-    const sinItbis = Math.round(n / (1 - costoTarjeta / 100) * 100) / 100;
+    const sinItbis = Math.round(n / (1 - (costoTarjeta / 100) * (form.itbis ? 1.18 : 1)) * 100) / 100;
     return { sinItbis, total: Math.round(sinItbis * (form.itbis ? 1.18 : 1) * 100) / 100 };
   })();
 
