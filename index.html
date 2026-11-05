@@ -13117,6 +13117,7 @@ function ModalFacturaProveedor({ inventario, onCerrar, onGuardado }) {
   const [lineas, setLineas] = useState([]);
   const [avisos, setAvisos] = useState([]);
   const [resultado, setResultado] = useState([]);
+  const [pago, setPago] = useState({ condicion: "contado", vence: "" });
   const setL = (key, k, v) => setLineas((ls) => ls.map((l) => l.key === key ? { ...l, [k]: v } : l));
   const opcionesExistentes = (inventario || []).slice().sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
 
@@ -13156,6 +13157,8 @@ function ModalFacturaProveedor({ inventario, onCerrar, onGuardado }) {
   async function guardar() {
     const elegidas = lineas.filter((l) => l.incluir && l.nombre.trim() && Number(l.cantidad) > 0);
     if (!elegidas.length) return avisar("No hay l\xEDneas para guardar");
+    if (pago.condicion === "credito" && (!pago.vence || pago.vence < cab.fecha)) return avisar("Escribe la fecha de vencimiento de la factura (no puede ser antes de la fecha de la factura).", "error");
+    if (pago.condicion === "credito" && !(Number(cab.total) > 0)) return avisar("Escribe el total de la factura para crear la cuenta por pagar.", "error");
     setPaso("guardando"); setError("");
     const base = Date.now();
     const filas = elegidas.map((l, i) => {
@@ -13169,11 +13172,12 @@ function ModalFacturaProveedor({ inventario, onCerrar, onGuardado }) {
     }
     // Registro de la compra (pc_compras, solo-admin). INSERT simple: no se
     // reescribe una compra ya guardada.
+    let compraId = null;
     try {
       const token = await supaAccessToken();
-      await fetch(SUPA_URL + "/rest/v1/pc_compras", {
+      const rc = await fetch(SUPA_URL + "/rest/v1/pc_compras", {
         method: "POST",
-        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json", "Prefer": "return=representation" },
         body: JSON.stringify({
           fecha: cab.fecha, proveedor: cab.proveedor || null, numero: cab.numero || null, ncf: cab.ncf || null,
           total: cab.total === "" ? null : Number(cab.total) || null,
@@ -13181,7 +13185,19 @@ function ModalFacturaProveedor({ inventario, onCerrar, onGuardado }) {
           registrado_por: (() => { try { const ss = JSON.parse(sessionStorage.getItem("pc_session") || "null"); return (ss && ss.user && ss.user.email) || "admin"; } catch (e) { return "admin"; } })()
         })
       });
+      const rows = await rc.json().catch(() => null);
+      compraId = Array.isArray(rows) && rows[0] ? rows[0].id : null;
     } catch (e) { console.warn("[pc_compras]", e); }
+    // A credito: la cuenta por pagar queda enlazada a la compra (origen) para no importarla dos veces.
+    if (pago.condicion === "credito") {
+      try {
+        if (!compraId) throw new Error("La compra no se registró; no se creó la cuenta por pagar.");
+        await cxpFetch("POST", { tipo: "factura_proveedor", proveedor: String(cab.proveedor || "").trim(), identificacion: null,
+          numero: cab.numero || null, ncf: cab.ncf || null, fecha: cab.fecha, vence: pago.vence, total: Number(cab.total),
+          origen: "compra:" + compraId, creado_por: "Inventario",
+          notas: "Factura cargada desde Inventario. Revisa el número y el vencimiento." });
+      } catch (e) { avisar(e.message, "error"); }
+    }
     // Releer los codigos que acaba de asignar la base.
     const ids = filas.map((f) => encodeURIComponent(String(f.fila.id))).join(",");
     const filasDb = (await supaFetch("pc_inventario", "GET", null, "?select=id,codigo,nombre,stock,categoria&id=in.(" + ids + ")")) || [];
@@ -13232,6 +13248,12 @@ function ModalFacturaProveedor({ inventario, onCerrar, onGuardado }) {
             React.createElement("label", { key: k, style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, l,
               React.createElement("input", { type: k === "fecha" ? "date" : k === "total" ? "number" : "text", value: cab[k] ?? "", onChange: (e) => setCab((c) => ({ ...c, [k]: e.target.value })), style: { ...inp, marginTop: 3, fontSize: 13 } })))
         ),
+        React.createElement("div", { style: { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 } },
+          React.createElement("label", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "Condición de pago",
+            React.createElement("select", { value: pago.condicion, onChange: (e) => setPago((p) => ({ ...p, condicion: e.target.value })), style: { ...inp, marginTop: 3, fontSize: 13, display: "block" } },
+              React.createElement("option", { value: "contado" }, "Contado"), React.createElement("option", { value: "credito" }, "A crédito"))),
+          pago.condicion === "credito" && React.createElement("label", { style: { fontSize: 11, color: C.grisd, fontWeight: 700 } }, "Vence (fecha límite de pago)",
+            React.createElement("input", { type: "date", value: pago.vence, onChange: (e) => setPago((p) => ({ ...p, vence: e.target.value })), style: { ...inp, marginTop: 3, fontSize: 13, display: "block" } }))),
         avisos.length > 0 && React.createElement("div", { style: { background: "#fff7ed", border: "1.5px solid #f59e0b", borderRadius: 10, padding: "8px 12px", fontSize: 12, color: "#92400e", marginBottom: 10 } }, "⚠️ ", avisos.join(" \xB7 ")),
         React.createElement("div", { style: { fontSize: 12, color: C.grisd, marginBottom: 8 } },
           "Revisa cada l\xEDnea. Las marcadas en amarillo no se leyeron con total seguridad. “A\xF1adir a” suma la cantidad a un producto que ya existe en lugar de crear otro."),
