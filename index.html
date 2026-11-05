@@ -13578,6 +13578,10 @@ function Inventario({ inventario, setInventario, ventas, deleteInv, refetchInven
     actualizado.stockMin = parseInt(editData.stockMin) || 0;
     actualizado.costo = parseFloat(editData.costo) || 0;
     actualizado.pventa = parseFloat(editData.pventa) || 0;
+    // La base guarda precioventa/preciocompra desde precioVenta/precioCompra: si no se igualan,
+    // se guardaba el precio anterior y al recargar parecia que el cambio se borraba.
+    actualizado.precioVenta = actualizado.pventa;
+    actualizado.precioCompra = actualizado.costo;
     const sid = String(actualizado.id);
     setPendientes((prev) => ({ ...prev, [sid]: actualizado }));
     // Si el producto editado es auto-generado (no esta en el estado real), materializarlo
