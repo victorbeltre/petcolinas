@@ -14999,7 +14999,7 @@ function Gastos({ gastos, setGastos }) {
     if (!editDesc || !editMonto) return avisar("Completa descripci\xF3n y monto");
     const updated = gastos.find(g => g.id === editingId);
     if (updated) {
-      const updatedGasto = { ...updated, fecha: editFecha, proveedor: editProv, descripcion: editDesc, monto: parseFloat(editMonto) || 0, categoria: editCat, pagadoPor: editPagPor, metodo: editMetodo, mesCorresponde: editMesCor && editMesCor !== String(editFecha).slice(0, 7) ? editMesCor : null };
+      const updatedGasto = { ...updated, fecha: editFecha, proveedor: editProv, descripcion: editDesc, monto: parseFloat(editMonto) || 0, categoria: editCat, pagadoPor: editPagPor, metodo: editMetodo, formaPago: editMetodo, mesCorresponde: editMesCor && editMesCor !== String(editFecha).slice(0, 7) ? editMesCor : null };
       setGastos(gastos.map((g) => g.id === editingId ? updatedGasto : g));
       upsertOne("pc_gastos", updatedGasto).catch(e => console.error("[saveEdit gasto] upsertOne error:", e));
     }
