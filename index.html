@@ -13482,18 +13482,24 @@ function InventarioAnalytics({ inventario, ventas }) {
     ["\u{1F381}", "Muestra gratis", "Pide a tus proveedores (ESPAVET, MEDIVET) muestras de productos nuevos. \xDAsalas para que los clientes los prueben antes de comprar."]
   ].map(([ico, tit, desc]) => /* @__PURE__ */ React.createElement("div", { key: tit, style: { display: "flex", gap: 10, padding: "10px 12px", background: "rgba(255,255,255,0.7)", borderRadius: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20 } }, ico), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, tit), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 2 } }, desc))))))));
 }
-// Exportar el inventario completo (para el contador): Excel (.xlsx) o PDF (se abre la vista de impresion, se guarda como PDF).
+// Exportar el inventario completo (para el contador), ordenado y separado por categoria:
+// Excel: una hoja con todo + una hoja por categoria. PDF: encabezado y subtotal por categoria.
 function ExportarInventario({ inventario = [] }) {
   const E = React.createElement;
   const USO_TXT = { venta: "Venta al cliente", consulta: "Consulta veterinaria", operacion: "Operación del negocio" };
   const numOrEmpty = (v) => (v === null || v === undefined || v === "" || !isFinite(Number(v))) ? "" : Number(v);
-  const filas = () => (inventario || []).filter((p) => !p.autoGenerado).map((p) => {
+  const limpio = (lbl) => String(lbl || "").replace(/^[^A-Za-zÁÉÍÓÚáéíóúÑñ]+/, "");
+  const ordenCat = (c) => { const i = CATEGORIAS_INV.findIndex(([v]) => v === c); return i < 0 ? 99 : i; };
+  const nombreCat = (c) => { const f = CATEGORIAS_INV.find(([v]) => v === c); return f ? limpio(f[1]) : "Otro"; };
+  const filasRaw = () => (inventario || []).filter((p) => !p.autoGenerado).slice().sort((a, b) =>
+    (ordenCat(a.categoria) - ordenCat(b.categoria)) || String(a.nombre).localeCompare(String(b.nombre)));
+  const aFila = (p) => {
     const costo = numOrEmpty(p.precioCompra ?? p.costo);
     const stock = Number(p.stock) || 0;
     return {
       "Código": p.codigo || "",
       "Producto": p.nombre || "",
-      "Categoría": p.categoria || "",
+      "Categoría": nombreCat(p.categoria),
       "Uso": USO_TXT[p.uso] || "Sin clasificar",
       "Stock": stock,
       "Costo unitario (RD$)": costo,
@@ -13506,42 +13512,61 @@ function ExportarInventario({ inventario = [] }) {
       "Descripción": p.descripcion || "",
       "Notas": p.notas || ""
     };
-  });
+  };
+  const grupos = () => {
+    const mapa = new Map();
+    filasRaw().forEach((p) => { const k = p.categoria || "otro"; if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(p); });
+    return [...mapa.entries()].sort((a, b) => ordenCat(a[0]) - ordenCat(b[0])).map(([k, lista]) => ({ cat: k, nombre: nombreCat(k), filas: lista.map(aFila) }));
+  };
   const hoyTxt = fechaLocal();
+  const valorTotal = (fs) => fs.reduce((s, d) => s + (Number(d["Valor en costo (RD$)"]) || 0), 0);
   const exportarExcel = () => {
-    const datos = filas();
-    if (!datos.length) return avisar("No hay productos para exportar.", "error");
+    const gs = grupos();
+    const todas = gs.flatMap((g) => g.filas);
+    if (!todas.length) return avisar("No hay productos para exportar.", "error");
+    const anchos = [12, 40, 14, 22, 8, 18, 18, 18, 22, 14, 14, 12, 30, 30];
     if (!window.XLSX) {
-      // Sin la libreria de Excel (sin conexion al CDN): se baja como CSV, que tambien abre Excel.
-      const cols = Object.keys(datos[0]);
+      // Sin la libreria de Excel (sin conexion al CDN): se baja como CSV con todo, ordenado por categoria.
+      const cols = Object.keys(todas[0]);
       const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-      const csv = "\uFEFF" + cols.map(q).join(",") + "\n" + datos.map((d) => cols.map((c) => q(d[c])).join(",")).join("\n");
+      const csv = "﻿" + cols.map(q).join(",") + "\n" + todas.map((d) => cols.map((c) => q(d[c])).join(",")).join("\n");
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       a.download = "Inventario_PetColinas_" + hoyTxt + ".csv";
       document.body.appendChild(a); a.click(); a.remove();
       return;
     }
-    const ws = XLSX.utils.json_to_sheet(datos);
-    ws["!cols"] = [12, 40, 14, 22, 8, 18, 18, 18, 22, 14, 14, 12, 30, 30].map((w) => ({ wch: w }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Inventario");
+    const ws = XLSX.utils.json_to_sheet(todas);
+    ws["!cols"] = anchos.map((w) => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, "Todos");
+    gs.forEach((g) => {
+      const w = XLSX.utils.json_to_sheet(g.filas);
+      w["!cols"] = anchos.map((x) => ({ wch: x }));
+      XLSX.utils.book_append_sheet(wb, w, g.nombre.slice(0, 31));
+    });
     XLSX.writeFile(wb, "Inventario_PetColinas_" + hoyTxt + ".xlsx");
   };
   const exportarPDF = () => {
-    const datos = filas();
-    if (!datos.length) return avisar("No hay productos para exportar.", "error");
+    const gs = grupos();
+    const todas = gs.flatMap((g) => g.filas);
+    if (!todas.length) return avisar("No hay productos para exportar.", "error");
     const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const cols = Object.keys(datos[0]);
-    const total = datos.reduce((s, d) => s + (Number(d["Valor en costo (RD$)"]) || 0), 0);
+    const cols = Object.keys(todas[0]);
+    const fmtN = (v) => typeof v === "number" ? v.toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : esc(v);
+    const cuerpo = gs.map((g) => {
+      const head = '<tr class="grp"><td colspan="' + cols.length + '">' + esc(g.nombre) + ' · ' + g.filas.length + ' producto(s)</td></tr>';
+      const filas = g.filas.map((d) => '<tr>' + cols.map((c) => '<td' + (typeof d[c] === "number" ? ' class="n"' : '') + '>' + fmtN(d[c]) + '</td>').join('') + '</tr>').join('');
+      const sub = '<tr class="sub"><td colspan="' + (cols.length - 1) + '">Subtotal ' + esc(g.nombre) + '</td><td class="n">RD$ ' + valorTotal(g.filas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td></tr>';
+      return head + filas + sub;
+    }).join('');
     const html = '<!doctype html><html><head><meta charset="utf-8"><title>Inventario PetColinas ' + hoyTxt + '</title>' +
       '<style>@page{size:landscape;margin:12mm}body{font-family:Arial,sans-serif;font-size:10px;color:#111}h1{font-size:16px;margin:0 0 4px}' +
-      '.sub{color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}' +
-      'th{background:#eef3f0}td.n{text-align:right}tfoot td{font-weight:700}</style></head><body>' +
-      '<h1>PetColinas · Inventario</h1><div class="sub">Fecha: ' + hoyTxt + ' · ' + datos.length + ' productos · Valor en costo total: RD$ ' + total.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
-      '<table><thead><tr>' + cols.map((c) => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' +
-      datos.map((d) => '<tr>' + cols.map((c) => '<td' + (typeof d[c] === "number" ? ' class="n"' : '') + '>' + esc(typeof d[c] === "number" ? d[c].toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : d[c]) + '</td>').join('') + '</tr>').join('') +
-      '</tbody></table></body></html>';
+      '.sub0{color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}' +
+      'th{background:#eef3f0}td.n{text-align:right}tr.grp td{background:#1a6b3a;color:#fff;font-weight:700;font-size:11px;padding:5px}' +
+      'tr.sub td{font-weight:700;background:#f4f6f5}</style></head><body>' +
+      '<h1>PetColinas · Inventario por categoría</h1><div class="sub0">Fecha: ' + hoyTxt + ' · ' + todas.length + ' productos · Valor en costo total: RD$ ' + valorTotal(todas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
+      '<table><thead><tr>' + cols.map((c) => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' + cuerpo + '</tbody></table></body></html>';
     const w = window.open("", "_blank");
     if (!w) return avisar("El navegador bloqueó la ventana. Permite las ventanas emergentes para PetColinas.", "error");
     w.document.open(); w.document.write(html); w.document.close();
@@ -13552,7 +13577,7 @@ function ExportarInventario({ inventario = [] }) {
     E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 } },
       E("div", null,
         E("div", { style: { fontWeight: 700, fontSize: 15 } }, "📤 Exportar inventario"),
-        E("div", { style: { fontSize: 12.5, color: C.grisd } }, "Para tu contador: códigos, categoría, uso, stock, costo, precio y valor de cada producto.")),
+        E("div", { style: { fontSize: 12.5, color: C.grisd } }, "Separado por categoría: medicamentos, accesorios, higiene, insumos, etc. Excel: una hoja por categoría. PDF: un bloque por categoría con subtotal.")),
       E("div", { style: { display: "flex", gap: 8 } },
         E("button", { onClick: exportarExcel, style: btn }, "Excel (.xlsx)"),
         E("button", { onClick: exportarPDF, style: btn }, "PDF (imprimir)"))));
