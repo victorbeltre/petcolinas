@@ -23370,8 +23370,9 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
 
   function comisionLabel(t) {
     if (esGrooming) return "RD$ " + t.comision.toLocaleString("es-DO") + " (Alexander)";
-    const pNaylan = Math.round(t.precio * comisionPct("vet"));
-    return "Naylan: RD$ " + pNaylan.toLocaleString("es-DO") + " (30%)";
+    // La comision de la Dra. Naylan sale de su tarifario por procedimiento (Nomina con clave),
+    // no de un porcentaje fijo del catalogo. Aqui solo se indica donde esta.
+    return "Dra. Naylan: según tarifario de Nómina";
   }
 
   const thStyle = { padding: "10px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: "2px solid #e0e4e8", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
@@ -23403,7 +23404,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     React.createElement("div", { style: { background: seccion === "grooming" ? "#e8faf0" : "#eaf4ff", border: "1.5px solid " + (seccion === "grooming" ? "#25d36644" : C.azul + "44"), borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13 } },
       seccion === "grooming"
         ? React.createElement("span", null, "\u2702\uFE0F ", React.createElement("strong", null, "Grooming:"), " Comisión fija en RD$ por servicio (Alexander).")
-        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " Comisión: Naylan 30% sobre el precio del servicio.")
+        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " Comisión: la Dra. Naylan gana según su tarifario por procedimiento (está en Nómina, con clave).")
     ),
 
     // Buscador del catalogo (grooming o veterinaria, segun la seccion)
