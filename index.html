@@ -23288,7 +23288,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     if (!lista.length) return avisar("No hay servicios para exportar.", "error");
     const nombreHoja = esGrooming ? "Grooming" : "Veterinaria";
     const nombreBase = "Catalogo_Servicios_" + nombreHoja + "_" + fechaLocal();
-    const filas = lista.map((t, i) => ({ "#": i + 1, "Servicio": t.nombre, "Precio (RD$)": Number(t.precio) || 0, "Comisión": comisionLabel(t) }));
+    const filas = lista.map((t, i) => ({ "#": i + 1, "Servicio": t.nombre, "Precio (RD$)": Number(t.precio) || 0 }));
     if (!window.XLSX) {
       // Sin la libreria de Excel (sin conexion al CDN): se baja como CSV.
       const cols = Object.keys(filas[0]);
@@ -23302,7 +23302,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     }
     const wb = window.XLSX.utils.book_new();
     const ws = window.XLSX.utils.json_to_sheet(filas);
-    ws["!cols"] = [{ wch: 5 }, { wch: 45 }, { wch: 14 }, { wch: 40 }];
+    ws["!cols"] = [{ wch: 5 }, { wch: 45 }, { wch: 14 }];
     window.XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
     window.XLSX.writeFile(wb, nombreBase + ".xlsx");
   }
@@ -23315,9 +23315,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 40;
     const cols = [
       { t: "#", w: 30 },
-      { t: "Servicio", w: 230 },
-      { t: "Precio (RD$)", w: 90, r: true },
-      { t: "Comisión", w: W - 2 * M - 350 },
+      { t: "Servicio", w: W - 2 * M - 30 - 110 },
+      { t: "Precio (RD$)", w: 110, r: true },
     ];
     let y = M;
     doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(0, 0, 0);
@@ -23343,12 +23342,11 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     let total = 0;
     lista.forEach((t, i) => {
       const nombre = doc.splitTextToSize(String(t.nombre || ""), cols[1].w - 8);
-      const comision = doc.splitTextToSize(comisionLabel(t), cols[3].w - 8);
-      const alto = Math.max(nombre.length, comision.length) * 11 + 8;
+      const alto = nombre.length * 11 + 8;
       if (y + alto > H - M) { doc.addPage(); y = M; encabezado(); }
       const precio = Number(t.precio) || 0;
       total += precio;
-      const valores = [String(i + 1), nombre, precio.toLocaleString("es-DO"), comision];
+      const valores = [String(i + 1), nombre, precio.toLocaleString("es-DO")];
       doc.setFontSize(9); doc.setTextColor(0, 0, 0); doc.setDrawColor(150, 150, 150);
       doc.setFillColor(...(i % 2 === 0 ? [255, 255, 255] : [248, 249, 250]));
       let x = M;
@@ -23368,13 +23366,6 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     doc.save("Catalogo_Servicios_" + (esGrooming ? "Grooming" : "Veterinaria") + "_" + fechaLocal() + ".pdf");
   }
 
-  function comisionLabel(t) {
-    if (esGrooming) return "RD$ " + t.comision.toLocaleString("es-DO") + " (Alexander)";
-    // La comision de la Dra. Naylan sale de su tarifario por procedimiento (Nomina con clave),
-    // no de un porcentaje fijo del catalogo. Aqui solo se indica donde esta.
-    return "Dra. Naylan: según tarifario de Nómina";
-  }
-
   const thStyle = { padding: "10px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: "2px solid #e0e4e8", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
   const tdStyle = { padding: "10px 14px", borderBottom: "1px solid #f4f5f6", fontSize: 13, verticalAlign: "middle" };
 
@@ -23383,7 +23374,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 } },
       React.createElement("div", null,
         React.createElement("h2", { style: { margin: 0, fontSize: 22, fontWeight: 800 } }, "\u2699\uFE0F Catálogo de Servicios"),
-        React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Edita precios y comisiones. Los cambios se reflejan inmediatamente en ventas.")
+        React.createElement("div", { style: { fontSize: 13, color: C.grisd, marginTop: 4 } }, "Edita precios. Los cambios se reflejan inmediatamente en ventas. Las comisiones se ven aparte, en Nómina.")
       ),
       React.createElement("div", { style: { display: "flex", gap: 8 } },
         React.createElement("button", { onClick: () => { setAgregando(true); setEditandoId(null); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "+ Agregar servicio"),
@@ -23403,8 +23394,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     // Info comisiones
     React.createElement("div", { style: { background: seccion === "grooming" ? "#e8faf0" : "#eaf4ff", border: "1.5px solid " + (seccion === "grooming" ? "#25d36644" : C.azul + "44"), borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13 } },
       seccion === "grooming"
-        ? React.createElement("span", null, "\u2702\uFE0F ", React.createElement("strong", null, "Grooming:"), " Comisión fija en RD$ por servicio (Alexander).")
-        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " Comisión: la Dra. Naylan gana según su tarifario por procedimiento (está en Nómina, con clave).")
+        ? React.createElement("span", null, "\u2702\uFE0F ", React.createElement("strong", null, "Grooming:"), " precios de venta de cada servicio.")
+        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " precios de venta de cada procedimiento.")
     ),
 
     // Buscador del catalogo (grooming o veterinaria, segun la seccion)
@@ -23448,7 +23439,6 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
             React.createElement("th", { style: thStyle }, "#"),
             React.createElement("th", { style: thStyle }, "Servicio"),
             React.createElement("th", { style: { ...thStyle, textAlign: "right" } }, "Precio"),
-            React.createElement("th", { style: thStyle }, "Comisión"),
             React.createElement("th", { style: { ...thStyle, textAlign: "center" } }, "Acciones")
           )
         ),
@@ -23464,12 +23454,6 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
                   React.createElement("td", { style: { ...tdStyle, textAlign: "right" } },
                     React.createElement("input", { type: "number", value: editForm.precio, onChange: e => setEditForm(f => ({ ...f, precio: e.target.value })), style: { width: 100, padding: "6px 8px", borderRadius: 6, border: "1px solid #f59e0b", fontSize: 13, textAlign: "right" } })
                   ),
-                  React.createElement("td", { style: tdStyle },
-                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                      React.createElement("input", { type: "number", value: editForm.comision, onChange: e => setEditForm(f => ({ ...f, comision: e.target.value })), style: { width: 80, padding: "6px 8px", borderRadius: 6, border: "1px solid #f59e0b", fontSize: 13 } }),
-                      React.createElement("span", { style: { fontSize: 11, color: C.grisd } }, esGrooming ? "RD$" : "(0.30 = 30%)")
-                    )
-                  ),
                   React.createElement("td", { style: { ...tdStyle, textAlign: "center" } },
                     React.createElement("div", { style: { display: "flex", gap: 6, justifyContent: "center" } },
                       React.createElement("button", { onClick: guardarEdicion, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "✓ Guardar"),
@@ -23482,7 +23466,6 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
                   React.createElement("td", { style: { ...tdStyle, color: C.grisd, fontSize: 11 } }, i + 1),
                   React.createElement("td", { style: { ...tdStyle, fontWeight: 600 } }, t.nombre),
                   React.createElement("td", { style: { ...tdStyle, textAlign: "right", fontWeight: 700, color: C.verde } }, "RD$ " + t.precio.toLocaleString("es-DO")),
-                  React.createElement("td", { style: { ...tdStyle, fontSize: 12, color: "#555" } }, comisionLabel(t)),
                   React.createElement("td", { style: { ...tdStyle, textAlign: "center" } },
                     React.createElement("div", { style: { display: "flex", gap: 6, justifyContent: "center" } },
                       React.createElement("button", { onClick: () => abrirEditar(t), style: { background: "#dbeafe", color: C.azul, border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "✏️ Editar"),
@@ -23492,7 +23475,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
                 )
           ),
           busqueda && tarifas.length === 0 && React.createElement("tr", null,
-            React.createElement("td", { colSpan: 5, style: { padding: "18px 14px", textAlign: "center", color: C.grisd, fontSize: 13 } }, "Ningún servicio coincide con “" + busqueda + "”.")
+            React.createElement("td", { colSpan: 4, style: { padding: "18px 14px", textAlign: "center", color: C.grisd, fontSize: 13 } }, "Ningún servicio coincide con “" + busqueda + "”.")
           )
         )
       ),
