@@ -12503,8 +12503,7 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
         },
           tipoItem === "grooming" && /* @__PURE__ */ React.createElement("option", { value:"e1" }, "\u2702\uFE0F Alexander"),
           (tipoItem === "veterinaria" || tipoItem === "farmacia") && /* @__PURE__ */ React.createElement(React.Fragment, null,
-            /* @__PURE__ */ React.createElement("option", { value:"e6" }, "\uD83E\uDE7A Dra. Naylan"),
-            /* @__PURE__ */ React.createElement("option", { value:"e5" }, "\uD83E\uDE7A Dra. Valentina")
+            /* @__PURE__ */ React.createElement("option", { value:"e6" }, "\uD83E\uDE7A Dra. Naylan")
           ),
           tipoItem === "farmacia" && /* @__PURE__ */ React.createElement(React.Fragment, null,
             /* @__PURE__ */ React.createElement("option", { value:"e1" }, "\u2702\uFE0F Alexander"),
@@ -14933,9 +14932,7 @@ function RankingVentasFarmacia({ ventas, mes }) {
   const mesActual = mes || new Date().toISOString().slice(0,7);
   const EMPLEADOS = [
     { id:"alexander", nombre:"Alexander", emoji:"✂️" },
-    { id:"aylein",    nombre:"Aylein",    emoji:"🩺" },
     { id:"naylan",    nombre:"Naylan",    emoji:"🩺" },
-    { id:"valentina", nombre:"Valentina", emoji:"🩺" },
     { id:"laura",     nombre:"Laura",     emoji:"📋" },
     { id:"leydeli",   nombre:"Leydeli",   emoji:"🐾" },
     { id:"victor",    nombre:"Victor",    emoji:"👑" },
@@ -18777,7 +18774,6 @@ const TABS_VET = [
 function vetEmails() {
   return [
     { email: "naylan@petcolinas.com",    nombre: "Naylan Perez",     id: "naylan",    comision_pct: comisionPct("vet") },
-    { email: "valentina@petcolinas.com", nombre: "Dra. Valentina",   id: "valentina", comision_pct: comisionPct("vet_valentina") },
   ];
 }
 
@@ -19909,8 +19905,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
           React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "👩‍⚕️ Atendido por"),
           React.createElement("select", { value:atendidoPor, onChange:e=>setAtendidoPor(e.target.value), style:{ width:"100%", padding:"9px 12px", border:"1.5px solid #dde0e4", borderRadius:10, fontSize:13 }},
             React.createElement("option", { value:"Alexander Ramírez" }, "✂️ Alexander Ramírez"),
-            React.createElement("option", { value:"Naylan Perez" }, "🩺 Naylan Perez"),
-            React.createElement("option", { value:"Dra. Valentina" }, "🩺 Dra. Valentina")
+            React.createElement("option", { value:"Naylan Perez" }, "🩺 Naylan Perez")
           )
         ),
 
@@ -23242,10 +23237,16 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
   const [editForm, setEditForm] = React.useState({});
   const [agregando, setAgregando] = React.useState(false);
   const [nuevoForm, setNuevoForm] = React.useState({ nombre: "", precio: "", comision: "" });
+  const [busqueda, setBusqueda] = React.useState("");
 
-  const tarifas = seccion === "grooming" ? tarifasGrooming : tarifasVet;
+  const tarifasTodas = (seccion === "grooming" ? tarifasGrooming : tarifasVet) || [];
   const setTarifas = seccion === "grooming" ? setTarifasGrooming : setTarifasVet;
   const esGrooming = seccion === "grooming";
+  // Busqueda por palabras: cada palabra escrita debe aparecer en el nombre (sin acentos ni mayusculas)
+  const palabrasBusq = normalizarTextoInv(busqueda).split(" ").filter(Boolean);
+  const tarifas = palabrasBusq.length
+    ? tarifasTodas.filter(t => { const n = normalizarTextoInv(t.nombre); return palabrasBusq.every(p => n.includes(p)); })
+    : tarifasTodas;
 
   function abrirEditar(t) {
     setEditandoId(t.id);
@@ -23283,9 +23284,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
 
   function comisionLabel(t) {
     if (esGrooming) return "RD$ " + t.comision.toLocaleString("es-DO") + " (Alexander)";
-    const pAylein = Math.round(t.precio * comisionPct("vet"));
-    const pValentina = Math.round(t.precio * comisionPct("vet_valentina"));
-    return "Aylein: RD$ " + pAylein.toLocaleString("es-DO") + " (30%) · Valentina: RD$ " + pValentina.toLocaleString("es-DO") + " (40%)";
+    const pNaylan = Math.round(t.precio * comisionPct("vet"));
+    return "Naylan: RD$ " + pNaylan.toLocaleString("es-DO") + " (30%)";
   }
 
   const thStyle = { padding: "10px 14px", textAlign: "left", color: C.grisd, fontWeight: 600, borderBottom: "2px solid #e0e4e8", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
@@ -23307,7 +23307,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     // Selector de sección
     React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
       [["grooming", "\u2702\uFE0F Grooming"], ["veterinaria", "\u{1FA7A} Veterinaria"]].map(([id, label]) =>
-        React.createElement("button", { key: id, onClick: () => { setSeccion(id); setEditandoId(null); setAgregando(false); }, style: { padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: seccion === id ? (id === "grooming" ? "#25d366" : C.azul) : "#e0e4e8", color: seccion === id ? "#fff" : C.grisd } }, label)
+        React.createElement("button", { key: id, onClick: () => { setSeccion(id); setEditandoId(null); setAgregando(false); setBusqueda(""); }, style: { padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: seccion === id ? (id === "grooming" ? "#25d366" : C.azul) : "#e0e4e8", color: seccion === id ? "#fff" : C.grisd } }, label)
       )
     ),
 
@@ -23315,7 +23315,19 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     React.createElement("div", { style: { background: seccion === "grooming" ? "#e8faf0" : "#eaf4ff", border: "1.5px solid " + (seccion === "grooming" ? "#25d36644" : C.azul + "44"), borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13 } },
       seccion === "grooming"
         ? React.createElement("span", null, "\u2702\uFE0F ", React.createElement("strong", null, "Grooming:"), " Comisión fija en RD$ por servicio (Alexander).")
-        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " Comisión: Aylein 30% · Valentina 40% sobre el precio del servicio.")
+        : React.createElement("span", null, "\u{1FA7A} ", React.createElement("strong", null, "Veterinaria:"), " Comisión: Naylan 30% sobre el precio del servicio.")
+    ),
+
+    // Buscador del catalogo (grooming o veterinaria, segun la seccion)
+    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" } },
+      React.createElement("input", {
+        type: "search",
+        value: busqueda,
+        onChange: e => setBusqueda(e.target.value),
+        placeholder: "🔍 Buscar servicio de " + (esGrooming ? "grooming" : "veterinaria") + "... (ej: baño, vacuna)",
+        style: { flex: "1 1 320px", maxWidth: 460, padding: "9px 12px", borderRadius: 8, border: "1px solid #e0e4e8", fontSize: 13, outline: "none" }
+      }),
+      busqueda && React.createElement("span", { style: { fontSize: 12, color: C.grisd } }, tarifas.length + " de " + tarifasTodas.length)
     ),
 
     // Formulario agregar nuevo
@@ -23389,6 +23401,9 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
                     )
                   )
                 )
+          ),
+          busqueda && tarifas.length === 0 && React.createElement("tr", null,
+            React.createElement("td", { colSpan: 5, style: { padding: "18px 14px", textAlign: "center", color: C.grisd, fontSize: 13 } }, "Ningún servicio coincide con “" + busqueda + "”.")
           )
         )
       ),
