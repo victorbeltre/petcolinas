@@ -13594,11 +13594,14 @@ function ExportarInventario({ inventario = [] }) {
       // Fila verde: nombre del grupo y, en sus columnas, los totales del grupo (para no perderse al bajar).
       const suma = (c) => g.filas.reduce((acc, d) => acc + (typeof d[c] === "number" ? d[c] : 0), 0);
       const numTxt = (v) => v.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // Cada celda verde lleva el nombre de su columna y su valor (ej. "Stock: 266", "Lleva ITBIS: No").
       const celdasVerde = cols.slice(2).map((c) => {
-        if (c === "Lleva ITBIS") return '<td>' + (g.lleva ? "Sí" : "No") + '</td>';
-        if (["Stock", "Valor en costo (RD$)", "ITBIS incluido (RD$)", "Comisión tarjeta (RD$)", "Empaque (RD$)", "Comisión colaborador (RD$)", "Te queda neto (RD$)"].includes(c))
-          return '<td class="n">' + (c === "Stock" ? suma(c).toLocaleString("es-DO") : numTxt(suma(c))) + '</td>';
-        return '<td></td>';
+        const et = esc(c.replace(" (RD$)", "")) + ': ';
+        if (c === "Lleva ITBIS") return '<td>' + et + (g.lleva ? "Sí" : "No") + '</td>';
+        if (c === "Stock") return '<td class="n">' + et + suma(c).toLocaleString("es-DO") + '</td>';
+        if (["Valor en costo (RD$)", "ITBIS incluido (RD$)", "Comisión tarjeta (RD$)", "Empaque (RD$)", "Comisión colaborador (RD$)", "Te queda neto (RD$)"].includes(c))
+          return '<td class="n">' + et + 'RD$ ' + numTxt(suma(c)) + '</td>';
+        return '<td>' + et + '—</td>';
       }).join('');
       const head = '<tr class="grp"><td colspan="2">' + esc(g.nombre) + ' · ' + g.filas.length + ' producto(s)</td>' + celdasVerde + '</tr>';
       const filas = g.filas.map((d) => '<tr>' + cols.map((c) => '<td' + (typeof d[c] === "number" ? ' class="n"' : '') + '>' + fmtN(d[c]) + '</td>').join('') + '</tr>').join('');
