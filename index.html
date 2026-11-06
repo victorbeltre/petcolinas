@@ -23282,6 +23282,92 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     setAgregando(false);
   }
 
+  // Descarga del catalogo completo de la seccion (grooming o veterinaria), no solo lo filtrado
+  function exportarCatalogoExcel() {
+    const lista = tarifasTodas;
+    if (!lista.length) return avisar("No hay servicios para exportar.", "error");
+    const nombreHoja = esGrooming ? "Grooming" : "Veterinaria";
+    const nombreBase = "Catalogo_Servicios_" + nombreHoja + "_" + fechaLocal();
+    const filas = lista.map((t, i) => ({ "#": i + 1, "Servicio": t.nombre, "Precio (RD$)": Number(t.precio) || 0, "Comisión": comisionLabel(t) }));
+    if (!window.XLSX) {
+      // Sin la libreria de Excel (sin conexion al CDN): se baja como CSV.
+      const cols = Object.keys(filas[0]);
+      const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+      const csv = "﻿" + cols.map(q).join(",") + "\n" + filas.map((d) => cols.map((c) => q(d[c])).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = nombreBase + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      return;
+    }
+    const wb = window.XLSX.utils.book_new();
+    const ws = window.XLSX.utils.json_to_sheet(filas);
+    ws["!cols"] = [{ wch: 5 }, { wch: 45 }, { wch: 14 }, { wch: 40 }];
+    window.XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+    window.XLSX.writeFile(wb, nombreBase + ".xlsx");
+  }
+  function exportarCatalogoPDF() {
+    const lista = tarifasTodas;
+    if (!lista.length) return avisar("No hay servicios para exportar.", "error");
+    if (!window.jspdf) return avisar("No se cargó el generador de PDF. Recarga la página o usa Excel.", "error");
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 40;
+    const cols = [
+      { t: "#", w: 30 },
+      { t: "Servicio", w: 230 },
+      { t: "Precio (RD$)", w: 90, r: true },
+      { t: "Comisión", w: W - 2 * M - 350 },
+    ];
+    let y = M;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(0, 0, 0);
+    doc.text("PetColinas: Catálogo de servicios, " + (esGrooming ? "Grooming" : "Veterinaria"), M, y + 12);
+    y += 24;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(90, 100, 114);
+    doc.text("Actualizado: " + fechaLocal() + " · " + lista.length + " servicios", M, y + 8);
+    y += 20;
+    const encabezado = () => {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
+      doc.setFillColor(238, 243, 240); doc.setDrawColor(150, 150, 150);
+      let x = M;
+      cols.forEach((c) => {
+        doc.setFillColor(238, 243, 240); doc.setDrawColor(150, 150, 150);
+        doc.rect(x, y, c.w, 18, "FD");
+        if (c.r) doc.text(c.t, x + c.w - 4, y + 12, { align: "right" }); else doc.text(c.t, x + 4, y + 12);
+        x += c.w;
+      });
+      y += 18;
+      doc.setFont("helvetica", "normal");
+    };
+    encabezado();
+    let total = 0;
+    lista.forEach((t, i) => {
+      const nombre = doc.splitTextToSize(String(t.nombre || ""), cols[1].w - 8);
+      const comision = doc.splitTextToSize(comisionLabel(t), cols[3].w - 8);
+      const alto = Math.max(nombre.length, comision.length) * 11 + 8;
+      if (y + alto > H - M) { doc.addPage(); y = M; encabezado(); }
+      const precio = Number(t.precio) || 0;
+      total += precio;
+      const valores = [String(i + 1), nombre, precio.toLocaleString("es-DO"), comision];
+      doc.setFontSize(9); doc.setTextColor(0, 0, 0); doc.setDrawColor(150, 150, 150);
+      doc.setFillColor(...(i % 2 === 0 ? [255, 255, 255] : [248, 249, 250]));
+      let x = M;
+      cols.forEach((c, k) => {
+        doc.setFillColor(...(i % 2 === 0 ? [255, 255, 255] : [248, 249, 250])); doc.setDrawColor(150, 150, 150);
+        doc.rect(x, y, c.w, alto, "FD");
+        doc.setTextColor(0, 0, 0);
+        if (c.r) doc.text(valores[k], x + c.w - 4, y + 11, { align: "right" });
+        else doc.text(valores[k], x + 4, y + 11);
+        x += c.w;
+      });
+      y += alto;
+    });
+    if (y + 24 > H - M) { doc.addPage(); y = M; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
+    doc.text("Suma de precios: RD$ " + total.toLocaleString("es-DO"), M, y + 16);
+    doc.save("Catalogo_Servicios_" + (esGrooming ? "Grooming" : "Veterinaria") + "_" + fechaLocal() + ".pdf");
+  }
+
   function comisionLabel(t) {
     if (esGrooming) return "RD$ " + t.comision.toLocaleString("es-DO") + " (Alexander)";
     const pNaylan = Math.round(t.precio * comisionPct("vet"));
@@ -23300,6 +23386,8 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
       ),
       React.createElement("div", { style: { display: "flex", gap: 8 } },
         React.createElement("button", { onClick: () => { setAgregando(true); setEditandoId(null); }, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "+ Agregar servicio"),
+        React.createElement("button", { onClick: exportarCatalogoExcel, style: { background: "#fff", color: C.verde, border: "1px solid " + C.verde, borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "⬇ Excel"),
+        React.createElement("button", { onClick: exportarCatalogoPDF, style: { background: "#fff", color: C.verde, border: "1px solid " + C.verde, borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 } }, "⬇ PDF"),
         React.createElement("button", { onClick: resetearDefaults, style: { background: "#f1f5f9", color: C.grisd, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12 } }, "\u21BA Restaurar defaults")
       )
     ),
