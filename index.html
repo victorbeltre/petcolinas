@@ -13482,6 +13482,81 @@ function InventarioAnalytics({ inventario, ventas }) {
     ["\u{1F381}", "Muestra gratis", "Pide a tus proveedores (ESPAVET, MEDIVET) muestras de productos nuevos. \xDAsalas para que los clientes los prueben antes de comprar."]
   ].map(([ico, tit, desc]) => /* @__PURE__ */ React.createElement("div", { key: tit, style: { display: "flex", gap: 10, padding: "10px 12px", background: "rgba(255,255,255,0.7)", borderRadius: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20 } }, ico), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, tit), /* @__PURE__ */ React.createElement("div", { style: { color: C.grisd, fontSize: 12, marginTop: 2 } }, desc))))))));
 }
+// Exportar el inventario completo (para el contador): Excel (.xlsx) o PDF (se abre la vista de impresion, se guarda como PDF).
+function ExportarInventario({ inventario = [] }) {
+  const E = React.createElement;
+  const USO_TXT = { venta: "Venta al cliente", consulta: "Consulta veterinaria", operacion: "Operación del negocio" };
+  const numOrEmpty = (v) => (v === null || v === undefined || v === "" || !isFinite(Number(v))) ? "" : Number(v);
+  const filas = () => (inventario || []).filter((p) => !p.autoGenerado).map((p) => {
+    const costo = numOrEmpty(p.precioCompra ?? p.costo);
+    const stock = Number(p.stock) || 0;
+    return {
+      "Código": p.codigo || "",
+      "Producto": p.nombre || "",
+      "Categoría": p.categoria || "",
+      "Uso": USO_TXT[p.uso] || "Sin clasificar",
+      "Stock": stock,
+      "Costo unitario (RD$)": costo,
+      "Valor en costo (RD$)": costo === "" ? "" : Math.round(stock * costo * 100) / 100,
+      "Precio venta (RD$)": numOrEmpty(p.precioVenta ?? p.pventa),
+      "Proveedor": p.proveedor || "",
+      "Fecha de entrada": p.fechaEntrada || "",
+      "Vencimiento": p.vencimiento || "",
+      "Lote": p.lote || "",
+      "Descripción": p.descripcion || "",
+      "Notas": p.notas || ""
+    };
+  });
+  const hoyTxt = fechaLocal();
+  const exportarExcel = () => {
+    const datos = filas();
+    if (!datos.length) return avisar("No hay productos para exportar.", "error");
+    if (!window.XLSX) {
+      // Sin la libreria de Excel (sin conexion al CDN): se baja como CSV, que tambien abre Excel.
+      const cols = Object.keys(datos[0]);
+      const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+      const csv = "\uFEFF" + cols.map(q).join(",") + "\n" + datos.map((d) => cols.map((c) => q(d[c])).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = "Inventario_PetColinas_" + hoyTxt + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      return;
+    }
+    const ws = XLSX.utils.json_to_sheet(datos);
+    ws["!cols"] = [12, 40, 14, 22, 8, 18, 18, 18, 22, 14, 14, 12, 30, 30].map((w) => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventario");
+    XLSX.writeFile(wb, "Inventario_PetColinas_" + hoyTxt + ".xlsx");
+  };
+  const exportarPDF = () => {
+    const datos = filas();
+    if (!datos.length) return avisar("No hay productos para exportar.", "error");
+    const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const cols = Object.keys(datos[0]);
+    const total = datos.reduce((s, d) => s + (Number(d["Valor en costo (RD$)"]) || 0), 0);
+    const html = '<!doctype html><html><head><meta charset="utf-8"><title>Inventario PetColinas ' + hoyTxt + '</title>' +
+      '<style>@page{size:landscape;margin:12mm}body{font-family:Arial,sans-serif;font-size:10px;color:#111}h1{font-size:16px;margin:0 0 4px}' +
+      '.sub{color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}' +
+      'th{background:#eef3f0}td.n{text-align:right}tfoot td{font-weight:700}</style></head><body>' +
+      '<h1>PetColinas · Inventario</h1><div class="sub">Fecha: ' + hoyTxt + ' · ' + datos.length + ' productos · Valor en costo total: RD$ ' + total.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
+      '<table><thead><tr>' + cols.map((c) => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' +
+      datos.map((d) => '<tr>' + cols.map((c) => '<td' + (typeof d[c] === "number" ? ' class="n"' : '') + '>' + esc(typeof d[c] === "number" ? d[c].toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : d[c]) + '</td>').join('') + '</tr>').join('') +
+      '</tbody></table></body></html>';
+    const w = window.open("", "_blank");
+    if (!w) return avisar("El navegador bloqueó la ventana. Permite las ventanas emergentes para PetColinas.", "error");
+    w.document.open(); w.document.write(html); w.document.close();
+    w.onload = () => { try { w.focus(); w.print(); } catch (e) {} };
+  };
+  const btn = { background: "#fff", color: C.verde, border: "1.5px solid " + C.verde, borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 14 };
+  return E(Card, { style: { marginBottom: 20 } },
+    E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 } },
+      E("div", null,
+        E("div", { style: { fontWeight: 700, fontSize: 15 } }, "📤 Exportar inventario"),
+        E("div", { style: { fontSize: 12.5, color: C.grisd } }, "Para tu contador: códigos, categoría, uso, stock, costo, precio y valor de cada producto.")),
+      E("div", { style: { display: "flex", gap: 8 } },
+        E("button", { onClick: exportarExcel, style: btn }, "Excel (.xlsx)"),
+        E("button", { onClick: exportarPDF, style: btn }, "PDF (imprimir)"))));
+}
 // Uso de cada producto (M37): venta al cliente, consulta veterinaria u operacion del negocio.
 // Se clasifica a mano producto por producto, o con "Organizar automaticamente" que asigna el
 // uso por defecto de la categoria a los que todavia no tienen uno. Solo productos con codigo.
@@ -13673,7 +13748,7 @@ function Inventario({ inventario, setInventario, ventas, deleteInv, refetchInven
   const nPendientes = Object.keys(pendientes).length + (hayBorrados ? 1 : 0);
   const CAT_COLORS = { farmaco: C.azul, alimento: C.verde, accesorio: C.gold, higiene: "#0891b2", insumo: C.naranja, papeleria: C.grisd, otro: C.grisd };
   const CAT_LABELS = Object.fromEntries(CATEGORIAS_INV.map(([v, l]) => [v, l]));
-  return /* @__PURE__ */ React.createElement("div", null, React.createElement(UsoInventario, { inventario, setInventario }), /* @__PURE__ */ React.createElement(InventarioAnalytics, { inventario, ventas }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26 } }, "Inventario"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, "Farmacia, accesorios, insumos de grooming y productos de tienda")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVerFactura(true), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 800, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 } }, "\u{1F4F7} Cargar factura de proveedor"), nPendientes > 0 && /* @__PURE__ */ React.createElement("button", { onClick: guardarTodo, style: {
+  return /* @__PURE__ */ React.createElement("div", null, React.createElement(UsoInventario, { inventario, setInventario }), React.createElement(ExportarInventario, { inventario }), /* @__PURE__ */ React.createElement(InventarioAnalytics, { inventario, ventas }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26 } }, "Inventario"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, "Farmacia, accesorios, insumos de grooming y productos de tienda")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setVerFactura(true), style: { background: C.azul, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 800, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 } }, "\u{1F4F7} Cargar factura de proveedor"), nPendientes > 0 && /* @__PURE__ */ React.createElement("button", { onClick: guardarTodo, style: {
     background: C.verde,
     color: "#fff",
     border: "none",
