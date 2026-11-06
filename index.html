@@ -13516,10 +13516,18 @@ function ExportarInventario({ inventario = [] }) {
       "Notas": p.notas || ""
     };
   };
+  // Dentro de cada categoria se separan los que llevan ITBIS de los exentos.
   const grupos = () => {
     const mapa = new Map();
-    filasRaw().forEach((p) => { const k = p.categoria || "otro"; if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(p); });
-    return [...mapa.entries()].sort((a, b) => ordenCat(a[0]) - ordenCat(b[0])).map(([k, lista]) => ({ cat: k, nombre: nombreCat(k), filas: lista.map(aFila) }));
+    filasRaw().forEach((p) => { const k = (p.categoria || "otro") + "|" + (p.itbis === false ? "no" : "si"); if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(p); });
+    const claves = [...mapa.keys()].sort((a, b) => {
+      const [ca, ia] = a.split("|"), [cb, ib] = b.split("|");
+      return (ordenCat(ca) - ordenCat(cb)) || ((ia === "no" ? 1 : 0) - (ib === "no" ? 1 : 0));
+    });
+    return claves.map((k) => {
+      const [c, it] = k.split("|");
+      return { cat: c, nombre: nombreCat(c) + (it === "no" ? " · Exento de ITBIS" : " · Lleva ITBIS"), filas: mapa.get(k).map(aFila) };
+    });
   };
   const hoyTxt = fechaLocal();
   const valorTotal = (fs) => fs.reduce((s, d) => s + (Number(d["Valor en costo (RD$)"]) || 0), 0);
@@ -13548,6 +13556,9 @@ function ExportarInventario({ inventario = [] }) {
       w["!cols"] = anchos.map((x) => ({ wch: x }));
       XLSX.utils.book_append_sheet(wb, w, g.nombre.slice(0, 31));
     });
+    const notas = XLSX.utils.aoa_to_sheet([["Nota"], ["Los precios de venta (Precio venta) ya incluyen el ITBIS donde aplica."], ["Lleva ITBIS = No: el producto es exento de ITBIS."]]);
+    notas["!cols"] = [{ wch: 90 }];
+    XLSX.utils.book_append_sheet(wb, notas, "Notas");
     XLSX.writeFile(wb, "Inventario_PetColinas_" + hoyTxt + ".xlsx");
   };
   const exportarPDF = () => {
@@ -13568,7 +13579,7 @@ function ExportarInventario({ inventario = [] }) {
       '.sub0{color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}' +
       'th{background:#eef3f0}td.n{text-align:right}tr.grp td{background:#1a6b3a;color:#fff;font-weight:700;font-size:11px;padding:5px}' +
       'tr.sub td{font-weight:700;background:#f4f6f5}</style></head><body>' +
-      '<h1>PetColinas · Inventario por categoría</h1><div class="sub0">Fecha: ' + hoyTxt + ' · ' + todas.length + ' productos · Valor en costo total: RD$ ' + valorTotal(todas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
+      '<h1>PetColinas · Inventario por categoría</h1><div class="sub0">Nota: los precios de venta ya incluyen el ITBIS donde aplica. "Exento de ITBIS" = el producto no lleva ITBIS.</div><div class="sub0">Fecha: ' + hoyTxt + ' · ' + todas.length + ' productos · Valor en costo total: RD$ ' + valorTotal(todas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
       '<table><thead><tr>' + cols.map((c) => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' + cuerpo + '</tbody></table></body></html>';
     const w = window.open("", "_blank");
     if (!w) return avisar("El navegador bloqueó la ventana. Permite las ventanas emergentes para PetColinas.", "error");
