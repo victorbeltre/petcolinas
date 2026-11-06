@@ -6,3 +6,5 @@ alter table public.pc_inventario add column if not exists itbis boolean;
 update public.pc_inventario set itbis = false where categoria = 'farmaco';
 update public.pc_inventario set itbis = true where categoria = 'farmaco' and (lower(nombre) like '%spray%' or lower(nombre) like '%shampoo%' or lower(nombre) like '%limpiador%');
 update public.pc_inventario set itbis = true where itbis is null;
+-- Correcciones (6 nov 2026): Tropiclean spray = con ITBIS y uso operacion (grooming);
+-- Men For San shampoo = con ITBIS y uso venta; Epiotic y Easotic (oido) = exentos.
