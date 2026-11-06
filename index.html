@@ -23413,7 +23413,7 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
     // Formulario agregar nuevo
     agregando && React.createElement("div", { style: { background: "#fffbeb", border: "1.5px solid #f59e0b", borderRadius: 10, padding: 16, marginBottom: 16 } },
       React.createElement("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 12, color: "#92400e" } }, "+ Nuevo servicio de " + (esGrooming ? "grooming" : "veterinaria")),
-      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto auto", gap: 10, alignItems: "end" } },
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "2fr 1fr auto auto", gap: 10, alignItems: "end" } },
         React.createElement("div", null,
           React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Nombre del servicio"),
           React.createElement("input", { value: nuevoForm.nombre, onChange: e => setNuevoForm(f => ({ ...f, nombre: e.target.value })), placeholder: "Ej: Baño premium", style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
@@ -23421,10 +23421,6 @@ function TabServicios({ tarifasGrooming, setTarifasGrooming, tarifasVet, setTari
         React.createElement("div", null,
           React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Precio (RD$)"),
           React.createElement("input", { type: "number", value: nuevoForm.precio, onChange: e => setNuevoForm(f => ({ ...f, precio: e.target.value })), placeholder: "0", style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
-        ),
-        React.createElement("div", null,
-          React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, esGrooming ? "Comisión (RD$)" : "Comisión (ej: 0.30)"),
-          React.createElement("input", { type: "number", value: nuevoForm.comision, onChange: e => setNuevoForm(f => ({ ...f, comision: e.target.value })), placeholder: esGrooming ? "100" : "0.30", style: { width: "100%", padding: "8px 10px", borderRadius: 7, border: "1px solid #e0e4e8", fontSize: 13 } })
         ),
         React.createElement("button", { onClick: agregarNuevo, style: { background: C.verde, color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13 } }, "✓ Agregar"),
         React.createElement("button", { onClick: () => setAgregando(false), style: { background: "#f1f5f9", color: C.grisd, border: "none", borderRadius: 7, padding: "8px 14px", cursor: "pointer", fontSize: 13 } }, "✕")
