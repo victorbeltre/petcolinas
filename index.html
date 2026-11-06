@@ -13495,9 +13495,26 @@ function ExportarInventario({ inventario = [] }) {
   const nombreCat = (c) => { const f = CATEGORIAS_INV.find(([v]) => v === c); return f ? limpio(f[1]) : "Otro"; };
   const filasRaw = () => (inventario || []).filter((p) => !p.autoGenerado).slice().sort((a, b) =>
     (ordenCat(a.categoria) - ordenCat(b.categoria)) || String(a.nombre).localeCompare(String(b.nombre)));
+  // Mismos valores que la seccion de Precios (pc_precios_config). Si cambian alla, cambian aqui.
+  const TARJETA_PCT = 4.00;   // comision Cardnet (sin la retencion de ITBIS)
+  const EMPAQUE_RD = 13;      // empaque por venta
+  const COLAB_PCT = 5.00;     // comision del colaborador, despues de costos
+  const r2 = (x) => Math.round(x * 100) / 100;
   const aFila = (p) => {
     const costo = numOrEmpty(p.precioCompra ?? p.costo);
     const stock = Number(p.stock) || 0;
+    const precio = numOrEmpty(p.precioVenta ?? p.pventa);
+    const lleva = p.itbis !== false;
+    let itbisInc = "", tarjeta = "", colab = "", neto = "";
+    if (precio !== "" && precio > 0) {
+      const itbisMonto = lleva ? precio - precio / 1.18 : 0;
+      const tarjetaMonto = precio * TARJETA_PCT / 100;
+      const base = precio - itbisMonto - tarjetaMonto - EMPAQUE_RD - (costo === "" ? 0 : costo);
+      itbisInc = r2(itbisMonto);
+      tarjeta = r2(tarjetaMonto);
+      colab = r2(base * COLAB_PCT / 100);
+      neto = r2(base - base * COLAB_PCT / 100);
+    }
     return {
       "Código": p.codigo || "",
       "Producto": p.nombre || "",
@@ -13507,7 +13524,12 @@ function ExportarInventario({ inventario = [] }) {
       "Stock": stock,
       "Costo unitario (RD$)": costo,
       "Valor en costo (RD$)": costo === "" ? "" : Math.round(stock * costo * 100) / 100,
-      "Precio venta (RD$)": numOrEmpty(p.precioVenta ?? p.pventa),
+      "Precio venta (RD$)": precio,
+      "ITBIS incluido (RD$)": itbisInc,
+      "Comisión tarjeta (RD$)": tarjeta,
+      "Empaque (RD$)": precio === "" ? "" : EMPAQUE_RD,
+      "Comisión colaborador (RD$)": colab,
+      "Te queda neto (RD$)": neto,
       "Proveedor": p.proveedor || "",
       "Fecha de entrada": p.fechaEntrada || "",
       "Vencimiento": p.vencimiento || "",
@@ -13535,7 +13557,7 @@ function ExportarInventario({ inventario = [] }) {
     const gs = grupos();
     const todas = gs.flatMap((g) => g.filas);
     if (!todas.length) return avisar("No hay productos para exportar.", "error");
-    const anchos = [12, 40, 14, 22, 10, 8, 18, 18, 18, 22, 14, 14, 12, 30, 30];
+    const anchos = [12, 40, 14, 22, 10, 8, 16, 16, 16, 16, 16, 12, 18, 16, 22, 14, 14, 12, 30, 30];
     if (!window.XLSX) {
       // Sin la libreria de Excel (sin conexion al CDN): se baja como CSV con todo, ordenado por categoria.
       const cols = Object.keys(todas[0]);
