@@ -992,7 +992,7 @@ function useSupabase(table, seed = []) {
 // corrió el SQL que las crea, PostgREST rechaza el INSERT entero y se perdería
 // la venta completa. Este respaldo detecta ese error, quita las columnas que no
 // existen y reintenta, para que el guardado nunca se caiga por eso.
-const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco", "abonos", "abonado", "fecharecordatorio"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"], pc_clientes: ["alertamedica"], pc_inventario: ["codigo", "descripcion", "uso"], pc_gastos: ["archivo_path", "archivo_mime", "mes_correspondiente"] };
+const COLUMNAS_NUEVAS = { pc_ventas: ["items", "cobradopor", "descuento", "banco", "abonos", "abonado", "fecharecordatorio"], pc_pagos: ["totalpagado", "empleadonombre", "fecha"], pc_clientes: ["alertamedica"], pc_inventario: ["codigo", "descripcion", "uso", "itbis"], pc_gastos: ["archivo_path", "archivo_mime", "mes_correspondiente"] };
 function faltaColumna(msg, table) {
   const m = String(msg || "").toLowerCase();
   if (!/column|schema cache|pgrst204|42703/.test(m)) return null;
@@ -1495,7 +1495,8 @@ function normalizeRow(table, r) {
     lote: r.lote || "",
     codigo: r.codigo || "",
     descripcion: r.descripcion || "",
-    uso: r.uso || ""
+    uso: r.uso || "",
+    itbis: r.itbis === null || r.itbis === undefined ? null : !!r.itbis
   };
   if (table === "pc_citas") return {
     id: r.id,
@@ -1704,7 +1705,8 @@ function denormalizeRow(table, r) {
     // si llega vacio, el trigger conserva el que ya tenia o asigna uno nuevo.
     codigo: r.codigo || null,
     descripcion: r.descripcion || null,
-    ...(r.uso ? { uso: r.uso } : {})
+    ...(r.uso ? { uso: r.uso } : {}),
+    ...(typeof r.itbis === "boolean" ? { itbis: r.itbis } : {})
   };
   if (table === "pc_citas") return {
     id: r.id,
@@ -13501,6 +13503,7 @@ function ExportarInventario({ inventario = [] }) {
       "Producto": p.nombre || "",
       "Categoría": nombreCat(p.categoria),
       "Uso": USO_TXT[p.uso] || "Sin clasificar",
+      "Lleva ITBIS": p.itbis === false ? "No" : "Sí",
       "Stock": stock,
       "Costo unitario (RD$)": costo,
       "Valor en costo (RD$)": costo === "" ? "" : Math.round(stock * costo * 100) / 100,
@@ -13524,7 +13527,7 @@ function ExportarInventario({ inventario = [] }) {
     const gs = grupos();
     const todas = gs.flatMap((g) => g.filas);
     if (!todas.length) return avisar("No hay productos para exportar.", "error");
-    const anchos = [12, 40, 14, 22, 8, 18, 18, 18, 22, 14, 14, 12, 30, 30];
+    const anchos = [12, 40, 14, 22, 10, 8, 18, 18, 18, 22, 14, 14, 12, 30, 30];
     if (!window.XLSX) {
       // Sin la libreria de Excel (sin conexion al CDN): se baja como CSV con todo, ordenado por categoria.
       const cols = Object.keys(todas[0]);
@@ -13592,6 +13595,12 @@ function UsoInventario({ inventario = [], setInventario }) {
   const conCodigo = inventario.filter((p) => p.codigo);
   const cuenta = (u) => conCodigo.filter((p) => p.uso === u).length;
   const sinUso = conCodigo.filter((p) => !p.uso).length;
+  const cambiarItbis = async (p, itbis) => {
+    const actualizado = { ...p, itbis };
+    setInventario((prev) => prev.map((x) => String(x.id) === String(p.id) ? actualizado : x));
+    const ok = await upsertOne("pc_inventario", actualizado);
+    if (!ok) avisar("No se pudo guardar el ITBIS de " + p.nombre, "error");
+  };
   const cambiar = async (p, uso) => {
     if (!uso) return;
     const actualizado = { ...p, uso };
@@ -13633,7 +13642,7 @@ function UsoInventario({ inventario = [], setInventario }) {
     E(Input, { label: "Buscar producto", value: busca, onChange: setBusca }),
     E("div", { style: { overflowX: "auto", marginTop: 10, maxHeight: 420, overflowY: "auto" } },
       E("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } },
-        E("thead", null, E("tr", { style: { background: "#f8f9fa" } }, ["Código", "Producto", "Categoría", "Uso"].map((h) =>
+        E("thead", null, E("tr", { style: { background: "#f8f9fa" } }, ["Código", "Producto", "Categoría", "Uso", "ITBIS"].map((h) =>
           E("th", { key: h, style: { padding: "8px 10px", textAlign: "left", color: C.grisd, fontSize: 11, textTransform: "uppercase" } }, h)))),
         E("tbody", null, lista.map((p) => E("tr", { key: p.id, style: { borderBottom: "1px solid #f1f3f5" } },
           E("td", { style: { padding: "7px 10px", fontFamily: "monospace", fontWeight: 700, color: C.azul } }, p.codigo),
@@ -13642,7 +13651,9 @@ function UsoInventario({ inventario = [], setInventario }) {
           E("td", { style: { padding: "7px 10px", minWidth: 200 } },
             E("select", { value: p.uso || "", onChange: (e) => cambiar(p, e.target.value), style: { border: "1px solid #d9dee3", borderRadius: 9, padding: "7px 9px", fontSize: 13, width: "100%" } },
               E("option", { value: "", disabled: true }, "— sin clasificar —"),
-              USOS_INV.map(([v, t]) => E("option", { key: v, value: v }, t))))))))));
+              USOS_INV.map(([v, t]) => E("option", { key: v, value: v }, t)))),
+          E("td", { style: { padding: "7px 10px", textAlign: "center" } }, E("input", { type: "checkbox", checked: p.itbis !== false, onChange: (e) => cambiarItbis(p, e.target.checked), title: "Lleva ITBIS" })),
+          ))))));
 }
 function Inventario({ inventario, setInventario, ventas, deleteInv, refetchInventario }) {
   const [verFactura, setVerFactura] = useState(false);
