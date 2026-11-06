@@ -1,0 +1,2 @@
+-- M39b · Cambiar la tasa de tarjeta no recalcula los productos que vienen del inventario.
+-- (La funcion pc_precios_parametros se reemplazo en la base con el filtro origen_precio = 'neto'.)
