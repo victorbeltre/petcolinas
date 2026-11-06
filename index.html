@@ -13548,7 +13548,7 @@ function ExportarInventario({ inventario = [] }) {
     });
     return claves.map((k) => {
       const [c, it] = k.split("|");
-      return { cat: c, nombre: nombreCat(c) + (it === "no" ? " · Exento de ITBIS" : " · Lleva ITBIS"), filas: mapa.get(k).map(aFila) };
+      return { cat: c, nombre: nombreCat(c) + (it === "no" ? " · Exento de ITBIS" : " · Lleva ITBIS"), lleva: it !== "no", filas: mapa.get(k).map(aFila) };
     });
   };
   const hoyTxt = fechaLocal();
@@ -13591,7 +13591,16 @@ function ExportarInventario({ inventario = [] }) {
     const cols = Object.keys(todas[0]);
     const fmtN = (v) => typeof v === "number" ? v.toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : esc(v);
     const cuerpo = gs.map((g) => {
-      const head = '<tr class="grp"><td colspan="' + cols.length + '">' + esc(g.nombre) + ' · ' + g.filas.length + ' producto(s)</td></tr>';
+      // Fila verde: nombre del grupo y, en sus columnas, los totales del grupo (para no perderse al bajar).
+      const suma = (c) => g.filas.reduce((acc, d) => acc + (typeof d[c] === "number" ? d[c] : 0), 0);
+      const numTxt = (v) => v.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const celdasVerde = cols.slice(2).map((c) => {
+        if (c === "Lleva ITBIS") return '<td>' + (g.lleva ? "Sí" : "No") + '</td>';
+        if (["Stock", "Valor en costo (RD$)", "ITBIS incluido (RD$)", "Comisión tarjeta (RD$)", "Empaque (RD$)", "Comisión colaborador (RD$)", "Te queda neto (RD$)"].includes(c))
+          return '<td class="n">' + (c === "Stock" ? suma(c).toLocaleString("es-DO") : numTxt(suma(c))) + '</td>';
+        return '<td></td>';
+      }).join('');
+      const head = '<tr class="grp"><td colspan="2">' + esc(g.nombre) + ' · ' + g.filas.length + ' producto(s)</td>' + celdasVerde + '</tr>';
       const filas = g.filas.map((d) => '<tr>' + cols.map((c) => '<td' + (typeof d[c] === "number" ? ' class="n"' : '') + '>' + fmtN(d[c]) + '</td>').join('') + '</tr>').join('');
       const sub = '<tr class="sub"><td colspan="' + (cols.length - 1) + '">Subtotal ' + esc(g.nombre) + '</td><td class="n">RD$ ' + valorTotal(g.filas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td></tr>';
       return head + filas + sub;
@@ -13599,7 +13608,7 @@ function ExportarInventario({ inventario = [] }) {
     const html = '<!doctype html><html><head><meta charset="utf-8"><title>Inventario PetColinas ' + hoyTxt + '</title>' +
       '<style>@page{size:landscape;margin:12mm}body{font-family:Arial,sans-serif;font-size:10px;color:#111}h1{font-size:16px;margin:0 0 4px}' +
       '.sub0{color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}' +
-      'th{background:#eef3f0}td.n{text-align:right}tr.grp td{background:#1a6b3a;color:#fff;font-weight:700;font-size:11px;padding:5px}' +
+      'th{background:#eef3f0}thead th{position:sticky;top:0;z-index:2}td.n{text-align:right}tr.grp td{background:#1a6b3a;color:#fff;font-weight:700;font-size:11px;padding:5px}' +
       'tr.sub td{font-weight:700;background:#f4f6f5}</style></head><body>' +
       '<h1>PetColinas · Inventario por categoría</h1><div class="sub0">Nota: los precios de venta ya incluyen el ITBIS donde aplica. "Exento de ITBIS" = el producto no lleva ITBIS.</div><div class="sub0">Fecha: ' + hoyTxt + ' · ' + todas.length + ' productos · Valor en costo total: RD$ ' + valorTotal(todas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
       '<table><thead><tr>' + cols.map((c) => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' + cuerpo + '</tbody></table></body></html>';
