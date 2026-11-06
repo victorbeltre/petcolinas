@@ -13587,38 +13587,92 @@ function ExportarInventario({ inventario = [] }) {
     const gs = grupos();
     const todas = gs.flatMap((g) => g.filas);
     if (!todas.length) return avisar("No hay productos para exportar.", "error");
-    const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    if (!window.jspdf) return avisar("No se cargó el generador de PDF. Recarga la página o usa Excel.", "error");
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
     const cols = Object.keys(todas[0]);
-    const fmtN = (v) => typeof v === "number" ? v.toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : esc(v);
-    const cuerpo = gs.map((g) => {
-      // Fila verde: nombre del grupo y, en sus columnas, los totales del grupo (para no perderse al bajar).
-      const suma = (c) => g.filas.reduce((acc, d) => acc + (typeof d[c] === "number" ? d[c] : 0), 0);
-      const numTxt = (v) => v.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      // Cada celda verde lleva el nombre de su columna y su valor (ej. "Stock: 266", "Lleva ITBIS: No").
-      const celdasVerde = cols.slice(2).map((c) => {
-        const et = esc(c.replace(" (RD$)", "")) + ': ';
-        if (c === "Lleva ITBIS") return '<td>' + et + (g.lleva ? "Sí" : "No") + '</td>';
-        if (c === "Stock") return '<td class="n">' + et + suma(c).toLocaleString("es-DO") + '</td>';
-        if (["Valor en costo (RD$)", "ITBIS incluido (RD$)", "Comisión tarjeta (RD$)", "Empaque (RD$)", "Comisión colaborador (RD$)", "Te queda neto (RD$)"].includes(c))
-          return '<td class="n">' + et + 'RD$ ' + numTxt(suma(c)) + '</td>';
-        return '<td>' + et + '—</td>';
-      }).join('');
-      const head = '<tr class="grp"><td colspan="2">' + esc(g.nombre) + ' · ' + g.filas.length + ' producto(s)</td>' + celdasVerde + '</tr>';
-      const filas = g.filas.map((d) => '<tr>' + cols.map((c) => '<td' + (typeof d[c] === "number" ? ' class="n"' : '') + '>' + fmtN(d[c]) + '</td>').join('') + '</tr>').join('');
-      const sub = '<tr class="sub"><td colspan="' + (cols.length - 1) + '">Subtotal ' + esc(g.nombre) + '</td><td class="n">RD$ ' + valorTotal(g.filas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td></tr>';
-      return head + filas + sub;
-    }).join('');
-    const html = '<!doctype html><html><head><meta charset="utf-8"><title>Inventario PetColinas ' + hoyTxt + '</title>' +
-      '<style>@page{size:landscape;margin:12mm}body{font-family:Arial,sans-serif;font-size:10px;color:#111}h1{font-size:16px;margin:0 0 4px}' +
-      '.sub0{color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 4px;text-align:left;vertical-align:top}' +
-      'th{background:#eef3f0}thead th{position:sticky;top:0;z-index:2}td.n{text-align:right}tr.grp td{background:#1a6b3a;color:#fff;font-weight:700;font-size:11px;padding:5px}' +
-      'tr.sub td{font-weight:700;background:#f4f6f5}</style></head><body>' +
-      '<h1>PetColinas · Inventario por categoría</h1><div class="sub0">Nota: los precios de venta ya incluyen el ITBIS donde aplica. "Exento de ITBIS" = el producto no lleva ITBIS.</div><div class="sub0">Fecha: ' + hoyTxt + ' · ' + todas.length + ' productos · Valor en costo total: RD$ ' + valorTotal(todas).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
-      '<table><thead><tr>' + cols.map((c) => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' + cuerpo + '</tbody></table></body></html>';
-    const w = window.open("", "_blank");
-    if (!w) return avisar("El navegador bloqueó la ventana. Permite las ventanas emergentes para PetColinas.", "error");
-    w.document.open(); w.document.write(html); w.document.close();
-    w.onload = () => { try { w.focus(); w.print(); } catch (e) {} };
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 22;
+    const peso = { "Producto": 3.2, "Descripción": 2.2, "Notas": 2, "Proveedor": 1.6, "Categoría": 1.2, "Uso": 1.6, "Código": 1.2, "Lleva ITBIS": 1, "Stock": 0.8, "Fecha de entrada": 1.2, "Vencimiento": 1.2, "Lote": 0.9 };
+    const pesos = cols.map((c) => peso[c] || 1.1);
+    const sumaPesos = pesos.reduce((a, b) => a + b, 0);
+    const anchos = pesos.map((w) => (W - 2 * M) * w / sumaPesos);
+    const FS = 6.5, LH = 7.5;
+    const fmt = (v) => typeof v === "number" ? v.toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : String(v ?? "");
+    let y = M;
+    const encabezadoColumnas = () => {
+      let x = M;
+      doc.setFillColor(238, 243, 240); doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(FS);
+      cols.forEach((c, i) => {
+        doc.setFillColor(238, 243, 240); doc.setDrawColor(150, 150, 150);
+        doc.rect(x, y, anchos[i], 16, "FD");
+        doc.setTextColor(0, 0, 0);
+        doc.text(doc.splitTextToSize(c, anchos[i] - 4), x + 2, y + 7);
+        x += anchos[i];
+      });
+      y += 16; doc.setFont("helvetica", "normal");
+    };
+    const nuevaPagina = () => { doc.addPage(); y = M; encabezadoColumnas(); };
+    const fila = (textos, estilo) => {
+      // estilo: { fondo:[r,g,b], color:[r,g,b], negrita:bool, spans: [[inicio, cuantas]] }
+      const lineas = textos.map((t, i) => {
+        if (estilo.spans && i === estilo.spans[0]) { let w = 0; for (let k = estilo.spans[0]; k < estilo.spans[0] + estilo.spans[1]; k++) w += anchos[k]; return doc.splitTextToSize(String(t ?? ""), w - 4); }
+        return doc.splitTextToSize(String(t ?? ""), anchos[i] - 4);
+      });
+      const alto = Math.max(...lineas.map((l) => l.length)) * LH + 5;
+      if (y + alto > H - M) nuevaPagina();
+      const fondo = estilo.fondo || [255, 255, 255];
+      doc.setDrawColor(150, 150, 150);
+      doc.setTextColor(...(estilo.color || [0, 0, 0]));
+      doc.setFont("helvetica", estilo.negrita ? "bold" : "normal"); doc.setFontSize(FS);
+      let x = M;
+      if (estilo.spans) {
+        // Una sola celda que ocupa varias columnas (nombre del grupo).
+        const [ini, n] = estilo.spans;
+        let ancho = 0; for (let k = ini; k < ini + n; k++) ancho += anchos[k];
+        let xs = M; for (let k = 0; k < ini; k++) xs += anchos[k];
+        doc.setFillColor(...fondo);
+        doc.rect(xs, y, ancho, alto, "FD");
+        doc.text(doc.splitTextToSize(String(textos[ini]), ancho - 4), xs + 2, y + 7);
+        let xr = xs + ancho;
+        textos.forEach((t, i) => { if (i >= ini + n) { doc.setFillColor(...fondo); doc.rect(xr, y, anchos[i], alto, "FD"); doc.setTextColor(...(estilo.color || [0, 0, 0])); doc.text(doc.splitTextToSize(String(t ?? ""), anchos[i] - 4), xr + 2, y + 7); xr += anchos[i]; } });
+      } else {
+        cols.forEach((c, i) => {
+          doc.setFillColor(...fondo);
+          doc.rect(x, y, anchos[i], alto, "FD");
+          doc.setTextColor(...(estilo.color || [0, 0, 0]));
+          doc.text(lineas[i], x + 2, y + 7);
+          x += anchos[i];
+        });
+      }
+      y += alto;
+      doc.setTextColor(0, 0, 0);
+    };
+    const cabecera = () => {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(0, 0, 0);
+      doc.text("PetColinas · Inventario por categoría", M, y + 11); y += 18;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+      doc.text("Nota: los precios de venta ya incluyen el ITBIS donde aplica. 'Exento de ITBIS' = el producto no lleva ITBIS.", M, y + 8); y += 12;
+      doc.text("Fecha: " + fechaLocal() + " · " + todas.length + " productos", M, y + 8); y += 14;
+      encabezadoColumnas();
+    };
+    cabecera();
+    const suma = (lista, c) => lista.reduce((acc, d) => acc + (typeof d[c] === "number" ? d[c] : 0), 0);
+    gs.forEach((g) => {
+      // Fila verde: nombre del grupo y, en cada columna, su nombre y su total.
+      const textosVerde = cols.map((c, i) => {
+        if (i < 2) return i === 0 ? g.nombre + " · " + g.filas.length + " producto(s)" : "";
+        const et = c.replace(" (RD$)", "") + ": ";
+        if (c === "Lleva ITBIS") return et + (g.lleva ? "Sí" : "No");
+        if (c === "Stock") return et + suma(g.filas, c).toLocaleString("es-DO");
+        if (["Valor en costo (RD$)", "ITBIS incluido (RD$)", "Comisión tarjeta (RD$)", "Empaque (RD$)", "Comisión colaborador (RD$)", "Te queda neto (RD$)"].includes(c)) return et + "RD$ " + fmt(Math.round(suma(g.filas, c) * 100) / 100);
+        return et + "—";
+      });
+      fila(textosVerde, { fondo: [26, 107, 58], color: [255, 255, 255], negrita: true, spans: [0, 2] });
+      g.filas.forEach((d) => fila(cols.map((c) => fmt(d[c])), {}));
+      const valor = Math.round(suma(g.filas, "Valor en costo (RD$)") * 100) / 100;
+      fila(cols.map((c, i) => i === 0 ? "Subtotal " + g.nombre : (c === "Valor en costo (RD$)" ? "RD$ " + fmt(valor) : "")), { fondo: [244, 246, 245], negrita: true, spans: [0, 2] });
+    });
+    doc.save("Inventario_PetColinas_" + fechaLocal() + ".pdf");
   };
   const btn = { background: "#fff", color: C.verde, border: "1.5px solid " + C.verde, borderRadius: 9, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 14 };
   return E(Card, { style: { marginBottom: 20 } },
