@@ -20728,6 +20728,43 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   );
 }
 
+// Inventario para la doctora: solo cantidad en stock y precio final de venta.
+// Nada de costos ni de compras (eso queda en el admin).
+function InventarioVenta({ inventario = [] }) {
+  const [busca, setBusca] = React.useState("");
+  const palabras = normalizarTextoInv(busca).split(" ").filter(Boolean);
+  const filas = (inventario || [])
+    .filter((p) => palabras.length === 0 || palabras.every((w) => normalizarTextoInv(p.nombre + " " + (p.descripcion || "")).includes(w)))
+    .slice()
+    .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+  const C = { verde: "#1a6b3a", gris: "#5a6472" };
+  return React.createElement("div", { style: { background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" } },
+    React.createElement("div", { style: { fontSize: 18, fontWeight: 800, marginBottom: 12 } }, "📦 Inventario"),
+    React.createElement("input", {
+      type: "search", value: busca, onChange: (e) => setBusca(e.target.value),
+      placeholder: "🔍 Buscar producto...",
+      style: { width: "100%", maxWidth: 420, padding: "9px 12px", borderRadius: 8, border: "1px solid #e0e4e8", fontSize: 13, marginBottom: 14, boxSizing: "border-box" }
+    }),
+    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } },
+      React.createElement("thead", null,
+        React.createElement("tr", { style: { background: "#f8f9fa" } },
+          React.createElement("th", { style: { textAlign: "left", padding: "10px 12px", color: C.gris, fontSize: 12, textTransform: "uppercase" } }, "Producto"),
+          React.createElement("th", { style: { textAlign: "right", padding: "10px 12px", color: C.gris, fontSize: 12, textTransform: "uppercase" } }, "En stock"),
+          React.createElement("th", { style: { textAlign: "right", padding: "10px 12px", color: C.gris, fontSize: 12, textTransform: "uppercase" } }, "Precio de venta")
+        )
+      ),
+      React.createElement("tbody", null,
+        filas.map((p, i) => React.createElement("tr", { key: (p.id || p.nombre) + "|" + i, style: { borderBottom: "1px solid #f4f5f6" } },
+          React.createElement("td", { style: { padding: "9px 12px", fontWeight: 600 } }, p.nombre),
+          React.createElement("td", { style: { padding: "9px 12px", textAlign: "right", color: (Number(p.stock) || 0) > 0 ? "#111" : "#dc2626", fontWeight: 700 } }, Number(p.stock) || 0),
+          React.createElement("td", { style: { padding: "9px 12px", textAlign: "right", color: C.verde, fontWeight: 700 } }, "RD$ " + (Number(p.pventa) || 0).toLocaleString("es-DO"))
+        )),
+        filas.length === 0 && React.createElement("tr", null, React.createElement("td", { colSpan: 3, style: { padding: 18, textAlign: "center", color: C.gris } }, "No hay productos que coincidan."))
+      )
+    )
+  );
+}
+
 function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas, inventario = [], setInventario }) {
   const [tabVet, setTabVet] = React.useState("agenda_vet");
   const userEmail = session?.user?.email || "";
@@ -20803,7 +20840,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       // Borrar una venta sigue siendo solo del admin desde su pantalla.
       tabVet === "ventas_vet"     && React.createElement(Ventas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, clientes, setClientes, citas, setCitas, tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [], tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [], setTab: () => {} }),
       tabVet === "facturas_vet"   && React.createElement(Facturas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), clientes, citas, setCitas, historias, tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [], tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [], inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
-      tabVet === "inventario_vet" && React.createElement(Inventario, { inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, ventas }),
+      tabVet === "inventario_vet" && React.createElement(InventarioVenta, { inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
       tabVet === "agenda_vet"     && React.createElement(Agenda, {
         citas, setCitas,
         deleteCita: id => { setCitas(prev => prev.filter(c => c.id !== id)); },
