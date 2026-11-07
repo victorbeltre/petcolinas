@@ -19422,7 +19422,7 @@ function parseItemsFactura(x) {
   return [];
 }
 
-function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], setInventario, acento }) {
+function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], setInventario, acento, tarifasGrmProp, tarifasVetProp }) {
   const [categoria, setCategoria] = React.useState("grooming");
   const [cliente, setCliente] = React.useState("");
   const [showSugg, setShowSugg] = React.useState(false);
@@ -19454,8 +19454,8 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
   const CC = { verde:"#1a6b3a", azul: acento || "#1a4fa0", gris:"#5a6472", rojo:"#c0392b", fondo:"#f0f4f8", gold:"#b8860b" };
   const RD2 = n => "RD$ " + Math.round(n||0).toLocaleString("es-DO");
-  const tarifasGrm = typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [];
-  const tarifasVetArr = typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [];
+  const tarifasGrm = tarifasGrmProp || (typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : []);
+  const tarifasVetArr = tarifasVetProp || (typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : []);
   const inv = (inventario.length > 0 ? inventario : (window.__inventarioGlobal||[])).filter(p => p.pventa > 0);
   const servicios = categoria === "grooming" ? tarifasGrm : categoria === "veterinaria" ? tarifasVetArr : inv;
   const servSel = servicios.find(s => s.id === servSelId) || null;
@@ -20375,6 +20375,7 @@ function EvTEA(props) {
 }
 
 function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], ventas = [], setVentas }) {
+  const [, , tarifasVetEv] = useSupaTarifas(); // precios vivos de vacunas (pc_tarifas)
   const [busqueda, setBusqueda] = useState("");
   const [paciente, setPaciente] = useState(null);
   const [modal, setModal] = useState(false);
@@ -20391,7 +20392,7 @@ function EvolucionClinica({ usuario, clientes, citas = [], setCitas, historias =
   // Precios de referencia para que la vacuna quede cobrada al registrarla.
   const PRECIO_VACUNA = (tipo) => {
     const t = (tipo || "").toLowerCase();
-    const tar = (typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [])
+    const tar = ((tarifasVetEv || []))
       .find(s => /vacuna/i.test(s.nombre || "") && (s.nombre || "").toLowerCase().indexOf(t.split(" ")[0]) >= 0);
     return tar ? tar.precio : 0;
   };
@@ -20767,6 +20768,8 @@ function InventarioVenta({ inventario = [] }) {
 
 function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, setClientes, citas = [], setCitas, historias = [], setHistorias, fichas = [], setFichas, inventario = [], setInventario }) {
   const [tabVet, setTabVet] = React.useState("agenda_vet");
+  // Precios vivos (pc_tarifas): lo que Victor cambia en Servicios llega al portal de la doctora.
+  const [tarifasGrmVivo, , tarifasVetVivo] = useSupaTarifas();
   const userEmail = session?.user?.email || "";
   const VETS      = vetEmails();
   const vetInfo   = VETS.find(v => v.email === userEmail) || VETS[0];
@@ -20834,20 +20837,20 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       tabVet === "reportes_lab"  && React.createElement(ReportesLab, { usuario, clientes, fichas, setFichas }),
       tabVet === "vacunas"       && React.createElement(VacunasVet, { usuario, ventas, clientes, historias }),
       tabVet === "mis_servicios"  && React.createElement(MisServiciosVet,  { usuario, ventas }),
-      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, acento: "#db2777" }),
+      tabVet === "facturar_vet"   && React.createElement(FacturarEmpleado, { usuario, ventas, setVentas, clientes, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, acento: "#db2777", tarifasGrmProp: tarifasGrmVivo, tarifasVetProp: tarifasVetVivo }),
       tabVet === "cobros_vet"     && React.createElement(Cobros, { ventas, setVentas, clientes, soloPropio: usuario.nombre.split(" ")[0] }),
       // Ventas, Facturas e Inventario: las mismas pantallas que usa el admin, con el estado del portal.
       // Borrar una venta sigue siendo solo del admin desde su pantalla.
-      tabVet === "ventas_vet"     && React.createElement(Ventas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, clientes, setClientes, citas, setCitas, tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [], tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [], setTab: () => {} }),
-      tabVet === "facturas_vet"   && React.createElement(Facturas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), clientes, citas, setCitas, historias, tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [], tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [], inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
+      tabVet === "ventas_vet"     && React.createElement(Ventas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, clientes, setClientes, citas, setCitas, tarifasGrooming: tarifasGrmVivo, tarifasVet: tarifasVetVivo, setTab: () => {} }),
+      tabVet === "facturas_vet"   && React.createElement(Facturas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), clientes, citas, setCitas, historias, tarifasGrooming: tarifasGrmVivo, tarifasVet: tarifasVetVivo, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
       tabVet === "inventario_vet" && React.createElement(InventarioVenta, { inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
       tabVet === "agenda_vet"     && React.createElement(Agenda, {
         citas, setCitas,
         deleteCita: id => { setCitas(prev => prev.filter(c => c.id !== id)); },
         clientes,
         ventas, setVentas,
-        tarifasGrooming: typeof TARIFAS_GROOMING !== "undefined" ? TARIFAS_GROOMING : [],
-        tarifasVet: typeof TARIFAS_VET !== "undefined" ? TARIFAS_VET : [],
+        tarifasGrooming: tarifasGrmVivo,
+        tarifasVet: tarifasVetVivo,
         soloPropio: usuario.nombre.split(" ")[0]
       }),
       tabVet === "farmacia_vet"   && React.createElement(FarmaciaVet,     { usuario, ventas, setVentas, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), clientes }),
