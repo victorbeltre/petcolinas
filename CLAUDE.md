@@ -379,6 +379,27 @@ ITBIS = neto / (1 - costo); total = sin ITBIS x 1.18 si lleva ITBIS. Un solo pre
 tarjeta. Los centavos se muestran siempre. PENDIENTE: que la factura del cliente use estos precios y
 desglose el ITBIS por linea (hoy Facturas aplica ITBIS a todo el documento).
 
+## REVISION DEL 10 NOV 2026 (lo que se construyo)
+- CLIENTES POR RECUPERAR (M40): pestaña "Clientes por recuperar" (admin, grupo Clientes). Recurrente = 2+
+  visitas en 12 meses; por recuperar = 45 a 365 dias sin venir (`gruposRecuperar`, `esPorRecuperar`). Un
+  grupo por DUEÑO (telefono), ordenado por gasto. Mensaje `mensajeRecuperar` por wa.me (2 variantes, sin
+  descuentos inventados). Estado compartido en `pc_recuperar` (igual que pc_resenas). Si la tabla no existe,
+  la lista funciona y avisa que no se guarda. "Volvieron tras el mensaje" = ultima visita > ultimo envio.
+- STOCK AL BORRAR: borrar una venta (Ventas) o una factura (Facturas) devuelve sus productos al inventario
+  (`lineasDevolucionVenta`, `textoDevolucionStock`; el confirm dice que se devuelve). Solo ventas desde
+  `FECHA_INICIO_STOCK` (26 oct 2026): antes facturar no descontaba. EDITAR una venta en Ventas sigue sin
+  ajustar stock.
+- CAJA: `cerrarDia` vuelve a leer la fila y avisa si el cierre no quedo guardado (el 7 nov no se guardo y
+  el 8 abrio con el saldo del 6). Aviso en Caja -> Dia si hay dias ANTERIORES abiertos, con boton para ir.
+- LISTA DE COMPRAS (Inventario): productos con stock <= minimo, por proveedor (`listaDeCompras`); sugerido =
+  hasta el doble del minimo; "Copiar pedido". Los productos sin stock minimo no aparecen (lo avisa).
+- PRECIOS VIVOS EN PORTALES: doctora y groomer leen `pc_tarifas` (`useSupaTarifas`), no las constantes
+  TARIFAS_* del codigo. La doctora tiene Ventas, Facturas (sin borrar) e Inventario (`InventarioVenta`:
+  solo stock y precio de venta, sin costos).
+- CATALOGO DE SERVICIOS: buscador, Excel/PDF y SIN comisiones (Victor: las comisiones viven en Nomina).
+- Los MARTES no se abre: no proponer promociones ni leer como "dia flojo" las ventas bajas del martes.
+- Cuentas por cobrar de jul-ago 2026 (~RD$ 107 mil): Victor dice que SI se cobraron, falto anotarlo.
+
 ## NOMINA CON CLAVE (M29, 29 oct 2026)
 Decision de Victor: Nomina se abre SIEMPRE con una clave propia (distinta a la del admin),
 aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
