@@ -2230,134 +2230,6 @@ function gruposRecuperar(clientes, ventas, hoyStr) {
 }
 // Recurrente = 2 o mas visitas en 12 meses. "Por recuperar" = entre 45 dias y un año sin venir.
 const esPorRecuperar = (g) => g.visitas >= 2 && g.dias >= 45 && g.dias <= 365;
-function mensajeRecuperar({ duenio, mascotas = [], firma = "", variante = 0 }) {
-  const nombre = capitalizar(String(duenio || "").split(/\s+/)[0]);
-  const pets = listaNombres((mascotas || []).map(capitalizar));
-  const varias = (mascotas || []).filter(Boolean).length > 1;
-  const quien = String(firma || "").trim() || "el equipo";
-  const mas = pets || "su mascota";
-  if (Number(variante) % 2 === 0) {
-    return "¡Hola" + (nombre ? " " + nombre : "") + "! \u{1F43E} Le saluda " + quien + ", de PetColinas.\n\n" +
-      "Hace un tiempo que no vemos a " + mas + " por aquí y " + (varias ? "los" : "le") + " extrañamos. ¿Cómo " + (varias ? "están" : "está") + "?\n\n" +
-      "Si le toca su baño o su chequeo, con gusto le aparto un turno esta semana. Solo dígame qué día le queda mejor. \u{1F49A}";
-  }
-  return "Buenas" + (nombre ? ", " + nombre : "") + " \u{1F60A} Soy " + quien + ", de PetColinas.\n\n" +
-    "Me acordé de " + mas + " y quise escribirle: hace rato que no " + (varias ? "los" : "le") + " vemos y queremos saber cómo " + (varias ? "siguen" : "sigue") + ".\n\n" +
-    "Cuando quiera traer" + (varias ? "los" : "le") + ", le guardo un espacio. ¿Le coordino una cita? \u{1F43E}";
-}
-function ClientesRecuperar({ clientes = [], ventas = [], firmaPorDefecto = "" }) {
-  const E = React.createElement;
-  const [registro, setRegistro] = React.useState({});
-  const [cargando, setCargando] = React.useState(true);
-  const [sinTabla, setSinTabla] = React.useState(false);
-  const [tramo, setTramo] = React.useState("todos");
-  const [ver, setVer] = React.useState("pendientes");
-  const [buscar, setBuscar] = React.useState("");
-  const [mostrar, setMostrar] = React.useState(40);
-  const [firma, setFirma] = React.useState(() => { try { return localStorage.getItem("pc_resenas_firma") || firmaPorDefecto; } catch (e) { return firmaPorDefecto; } });
-  React.useEffect(() => { try { localStorage.setItem("pc_resenas_firma", firma); } catch (e) {} }, [firma]);
-
-  const cargar = React.useCallback(async () => {
-    const r = await supaFetch("pc_recuperar", "GET", null, "?select=*&limit=5000");
-    if (Array.isArray(r)) { const m = {}; r.forEach((x) => { m[x.telefono] = x; }); setRegistro(m); setSinTabla(false); }
-    else setSinTabla(true);
-    setCargando(false);
-  }, []);
-  React.useEffect(() => { cargar(); }, [cargar]);
-
-  const hoyStr = hoy();
-  const todos = React.useMemo(() => gruposRecuperar(clientes, ventas, hoyStr), [clientes, ventas, hoyStr]);
-  const estadoDe = (g) => (registro[g.tel] && registro[g.tel].estado) || "pendiente";
-  // Primero los que mas han gastado: son los que mas duele perder.
-  const lista = React.useMemo(() => todos.filter(esPorRecuperar).sort((a, b) => b.gasto - a.gasto), [todos]);
-  // Recuperado = se le escribio desde aqui y despues volvio a venir.
-  const recuperados = todos.filter((g) => { const r = registro[g.tel]; return r && r.ultimo_envio && g.ultimaVisita > fechaLocal(new Date(r.ultimo_envio)); }).length;
-  const enviadosHoy = Object.values(registro).filter((r) => r.ultimo_envio && fechaLocal(new Date(r.ultimo_envio)) === hoyStr).length;
-  const enTramo = (g, t) => t === "todos" || (t === "45" && g.dias < 60) || (t === "60" && g.dias >= 60 && g.dias < 90) || (t === "90" && g.dias >= 90);
-
-  async function guardar(g, cambios) {
-    const prev = registro[g.tel] || {};
-    const fila = { telefono: g.tel, estado: prev.estado || "pendiente", envios: prev.envios || 0, ...cambios, actualizado: new Date().toISOString() };
-    setRegistro((r) => ({ ...r, [g.tel]: { ...prev, ...fila } }));
-    if (sinTabla) return;
-    const res = await supaFetch("pc_recuperar", "POST", [fila]);
-    if (res && res.error) { avisar("No se pudo guardar en la nube: " + JSON.stringify(res.error), "error"); cargar(); }
-  }
-  function enviar(g) {
-    abrirWA(g.tel, mensajeRecuperar({ duenio: g.duenio, mascotas: g.mascotas, firma, variante: g.variante }), () => {
-      const prev = registro[g.tel] || {};
-      guardar(g, { estado: "enviado", envios: (prev.envios || 0) + 1, ultimo_envio: new Date().toISOString(), enviado_por: firma || null });
-    });
-  }
-  const q = buscar.trim().toLowerCase();
-  const visibles = lista.filter((g) => {
-    const e = estadoDe(g);
-    if (ver === "pendientes" && e !== "pendiente") return false;
-    if (ver === "enviados" && e !== "enviado") return false;
-    if (ver === "no_contactar" && e !== "no_contactar") return false;
-    if (!enTramo(g, tramo)) return false;
-    if (q && !(g.duenio.toLowerCase().includes(q) || g.mascotas.join(" ").toLowerCase().includes(q) || g.tel.includes(q.replace(/\D/g, "") || "~"))) return false;
-    return true;
-  });
-  const cuenta = (e) => lista.filter((g) => estadoDe(g) === e).length;
-  const valor = lista.filter((g) => estadoDe(g) !== "no_contactar").reduce((s, g) => s + g.gasto, 0);
-  const chip = (activo, alPulsar, txt, n, k) => E("button", { key: k, onClick: () => { alPulsar(); setMostrar(40); }, style: {
-    border: "1.5px solid " + (activo ? "#1a6b3a" : "#e0e4e8"), background: activo ? "#e8f5ee" : "#fff",
-    color: activo ? "#1a6b3a" : "#334155", borderRadius: 20, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" } },
-    txt + (n != null ? " (" + n + ")" : ""));
-  const btn = (fondo, color, borde) => ({ background: fondo, color, border: "1.5px solid " + (borde || fondo), borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" });
-  const fmtFecha = (f) => { const [y, m, d] = String(f || "").split("-").map(Number); return y && m ? d + " " + MESES_ES[m - 1].slice(0, 3) + " " + y : "—"; };
-
-  return E("div", null,
-    E("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, marginBottom: 4 } }, "\u{1F49A} Clientes por recuperar"),
-    E("p", { style: { color: "#5a6472", fontSize: 13, marginBottom: 16, lineHeight: 1.5 } },
-      "Clientes que ven\xEDan seguido (2 visitas o m\xE1s en el \xFAltimo a\xF1o) y llevan 45 d\xEDas o m\xE1s sin venir. Uno por due\xF1o, ordenados por lo que han gastado. En cuanto el cliente vuelve, sale solo de la lista."),
-    sinTabla && E("div", { style: { fontSize: 12.5, color: "#92400e", background: "#fff7e6", borderRadius: 8, padding: "8px 11px", marginBottom: 12, fontWeight: 600 } },
-      "Falta crear la tabla pc_recuperar en Supabase: la lista funciona, pero no se guarda a qui\xE9n ya se le escribi\xF3."),
-    E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 16 } },
-      [["Por recuperar", lista.length, "#c0392b"], ["Gastaron en 12 meses", RD(valor), "#1a4fa0"], ["Ya contactados", cuenta("enviado"), "#1a6b3a"], ["Volvieron tras el mensaje", recuperados, "#b8860b"]].map(([k, v, c]) =>
-        E("div", { key: k, style: { background: "#fff", borderRadius: 12, padding: "12px 14px", borderTop: "4px solid " + c, boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
-          E("div", { style: { fontSize: 11, color: "#5a6472", textTransform: "uppercase", fontWeight: 700 } }, k),
-          E("div", { style: { fontSize: 22, fontWeight: 800, color: c, marginTop: 4 } }, v)))),
-    E("div", { style: { background: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
-      E("div", { style: { fontSize: 11, fontWeight: 700, color: "#5a6472", textTransform: "uppercase", marginBottom: 4 } }, "Firma del mensaje"),
-      E("input", { value: firma, onChange: (e) => setFirma(e.target.value), placeholder: "Ej: Victor", style: { padding: "8px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13.5, width: 200 } }),
-      E("div", { style: { fontSize: 12, color: "#5a6472", marginTop: 10, lineHeight: 1.5 } },
-        "Cada mensaje se abre en WhatsApp para revisarlo antes de mandarlo. Mejor unos 20 o 30 al d\xEDa que todos de golpe." + (enviadosHoy ? " Hoy van " + enviadosHoy + "." : ""))),
-    E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 } },
-      chip(ver === "pendientes", () => setVer("pendientes"), "Sin contactar", cuenta("pendiente"), "p"),
-      chip(ver === "enviados", () => setVer("enviados"), "Ya contactados", cuenta("enviado"), "e"),
-      chip(ver === "no_contactar", () => setVer("no_contactar"), "No contactar", cuenta("no_contactar"), "n"),
-      chip(ver === "todos", () => setVer("todos"), "Todos", lista.length, "t")),
-    E("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 } },
-      chip(tramo === "todos", () => setTramo("todos"), "Cualquier tiempo", null, "a"),
-      chip(tramo === "45", () => setTramo("45"), "45 a 59 d\xEDas", lista.filter((g) => enTramo(g, "45")).length, "b"),
-      chip(tramo === "60", () => setTramo("60"), "60 a 89 d\xEDas", lista.filter((g) => enTramo(g, "60")).length, "c"),
-      chip(tramo === "90", () => setTramo("90"), "90 d\xEDas o m\xE1s", lista.filter((g) => enTramo(g, "90")).length, "d"),
-      E("input", { value: buscar, onChange: (e) => { setBuscar(e.target.value); setMostrar(40); }, placeholder: "Buscar due\xF1o, mascota o tel\xE9fono", style: { padding: "7px 11px", borderRadius: 8, border: "1.5px solid #e0e4e8", fontSize: 13, minWidth: 220, flex: 1 } })),
-    E("div", { style: { background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.06)" } },
-      cargando ? E("div", { style: { padding: 24, textAlign: "center", color: "#5a6472", fontSize: 13 } }, "Cargando…")
-      : visibles.length === 0
-        ? E("div", { style: { padding: 24, textAlign: "center", color: "#5a6472", fontSize: 13 } }, "No hay clientes en esta lista.")
-        : visibles.slice(0, mostrar).map((g) => {
-            const r = registro[g.tel] || {}, e = estadoDe(g);
-            return E("div", { key: g.tel, style: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f0f2f4", flexWrap: "wrap" } },
-              E("div", { style: { flex: "1 1 240px", minWidth: 0 } },
-                E("div", { style: { fontWeight: 700, fontSize: 13.5 } }, capitalizar(g.duenio) || "(sin nombre del due\xF1o)"),
-                E("div", { style: { fontSize: 12, color: "#5a6472" } }, "\u{1F43E} " + (listaNombres(g.mascotas.map(capitalizar)) || "—") + " \xB7 " + g.tel),
-                E("div", { style: { fontSize: 12, color: "#334155", marginTop: 2 } },
-                  E("strong", { style: { color: g.dias >= 90 ? "#c0392b" : "#b45309" } }, g.dias + " d\xEDas sin venir"),
-                  " \xB7 última visita " + fmtFecha(g.ultimaVisita) + " \xB7 " + g.visitas + " visitas \xB7 " + RD(g.gasto) + " en 12 meses"),
-                r.ultimo_envio && E("div", { style: { fontSize: 11, color: "#1a6b3a", marginTop: 2 } }, "Mensaje enviado el " + fmtFecha(fechaLocal(new Date(r.ultimo_envio))) + (r.enviado_por ? " por " + r.enviado_por : "") + (r.envios > 1 ? " \xB7 " + r.envios + " veces" : ""))),
-              e === "no_contactar" ? E("span", { style: { fontSize: 12, fontWeight: 700, color: "#9aa5ad" } }, "\u{1F6AB} No contactar") : null,
-              E("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
-                e !== "no_contactar" && E("button", { onClick: () => enviar(g), style: btn("#25D366", "#fff") }, e === "enviado" ? "\u{1F4AC} Reenviar" : "\u{1F4AC} Escribirle"),
-                e !== "no_contactar" ? E("button", { onClick: () => guardar(g, { estado: "no_contactar" }), title: "No escribirle (se mud\xF3, pidi\xF3 no recibir mensajes, n\xFAmero equivocado...)", style: btn("#fff", "#5a6472", "#e0e4e8") }, "\u{1F6AB}")
-                  : E("button", { onClick: () => guardar(g, { estado: r.ultimo_envio ? "enviado" : "pendiente" }), style: btn("#fff", "#334155", "#e0e4e8") }, "Volver a la lista")));
-          }),
-      visibles.length > mostrar && E("button", { onClick: () => setMostrar((n) => n + 60), style: { width: "100%", padding: 12, border: "none", background: "#f8f9fa", cursor: "pointer", fontWeight: 700, color: "#1a4fa0" } },
-        "Ver m\xE1s (" + (visibles.length - mostrar) + " restantes)")));
-}
 function msgBienvenida(c, lineas, total) {
   const ls = Array.isArray(lineas) ? lineas : [];
   const bloque = ls.length === 0
@@ -2653,7 +2525,6 @@ const TABS = [
   { id: "planes", icon: "\u{1F4B3}", label: "Planes", grupo: "Clientes" },
   { id: "notificaciones", icon: "\u{1F514}", label: "Notificaciones", grupo: "Clientes" },
   { id: "resenas", icon: "\u2B50", label: "Rese\xF1as Google", grupo: "Clientes" },
-  { id: "recuperar", icon: "\u{1F49A}", label: "Clientes por recuperar", grupo: "Clientes" },
   { id: "recetarios", icon: "\u{1F48A}", label: "Recetarios", grupo: "Clientes" },
 
   { id: "whatsapp", icon: "\u{1F4AC}", label: "WhatsApp", grupo: "Comunicaci\xF3n" },
@@ -9325,7 +9196,6 @@ function PetColinasApp({ session, onLogout }) {
     tab === "caja" && React.createElement(CierreCaja, null),
     tab === "candidatos" && React.createElement(Candidatos, null),
     tab === "resenas" && React.createElement(CampanaResenas, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
-    tab === "recuperar" && React.createElement(ClientesRecuperar, { clientes: todosClientes, ventas, firmaPorDefecto: "Victor" }),
     tab === "cuentas_pagar" && React.createElement(CuentasPorPagar, { gastos, setGastos, inventario: todoInventario, refetchInventario, usuarioNombre: "Victor" }),
     tab === "ordenes_compra" && React.createElement(OrdenesCompra, { inventario: todoInventario, gastos, refetchInventario, usuarioNombre: "Victor" }),
     tab === "cotizaciones" && React.createElement(Cotizaciones, { clientes: todosClientes, tarifasGrooming, tarifasVet, inventario: todoInventario, setVentas, usuarioNombre: "Victor" }),
@@ -11153,7 +11023,7 @@ function TableroSemanal({ ventas = [], clientes = [], setTab }) {
       caja("Clientes atendidos", r.atendidos),
       caja("Nuevos", r.nuevos, "primera compra", "#1a4fa0"),
       caja("Recuperados", r.recuperados, "volvieron tras 45+ d\xEDas", "#b8860b"),
-      caja("Por recuperar", porRecuperar, setTab ? "ver la lista →" : "", "#c0392b", setTab ? () => setTab("recuperar") : null)));
+      caja("Por recuperar", porRecuperar, setTab ? "ver la lista →" : "", "#c0392b", setTab ? () => setTab("seguimientos") : null)));
 }
 function Dashboard({ totalVentas: _tv, totalEgresos: _te, utilidad: _u, totalNomina: _tn, totalGastos: _tg, ventasMes: _vm, comisionesGrm: _cg, comisionesVet: _cv, comisionesValen = 0, comGrmSistema: _cgs, comVetSistema: _cvs, comAyleinSistema = 0, comValenSistema = 0, COM_GRM_EXCEL_MARZO, COM_VET_EXCEL_MARZO, seguimientos = [], clientes = [], ventas = [], inventario = [], setVentas, setTab, citas = [], gastos = [], pagosNom = [] }) {
   const mesHoy = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
@@ -19955,6 +19825,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
         ? its.map((it, i) => ({
             key: "e" + i + "_" + Date.now(),
             nombre: it.nombre || it.descripcion || "",
+            prodId: it.prodId ?? null,
             qty: Number(it.qty ?? it.cantidad) || 1,
             precioUnit: Number(it.precioUnit ?? it.precio) || 0,
             descPct: Number(it.descPct) || 0,
@@ -19988,7 +19859,7 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
     if (items.length === 0) return alert("La factura tiene que llevar al menos un servicio o producto.");
     if (!editV.motivo.trim()) return alert("Escribe por qu\xE9 se cambia la factura. Queda guardado en el registro de cambios.");
     const itemsCalc = items.map(it => ({
-      id: it.key, categoria: it.categoria, nombre: it.nombre.trim(),
+      id: it.key, categoria: it.categoria, nombre: it.nombre.trim(), prodId: it.prodId ?? null, area: it.categoria,
       qty: Number(it.qty) || 1, precioUnit: Number(it.precioUnit) || 0,
       descPct: Number(it.descPct) || 0, subtotal: lineaSubtotal(it), nota: it.nota || ""
     }));
@@ -20025,9 +19896,22 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
       editadopor: usuario.nombre,
       notas: [o.notas, "Editada el " + fechaLocal() + " por " + usuario.nombre + ": " + editV.motivo.trim()].filter(Boolean).join(" \xB7 ")
     };
-    setVentas(prev => (prev || []).map(v => String(v.id) === String(o.id) ? actualizada : v));
-    upsertOne("pc_ventas", { ...actualizada, __cambios: cambios })
-      .catch(e => console.warn("[FacturarEmpleado] error al guardar la edici\xF3n", e));
+    // Stock: solo la diferencia entre lo que tenia la venta y lo que queda ahora (ventas desde 26 oct).
+    const dif = String(o.fecha || "").slice(0, 10) >= FECHA_INICIO_STOCK ? diferenciaStockFactura(o.items, itemsCalc, inventario) : { descontar: [], devolver: [] };
+    const guardarVenta = () => {
+      setVentas(prev => (prev || []).map(v => String(v.id) === String(o.id) ? actualizada : v));
+      upsertOne("pc_ventas", { ...actualizada, __cambios: cambios })
+        .catch(e => console.warn("[FacturarEmpleado] error al guardar la edici\xF3n", e));
+    };
+    const ajustarStock = async () => {
+      if (dif.descontar.length) {
+        const r = await descontarStockVenta(dif.descontar);
+        if (!r.ok) { avisar(r.error || mensajeSinStock(r.faltantes), "error"); return false; }
+      }
+      if (dif.devolver.length) await devolverStockVenta(dif.devolver);
+      return true;
+    };
+    ajustarStock().then((ok) => { if (ok) guardarVenta(); }).catch(() => avisar("No se pudo ajustar el inventario de la venta.", "error"));
     setEditV(null);
     setOk({ ...actualizada, clienteNombre: actualizada.cliente });
     setTimeout(() => setOk(null), 8000);

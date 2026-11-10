@@ -380,15 +380,14 @@ tarjeta. Los centavos se muestran siempre. PENDIENTE: que la factura del cliente
 desglose el ITBIS por linea (hoy Facturas aplica ITBIS a todo el documento).
 
 ## REVISION DEL 10 NOV 2026 (lo que se construyo)
-- CLIENTES POR RECUPERAR (M40): pestaña "Clientes por recuperar" (admin, grupo Clientes). Recurrente = 2+
-  visitas en 12 meses; por recuperar = 45 a 365 dias sin venir (`gruposRecuperar`, `esPorRecuperar`). Un
-  grupo por DUEÑO (telefono), ordenado por gasto. Mensaje `mensajeRecuperar` por wa.me (2 variantes, sin
-  descuentos inventados). Estado compartido en `pc_recuperar` (igual que pc_resenas). Si la tabla no existe,
-  la lista funciona y avisa que no se guarda. "Volvieron tras el mensaje" = ultima visita > ultimo envio.
+- CLIENTES POR RECUPERAR: NO hay pestaña nueva. Se decidio unir con la reactivacion que ya existia
+  (Seguimientos -> inactivos). `gruposRecuperar`/`esPorRecuperar` (dueño, recurrentes 45-365 dias) solo
+  alimentan el contador "Por recuperar" del tablero semanal. Migracion M40 (pc_recuperar) NO aplicada:
+  Supabase pidio confirmacion y no hubo respuesta; no hace falta si no se usa la pestaña.
+- EDITAR una venta (FacturarEmpleado/abrirEdicion) ajusta stock por la diferencia (`diferenciaStockFactura`).
 - STOCK AL BORRAR: borrar una venta (Ventas) o una factura (Facturas) devuelve sus productos al inventario
   (`lineasDevolucionVenta`, `textoDevolucionStock`; el confirm dice que se devuelve). Solo ventas desde
-  `FECHA_INICIO_STOCK` (26 oct 2026): antes facturar no descontaba. EDITAR una venta en Ventas sigue sin
-  ajustar stock.
+  `FECHA_INICIO_STOCK` (26 oct 2026): antes facturar no descontaba.
 - CAJA: `cerrarDia` vuelve a leer la fila y avisa si el cierre no quedo guardado (el 7 nov no se guardo y
   el 8 abrio con el saldo del 6). Aviso en Caja -> Dia si hay dias ANTERIORES abiertos, con boton para ir.
 - LISTA DE COMPRAS (Inventario): productos con stock <= minimo, por proveedor (`listaDeCompras`); sugerido =
@@ -400,10 +399,6 @@ desglose el ITBIS por linea (hoy Facturas aplica ITBIS a todo el documento).
 - TABLERO SEMANAL (Dashboard, arriba): venta de la semana (lunes a domingo) contra la meta semanal
   (`resumenSemana`: punto de equilibrio del mes repartido entre los dias que se abre, sin martes), clientes
   atendidos, nuevos, recuperados (volvieron tras 45+ dias) y por recuperar.
-- OJO, DUPLICADO A DECIDIR: ya existia "Reactivacion" (Seguimientos -> sub-pestaña inactivos, y el aviso
-  "se estan enfriando" del Dashboard): por MASCOTA, tramos 45-89/90-179/180+, plantillas, contactados en
-  localStorage. "Clientes por recuperar" es por DUEÑO, solo recurrentes, por gasto y con estado en la base.
-  Victor tiene que decidir si se quedan las dos o se unen.
 - Los MARTES no se abre: no proponer promociones ni leer como "dia flojo" las ventas bajas del martes.
 - Cuentas por cobrar de jul-ago 2026 (~RD$ 107 mil): Victor dice que SI se cobraron, falto anotarlo.
 
