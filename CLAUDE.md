@@ -397,6 +397,13 @@ desglose el ITBIS por linea (hoy Facturas aplica ITBIS a todo el documento).
   TARIFAS_* del codigo. La doctora tiene Ventas, Facturas (sin borrar) e Inventario (`InventarioVenta`:
   solo stock y precio de venta, sin costos).
 - CATALOGO DE SERVICIOS: buscador, Excel/PDF y SIN comisiones (Victor: las comisiones viven en Nomina).
+- TABLERO SEMANAL (Dashboard, arriba): venta de la semana (lunes a domingo) contra la meta semanal
+  (`resumenSemana`: punto de equilibrio del mes repartido entre los dias que se abre, sin martes), clientes
+  atendidos, nuevos, recuperados (volvieron tras 45+ dias) y por recuperar.
+- OJO, DUPLICADO A DECIDIR: ya existia "Reactivacion" (Seguimientos -> sub-pestaña inactivos, y el aviso
+  "se estan enfriando" del Dashboard): por MASCOTA, tramos 45-89/90-179/180+, plantillas, contactados en
+  localStorage. "Clientes por recuperar" es por DUEÑO, solo recurrentes, por gasto y con estado en la base.
+  Victor tiene que decidir si se quedan las dos o se unen.
 - Los MARTES no se abre: no proponer promociones ni leer como "dia flojo" las ventas bajas del martes.
 - Cuentas por cobrar de jul-ago 2026 (~RD$ 107 mil): Victor dice que SI se cobraron, falto anotarlo.
 
