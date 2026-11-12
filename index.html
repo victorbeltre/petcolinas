@@ -14706,8 +14706,8 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
     const c = calcularQuincenaNomina({ base, comisiones: com, incentivos: inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: ade.reduce((s, m) => s + Number(m.monto), 0) });
     return { vts, com, sinCosto, inc, ade, base, pagada, ...c };
   };
-  const anotarGasto = (fecha, descripcion, monto, metodo, mesCor) => {
-    const g = { id: Date.now() + Math.floor(Math.random() * 1000), fecha, proveedor: "N\xF3mina", descripcion, monto, categoria: "nomina", pagadoPor: "Petcolinas", metodo: metodo || "", ...(mesCor && mesCor !== String(fecha).slice(0, 7) ? { mesCorresponde: mesCor } : {}) };
+  const anotarGasto = (fecha, descripcion, monto, metodo, mesCor, categoria = "nomina", proveedor = "N\xF3mina") => {
+    const g = { id: Date.now() + Math.floor(Math.random() * 1000), fecha, proveedor, descripcion, monto, categoria, pagadoPor: "Petcolinas", metodo: metodo || "", ...(mesCor && mesCor !== String(fecha).slice(0, 7) ? { mesCorresponde: mesCor } : {}) };
     if (typeof setGastos === "function") setGastos((prev) => [...(prev || []), g]);
     upsertOne("pc_gastos", g).catch((e) => console.error("[nomina gasto]", e));
     return String(g.id);
@@ -14721,8 +14721,21 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
       const pagaAhora = m.tipo !== "incentivo" || m.ahora;
       // El gasto de nomina va al mes del periodo que paga (1ra/2da quincena de octubre pagada el 1 de noviembre = octubre).
       if (pagaAhora && m.gasto) gastoId = anotarGasto(m.fecha, m.tipo === "quincena" ? "Pago de n\xF3mina — " + nombrePeriodoNomina(periodo) : m.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Incentivo de n\xF3mina", monto, m.metodo, (m.tipo === "quincena" ? periodo : periodoQuincena(m.fecha)).slice(0, 7));
+      // Impuesto del banco por transferencia (0.20%): va como gasto APARTE, en el mismo mes
+      // que el pago, para que el costo real de la nomina salga completo. Se guarda su id en
+      // el detalle del movimiento para poder borrarlo si se anula el pago.
+      let detalleCon = { ...(m.detalle || {}) };
+      if (pagaAhora && m.gasto && m.metodo === "transferencia") {
+        const montoImp = impuestoTransferencia(monto);
+        if (montoImp > 0) {
+          const mesImp = (m.tipo === "quincena" ? periodo : periodoQuincena(m.fecha)).slice(0, 7);
+          const impId = anotarGasto(m.fecha, "Impuesto 0.20% por transferencia — " + (m.tipo === "quincena" ? "Pago de n\xF3mina — " + nombrePeriodoNomina(periodo) : m.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Incentivo de n\xF3mina"),
+            montoImp, m.metodo, mesImp, "impuestos", "Banco");
+          detalleCon = { ...detalleCon, impuesto: { monto: montoImp, tasa: IMPUESTO_TRANSFERENCIA, gasto_id: String(impId) } };
+        }
+      }
       await llamar("pc_nomina_registrar", { p_m: { empleado_id: m.emp.id, tipo: m.tipo, fecha: m.fecha, periodo: m.tipo === "quincena" ? periodo : periodoQuincena(m.fecha), monto, metodo: m.metodo,
-        nota: m.nota || null, pagado_ahora: pagaAhora, gasto_id: gastoId, detalle: m.detalle || {}, liquida: m.liquida || [] } });
+        nota: m.nota || null, pagado_ahora: pagaAhora, gasto_id: gastoId, detalle: detalleCon, liquida: m.liquida || [] } });
       setModal(null); await cargar();
       avisar(m.tipo === "quincena" ? "Quincena registrada" + (gastoId ? " y anotada en Gastos." : ".") : m.tipo === "adelanto" ? "Adelanto registrado: se descontar\xE1 de la pr\xF3xima quincena." : pagaAhora ? "Incentivo pagado." : "Incentivo anotado: se sumar\xE1 a la pr\xF3xima quincena.", "ok");
     } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
@@ -14734,10 +14747,11 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
       descuentos: "", liquida: [...r.inc, ...r.ade].map((m) => m.id) });
   };
   const anular = async (m) => {
-    if (!window.confirm("\xBFAnular este " + NOMINA_TIPOS[m.tipo][0].toLowerCase() + " de " + dinero(m.monto) + "?" + (m.gasto_id ? " Tambi\xE9n se borrar\xE1 su gasto." : ""))) return;
+    if (!window.confirm("\xBFAnular este " + NOMINA_TIPOS[m.tipo][0].toLowerCase() + " de " + dinero(m.monto) + "?" + (m.gasto_id ? " Tambi\xE9n se borrar\xE1 su gasto" + (m.detalle?.impuesto ? " y el impuesto del banco" : "") + "." : ""))) return;
     try {
       await llamar("pc_nomina_anular", { p_id: m.id });
-      if (m.gasto_id) { if (typeof setGastos === "function") setGastos((prev) => (prev || []).filter((g) => String(g.id) !== String(m.gasto_id))); deleteOne("pc_gastos", m.gasto_id).catch(() => {}); }
+      const idsGasto = [m.gasto_id, m.detalle?.impuesto?.gasto_id].filter(Boolean).map(String);
+      if (idsGasto.length) { if (typeof setGastos === "function") setGastos((prev) => (prev || []).filter((g) => !idsGasto.includes(String(g.id)))); idsGasto.forEach((id) => deleteOne("pc_gastos", id).catch(() => {})); }
       await cargar(); avisar("Anulado.", "ok");
     } catch (e) { avisar(e.message, "error"); }
   };
@@ -14827,6 +14841,8 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
           E("div", null, lbl("M\xE9todo"), E("select", { value: modal.metodo, onChange: (e) => setModal({ ...modal, metodo: e.target.value }), style: inp },
             [["transferencia", "Transferencia"], ["efectivo", "Efectivo"], ["cheque", "Cheque"]].map(([v, t]) => E("option", { key: v, value: v }, t)))),
           modal.tipo === "quincena" && E("div", null, lbl("Nota"), E("input", { value: modal.nota, onChange: (e) => setModal({ ...modal, nota: e.target.value }), style: inp }))),
+        modal.metodo === "transferencia" && modal.gasto && impuestoTransferencia(modal.tipo === "quincena" ? q.neto : modal.monto) > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginTop: 10, background: "#f5f7f6", borderRadius: 8, padding: "8px 10px" } },
+          "Impuesto del banco por transferencia (0.20%): ", E("b", null, dinero(impuestoTransferencia(modal.tipo === "quincena" ? q.neto : modal.monto))), " — se anota aparte en Gastos como “Impuestos y cargos bancarios”."),
         E("label", { style: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, marginTop: 12, cursor: "pointer" } },
           E("input", { type: "checkbox", checked: modal.gasto, onChange: (e) => setModal({ ...modal, gasto: e.target.checked }), style: { marginTop: 2 } }),
           E("span", null, E("b", null, "Anotar en Gastos"), " como “N\xF3mina”, sin el nombre de la persona, para que salga del flujo de caja."))),
@@ -15249,8 +15265,14 @@ const CATEGORIAS_GASTO = [
   { value: "nomina", label: "\u{1F465} N\xF3mina" },
   { value: "equipo", label: "\u{1F527} Equipo/Herramienta" },
   { value: "inversion", label: "\u{1F4A1} Inversi\xF3n" },
+  { value: "impuestos", label: "\u{1F3E6} Impuestos y cargos bancarios" },
   { value: "varios", label: "\u{1F4CB} Gastos varios" }
 ];
+// Impuesto que cobra el banco por cada transferencia (0.20% del monto), Victor 12 nov 2026.
+// Al pagar nomina por transferencia se anota aparte en Gastos (categoria "impuestos").
+// Si cambia la tasa, se cambia aqui: los pagos ya anotados no se recalculan.
+const IMPUESTO_TRANSFERENCIA = 0.002;
+const impuestoTransferencia = (monto) => Math.round((Number(monto) || 0) * IMPUESTO_TRANSFERENCIA * 100) / 100;
 // Factura de compra AL CONTADO (M33, 4 nov 2026): desechables, servilletas, papel,
 // limpieza... Se lee con la misma Edge Function (factura-proveedor), se revisa y se
 // guarda como gasto. NO toca el inventario: son compras de la empresa, no productos
