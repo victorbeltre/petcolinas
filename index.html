@@ -16440,6 +16440,132 @@ function GrupoDupCard({ grupo, onFusionarSel, onIgnorar }) {
     )
   );
 }
+// Descarga del segmento Clientes (12 nov 2026): exporta la lista TAL COMO SE VE
+// (busqueda, filtros y orden). Es un listado de contacto: no incluye cedula,
+// alergias, medicamentos ni notas clinicas.
+function filasClientesExport(lista, ventas) {
+  const norm = (s) => String(s || "").toLowerCase().trim();
+  return lista.map((c) => {
+    const mascota = c.nombreMascota || c.nombre || c.nombremascota || "";
+    const nm = norm(mascota);
+    const vs = (ventas || []).filter((v) => norm(v.cliente) === nm);
+    const ultima = vs.reduce((m, v) => (v.fecha && (!m || v.fecha > m) ? v.fecha : m), "");
+    const total = vs.reduce((s, v) => s + (Number(v.total) || 0), 0);
+    const nac = c.fechaNacimiento || "";
+    return {
+      "Mascota": mascota,
+      "Especie": c.especie || "",
+      "Raza": c.raza || "",
+      "Sexo": c.sexo || "",
+      "Tamaño": c.tamano || "",
+      "Fecha de nacimiento": nac,
+      "Edad": nac ? edadDesdeNacimiento(nac) : "",
+      "Color": c.color || "",
+      "Esterilizado": c.esterilizado ? "Sí" : "No",
+      "Propietario": c.nombrePropietario || c.dueno || c.nombrepropietario || "",
+      "Teléfono": c.telefono || "",
+      "Teléfono 2": c.telefono2 || "",
+      "Email": c.email || "",
+      "Dirección": c.direccion || "",
+      "Visitas": vs.length,
+      "Última visita": ultima,
+      "Total gastado (RD$)": Math.round(total * 100) / 100,
+    };
+  });
+}
+function descargarArchivoClientes(blob, nombre) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function exportarClientesExcel(lista, ventas) {
+  const filas = filasClientesExport(lista, ventas);
+  const hoyTxt = fechaLocal();
+  if (!window.XLSX) {
+    // Sin la libreria de Excel (CDN caido): se baja como CSV con las mismas columnas.
+    const cols = Object.keys(filas[0]);
+    const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+    const csv = "﻿" + cols.map(q).join(",") + "\n" + filas.map((d) => cols.map((c) => q(d[c])).join(",")).join("\n");
+    descargarArchivoClientes(new Blob([csv], { type: "text/csv;charset=utf-8" }), "Clientes_PetColinas_" + hoyTxt + ".csv");
+    return;
+  }
+  const XLSX = window.XLSX;
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const anchos = [18, 10, 16, 10, 16, 16, 16, 14, 13, 24, 14, 14, 26, 32, 10, 14, 18];
+  ws["!cols"] = anchos.map((w) => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws, "Clientes");
+  XLSX.writeFile(wb, "Clientes_PetColinas_" + hoyTxt + ".xlsx");
+}
+function exportarClientesPDF(lista, ventas, totalRegistrados) {
+  if (!window.jspdf) return avisar("No se cargó el generador de PDF. Recarga la página o usa Excel.", "error");
+  const filas = filasClientesExport(lista, ventas);
+  const hoyTxt = fechaLocal();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 28;
+  const cols = [
+    { k: "Mascota", t: "Mascota", w: 1.5 },
+    { k: "Especie", t: "Especie", w: 0.9 },
+    { k: "Raza", t: "Raza", w: 1.2 },
+    { k: "Propietario", t: "Propietario", w: 1.6 },
+    { k: "Teléfono", t: "Teléfono", w: 1.2 },
+    { k: "Email", t: "Email", w: 2.5 },
+    { k: "Visitas", t: "Visitas", w: 0.7, num: true },
+    { k: "Última visita", t: "Última visita", w: 1.1 },
+    { k: "Total gastado (RD$)", t: "Total (RD$)", w: 1.2, num: true, money: true },
+  ];
+  const sumaPesos = cols.reduce((s, c) => s + c.w, 0);
+  cols.forEach((c) => { c.px = (W - 2 * M) * c.w / sumaPesos; });
+  const txt = (v, c) => c.money ? Number(v || 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(v ?? "");
+  const cabecera = (y) => {
+    doc.setFillColor(26, 107, 58); doc.rect(M, y, W - 2 * M, 22, "F");
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+    let x = M;
+    cols.forEach((c) => {
+      const tx = c.num ? x + c.px - 5 : x + 5;
+      doc.text(c.t, tx, y + 14, c.num ? { align: "right" } : undefined);
+      x += c.px;
+    });
+    doc.setTextColor(31, 35, 40); doc.setFont("helvetica", "normal");
+    return y + 22;
+  };
+  const titulo = () => {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(26, 107, 58);
+    doc.text("PetColinas · Clientes & Mascotas", M, 40);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(90, 98, 106);
+    const extra = filas.length < totalRegistrados ? "  (lista filtrada de " + totalRegistrados + " registrados)" : "";
+    doc.text(filas.length + " clientes" + extra + "  ·  Generado el " + hoyTxt, M, 56);
+    return 72;
+  };
+  let y = cabecera(titulo());
+  filas.forEach((f, i) => {
+    const celdas = cols.map((c) => doc.splitTextToSize(txt(f[c.k], c), c.px - 10));
+    const lineas = Math.max(1, ...celdas.map((l) => l.length));
+    const alto = lineas * 11 + 6;
+    if (y + alto > H - 36) { doc.addPage(); y = cabecera(M); }
+    if (i % 2 === 1) { doc.setFillColor(245, 247, 246); doc.rect(M, y, W - 2 * M, alto, "F"); }
+    doc.setFontSize(8.5); doc.setTextColor(31, 35, 40);
+    let x = M;
+    cols.forEach((c, j) => {
+      const lineasCelda = celdas[j];
+      if (c.num) doc.text(lineasCelda, x + c.px - 5, y + 11, { align: "right" });
+      else doc.text(lineasCelda, x + 5, y + 11);
+      x += c.px;
+    });
+    y += alto;
+    doc.setDrawColor(224, 228, 232); doc.line(M, y, W - M, y);
+  });
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p); doc.setFontSize(8); doc.setTextColor(120, 128, 136);
+    doc.text("PetColinas · Plaza Las Colinas, Santo Domingo Oeste", M, H - 16);
+    doc.text("Página " + p + " de " + total, W - M, H - 16, { align: "right" });
+  }
+  doc.save("Clientes_PetColinas_" + hoyTxt + ".pdf");
+}
 function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, setVentas, clienteInicial, onClearClienteInicial, setTab, setCrmClienteInicial, historias = [], setHistorias, deleteHistoria, citas = [], setCitas }) {
   const ESPECIE_OPTS = ["Perro", "Gato", "Ave", "Conejo", "Reptil", "Otro"];
   const TAMANO_OPTS = ["Peque\xF1o (< 10 kg)", "Mediano (10\u201325 kg)", "Grande (> 25 kg)"];
@@ -16637,7 +16763,7 @@ function CRM({ clientes, setClientes, deleteCliente, onVirtualFusion, ventas, se
   const totalGastado = ventasCliente.reduce((s, v) => s + v.total, 0);
   const ultimaVisita = ventasCliente.length > 0 ? [...ventasCliente].sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha : null;
   if (vista === "lista") return /* @__PURE__ */ React.createElement("div", null,
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, marginBottom: 4 } }, "Clientes & Mascotas"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, clientes.length, " pacientes registrados")), /* @__PURE__ */ React.createElement("div", { style: { display:"flex",gap:8,alignItems:"center" } }, dupGrupos.length > 0 && /* @__PURE__ */ React.createElement("button", { onClick: ()=>setShowDedup(true), style: { background:"none",border:"1.5px solid "+C.grisd,color:C.grisd,borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer",fontWeight:600 } }, "\uD83D\uDD0D Duplicados ("+dupGrupos.length+")"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: FUENTE, letterSpacing: "-0.02em", fontSize: 26, marginBottom: 4 } }, "Clientes & Mascotas"), /* @__PURE__ */ React.createElement("p", { style: { color: C.grisd, fontSize: 13 } }, clientes.length, " pacientes registrados")), /* @__PURE__ */ React.createElement("div", { style: { display:"flex",gap:8,alignItems:"center" } }, clientesFiltrados.length > 0 && /* @__PURE__ */ React.createElement("button", { onClick: ()=>exportarClientesExcel(clientesFiltrados, ventas), title: "Descarga la lista tal como se ve (busqueda, filtros y orden)", style: { background:"#fff",border:"1.5px solid "+C.verde,color:C.verde,borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer",fontWeight:600 } }, "⬇ Excel"), clientesFiltrados.length > 0 && /* @__PURE__ */ React.createElement("button", { onClick: ()=>exportarClientesPDF(clientesFiltrados, ventas, clientes.length), title: "Descarga la lista tal como se ve (busqueda, filtros y orden)", style: { background:"#fff",border:"1.5px solid "+C.verde,color:C.verde,borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer",fontWeight:600 } }, "⬇ PDF"), dupGrupos.length > 0 && /* @__PURE__ */ React.createElement("button", { onClick: ()=>setShowDedup(true), style: { background:"none",border:"1.5px solid "+C.grisd,color:C.grisd,borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer",fontWeight:600 } }, "\uD83D\uDD0D Duplicados ("+dupGrupos.length+")"), /* @__PURE__ */ React.createElement(Btn, { onClick: () => {
     setForm(emptyForm);
     setEditando(false);
     setVista("nuevo");
