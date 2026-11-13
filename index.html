@@ -5647,6 +5647,26 @@ function PanelFondo({ saldo, mascota, total, dejar, setDejar, usar, setUsar }) {
   );
 }
 
+// Aviso en una linea de factura cuando la cantidad se multiplico dos veces: el
+// precio escrito es el TOTAL de la linea (80 x 10 = 800) y la factura lo vuelve a
+// multiplicar por 10 (8000). El precio de la columna es SIEMPRE por unidad.
+// Se compara con el precio del producto en inventario (sin el "10x " del nombre).
+function avisoPrecioLinea(item, inventario, indice, setItem) {
+  const E = React.createElement;
+  const qty = Math.max(1, parseInt(item.cantidad) || 1);
+  if (qty <= 1) return null;
+  const nombre = normalizarTextoInv(String(item.descripcion || "").replace(/^\d+\s*x\s+/i, ""));
+  if (!nombre) return null;
+  const prod = (inventario || []).find((p) => normalizarTextoInv(p.nombre) === nombre && Number(p.pventa) > 0);
+  if (!prod) return null;
+  const precio = parseFloat(item.precio) || 0;
+  if (Math.abs(precio - Number(prod.pventa) * qty) > 0.5) return null;
+  return E("div", { style: { marginTop: 4, fontSize: 11, color: "#b45309", lineHeight: 1.3 } },
+    "⚠️ El precio parece el total. Por unidad es RD$ " + Number(prod.pventa).toLocaleString("es-DO") + ". ",
+    E("button", { type: "button", onClick: () => setItem(indice, "precio", String(prod.pventa)),
+      style: { background: "none", border: "none", padding: 0, color: "#1a6b3a", fontWeight: 800, fontSize: 11, cursor: "pointer", textDecoration: "underline" } },
+      "Usar RD$ " + Number(prod.pventa).toLocaleString("es-DO")));
+}
 function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCitas, historias = [], tarifasGrooming, tarifasVet, inventario, sinBorrar = false }) {
   const [facturas, setFacturas] = useSupabase("pc_facturas", (() => {
     try {
@@ -6778,7 +6798,7 @@ function Facturas({ ventas, setVentas, deleteVenta, clientes, citas = [], setCit
         placeholder: "0",
         style: { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e0e4e8", fontSize: 13, color: (item.descuento || 0) > 0 ? "#dc2626" : undefined }
       }
-    )), /* @__PURE__ */ React.createElement("div", null, i === 0 && React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Total"), React.createElement("div", { style: { padding: "8px 10px", fontWeight: 700, fontSize: 13, textAlign: "right", color: C.verde, whiteSpace: "nowrap" } }, RD(calcTotales([item], false).subtotal))), /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", null, i === 0 && React.createElement("label", { style: { fontSize: 11, color: C.grisd, display: "block", marginBottom: 4 } }, "Total"), React.createElement("div", { style: { padding: "8px 10px", fontWeight: 700, fontSize: 13, textAlign: "right", color: C.verde, whiteSpace: "nowrap" } }, RD(calcTotales([item], false).subtotal)), avisoPrecioLinea(item, inventario, i, setItem)), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => removeItem(i),
