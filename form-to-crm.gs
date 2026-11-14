@@ -71,6 +71,9 @@ var SPREADSHEET_ID = "15FJq5GZNtl_T_qy7aq29dyLY9Ox-um49uEA6GXirEV0";
 var CAMPO_FORM = {
   // ── Dueño ────────────────────────────────────────────────────────────────
   "nombre completo":                        "nombrepropietario",
+  // La pregunta del Form se llama "Nombre completo del propietario *" (confirmado en la hoja
+  // de respuestas, 14 nov 2026). Sin esta linea el dueño quedaba vacio en el CRM.
+  "nombre completo del propietario":        "nombrepropietario",
   "cedula / pasaporte":                     "cedula",
   "telefono / whatsapp":                    "telefono",
   "correo electronico":                     "email",
@@ -94,6 +97,7 @@ var CAMPO_FORM = {
   "nombre del contacto de emergencia":      "_emergencia_nombre",
   "nombre y telefono del contacto de emergencia": "_emergencia_tel",
   "peso aproximado (kg)":                   "_peso",
+  "peso aproximado (lb)":                   "_peso",
   "¿vacunas al dia?":                       "_vacunas",
   "observaciones o solicitudes especiales": "_observaciones",
 
