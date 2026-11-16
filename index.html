@@ -11788,7 +11788,7 @@ function lineasStockVenta(items, inventario) {
       // Si el inventario que tiene esta pantalla no trae el producto (portal con datos viejos
       // o vacios), no se descarta en silencio: se descuenta contra la BASE por su id.
       if (!prod) prod = { id: String(it.prodId), nombre: String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), stock: null };
-    } else if ((it.area || it.categoria || it.tipo) === "farmacia") prod = coincidenciaInventario(String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), inv);
+    } else prod = coincidenciaInventario(String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), inv);
     if (!prod) return;
     const k = String(prod.id);
     const prev = porId.get(k);
@@ -12324,6 +12324,9 @@ function Ventas({ ventas, setVentas, deleteVenta, inventario, setInventario, cli
     };
     // Sin stock no se factura (Victor, 26 oct). Se comprueba contra la base.
     const lineasStock = lineasStockVenta(items, inventario);
+    const sinEncontrar = items.filter((it) => !it.sinControlStock && it.prodId == null && (it.area === "farmacia" || it.tipo === "farmacia")
+      && !coincidenciaInventario(String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), inventario));
+    if (sinEncontrar.length) avisar("Ojo: no encontré en inventario " + sinEncontrar.map((it) => "\"" + it.nombre + "\"").join(", ") + ". La venta se guardó, pero ese stock no se descontó: ajústalo en Inventario.", "aviso");
     if (lineasStock.length) {
       facturandoRef.current = true;
       let rStock;
