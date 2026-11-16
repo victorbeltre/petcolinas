@@ -11783,8 +11783,12 @@ function lineasStockVenta(items, inventario) {
     if (!it || it.sinControlStock) return;
     const qty = Math.max(1, parseInt(it.qty) || 1);
     let prod = null;
-    if (it.prodId != null && it.prodId !== "") prod = inv.find((p) => String(p.id) === String(it.prodId)) || null;
-    else if ((it.area || it.categoria || it.tipo) === "farmacia") prod = coincidenciaInventario(String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), inv);
+    if (it.prodId != null && it.prodId !== "") {
+      prod = inv.find((p) => String(p.id) === String(it.prodId)) || null;
+      // Si el inventario que tiene esta pantalla no trae el producto (portal con datos viejos
+      // o vacios), no se descarta en silencio: se descuenta contra la BASE por su id.
+      if (!prod) prod = { id: String(it.prodId), nombre: String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), stock: null };
+    } else if ((it.area || it.categoria || it.tipo) === "farmacia") prod = coincidenciaInventario(String(it.nombre || "").replace(/^\d+\s*x\s+/i, ""), inv);
     if (!prod) return;
     const k = String(prod.id);
     const prev = porId.get(k);
