@@ -18978,6 +18978,7 @@ const TABS_VET = [
   { id: "ventas_vet",      icon: "\u{1F6D2}", label: "Ventas" },
   { id: "facturas_vet",    icon: "\u{1F4C4}", label: "Facturas" },
   { id: "inventario_vet",  icon: "\u{1F4E6}", label: "Inventario" },
+  { id: "caja_vet",        icon: "\u{1F9EE}", label: "Caja" },
   { id: "cobros_vet",      icon: "\u{1F4B0}", label: "Cobros" },
   { id: "agenda_vet",      icon: "\u{1F4C5}", label: "Agenda" },
   { id: "mis_servicios",   icon: "\u{1F4DD}", label: "Mis Servicios" },
@@ -21096,6 +21097,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       tabVet === "cobros_vet"     && React.createElement(Cobros, { ventas, setVentas, clientes, soloPropio: usuario.nombre.split(" ")[0] }),
       // Ventas, Facturas e Inventario: las mismas pantallas que usa el admin, con el estado del portal.
       // Borrar una venta sigue siendo solo del admin desde su pantalla.
+      tabVet === "caja_vet"       && React.createElement(CierreCaja, { esAdmin: false }),
       tabVet === "ventas_vet"     && React.createElement(Ventas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, clientes, setClientes, citas, setCitas, tarifasGrooming: tarifasGrmVivo, tarifasVet: tarifasVetVivo, setTab: () => {} }),
       tabVet === "facturas_vet"   && React.createElement(Facturas, { sinBorrar: true, ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), clientes, citas, setCitas, historias, tarifasGrooming: tarifasGrmVivo, tarifasVet: tarifasVetVivo, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
       tabVet === "inventario_vet" && React.createElement(InventarioVenta, { inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
@@ -21914,11 +21916,12 @@ function Cobros({ ventas, setVentas, clientes, soloPropio }) {
 // Caja: el dia a dia y los reportes de periodo, en una sola pestaña porque leen
 // exactamente el mismo libro. Separarlos obligaria a mantener dos veces la
 // misma logica de que cuenta como entrada y que como salida.
-function CierreCaja() {
+function CierreCaja({ esAdmin = true }) {
   const E = React.createElement;
   const [modo, setModo] = React.useState("dia");
-  const MODOS = [["dia", "📅 Día"], ["semana", "🗓 Semana"], ["mes", "📆 Mes"], ["rango", "⇄ Rango"],
-                 ["cuentas", "🏦 Cuentas"]];
+  // Las cuentas de banco son solo del admin (RLS): al resto no se le muestra ese modo.
+  const MODOS = [["dia", "📅 Día"], ["semana", "🗓 Semana"], ["mes", "📆 Mes"], ["rango", "⇄ Rango"]]
+    .concat(esAdmin ? [["cuentas", "🏦 Cuentas"]] : []);
   const tab = (id, txt) => E("button", {
     key: id, onClick: () => setModo(id), style: {
       background: modo === id ? "#1a6b3a" : "#fff",
