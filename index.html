@@ -8623,8 +8623,22 @@ function PetColinas() {
   const setVentas = setVentasVet;
   const [clientesVet, setClientesVet] = useClientesConSeed(CLIENTES_SEED);
   const [citasPortal, setCitasPortal, , , , refetchCitasPortal] = useSupabase("pc_citas", (() => { try { return JSON.parse(localStorage.getItem("pc_citas_agenda") || "[]"); } catch { return []; } })());
-  const [historiasVet, setHistoriasVet] = useSupabase("pc_historias", []);
-  const [fichasVet, setFichasVet] = useSupabase("pc_fichas_clinicas", []);
+  const [historiasVet, setHistoriasVet, , , , refetchHistoriasVet] = useSupabase("pc_historias", []);
+  const [fichasVet, setFichasVet, , , , refetchFichasVet] = useSupabase("pc_fichas_clinicas", []);
+  // La doctora ve lo que Victor registra (evolucion, vacunas, laboratorio) sin tener que recargar:
+  // refresca al volver a la pestana y cada minuto, solo cuando la sesion es de la doctora.
+  const emailVetSesion = session?.user?.email || "";
+  React.useEffect(() => {
+    if (!emailVetSesion || !vetEmails().some((v) => v.email === emailVetSesion)) return;
+    const refrescar = () => {
+      if (document.visibilityState !== "visible") return;
+      if (refetchHistoriasVet) refetchHistoriasVet();
+      if (refetchFichasVet) refetchFichasVet();
+    };
+    const t = setInterval(refrescar, 60000);
+    document.addEventListener("visibilitychange", refrescar);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", refrescar); };
+  }, [emailVetSesion]);
   const [pagosNomVet, setPagosNomVet] = React.useState([]);
   // Datos que necesita el portal de caja (hooks siempre arriba, sin condicionales)
   const [invCaja, setInvCaja, , , deleteInvCaja] = useSupabase("pc_inventario", INVENTARIO_SEED);
@@ -18976,7 +18990,6 @@ function ReportesLab({ usuario, clientes = [], fichas = [], setFichas }) {
 const TABS_VET = [
   { id: "facturar_vet",    icon: "\u{1F9FE}", label: "Facturar" },
   { id: "ventas_vet",      icon: "\u{1F6D2}", label: "Ventas" },
-  { id: "facturas_vet",    icon: "\u{1F4C4}", label: "Facturas" },
   { id: "inventario_vet",  icon: "\u{1F4E6}", label: "Inventario" },
   { id: "caja_vet",        icon: "\u{1F9EE}", label: "Caja" },
   { id: "cobros_vet",      icon: "\u{1F4B0}", label: "Cobros" },
@@ -21099,7 +21112,7 @@ function PortalVeterinaria({ session, onLogout, ventas, setVentas, clientes, set
       // Borrar una venta sigue siendo solo del admin desde su pantalla.
       tabVet === "caja_vet"       && React.createElement(CierreCaja, { esAdmin: false }),
       tabVet === "ventas_vet"     && React.createElement(Ventas, { ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, clientes, setClientes, citas, setCitas, tarifasGrooming: tarifasGrmVivo, tarifasVet: tarifasVetVivo, setTab: () => {} }),
-      tabVet === "facturas_vet"   && React.createElement(Facturas, { sinBorrar: true, ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), clientes, citas, setCitas, historias, tarifasGrooming: tarifasGrmVivo, tarifasVet: tarifasVetVivo, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
+      false && React.createElement(Facturas, { sinBorrar: true, ventas, setVentas, deleteVenta: () => avisar("Para borrar una venta, pídelo a Victor.", "error"), clientes, citas, setCitas, historias, tarifasGrooming: tarifasGrmVivo, tarifasVet: tarifasVetVivo, inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])) }),
       tabVet === "inventario_vet" && React.createElement(Inventario, { inventario: (inventario.length ? inventario : (window.__inventarioGlobal || [])), setInventario, ventas, sinCostos: true }),
       tabVet === "agenda_vet"     && React.createElement(Agenda, {
         citas, setCitas,
