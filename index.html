@@ -11800,7 +11800,7 @@ function lineasStockVenta(items, inventario) {
 // bajar de 3 a 1 devuelve 2, y guardarla sin tocar los productos no mueve nada.
 function diferenciaStockFactura(itemsAntes, itemsAhora, inventario) {
   const comoLineas = (its) => (its || []).filter((it) => String(it.descripcion || it.nombre || "").trim())
-    .map((it) => ({ nombre: it.descripcion || it.nombre, qty: Math.max(1, parseInt(it.cantidad ?? it.qty) || 1), area: "farmacia" }));
+    .map((it) => ({ nombre: it.descripcion || it.nombre, prodId: it.prodId ?? null, qty: Math.max(1, parseInt(it.cantidad ?? it.qty) || 1), area: "farmacia" }));
   const antes = new Map(lineasStockVenta(comoLineas(itemsAntes), inventario).map((l) => [String(l.prod.id), l]));
   const ahora = new Map(lineasStockVenta(comoLineas(itemsAhora), inventario).map((l) => [String(l.prod.id), l]));
   const descontar = [], devolver = [];
@@ -19645,6 +19645,7 @@ function parseItemsFactura(x) {
 }
 
 function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventario = [], setInventario, acento, tarifasGrmProp, tarifasVetProp }) {
+  const [sugEditKey, setSugEditKey] = React.useState(null);   // linea de la edicion con el desplegable abierto
   const [categoria, setCategoria] = React.useState("grooming");
   const [cliente, setCliente] = React.useState("");
   const [showSugg, setShowSugg] = React.useState(false);
@@ -20344,7 +20345,22 @@ function FacturarEmpleado({ usuario, ventas, setVentas, clientes = [], inventari
 
           React.createElement("div", { style:{ fontSize:11, fontWeight:700, color:CC.gris, textTransform:"uppercase", marginBottom:6 }}, "Servicios y productos"),
           editV.items.map(it => React.createElement("div", { key:it.key, style:{ display:"flex", gap:6, marginBottom:6, alignItems:"center" }},
-            React.createElement("input", { value:it.nombre, onChange:e=>setEItem(it.key,"nombre",e.target.value), placeholder:"Servicio o producto", style:{ flex:3, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
+            React.createElement("div", { style:{ flex:3, position:"relative", minWidth:0 }},
+              React.createElement("input", { value:it.nombre,
+                onChange:e=>{ const v=e.target.value; setEditV(ed=>({ ...ed, items: ed.items.map(x=> x.key===it.key ? { ...x, nombre:v, prodId:null } : x) })); setSugEditKey(it.key); },
+                onFocus:()=>setSugEditKey(it.key), onBlur:()=>setTimeout(()=>setSugEditKey(k=>k===it.key?null:k),150),
+                placeholder:"Escribe el producto o servicio (ej: nex 7)", style:{ width:"100%", boxSizing:"border-box", border:"1.5px solid "+(it.prodId?"#1a6b3a":"#dde0e4"), borderRadius:8, padding:"7px 9px", fontSize:12 }}),
+              sugEditKey===it.key && (it.nombre||"").trim().length >= 1 && (()=>{
+                const inv = inventario.length ? inventario : (window.__inventarioGlobal || []);
+                const lista = buscarEnInventario(inv, it.nombre).slice(0, 12);
+                if (lista.length === 0) return null;
+                return React.createElement("div", { style:{ position:"absolute", top:"100%", left:0, right:0, zIndex:300, background:"#fff", border:"1px solid #e0e4e8", borderRadius:8, boxShadow:"0 8px 24px rgba(0,0,0,.14)", maxHeight:260, overflowY:"auto", marginTop:4 }},
+                  lista.map(p=> React.createElement("div", { key:p.id, onMouseDown:(e)=>{ e.preventDefault(); setEditV(ed=>({ ...ed, items: ed.items.map(x=> x.key===it.key ? { ...x, nombre:p.nombre, precioUnit:Number(p.pventa)||0, prodId:p.id, categoria:"farmacia" } : x) })); setSugEditKey(null); },
+                    style:{ padding:"7px 10px", cursor:"pointer", display:"flex", justifyContent:"space-between", gap:8, fontSize:12, borderBottom:"1px solid #f4f5f6" }},
+                    React.createElement("span", null, p.nombre, p.codigo ? React.createElement("span", { style:{ color:"#9aa5ad", marginLeft:6 }}, p.codigo) : null),
+                    React.createElement("span", { style:{ whiteSpace:"nowrap", fontWeight:700 }}, RD2(p.pventa) + " · " + (Number(p.stock)||0) + " en stock"))));
+              })()
+            ),
             React.createElement("input", { type:"number", min:0, value:it.precioUnit, onChange:e=>setEItem(it.key,"precioUnit",e.target.value), title:"Precio", style:{ flex:1.2, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
             React.createElement("input", { type:"number", min:1, value:it.qty, onChange:e=>setEItem(it.key,"qty",e.target.value), title:"Cantidad", style:{ flex:0.8, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
             React.createElement("input", { type:"number", min:0, max:100, value:it.descPct, onChange:e=>setEItem(it.key,"descPct",e.target.value), title:"Descuento %", style:{ flex:0.8, border:"1.5px solid #dde0e4", borderRadius:8, padding:"7px 9px", fontSize:12, minWidth:0 }}),
