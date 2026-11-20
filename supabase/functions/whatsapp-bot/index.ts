@@ -129,15 +129,15 @@ function parseFechaRD(raw: string): string {
 }
 
 // CANDADO DE HORARIO PetColinas (el mismo que usa Sofía)
-//   Lun, Mié-Sáb: 9:00-18:00 · Martes: SOLO veterinaria · Domingo: 9:00-13:00 · 45 min
+//   Lun, Mié-Sáb: 9:00-18:00 · Martes: CERRADO · Domingo: 9:00-13:00 · 45 min
 function validarHorario(fechaISO: string, hora: string, tipo: string): { ok: boolean; motivo?: string } {
   const toMin = (h: string) => { const [hh, mm] = (h || "").split(":").map(Number); return (hh || 0) * 60 + (mm || 0); };
   const fmt = (x: number) => String(Math.floor(x / 60)).padStart(2, "0") + ":" + String(x % 60).padStart(2, "0");
   const dia = new Date(fechaISO + "T12:00:00Z").getUTCDay();
   const DUR = 45;
   const m = toMin(hora);
-  if (dia === 2 && tipo !== "consulta") {
-    return { ok: false, motivo: "Los martes solo atendemos veterinaria; el grooming no está disponible ese día. Ofrécele otro día u ofrécele consulta veterinaria el martes." };
+  if (dia === 2) {
+    return { ok: false, motivo: "Los martes PetColinas está cerrado. Ofrécele el lunes o el miércoles." };
   }
   const open = 540;
   const close = dia === 0 ? 780 : 1080;
@@ -614,16 +614,28 @@ Atiendes a los clientes por WhatsApp: respondes dudas, das precios, agendas cita
 - Nunca inventes precios, horarios ni disponibilidad. Si no lo sabes, usa una herramienta o escala a Laura.
 
 ## Datos de la clínica
-- Dirección: Plaza Las Colinas, Santo Domingo Oeste.
-- Horario: lunes y de miércoles a sábado de 9:00 a 6:00 pm · martes SOLO veterinaria de 9:00 a 6:00 pm (no hay grooming los martes) · domingo de 9:00 a 1:00 pm.
+- Dirección: Plaza Las Colinas, Prolongación Av. 27 de Febrero, Santo Domingo Oeste.
+- Ubicación en Google Maps: https://maps.app.goo.gl/yRpfrmJiMo3VJhmi7
+- Horario: lunes y de miércoles a sábado de 9:00 am a 6:00 pm · domingo de 9:00 am a 1:00 pm. *Los martes está CERRADO*: nunca ofrezcas ni agendes citas un martes.
 - Las citas duran 45 minutos. La última cita entra 45 minutos antes de cerrar.
+- Formas de pago: efectivo, tarjeta y transferencia.
 - Programa de lealtad: cada 10 baños de grooming, el siguiente es GRATIS.
-- Contamos con veterinarias (Aylein y Valentina) y groomer (Alexander). Laura está en recepción.
+- Veterinaria: Dra. Naylan Pérez. Groomer: Alexander. Laura está en recepción.
+- Atendemos perros y gatos.
+
+## Vacunas (lo más preguntado por los anuncios)
+- Cachorro: "Mi primera vacuna canina" y luego "Completo esquema vacuna canina". Gatito: "Mi primera vacuna felina".
+- Adulto: "Refuerzo anual" cada año. Pregunta siempre la edad y si ya tiene alguna vacuna puesta antes de dar el precio.
+
+## Antiparasitarios
+- NexGard Spectra: desparasita por dentro Y por fuera, dura 35 días.
+- Ferox: solo pulgas y garrapatas (por fuera), dura 3 meses. No digas que Ferox desparasita por dentro.
+- El precio depende del peso; si no sabe el peso, pide uno aproximado. La disponibilidad del tamaño la confirma Laura.
 
 ## Tarifas vigentes (RD$)
 ${tarifas}
 
-Los precios de productos (comida, antiparasitarios, accesorios) varían: no los inventes, ofrece confirmarlos con Laura. Excepción: NexGard Spectra según peso — 2-3 kg RD$1,416 · 3-7 kg RD$1,462 · 7.6-15 kg RD$1,559 · 15-30 kg RD$1,771 · 30-60 kg RD$1,992.
+Los precios de productos (comida, antiparasitarios, accesorios) varían: no los inventes, ofrece confirmarlos con Laura. Excepción: NexGard Spectra según peso — 2-3.5 kg RD$1,416 · 3.6-7 kg RD$1,462 · 7.6-15 kg RD$1,600 · 15.1-30 kg RD$1,770 · 30.1-60 kg RD$1,990. Ferox — 2-4.5 kg RD$1,730 · 4.5-10 kg RD$1,800 · 10-20 kg RD$2,000.
 
 ## Reglas al agendar
 1. Antes de proponer días, llama a obtenerFechaHora.
@@ -701,11 +713,11 @@ async function toolInfoCliente(args: Record<string, unknown>): Promise<string> {
 
 function nexgardPorPeso(peso: number | null): string | null {
   if (!peso || peso <= 0) return null;
-  if (peso <= 3) return "NexGard Spectra 2-3 kg (RD$1,416)";
-  if (peso <= 7) return "NexGard Spectra 3-7 kg (RD$1,462)";
-  if (peso <= 15) return "NexGard Spectra 7.6-15 kg (RD$1,559)";
-  if (peso <= 30) return "NexGard Spectra 15-30 kg (RD$1,771)";
-  return "NexGard Spectra 30-60 kg (RD$1,992)";
+  if (peso <= 3.5) return "NexGard Spectra 2-3.5 kg (RD$1,416)";
+  if (peso <= 7) return "NexGard Spectra 3.6-7 kg (RD$1,462)";
+  if (peso <= 15) return "NexGard Spectra 7.6-15 kg (RD$1,600)";
+  if (peso <= 30) return "NexGard Spectra 15.1-30 kg (RD$1,770)";
+  return "NexGard Spectra 30.1-60 kg (RD$1,990)";
 }
 
 function estadoAntiparasitario(ventas: Array<Record<string, unknown>>, peso: number | null): string | null {
@@ -716,7 +728,8 @@ function estadoAntiparasitario(ventas: Array<Record<string, unknown>>, peso: num
     const t = texto(v);
     let ciclo = 0, nombre = "";
     if (/bravecto/.test(t)) { ciclo = 90; nombre = "Bravecto"; }
-    else if (/nexgard|next ?gard|spectra/.test(t)) { ciclo = 30; nombre = "NexGard Spectra"; }
+    else if (/ferox/.test(t)) { ciclo = 90; nombre = "Ferox (solo pulgas y garrapatas)"; }
+    else if (/nexgard|next ?gard|spectra/.test(t)) { ciclo = 35; nombre = "NexGard Spectra"; }
     else if (/frontline|spot ?on|pipeta|antiparasit|desparasit/.test(t)) { ciclo = 30; nombre = "antiparasitario"; }
     if (!ciclo) continue;
     const fecha = String(v.fecha ?? "");
@@ -742,7 +755,8 @@ async function toolDisponibilidad(args: Record<string, unknown>): Promise<string
   const activas = (data ?? []).filter((c) => String(c.estado ?? "") !== "cancelada");
   const dia = new Date(fecha + "T12:00:00Z").getUTCDay();
   const cierre = dia === 0 ? "13:00" : "18:00";
-  const nota = dia === 2 ? " (martes: SOLO veterinaria, no hay grooming)" : "";
+  if (dia === 2) return `El ${fechaLarga(fecha)} (${fecha}) es martes: PetColinas está CERRADO. Ofrece otro día.`;
+  const nota = "";
   if (!activas.length) return `El ${fechaLarga(fecha)} (${fecha}) no hay citas todavía. Horario: 09:00 a ${cierre}${nota}. Todo está disponible.`;
   return `Citas ya ocupadas el ${fechaLarga(fecha)} (${fecha}), horario 09:00 a ${cierre}${nota}:\n` +
     activas.map((c) => `- ${c.hora} ${c.tipo ?? ""} (${c.nombremascota ?? ""})`).join("\n") +
