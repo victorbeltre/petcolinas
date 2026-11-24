@@ -7222,7 +7222,9 @@ async function leerHojaCandidatos(url, puestoDef) {
     // Vacante: se deduce del nombre del formulario/campaña si la hoja lo trae.
     let puestoFila = puestoDef || CAND_SHEET_PUESTO;
     const etiqueta = (iForm >= 0 ? String(fila[iForm] || "") : "").toLowerCase();
-    if (/groom|peluquer|estilis|ba[ñn]ist/.test(etiqueta)) puestoFila = "groomer";
+    // Sonografista va primero: "sonografia veterinaria" tambien contiene "veterinar".
+    if (/sonograf|ecograf|ultrason/.test(etiqueta)) puestoFila = "sonografista";
+    else if (/groom|peluquer|estilis|ba[ñn]ist/.test(etiqueta)) puestoFila = "groomer";
     else if (/veterinar|m[eé]dic|vet\b/.test(etiqueta)) puestoFila = "vet";
     else if (/recepci|cajer|atenci[oó]n|ventas/.test(etiqueta)) puestoFila = "recepcion";
 
@@ -7373,6 +7375,7 @@ const CAND_PUESTOS = [
   { id: "vet", label: "Veterinario/a", icon: "🩺" },
   { id: "groomer", label: "Groomer / Peluquero", icon: "✂️" },
   { id: "recepcion", label: "Recepción / Ventas", icon: "🗂️" },
+  { id: "sonografista", label: "Sonografista", icon: "🔊" },
 ];
 const CAND_PREGUNTAS_GROOMER = [
   ["Experiencia", "¿Cuántos años tienes bañando y cortando perros? ¿Qué razas manejas con soltura?", "Que detalle años reales y razas concretas (poodle, schnauzer, shih tzu, yorkshire). Ojo con respuestas vagas."],
@@ -7393,7 +7396,18 @@ const CAND_PREGUNTAS_RECEPCION = [
   ["Manejo de quejas", "¿Cómo manejas a un cliente molesto o una queja?", "Calma, escucha, solución; escalar cuando corresponde sin discutir."],
   ["Disponibilidad", "¿Qué disponibilidad de horario tienes y qué expectativa salarial manejas?", "Que calce con Lun–Sáb 9-6, Dom 9-1. Alinear salario desde el inicio."],
 ];
-const CAND_PREGUNTAS_POR_PUESTO = { vet: CAND_PREGUNTAS, groomer: CAND_PREGUNTAS_GROOMER, recepcion: CAND_PREGUNTAS_RECEPCION };
+// Sonografista por encargo / por estudio (nov 2026).
+const CAND_PREGUNTAS_SONOGRAFISTA = [
+  ["Formación", "¿Eres médico veterinario? ¿Dónde te formaste en sonografía o ecografía y tienes certificado?", "Título de veterinario y un curso o diplomado de ecografía con práctica real; que pueda mostrar el certificado."],
+  ["Experiencia en animales", "¿Cuántos años haces sonografías en perros y gatos, y cuántas haces al mes más o menos?", "Experiencia propia en pequeñas especies, no solo en humanos. Un volumen mensual realista."],
+  ["Tipos de estudio", "¿Qué estudios haces con seguridad: abdominal completo, gestación, vejiga y riñones, ecocardiografía?", "Abdominal completo es lo básico. Ecocardiografía o ecografía guiada para punciones son un plus."],
+  ["Informe", "¿Entregas un informe escrito con imágenes el mismo día? ¿Nos puedes mostrar uno de ejemplo (sin datos del cliente)?", "Informe claro, con medidas e imágenes y una conclusión que la doctora pueda usar. Pedir un ejemplo."],
+  ["Equipo", "¿Tienes equipo propio (portátil) o trabajarías con el de la clínica?", "Con equipo propio puede empezar ya; si no, saber qué equipo maneja y qué sondas necesita."],
+  ["Disponibilidad", "¿Qué días y horas puedes venir cuando hay estudios agendados? ¿En cuánto tiempo llegas a Plaza Las Colinas?", "Que pueda venir con aviso de 1 día, idealmente con días fijos, y que no viva muy lejos."],
+  ["Pago", "¿Cuánto cobras por estudio? ¿Ese monto incluye el informe?", "Alinear desde el inicio el pago por estudio y qué incluye; comparar con el precio de venta de la ecografía."],
+  ["Urgencias", "¿Podrías venir para un caso urgente el mismo día?", "Un plus importante para emergencias (abdomen agudo, obstrucciones, gestación con complicaciones)."],
+];
+const CAND_PREGUNTAS_POR_PUESTO = { vet: CAND_PREGUNTAS, groomer: CAND_PREGUNTAS_GROOMER, recepcion: CAND_PREGUNTAS_RECEPCION, sonografista: CAND_PREGUNTAS_SONOGRAFISTA };
 
 function Candidatos() {
   const E = React.createElement;

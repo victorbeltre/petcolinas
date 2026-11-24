@@ -159,6 +159,7 @@ async function detectarPuesto(formId: string): Promise<string> {
       if (r.ok) {
         const f = await r.json() as Record<string, unknown>;
         const n = String(f.name ?? "").toLowerCase();
+        if (/sonograf|ecograf|ultrason/.test(n)) return "sonografista";
         if (/groom|peluquer|estilis/.test(n)) return "groomer";
         if (/recepci|ventas|cajer|atenci/.test(n)) return "recepcion";
         if (/veterinar|m[eé]dic/.test(n)) return "vet";
