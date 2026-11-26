@@ -461,6 +461,10 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   con todo el mes y se pagan con la 2DA quincena; la 1ra es solo medio sueldo (+/- pendientes). Si
   una quincena vieja ya incluyo comisiones (detalle.comisiones) no se repiten; si la 2da se pago sin
   ellas, sale "Comisiones sin pagar" con boton que registra un movimiento tipo `comision`.
+- QUIEN LO HIZO (26 nov 2026): si un colaborador cubre a otro (Alexander falto y Naylan hizo el
+  baño), la linea de la venta lleva `items[i].realizadoPor` y la comision de la tarifa va a quien lo
+  hizo (`comisionesNominaPorTarifa`, linea `cubre`). Se cambia en Nomina -> Historial con el selector
+  "Lo hizo ..." de cada servicio (guarda la venta). El 26 nov: Baño grande de "Oso jorge" -> Naylan.
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 

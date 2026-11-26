@@ -14345,9 +14345,14 @@ function comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, opts = {}) {
       const t = tarifaDeServicioNomina(nombre, tarifas);
       if (t) {
         const monto = r2(Number(t.comision) * cant);
-        const e = de(t.empleado_id);
+        // Cuando otro colaborador cubre el servicio (26 nov 2026: Alexander falto y
+        // Naylan hizo el baño), la linea lleva `realizadoPor` y la comision es de
+        // quien lo hizo, con el monto de la tarifa del servicio.
+        const hizo = it.realizadoPor ? vend.find((x) => x.clave && normalizarTextoInv(it.realizadoPor).split(" ").includes(x.clave)) : null;
+        const e = de(hizo ? hizo.id : t.empleado_id);
         e.total = r2(e.total + monto);
-        e.lineas.push({ tipo: "servicio", fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, tarifa: t.servicio, cant, comision: monto });
+        e.lineas.push({ tipo: "servicio", fecha: v.fecha, cliente: v.cliente || "", servicio: nombre, tarifa: t.servicio, cant, comision: monto,
+          ventaId: v.id, idx: items === v.items ? items.indexOf(it) : -1, realizadoPor: it.realizadoPor || "", cubre: !!(hizo && hizo.id !== t.empleado_id), duenoTarifa: t.empleado_id });
         continue;
       }
       const area = it.area || v.area;
@@ -14686,6 +14691,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const [editCosto, setEditCosto] = useState(null);
   const [costosManual, setCostosManual] = useState({});
   const [ajusteDet, setAjusteDet] = useState({});        // cambios del admin a lo detectado en Gastos
+  const [hechoPor, setHechoPor] = useState({});           // "ventaId|idx" -> quien realizo el servicio (cambiado aqui)
   const [ignorados, setIgnorados] = useState(() => { try { return JSON.parse(localStorage.getItem("pc_nomina_ignorados") || "[]"); } catch (e) { return []; } });   // costo escrito a mano de productos sin costo en inventario
   const tokenRef = useRef(null);
   useEffect(() => { tokenRef.current = token; }, [token]);
@@ -14754,7 +14760,20 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   // Orden: inventario > tarifario fijo > costo escrito a mano en el historial.
   const costosFijos = {};
   (datos.costos || []).forEach((k) => (k.alias || [k.nombre]).forEach((a) => { costosFijos[normalizarTextoInv(a)] = Number(k.costo_unitario); }));
-  const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, { inventario, vendedores, costosManual: { ...costosFijos, ...costosManual } });
+  const ventasN = Object.keys(hechoPor).length ? (ventas || []).map((v) => {
+    if (!Array.isArray(v.items) || !v.items.some((_, i) => hechoPor[v.id + "|" + i] !== undefined)) return v;
+    return { ...v, items: v.items.map((it, i) => hechoPor[v.id + "|" + i] !== undefined ? { ...it, realizadoPor: hechoPor[v.id + "|" + i] } : it) };
+  }) : ventas;
+  const porTarifa = comisionesNominaPorTarifa(ventasN, tarifas, desde, hasta, { inventario, vendedores, costosManual: { ...costosFijos, ...costosManual } });
+  // Cambia quien realizo un servicio (cuando un colaborador cubre a otro). Se guarda en la venta.
+  const cambiarHechoPor = async (l, quien) => {
+    const v = (ventasN || []).find((x) => String(x.id) === String(l.ventaId));
+    if (!v || !Array.isArray(v.items) || l.idx < 0) return avisar("No encontr\xE9 la venta.", "error");
+    const items = v.items.map((it, i) => { if (i !== l.idx) return it; const n = { ...it }; if (quien) n.realizadoPor = quien; else delete n.realizadoPor; return n; });
+    setHechoPor((h) => ({ ...h, [v.id + "|" + l.idx]: quien || "" }));
+    const ok = await upsertOne("pc_ventas", { ...v, items });
+    avisar(ok === false ? "No se pudo guardar el cambio en la venta." : quien ? "Comisi\xF3n de " + l.servicio + " para " + quien + "." : "Comisi\xF3n devuelta a quien tiene el servicio en su tarifa.", ok === false ? "error" : "ok");
+  };
   const tieneTarifa = (emp) => tarifas.some((t) => t.empleado_id === emp.id);
   // Las comisiones se calculan con TODO el mes y se pagan con la 2da quincena
   // (Victor, 26 nov 2026). La 1ra quincena es solo la mitad del sueldo (+/- lo
@@ -14765,8 +14784,10 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
     const suma = (a) => r2(a.reduce((s, m) => s + Number(m.monto), 0));
     const pt = porTarifa.porEmpleado[emp.id];
     const sinCosto = pt ? pt.sinCosto : [];
+    // Sin tarifario propio: sistema anterior + lo que cubrio de otro colaborador.
     const vts = tieneTarifa(emp) ? (pt ? pt.lineas : [])
-      : ventasComisionNomina(ventas, emp, desde, hasta).map((v) => ({ fecha: v.fecha, cliente: v.cliente, servicio: v.servicio || v.descripcion || "", cant: 1, comision: Number(v.comision) || 0 }));
+      : ventasComisionNomina(ventas, emp, desde, hasta).map((v) => ({ fecha: v.fecha, cliente: v.cliente, servicio: v.servicio || v.descripcion || "", cant: 1, comision: Number(v.comision) || 0 }))
+        .concat(pt ? pt.lineas.filter((l) => l.cubre) : []);
     const com = r2(vts.reduce((s, l) => s + l.comision, 0));
     const base = r2((Number(emp.sueldo_mensual) || 0) / 2);
     const deEmp = movs.filter((m) => m.empleado_id === emp.id);
@@ -15051,6 +15072,11 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
                 E("span", { title: v.tarifa ? "Tarifa: " + v.tarifa : "", style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
                   fechaCorta(v.fecha) + " \xB7 " + (v.cant > 1 ? v.cant + "\xD7 " : "") + v.servicio + (v.cliente ? " \xB7 " + v.cliente : "")
                   + (v.tipo === "farmacia" ? " \xB7 5% de (" + dinero(v.venta) + " \u2212 " + dinero(v.costo) + (v.costoManual ? " a mano" : "") + ")" : "")),
+                v.tipo === "servicio" && v.ventaId != null && v.idx >= 0 && E("select", { title: "\xBFQui\xE9n lo hizo? (si otro colaborador cubri\xF3 el servicio)", value: "",
+                  onChange: (e) => cambiarHechoPor(v, e.target.value), style: { marginLeft: 6, fontSize: 11.5, padding: "1px 4px", border: "1px solid #d9dee3", borderRadius: 6, maxWidth: 110 } },
+                  E("option", { value: "" }, "Lo hizo " + emp.nombre.split(" ")[0]),
+                  (datos.empleados || []).filter((x) => x.activo && x.id !== emp.id && NOMINA_CON_COMISION.includes(x.empleado_ref)).map((x) => E("option", { key: x.id, value: x.nombre.split(" ")[0] }, "Lo hizo " + x.nombre.split(" ")[0]))),
+                v.cubre && E("span", { style: { fontSize: 11, color: "#7c3aed", marginLeft: 4, whiteSpace: "nowrap" } }, "cubri\xF3"),
                 E("b", { style: { color: "#1a4fa0", marginLeft: 8 } }, dinero(v.comision))))),
             r.sinCosto.length > 0 && E("div", { style: { background: "#fff7e6", border: "1px solid #f5d48a", borderRadius: 8, padding: "8px 10px", marginBottom: 10 } },
               E("div", { style: { fontSize: 12, fontWeight: 700, color: "#8a5a00", marginBottom: 4 } }, "Productos vendidos sin costo en inventario: escribe el costo unitario para calcular su 5% (si alguno es un servicio, agr\xE9galo en Tarifas de comisi\xF3n)"),

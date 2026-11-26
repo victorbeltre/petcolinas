@@ -581,6 +581,10 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   const pv = enVM("comisionesNominaPorTarifa")([{ fecha: "2026-10-20", area: "veterinaria", recibidopor: "Naylan Perez", items: [{ nombre: "Easotic Suspencion Otica", subtotal: 950 }] }],
     tar, "2026-10-16", "2026-10-31", { inventario: [], vendedores: vend, costosManual: {} });
   if (!pv.porEmpleado[9] || pv.porEmpleado[9].sinCosto.length !== 1 || pv.porEmpleado[9].total !== 0) fallo("un producto vendido en una venta de vet (sin tarifa) es producto: queda sin costo, no se paga a ciegas");
+  // Cuando otro colaborador cubre el servicio (realizadoPor), la comision es de quien lo hizo.
+  const cub = enVM("comisionesNominaPorTarifa")([{ id: 1, fecha: "2026-10-20", area: "grooming", recibidopor: "Alexander", items: [{ nombre: "Baño pequeño", realizadoPor: "Naylan" }, { nombre: "Baño pequeño" }] }],
+    tar, "2026-10-16", "2026-10-31", { inventario: [], vendedores: vend, costosManual: {} });
+  if (!cub.porEmpleado[9] || cub.porEmpleado[9].total !== 10 || !cub.porEmpleado[9].lineas[0].cubre || cub.porEmpleado[7].total !== 10) fallo("realizadoPor: el baño que hizo Naylan le paga a ella y el otro a Alexander: " + JSON.stringify(cub.porEmpleado));
   // Pagos de nomina anotados a mano en Gastos: se proponen para pasarlos a nomina.
   const emps = [{ id: 1, nombre: "Laura De Los Santos", activo: true }, { id: 4, nombre: "Rissy", activo: true }];
   const det = enVM("detectarPagoNomina");
