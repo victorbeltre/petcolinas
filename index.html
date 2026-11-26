@@ -14670,8 +14670,10 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   const [clave, setClave] = useState(""), [clave2, setClave2] = useState("");
   const [err, setErr] = useState(""), [ocupado, setOcupado] = useState(false);
   const [datos, setDatos] = useState(null);
-  const [periodo, setPeriodo] = useState(periodoQuincena());
-  const [modal, setModal] = useState(null);       // { tipo, emp, ... }
+  // La nomina se ve por MES (Victor, 26 nov 2026): un cuadro por colaborador con la
+  // 1ra quincena, la 2da, el total de comisiones y los adelantos/incentivos juntos.
+  const [mes, setMes] = useState(() => fechaLocal().slice(0, 7));
+  const [modal, setModal] = useState(null);       // { tipo, emp, periodo, ... }
   const [verEmp, setVerEmp] = useState(null);
   const [editEmp, setEditEmp] = useState(null);
   const [cambio, setCambio] = useState(null);
@@ -14737,7 +14739,9 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
 
   // ── Nomina abierta ───────────────────────────────────────
   if (!datos) return E("div", { style: { padding: 24, color: C.suave } }, "Cargando n\xF3mina…");
-  const { desde, hasta } = rangoPeriodoNomina(periodo);
+  const pQ1 = mes + "-Q1", pQ2 = mes + "-Q2";
+  const desde = mes + "-01", hasta = rangoPeriodoNomina(pQ2).hasta;
+  const nombreMes = new Date(mes + "-15T12:00:00").toLocaleDateString("es-DO", { month: "long", year: "numeric" });
   const movs = (datos.movimientos || []).filter((m) => !m.anulado);
   const activos = (datos.empleados || []).filter((e) => e.activo);
   const tarifas = datos.comisiones || [];
@@ -14748,18 +14752,40 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
   (datos.costos || []).forEach((k) => (k.alias || [k.nombre]).forEach((a) => { costosFijos[normalizarTextoInv(a)] = Number(k.costo_unitario); }));
   const porTarifa = comisionesNominaPorTarifa(ventas, tarifas, desde, hasta, { inventario, vendedores, costosManual: { ...costosFijos, ...costosManual } });
   const tieneTarifa = (emp) => tarifas.some((t) => t.empleado_id === emp.id);
-  const pendientes = (emp, tipo) => pendientesNomina(movs, emp.id, tipo, periodo);
+  // Las comisiones se calculan con TODO el mes y se pagan con la 2da quincena
+  // (Victor, 26 nov 2026). La 1ra quincena es solo la mitad del sueldo (+/- lo
+  // pendiente). Si una quincena vieja ya pago comisiones (detalle.comisiones),
+  // no se vuelven a pagar.
   const resumen = (emp) => {
+    const r2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
+    const suma = (a) => r2(a.reduce((s, m) => s + Number(m.monto), 0));
     const pt = porTarifa.porEmpleado[emp.id];
     const sinCosto = pt ? pt.sinCosto : [];
     const vts = tieneTarifa(emp) ? (pt ? pt.lineas : [])
       : ventasComisionNomina(ventas, emp, desde, hasta).map((v) => ({ fecha: v.fecha, cliente: v.cliente, servicio: v.servicio || v.descripcion || "", cant: 1, comision: Number(v.comision) || 0 }));
-    const com = Math.round(vts.reduce((s, l) => s + l.comision, 0) * 100) / 100;
-    const inc = pendientes(emp, "incentivo"), ade = pendientes(emp, "adelanto");
-    const base = Math.round((Number(emp.sueldo_mensual) || 0) / 2 * 100) / 100;
-    const pagada = movs.find((m) => m.empleado_id === emp.id && m.tipo === "quincena" && m.periodo === periodo);
-    const c = calcularQuincenaNomina({ base, comisiones: com, incentivos: inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: ade.reduce((s, m) => s + Number(m.monto), 0) });
-    return { vts, com, sinCosto, inc, ade, base, pagada, ...c };
+    const com = r2(vts.reduce((s, l) => s + l.comision, 0));
+    const base = r2((Number(emp.sueldo_mensual) || 0) / 2);
+    const deEmp = movs.filter((m) => m.empleado_id === emp.id);
+    const pagQ1 = deEmp.find((m) => m.tipo === "quincena" && m.periodo === pQ1) || null;
+    const pagQ2 = deEmp.find((m) => m.tipo === "quincena" && m.periodo === pQ2) || null;
+    const comDe = (m) => m ? Number((m.detalle || {}).comisiones) || 0 : 0;
+    const comSueltas = deEmp.filter((m) => m.tipo === "comision" && String(m.periodo || m.fecha).slice(0, 7) === mes);
+    const comPagadas = r2(comDe(pagQ1) + comDe(pagQ2) + suma(comSueltas));
+    // Lo pendiente que liquidaria la 1ra (si no se ha pagado) no se cuenta otra vez en la 2da.
+    const inc1 = pagQ1 ? [] : pendientesNomina(movs, emp.id, "incentivo", pQ1), ade1 = pagQ1 ? [] : pendientesNomina(movs, emp.id, "adelanto", pQ1);
+    const ya1 = new Set([...inc1, ...ade1].map((m) => m.id));
+    const inc2 = pagQ2 ? [] : pendientesNomina(movs, emp.id, "incentivo", pQ2).filter((m) => !ya1.has(m.id));
+    const ade2 = pagQ2 ? [] : pendientesNomina(movs, emp.id, "adelanto", pQ2).filter((m) => !ya1.has(m.id));
+    const com2 = pagQ2 ? comDe(pagQ2) : r2(Math.max(0, com - comDe(pagQ1) - suma(comSueltas)));
+    const q1 = { cual: "q1", periodo: pQ1, pagada: pagQ1, base, comisiones: 0, inc: inc1, ade: ade1, ...calcularQuincenaNomina({ base, incentivos: suma(inc1), adelantos: suma(ade1) }) };
+    const q2 = { cual: "q2", periodo: pQ2, pagada: pagQ2, base, comisiones: com2, inc: inc2, ade: ade2, ...calcularQuincenaNomina({ base, comisiones: com2, incentivos: suma(inc2), adelantos: suma(ade2) }) };
+    // Comisiones que quedaron sin pagar porque la 2da quincena se pago sin ellas.
+    const comFalta = pagQ2 ? r2(Math.max(0, com - comPagadas)) : 0;
+    const delMes = deEmp.filter((m) => (m.tipo === "adelanto" || m.tipo === "incentivo") && String(m.fecha).slice(0, 7) === mes);
+    const adeMes = suma(delMes.filter((m) => m.tipo === "adelanto")), incMes = suma(delMes.filter((m) => m.tipo === "incentivo"));
+    const totalMes = r2((Number(emp.sueldo_mensual) || 0) + com + incMes);
+    const pagadoMes = r2((pagQ1 ? Number(pagQ1.monto) : 0) + (pagQ2 ? Number(pagQ2.monto) : 0) + suma(comSueltas));
+    return { vts, com, comPagadas, comFalta, sinCosto, q1, q2, delMes, adeMes, incMes, totalMes, pagadoMes };
   };
   const anotarGasto = (fecha, descripcion, monto, metodo, mesCor) => {
     const g = { id: Date.now() + Math.floor(Math.random() * 1000), fecha, proveedor: "N\xF3mina", descripcion, monto, categoria: "nomina", pagadoPor: "Petcolinas", metodo: metodo || "", ...(mesCor && mesCor !== String(fecha).slice(0, 7) ? { mesCorresponde: mesCor } : {}) };
@@ -14775,18 +14801,19 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
       let gastoId = null;
       const pagaAhora = m.tipo !== "incentivo" || m.ahora;
       // El gasto de nomina va al mes del periodo que paga (1ra/2da quincena de octubre pagada el 1 de noviembre = octubre).
-      if (pagaAhora && m.gasto) gastoId = anotarGasto(m.fecha, m.tipo === "quincena" ? "Pago de n\xF3mina — " + nombrePeriodoNomina(periodo) : m.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Incentivo de n\xF3mina", monto, m.metodo, (m.tipo === "quincena" ? periodo : periodoQuincena(m.fecha)).slice(0, 7));
-      await llamar("pc_nomina_registrar", { p_m: { empleado_id: m.emp.id, tipo: m.tipo, fecha: m.fecha, periodo: m.tipo === "quincena" ? periodo : periodoQuincena(m.fecha), monto, metodo: m.metodo,
+      const perM = m.periodo || periodoQuincena(m.fecha);
+      if (pagaAhora && m.gasto) gastoId = anotarGasto(m.fecha, m.tipo === "quincena" ? "Pago de n\xF3mina — " + nombrePeriodoNomina(perM) : m.tipo === "comision" ? "Comisiones de n\xF3mina — " + nombrePeriodoNomina(perM) : m.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Incentivo de n\xF3mina", monto, m.metodo, perM.slice(0, 7));
+      await llamar("pc_nomina_registrar", { p_m: { empleado_id: m.emp.id, tipo: m.tipo, fecha: m.fecha, periodo: perM, monto, metodo: m.metodo,
         nota: m.nota || null, pagado_ahora: pagaAhora, gasto_id: gastoId, detalle: m.detalle || {}, liquida: m.liquida || [] } });
       setModal(null); await cargar();
-      avisar(m.tipo === "quincena" ? "Quincena registrada" + (gastoId ? " y anotada en Gastos." : ".") : m.tipo === "adelanto" ? "Adelanto registrado: se descontar\xE1 de la pr\xF3xima quincena." : pagaAhora ? "Incentivo pagado." : "Incentivo anotado: se sumar\xE1 a la pr\xF3xima quincena.", "ok");
+      avisar(m.tipo === "quincena" ? "Quincena registrada" + (gastoId ? " y anotada en Gastos." : ".") : m.tipo === "comision" ? "Comisiones registradas" + (gastoId ? " y anotadas en Gastos." : ".") : m.tipo === "adelanto" ? "Adelanto registrado: se descontar\xE1 de la pr\xF3xima quincena." : pagaAhora ? "Incentivo pagado." : "Incentivo anotado: se sumar\xE1 a la pr\xF3xima quincena.", "ok");
     } catch (e) { avisar(e.message, "error"); } finally { setOcupado(false); }
   };
-  const abrirQuincena = (emp) => {
-    const r = resumen(emp);
-    setModal({ tipo: "quincena", emp, fecha: fechaLocal(), metodo: "transferencia", nota: "", gasto: true,
-      base: String(r.base), comisiones: String(r.com), incentivos: r.inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: r.ade.reduce((s, m) => s + Number(m.monto), 0),
-      descuentos: "", liquida: [...r.inc, ...r.ade].map((m) => m.id) });
+  const abrirQuincena = (emp, cual) => {
+    const q = resumen(emp)[cual];
+    setModal({ tipo: "quincena", cual, periodo: q.periodo, emp, fecha: fechaLocal(), metodo: "transferencia", nota: "", gasto: true,
+      base: String(q.base), comisiones: String(q.comisiones), incentivos: q.inc.reduce((s, m) => s + Number(m.monto), 0), adelantos: q.ade.reduce((s, m) => s + Number(m.monto), 0),
+      descuentos: "", liquida: [...q.inc, ...q.ade].map((m) => m.id) });
   };
   const anular = async (m) => {
     if (!window.confirm("\xBFAnular este " + NOMINA_TIPOS[m.tipo][0].toLowerCase() + " de " + dinero(m.monto) + "?" + (m.gasto_id ? " Tambi\xE9n se borrar\xE1 su gasto." : ""))) return;
@@ -14828,7 +14855,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
       await cargar(); avisar("Pasado a n\xF3mina: " + emp.nombre + ", " + dinero(monto) + ".", "ok");
     } catch (e) { avisar(e.message, "error"); }
   };
-  const totalPeriodo = movs.filter((m) => m.fecha >= desde && m.fecha <= hasta && m.pagado_ahora).reduce((s, m) => s + Number(m.monto), 0);
+  const totalPeriodo = movs.filter((m) => m.fecha >= desde && m.fecha <= hasta && (m.pagado_ahora || m.tipo === "quincena")).reduce((s, m) => s + Number(m.monto), 0);
   const panel = (titulo, hijos) => E(Card, { style: { marginBottom: 16, border: "1px solid #b7dfc5", background: "#fbfefc" } }, E("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 12 } }, titulo), hijos);
   const fila = (t, v, color, negrita) => E("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "3px 0" } }, E("span", { style: { color: C.suave } }, t), E("span", { style: { color: color || C.texto, fontWeight: negrita ? 800 : 600 } }, v));
   const q = modal && modal.tipo === "quincena" ? calcularQuincenaNomina({ base: modal.base, comisiones: modal.comisiones, incentivos: modal.incentivos, adelantos: modal.adelantos, descuentos: modal.descuentos }) : null;
@@ -14857,18 +14884,19 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
         editEmp.id && E("label", { style: { display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, marginTop: 22 } },
           E("input", { type: "checkbox", checked: !!editEmp.activo, onChange: (e) => setEditEmp({ ...editEmp, activo: e.target.checked }) }), "Activo (sale en la n\xF3mina)")),
       E("div", { style: { display: "flex", gap: 8, marginTop: 12 } }, E("button", { onClick: guardarEmp, style: btnV }, "Guardar"), E("button", { className: "pc-btn-suave", onClick: () => setEditEmp(null) }, "Cancelar")))),
-    modal && panel((modal.tipo === "quincena" ? "Pagar " + nombrePeriodoNomina(periodo) : modal.tipo === "adelanto" ? "Adelanto de sueldo" : "Incentivo extra") + " — " + modal.emp.nombre, E("div", null,
+    modal && panel((modal.tipo === "quincena" ? "Pagar " + nombrePeriodoNomina(modal.periodo) : modal.tipo === "comision" ? "Pagar comisiones de " + nombreMes : modal.tipo === "adelanto" ? "Adelanto de sueldo" : "Incentivo extra") + " — " + modal.emp.nombre, E("div", null,
       modal.tipo === "quincena" && E("div", null,
         E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 } },
           E("div", null, lbl("Sueldo de la quincena"), E("input", { type: "number", value: modal.base, onChange: (e) => setModal({ ...modal, base: e.target.value }), style: inp })),
-          E("div", null, lbl("Comisiones"), E("input", { type: "number", value: modal.comisiones, onChange: (e) => setModal({ ...modal, comisiones: e.target.value }), style: inp })),
+          modal.cual === "q2" && E("div", null, lbl("Comisiones del mes"), E("input", { type: "number", value: modal.comisiones, onChange: (e) => setModal({ ...modal, comisiones: e.target.value }), style: inp })),
           E("div", null, lbl("Otros descuentos"), E("input", { type: "number", value: modal.descuentos, placeholder: "0", onChange: (e) => setModal({ ...modal, descuentos: e.target.value }), style: inp }))),
         E("div", { style: { background: "#fff", border: "1px solid " + C.borde, borderRadius: 10, padding: "10px 14px", marginTop: 12, maxWidth: 420 } },
-          fila("Sueldo", dinero(modal.base)), fila("+ Comisiones", dinero(modal.comisiones)),
+          fila("Sueldo", dinero(modal.base)), modal.cual === "q2" ? fila("+ Comisiones del mes", dinero(modal.comisiones)) : E("div", { style: { fontSize: 12, color: C.suave, padding: "2px 0" } }, "Las comisiones se pagan con la 2da quincena."),
           modal.incentivos > 0 && fila("+ Incentivos pendientes", dinero(modal.incentivos), "#7c3aed"),
           modal.adelantos > 0 && fila("− Adelantos ya pagados", dinero(modal.adelantos), "#b45309"),
           parseFloat(modal.descuentos) > 0 && fila("− Otros descuentos", dinero(modal.descuentos), "#b42318"),
           E("div", { style: { borderTop: "1px solid " + C.borde, marginTop: 6, paddingTop: 6 } }, fila("A pagar", dinero(q.neto), q.neto < 0 ? "#b42318" : C.verde, true)))),
+      modal.tipo === "comision" && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 8 } }, "La 2da quincena de " + nombreMes + " ya se pag\xF3 sin estas comisiones. Esto las paga aparte."),
       modal.tipo !== "quincena" && E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 } },
         E("div", null, lbl("Monto (RD$)"), E("input", { type: "number", min: 0, value: modal.monto, autoFocus: true, onChange: (e) => setModal({ ...modal, monto: e.target.value }), style: inp })),
         E("div", null, lbl(modal.tipo === "incentivo" ? "Motivo" : "Nota"), E("input", { value: modal.nota, placeholder: modal.tipo === "incentivo" ? "Meta cumplida, horas extra…" : "", onChange: (e) => setModal({ ...modal, nota: e.target.value }), style: inp }))),
@@ -14887,7 +14915,8 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
           E("span", null, E("b", null, "Anotar en Gastos"), " como “N\xF3mina”, sin el nombre de la persona, para que salga del flujo de caja."))),
       E("div", { style: { display: "flex", gap: 8, marginTop: 14 } },
         E("button", { disabled: ocupado, onClick: () => modal.tipo === "quincena" ? (q.neto < 0 ? avisar("El total a pagar sale negativo: revisa los adelantos.", "error")
-          : guardarModal({ ...modal, monto: String(q.neto), detalle: { base: +modal.base || 0, comisiones: +modal.comisiones || 0, incentivos: modal.incentivos, adelantos: modal.adelantos, descuentos: +modal.descuentos || 0 } })) : guardarModal(), style: btnV },
+          : guardarModal({ ...modal, monto: String(q.neto), detalle: { base: +modal.base || 0, comisiones: modal.cual === "q2" ? +modal.comisiones || 0 : 0, incentivos: modal.incentivos, adelantos: modal.adelantos, descuentos: +modal.descuentos || 0 } }))
+          : modal.tipo === "comision" ? guardarModal({ ...modal, detalle: { comisiones: Math.round((parseFloat(modal.monto) || 0) * 100) / 100 } }) : guardarModal(), style: btnV },
           ocupado ? "Guardando…" : modal.tipo === "quincena" ? "Registrar pago de " + dinero(q.neto) : "Registrar"),
         E("button", { className: "pc-btn-suave", onClick: () => setModal(null) }, "Cancelar")))),
     verTarifas && panel("Tarifas de comisi\xF3n por servicio", E("div", null,
@@ -14953,7 +14982,7 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
           [-2, -1, 0, 1].map((k) => moverPeriodoNomina(periodoQuincena(d.g.fecha), k)).concat(d.periodo).filter((x, i, a) => a.indexOf(x) === i).map((p) => E("option", { key: p, value: p }, nombrePeriodoNomina(p)))),
         E("button", { onClick: () => pasarANomina(d), style: { ...btnV, padding: "6px 12px", fontSize: 13 } }, "Pasar a n\xF3mina"),
         E("button", { className: "pc-btn-suave", onClick: () => ignorar(d.g.id) }, "No es n\xF3mina"))))),
-    porTarifa.cortesias > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, porTarifa.cortesias + " servicio(s) de cortes\xEDa en esta quincena: no generan comisi\xF3n."),
+    porTarifa.cortesias > 0 && E("div", { style: { fontSize: 12.5, color: C.suave, marginBottom: 10 } }, porTarifa.cortesias + " servicio(s) de cortes\xEDa en este mes: no generan comisi\xF3n."),
     porTarifa.sinTarifa.length > 0 && tarifas.length > 0 && E("details", { style: { background: "#fff7e6", border: "1px solid #f5d48a", color: "#8a5a00", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 } },
       E("summary", { style: { cursor: "pointer", fontWeight: 600 } }, porTarifa.sinTarifa.length + " concepto(s) de vet/grooming registrados por alguien sin comisi\xF3n y sin tarifa (no suman a nadie)"),
       E("div", { style: { marginTop: 6 } }, porTarifa.sinTarifa.map(([n, c]) => n + (c > 1 ? " (" + c + ")" : "")).join(" \xB7 ")),
@@ -14961,38 +14990,58 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
     E(Card, { style: { marginBottom: 16, padding: 16 } },
       E("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "space-between" } },
         E("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-          E("button", { className: "pc-btn-suave", onClick: () => setPeriodo(moverPeriodoNomina(periodo, -1)) }, "‹"),
-          E("div", { style: { fontWeight: 800, fontSize: 16, minWidth: 230, textAlign: "center" } }, nombrePeriodoNomina(periodo).replace(/^./, (c) => c.toUpperCase())),
-          E("button", { className: "pc-btn-suave", onClick: () => setPeriodo(moverPeriodoNomina(periodo, 1)) }, "›"),
-          periodo !== periodoQuincena() && E("button", { className: "pc-btn-suave", onClick: () => setPeriodo(periodoQuincena()) }, "Hoy")),
-        E("div", { style: { fontSize: 13, color: C.suave } }, fechaCorta(desde) + " al " + fechaCorta(hasta) + " \xB7 pagado en el periodo: ", E("b", { style: { color: C.texto } }, dinero(totalPeriodo))))),
+          E("button", { className: "pc-btn-suave", onClick: () => setMes(moverPeriodoNomina(pQ1, -2).slice(0, 7)) }, "‹"),
+          E("div", { style: { fontWeight: 800, fontSize: 16, minWidth: 200, textAlign: "center" } }, nombreMes.replace(/^./, (c) => c.toUpperCase())),
+          E("button", { className: "pc-btn-suave", onClick: () => setMes(moverPeriodoNomina(pQ1, 2).slice(0, 7)) }, "›"),
+          mes !== fechaLocal().slice(0, 7) && E("button", { className: "pc-btn-suave", onClick: () => setMes(fechaLocal().slice(0, 7)) }, "Hoy")),
+        E("div", { style: { fontSize: 13, color: C.suave } }, "Las comisiones se pagan con la 2da quincena \xB7 pagado en el mes: ", E("b", { style: { color: C.texto } }, dinero(totalPeriodo))))),
     E("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14, marginBottom: 18 } },
       activos.map((emp) => { const r = resumen(emp);
+        const conCom = tieneTarifa(emp) || NOMINA_CON_COMISION.includes(emp.empleado_ref);
+        const sv = r.vts.filter((l) => l.tipo !== "farmacia"), fa = r.vts.filter((l) => l.tipo === "farmacia");
+        const seccion = (t) => E("div", { style: { fontSize: 11.5, fontWeight: 700, color: C.suave, textTransform: "uppercase", letterSpacing: "0.04em", margin: "12px 0 4px" } }, t);
+        const filaQ = (q, titulo, detalle) => E("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid #f1f3f4" } },
+          E("div", { style: { flex: 1, minWidth: 0 } },
+            E("div", { style: { fontWeight: 700, fontSize: 13.5 } }, titulo),
+            E("div", { style: { fontSize: 11.5, color: C.suave } }, detalle)),
+          E("div", { style: { textAlign: "right" } },
+            E("div", { style: { fontWeight: 800, fontSize: 14, color: q.pagada ? C.verde : C.texto } }, dinero(q.pagada ? q.pagada.monto : q.neto)),
+            q.pagada ? E("div", { style: { fontSize: 11.5, color: C.verde, fontWeight: 700 } }, "\u2714 Pagada " + fechaCorta(q.pagada.fecha))
+              : E("button", { onClick: () => abrirQuincena(emp, q.cual), style: { ...btnV, padding: "4px 10px", fontSize: 12, marginTop: 2 } }, "Pagar")));
+        const detQ = (q, extra) => ["\xBD sueldo " + dinero(q.base), extra, q.inc.length ? "+ incentivos " + dinero(q.inc.reduce((s, m) => s + Number(m.monto), 0)) : "", q.ade.length ? "\u2212 adelantos " + dinero(q.ade.reduce((s, m) => s + Number(m.monto), 0)) : ""].filter(Boolean).join(" \xB7 ");
         return E(Card, { key: emp.id, style: { padding: 18 } },
-          E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 } },
-            E("div", null, E("div", { style: { fontWeight: 800, fontSize: 16 } }, emp.nombre), E("div", { style: { fontSize: 12.5, color: C.suave } }, emp.cargo || "—")),
-            r.pagada ? E(Badge, { color: C.verde }, "Pagada") : E(Badge, { color: "#b45309" }, "Pendiente")),
-          fila("Sueldo mensual", dinero(emp.sueldo_mensual)),
-          fila("Quincena", dinero(r.base)),
-          (tieneTarifa(emp) || NOMINA_CON_COMISION.includes(emp.empleado_ref)) && (() => {
-            const sv = r.vts.filter((l) => l.tipo !== "farmacia"), fa = r.vts.filter((l) => l.tipo === "farmacia");
-            return E(React.Fragment, null,
-              fila("Comisi\xF3n servicios (" + sv.reduce((s, l) => s + l.cant, 0) + ")", dinero(sv.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
-              (fa.length > 0 || r.sinCosto.length > 0) && fila("5% farmacia (" + fa.reduce((s, l) => s + l.cant, 0) + " productos)", dinero(fa.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
-              r.sinCosto.length > 0 && E("div", { style: { fontSize: 12, color: "#b45309", margin: "2px 0" } }, "\u26A0 " + r.sinCosto.length + " producto(s) sin costo: \xE1brelos en Historial"));
-          })(),
-          r.inc.length > 0 && fila("Incentivos por sumar", dinero(r.inc.reduce((s, m) => s + Number(m.monto), 0)), "#7c3aed"),
-          r.ade.length > 0 && fila("Adelantos por descontar", "−" + dinero(r.ade.reduce((s, m) => s + Number(m.monto), 0)), "#b45309"),
-          E("div", { style: { borderTop: "1px solid " + C.borde, marginTop: 6, paddingTop: 6 } }, r.pagada ? fila("Pagado", dinero(r.pagada.monto), C.verde, true) : fila("A pagar", dinero(r.neto), C.verde, true)),
+          E("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 } },
+            E("div", null, E("div", { style: { fontWeight: 800, fontSize: 16 } }, emp.nombre), E("div", { style: { fontSize: 12.5, color: C.suave } }, (emp.cargo || "—") + " \xB7 sueldo " + dinero(emp.sueldo_mensual) + "/mes")),
+            r.q1.pagada && r.q2.pagada && !r.comFalta ? E(Badge, { color: C.verde }, "Mes pagado") : E(Badge, { color: "#b45309" }, "Pendiente")),
+          seccion("Quincenas"),
+          filaQ(r.q1, "1ra quincena", detQ(r.q1, "")),
+          filaQ(r.q2, "2da quincena", detQ(r.q2, conCom ? "+ comisiones " + dinero(r.q2.comisiones) : "")),
+          conCom && E(React.Fragment, null,
+            seccion("Comisiones del mes"),
+            fila("Servicios (" + sv.reduce((s, l) => s + l.cant, 0) + ")", dinero(sv.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
+            (fa.length > 0 || r.sinCosto.length > 0) && fila("5% farmacia (" + fa.reduce((s, l) => s + l.cant, 0) + " productos)", dinero(fa.reduce((s, l) => s + l.comision, 0)), "#1a4fa0"),
+            fila("Total comisiones", dinero(r.com), "#1a4fa0", true),
+            r.sinCosto.length > 0 && E("div", { style: { fontSize: 12, color: "#b45309", margin: "2px 0" } }, "\u26A0 " + r.sinCosto.length + " producto(s) sin costo: \xE1brelos en Historial"),
+            r.comFalta > 0 && E("div", { style: { display: "flex", alignItems: "center", gap: 8, background: "#fff7e6", border: "1px solid #f5d48a", borderRadius: 8, padding: "6px 10px", marginTop: 4, fontSize: 12.5, color: "#8a5a00" } },
+              E("span", { style: { flex: 1 } }, "Comisiones sin pagar: " + dinero(r.comFalta) + " (la 2da quincena se pag\xF3 sin ellas)"),
+              E("button", { onClick: () => setModal({ tipo: "comision", emp, periodo: pQ2, monto: String(r.comFalta), fecha: fechaLocal(), metodo: "transferencia", nota: "Comisiones de " + nombreMes, gasto: true }), style: { ...btnV, padding: "4px 10px", fontSize: 12 } }, "Pagar"))),
+          seccion("Adelantos e incentivos del mes"),
+          r.delMes.length === 0 ? E("div", { style: { fontSize: 12.5, color: C.suave, padding: "2px 0" } }, "Ninguno.")
+            : r.delMes.map((m) => E("div", { key: m.id, style: { display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, padding: "2px 0" } },
+              E("span", { style: { color: C.suave, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, fechaCorta(m.fecha) + " \xB7 " + NOMINA_TIPOS[m.tipo][0] + (m.nota ? " \xB7 " + m.nota : "")
+                + (m.liquidado_en ? " \xB7 ya aplicado" : m.tipo === "adelanto" ? " \xB7 se descuenta" : !m.pagado_ahora ? " \xB7 se suma" : " \xB7 pagado")),
+              E("b", { style: { color: m.tipo === "adelanto" ? "#b45309" : "#7c3aed", whiteSpace: "nowrap" } }, (m.tipo === "adelanto" ? "\u2212" : "+") + dinero(m.monto)))),
+          E("div", { style: { borderTop: "2px solid " + C.borde, marginTop: 10, paddingTop: 8 } },
+            fila("Total del mes (sueldo" + (conCom ? " + comisiones" : "") + (r.incMes ? " + incentivos" : "") + ")", dinero(r.totalMes), C.texto, true),
+            fila("Ya pagado", dinero(r.pagadoMes + r.adeMes), C.verde)),
           E("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 } },
-            !r.pagada && E("button", { onClick: () => abrirQuincena(emp), style: { ...btnV, padding: "7px 12px", fontSize: 13 } }, "Pagar quincena"),
             E("button", { className: "pc-btn-suave", onClick: () => setModal({ tipo: "adelanto", emp, monto: "", fecha: fechaLocal(), metodo: "efectivo", nota: "", gasto: true }) }, "Adelanto"),
             E("button", { className: "pc-btn-suave", onClick: () => setModal({ tipo: "incentivo", emp, monto: "", fecha: fechaLocal(), metodo: "efectivo", nota: "", gasto: true, ahora: false }) }, "Incentivo"),
             E("button", { className: "pc-btn-suave", onClick: () => setVerEmp(verEmp === emp.id ? null : emp.id) }, verEmp === emp.id ? "Cerrar" : "Historial"),
             E("button", { className: "pc-btn-suave", onClick: () => setEditEmp({ ...emp, sueldo_mensual: String(emp.sueldo_mensual) }) }, "Editar")),
           verEmp === emp.id && E("div", { style: { marginTop: 12, borderTop: "1px solid " + C.borde, paddingTop: 10 } },
             r.vts.length > 0 && E("div", { style: { marginBottom: 10 } },
-              E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de esta quincena"),
+              E("div", { style: { fontSize: 12, fontWeight: 700, color: C.suave, marginBottom: 4 } }, "Comisiones de " + nombreMes),
               r.vts.map((v, i) => E("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "2px 0" } },
                 E("span", { title: v.tarifa ? "Tarifa: " + v.tarifa : "", style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
                   fechaCorta(v.fecha) + " \xB7 " + (v.cant > 1 ? v.cant + "\xD7 " : "") + v.servicio + (v.cliente ? " \xB7 " + v.cliente : "")

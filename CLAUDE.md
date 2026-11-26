@@ -455,6 +455,12 @@ aunque la sesion de admin este abierta. "Necesito mucha confidencialidad".
   del 5%: inventario > tarifario fijo > costo escrito a mano en el historial. No toca el inventario.
   Los montos solo estan en la base (repo publico): se editan en Nomina -> Tarifas de comision.
   Test Parvovirus/Coronavirus/Giardia (canino) = servicio de 295 (alias agregado el 31 oct).
+- VISTA POR MES (26 nov 2026, Victor: "me confundo" con las quincenas separadas): Nomina navega por
+  MES y cada colaborador tiene UN cuadro con 1ra quincena, 2da quincena (cada una con su Pagar o
+  "Pagada"), total de comisiones del mes y adelantos/incentivos del mes. Las COMISIONES se calculan
+  con todo el mes y se pagan con la 2DA quincena; la 1ra es solo medio sueldo (+/- pendientes). Si
+  una quincena vieja ya incluyo comisiones (detalle.comisiones) no se repiten; si la 2da se pago sin
+  ellas, sale "Comisiones sin pagar" con boton que registra un movimiento tipo `comision`.
 - Aylein, Leydeli y Valentina se quitaron de la lista (29 oct, Victor). Sus ventas no cambian.
 - Pagos viejos (`pc_pagos`, 20 filas hasta mar 2026) siguen como historial dentro de Nomina.
 
