@@ -14398,11 +14398,15 @@ function detectarPagoNomina(g, empleados) {
     return txt.includes(n) || palabras.has(n.split(" ")[0]);
   }) || null;
   if (!emp && !esGastoNomina(g)) return null;
-  const tipo = /adelanto|avance/.test(txt) ? "adelanto" : /quincena|sueldo|salario|nomina/.test(txt) ? "quincena" : "incentivo";
+  // "Comisiones octubre" pagadas el 2 de noviembre son comisiones de OCTUBRE (26 nov
+  // 2026: entraban como quincena/incentivo de noviembre).
+  const tipo = /adelanto|avance/.test(txt) ? "adelanto" : /comision/.test(txt) ? "comision" : /quincena|sueldo|salario|nomina/.test(txt) ? "quincena" : "incentivo";
   let mes = String(g.fecha).slice(0, 7);
   const im = MESES_NOMINA.findIndex((m) => palabras.has(m));
   if (im >= 0) { const an = (txt.match(/\b(20\d\d)\b/) || [])[1] || mes.slice(0, 4); mes = an + "-" + String(im + 1).padStart(2, "0"); }
-  const periodo = /\b(primera|1ra|1era|primer)\b/.test(txt) ? mes + "-Q1" : /\b(segunda|2da)\b/.test(txt) ? mes + "-Q2" : periodoQuincena(g.fecha);
+  const periodo = /\b(primera|1ra|1era|primer)\b/.test(txt) ? mes + "-Q1" : /\b(segunda|2da)\b/.test(txt) ? mes + "-Q2"
+    : tipo === "comision" ? (im >= 0 ? mes : (() => { const [y, m] = String(g.fecha).slice(0, 7).split("-").map(Number); return m === 1 ? (y - 1) + "-12" : y + "-" + String(m - 1).padStart(2, "0"); })()) + "-Q2"
+    : periodoQuincena(g.fecha);
   return { emp, tipo, periodo };
 }
 // Adelantos (a restar) e incentivos "para la proxima quincena" (a sumar) que
@@ -14846,10 +14850,11 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
       const monto = Math.round(Number(d.g.monto) * 100) / 100;
       await llamar("pc_nomina_registrar", { p_m: { empleado_id: emp.id, tipo: d.tipo, fecha: d.g.fecha, periodo: d.periodo, monto, metodo: d.g.metodo || d.g.formaPago || "",
         nota: (d.g.descripcion || "") + " \xB7 tra\xEDdo de Gastos", pagado_ahora: true, gasto_id: String(d.g.id),
-        detalle: d.tipo === "quincena" ? { base: monto, comisiones: 0, incentivos: 0, adelantos: 0, descuentos: 0 } : {} } });
+        detalle: d.tipo === "quincena" ? { base: monto, comisiones: 0, incentivos: 0, adelantos: 0, descuentos: 0 } : d.tipo === "comision" ? { comisiones: monto } : {} } });
       // En Gastos queda como nomina y sin el nombre (decision de Victor, 29 oct).
       const g2 = { ...d.g, categoria: "nomina", proveedor: "N\xF3mina",
-        descripcion: d.tipo === "quincena" ? "Pago de n\xF3mina \u2014 " + nombrePeriodoNomina(d.periodo) : d.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Pago extra de n\xF3mina" };
+        descripcion: d.tipo === "quincena" ? "Pago de n\xF3mina \u2014 " + nombrePeriodoNomina(d.periodo) : d.tipo === "comision" ? "Comisiones de n\xF3mina \u2014 " + nombrePeriodoNomina(d.periodo) : d.tipo === "adelanto" ? "Adelanto de n\xF3mina" : "Pago extra de n\xF3mina",
+        ...((d.tipo === "quincena" || d.tipo === "comision") && d.periodo.slice(0, 7) !== String(d.g.fecha).slice(0, 7) ? { mesCorresponde: d.periodo.slice(0, 7) } : {}) };
       if (typeof setGastos === "function") setGastos((prev) => (prev || []).map((x) => String(x.id) === String(d.g.id) ? g2 : x));
       upsertOne("pc_gastos", g2).catch((e) => console.error("[nomina detectado]", e));
       await cargar(); avisar("Pasado a n\xF3mina: " + emp.nombre + ", " + dinero(monto) + ".", "ok");
@@ -14977,8 +14982,8 @@ function NominaSegura({ ventas = [], gastos = [], setGastos, pagosNom = [], vent
         E("select", { value: d.emp ? d.emp.id : d.empId || "", onChange: (e) => setAjusteDet({ ...ajusteDet, [d.g.id]: { ...(ajusteDet[d.g.id] || {}), emp: (datos.empleados || []).find((x) => String(x.id) === e.target.value) || null } }), style: { ...inp, width: 170, padding: "6px 8px" } },
           E("option", { value: "" }, "\xBFA qui\xE9n?"), activos.map((e) => E("option", { key: e.id, value: e.id }, e.nombre))),
         E("select", { value: d.tipo, onChange: (e) => setAjusteDet({ ...ajusteDet, [d.g.id]: { ...(ajusteDet[d.g.id] || {}), tipo: e.target.value } }), style: { ...inp, width: 130, padding: "6px 8px" } },
-          [["quincena", "Quincena"], ["adelanto", "Adelanto"], ["incentivo", "Pago extra / incentivo"]].map(([v, t]) => E("option", { key: v, value: v }, t))),
-        d.tipo === "quincena" && E("select", { value: d.periodo, onChange: (e) => setAjusteDet({ ...ajusteDet, [d.g.id]: { ...(ajusteDet[d.g.id] || {}), periodo: e.target.value } }), style: { ...inp, width: 200, padding: "6px 8px" } },
+          [["quincena", "Quincena"], ["comision", "Comisiones"], ["adelanto", "Adelanto"], ["incentivo", "Pago extra / incentivo"]].map(([v, t]) => E("option", { key: v, value: v }, t))),
+        (d.tipo === "quincena" || d.tipo === "comision") && E("select", { value: d.periodo, onChange: (e) => setAjusteDet({ ...ajusteDet, [d.g.id]: { ...(ajusteDet[d.g.id] || {}), periodo: e.target.value } }), style: { ...inp, width: 200, padding: "6px 8px" } },
           [-2, -1, 0, 1].map((k) => moverPeriodoNomina(periodoQuincena(d.g.fecha), k)).concat(d.periodo).filter((x, i, a) => a.indexOf(x) === i).map((p) => E("option", { key: p, value: p }, nombrePeriodoNomina(p)))),
         E("button", { onClick: () => pasarANomina(d), style: { ...btnV, padding: "6px 12px", fontSize: 13 } }, "Pasar a n\xF3mina"),
         E("button", { className: "pc-btn-suave", onClick: () => ignorar(d.g.id) }, "No es n\xF3mina"))))),

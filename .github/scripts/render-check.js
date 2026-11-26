@@ -588,6 +588,10 @@ render("OrdenesCompra", sandbox.OrdenesCompra, { inventario: [], gastos: [], ref
   if (!d1 || d1.emp.id !== 1 || d1.tipo !== "quincena" || d1.periodo !== "2026-10-Q1") fallo("quincena pagada el 16 se lee del texto (1ra de octubre), no de la fecha: " + JSON.stringify(d1));
   const d2 = det({ fecha: "2026-10-10", monto: 800, proveedor: "RISSY ACEVEDO", descripcion: "CUBRIR SABADO 10 DE OCTUBRE" }, emps);
   if (!d2 || d2.emp.id !== 4 || d2.tipo !== "incentivo") fallo("cubrir un dia = pago extra: " + JSON.stringify(d2));
+  const d3 = det({ fecha: "2026-11-02", monto: 9158, proveedor: "Rissy", descripcion: "Comisiones Octubre" }, emps);
+  if (!d3 || d3.tipo !== "comision" || d3.periodo !== "2026-10-Q2") fallo("comisiones de octubre pagadas el 2 nov = comision de octubre: " + JSON.stringify(d3));
+  const d4 = det({ fecha: "2026-12-03", monto: 5000, proveedor: "Rissy", descripcion: "Pago comisiones" }, emps);
+  if (!d4 || d4.tipo !== "comision" || d4.periodo !== "2026-11-Q2") fallo("comisiones sin mes = las del mes anterior: " + JSON.stringify(d4));
   if (det({ fecha: "2025-10-07", monto: 2139, descripcion: "TARJETA LAURA" }, emps)) fallo("gastos de antes de la nomina nueva no se proponen");
   if (det({ fecha: "2026-10-02", monto: 601, proveedor: "LA SIRENA", descripcion: "PRODUCTOS DE LIMPIEZA" }, emps)) fallo("un gasto sin colaborador ni categoria nomina no es nomina");
   // Un adelanto se descuenta de la quincena en que se dio o de una posterior, nunca de una anterior.
